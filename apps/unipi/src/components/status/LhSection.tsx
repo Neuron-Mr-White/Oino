@@ -104,12 +104,14 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
         <Show when={summary()} fallback={<p class="status-empty">No long-horizon run. Start one with /goal, /ralph, /swarm or /graph.</p>}>
           {(m) => (
             <div class="lh-body">
-              <p class="lh-mode-line">
+              {/* A graph / swarm shows its title in the card below (LhView head); no second line here. */}
+              <Show when={!m().graph}>
+                <p class="lh-mode-line">
                 <span class="lh-mode-name">{m().label}</span>
                 <Show when={m().goal}>{(g) => <span class="lh-mode-objective truncate" title={g().objective}>{g().objective}</span>}</Show>
-                <Show when={m().graph?.task}>{(t) => <span class="lh-mode-objective truncate" title={t()}>{t()}</span>}</Show>
                 <Show when={m().ralph}>{(r) => <span class="lh-mode-objective truncate">loop “{r().name}”</span>}</Show>
               </p>
+              </Show>
 
               <Show when={elapsed() && m().phase === 'active'}>
                 <p class="lh-line" data-testid="lh-elapsed">Working for {elapsed()}</p>

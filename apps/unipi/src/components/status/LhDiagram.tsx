@@ -1,12 +1,14 @@
 /**
  * The long-horizon diagram ([lh-ui]): one HTML card per node (name, status chip, profile and
- * model chips, metrics) on an SVG edge layer, with pan (drag), zoom (wheel / pinch / buttons)
- * and Fit. Layout is the pure layered grid of `layoutGraph`. Nodes are foreignObjects so they
- * share the list rows' chip styles; at 40 nodes that is 40 small subtrees, no per-node timers.
+ * model chips, metrics) over an SVG edge layer, with pan (drag), zoom (wheel / pinch / buttons),
+ * Fit and a full-window overlay. Layout is elkjs (`layoutGraphElk`, async, orthogonal edges).
+ * Edges and cards live in ONE transformed layer (a single CSS transform), so everything zooms
+ * together — no foreignObject (WebKit does not scale HTML inside it reliably).
  */
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
-import { Maximize, Minus, Plus } from 'lucide-solid';
-import { NODE_H, NODE_W, layoutGraph, type LhWork } from '../../lib/status/lhGraph';
+import { Portal } from 'solid-js/web';
+import { Expand, Minus, Plus, ScanSearch, X } from 'lucide-solid';
+import { NODE_H, NODE_W, graphShapeKey, layoutGraph, layoutGraphElk, type Layout, type LhWork, type Pt } from '../../lib/status/lhGraph';
 import { Metrics, RunChips, StatusChip } from './LhParts';
 
 const MIN_Z = 0.15;
@@ -37,15 +39,62 @@ export function zoomAt(v: View, factor: number, px: number, py: number): View {
   return { z, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
 }
 
-const edgePath = (ax: number, ay: number, bx: number, by: number) => {
-  const dy = Math.max(20, Math.abs(by - ay) / 2);
-  return `M${ax},${ay} C${ax},${ay + dy} ${bx},${by - dy} ${bx},${by}`;
-};
+/** A polyline as an SVG path with rounded corners (radius `r`). Pure. */
+export function roundedPath(pts: readonly Pt[], r = 8): string {
+  if (pts.length < 2) return '';
+  let d = `M${pts[0]!.x},${pts[0]!.y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i - 1]!;
+    const c = pts[i]!;
+    const n = pts[i + 1]!;
+    const l1 = Math.hypot(c.x - p.x, c.y - p.y);
+    const l2 = Math.hypot(n.x - c.x, n.y - c.y);
+    const k = Math.min(r, l1 / 2, l2 / 2);
+    if (k <= 0) continue;
+    d += ` L${c.x + ((p.x - c.x) / l1) * k},${c.y + ((p.y - c.y) / l1) * k} Q${c.x},${c.y} ${c.x + ((n.x - c.x) / l2) * k},${c.y + ((n.y - c.y) / l2) * k}`;
+  }
+  const last = pts[pts.length - 1]!;
+  return `${d} L${last.x},${last.y}`;
+}
 
-export function LhDiagram(props: { work: readonly LhWork[]; now: number; selected?: string; onSelect: (id: string) => void; perRow?: number; height?: number }) {
-  const layout = createMemo(() => layoutGraph(props.work, props.perRow));
+type Props = { work: readonly LhWork[]; now: number; selected?: string; onSelect: (id: string) => void; height?: number; perRow?: number };
+
+export function LhDiagram(props: Props) {
+  // The grid is the instant first frame; elk replaces it when ready (and on every shape change).
+  const [layout, setLayout] = createSignal<Layout>(layoutGraph(props.work, props.perRow ?? 2));
+  let token = 0;
+  createEffect(
+    on(
+      () => graphShapeKey(props.work),
+      () => {
+        const mine = ++token;
+        const work = [...props.work];
+        void layoutGraphElk(work).then((l) => mine === token && setLayout(l));
+      },
+    ),
+  );
+  onCleanup(() => token++);
+  const [full, setFull] = createSignal(false);
+  return (
+    <>
+      <Canvas {...props} layout={layout()} onFull={() => setFull(true)} />
+      <Show when={full()}>
+        <Portal>
+          <div class="lh-dia-full" role="dialog" aria-modal="true" aria-label="Graph diagram, full window" data-testid="lh-dia-full">
+            <Canvas {...props} layout={layout()} full onClose={() => setFull(false)} />
+          </div>
+        </Portal>
+      </Show>
+    </>
+  );
+}
+
+function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => void; onClose?: () => void }) {
+  const layout = () => props.layout;
   const byId = createMemo(() => new Map(props.work.map((w) => [w.workId, w])));
-  const pos = createMemo(() => new Map(layout().nodes.map((n) => [n.id, n])));
+  // A stale layout (just after hiding errors) never shows a node / edge that is no longer in `work`.
+  const nodes = createMemo(() => layout().nodes.filter((n) => byId().has(n.id)));
+  const edges = createMemo(() => layout().edges.filter((e) => byId().has(e.from) && byId().has(e.to)));
   const [view, setView] = createSignal<View>({ x: 0, y: 0, z: 1 });
   const [touched, setTouched] = createSignal(false);
   let host: HTMLDivElement | undefined;
@@ -57,14 +106,20 @@ export function LhDiagram(props: { work: readonly LhWork[]; now: number; selecte
   };
   const fit = () => place(true);
   onMount(() => {
-    place(false);
+    props.full ? fit() : place(false);
+    host?.focus({ preventScroll: true });
     if (typeof ResizeObserver === 'undefined' || !host) return;
-    const ro = new ResizeObserver(() => !touched() && place(false));
+    const ro = new ResizeObserver(() => !touched() && (props.full ? fit() : place(false)));
     ro.observe(host);
     onCleanup(() => ro.disconnect());
   });
-  // Re-fit while the user has not panned/zoomed and the shape of the graph changes.
-  createEffect(on(() => `${layout().nodes.length}:${layout().width}:${layout().height}`, () => !touched() && place(false), { defer: true }));
+  // Re-place while the user has not panned/zoomed and the drawing changes.
+  createEffect(on(() => `${layout().width}:${layout().height}`, () => !touched() && (props.full ? fit() : place(false)), { defer: true }));
+  if (props.full) {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), props.onClose?.());
+    window.addEventListener('keydown', esc, true);
+    onCleanup(() => window.removeEventListener('keydown', esc, true));
+  }
 
   const zoomBy = (f: number) => {
     const s = size();
@@ -134,11 +189,11 @@ export function LhDiagram(props: { work: readonly LhWork[]; now: number; selecte
   };
 
   return (
-    <div class="lh-dia" data-testid="lh-diagram">
+    <div class="lh-dia" data-testid="lh-diagram" data-full={props.full ? '' : undefined}>
       <div
         ref={host}
         class="lh-dia-view"
-        style={{ height: `${props.height ?? 320}px` }}
+        style={props.full ? undefined : { height: `${props.height ?? 320}px` }}
         tabindex={0}
         role="group"
         aria-label="Graph diagram — drag to pan, scroll or pinch to zoom"
@@ -149,35 +204,35 @@ export function LhDiagram(props: { work: readonly LhWork[]; now: number; selecte
         onPointerCancel={onUp}
         onKeyDown={onKey}
       >
-        <svg class="lh-dia-svg" width="100%" height="100%">
-          <defs>
-            <marker id="lh-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0,0 L8,4 L0,8 z" class="lh-dia-arrow" />
-            </marker>
-          </defs>
-          <g transform={`translate(${view().x} ${view().y}) scale(${view().z})`}>
-            <For each={layout().edges}>
-              {(e) => {
-                const a = () => pos().get(e.from);
-                const b = () => pos().get(e.to);
-                return (
-                  <Show when={a() && b()}>
-                    <path
-                      class="lh-dia-edge"
-                      data-kind={e.kind}
-                      data-lit={props.selected === e.from || props.selected === e.to ? '' : undefined}
-                      d={edgePath(a()!.x + NODE_W / 2, a()!.y + NODE_H, b()!.x + NODE_W / 2, b()!.y)}
-                      marker-end="url(#lh-arrow)"
-                    />
-                  </Show>
-                );
-              }}
+        <div
+          class="lh-dia-layer"
+          data-testid="lh-dia-layer"
+          style={{ width: `${layout().width}px`, height: `${layout().height}px`, transform: `translate(${view().x}px, ${view().y}px) scale(${view().z})` }}
+        >
+          <svg class="lh-dia-svg" width={layout().width} height={layout().height} aria-hidden="true">
+            <defs>
+              <marker id={props.full ? 'lh-arrow-full' : 'lh-arrow'} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L8,4 L0,8 z" class="lh-dia-arrow" />
+              </marker>
+            </defs>
+            <For each={edges()}>
+              {(e) => (
+                <path
+                  class="lh-dia-edge"
+                  data-kind={e.kind}
+                  data-lit={props.selected === e.from || props.selected === e.to ? '' : undefined}
+                  d={roundedPath(e.points)}
+                  marker-end={`url(#${props.full ? 'lh-arrow-full' : 'lh-arrow'})`}
+                />
+              )}
             </For>
-            <For each={layout().nodes}>
-              {(n) => {
-                const w = () => byId().get(n.id)!;
-                return (
-                  <foreignObject x={n.x} y={n.y} width={NODE_W} height={NODE_H} class="lh-dia-fo">
+          </svg>
+          <For each={nodes()}>
+            {(n) => {
+              const w = () => byId().get(n.id)!;
+              return (
+                <Show when={byId().has(n.id)}>
+                  <div class="lh-dia-fo" style={{ left: `${n.x}px`, top: `${n.y}px`, width: `${NODE_W}px`, height: `${NODE_H}px` }}>
                     <div
                       class="lh-dia-node"
                       data-status={w().status}
@@ -200,17 +255,23 @@ export function LhDiagram(props: { work: readonly LhWork[]; now: number; selecte
                         <Metrics work={w()} now={props.now} />
                       </div>
                     </div>
-                  </foreignObject>
-                );
-              }}
-            </For>
-          </g>
-        </svg>
-        <div class="lh-dia-tools" onPointerDown={(e) => e.stopPropagation()}>
-          <button type="button" class="lh-icon-btn" aria-label="Zoom in" title="Zoom in" onClick={() => zoomBy(1.25)}><Plus size={14} /></button>
-          <button type="button" class="lh-icon-btn" aria-label="Zoom out" title="Zoom out" onClick={() => zoomBy(0.8)}><Minus size={14} /></button>
-          <button type="button" class="lh-icon-btn" aria-label="Fit the graph" title="Fit" data-testid="lh-dia-fit" onClick={fit}><Maximize size={14} /></button>
+                  </div>
+                </Show>
+              );
+            }}
+          </For>
         </div>
+        <div class="lh-dia-tools" onPointerDown={(e) => e.stopPropagation()}>
+          <button type="button" class="lh-icon-btn" aria-label="Zoom in" title="Zoom in" data-testid="lh-dia-zoom-in" onClick={() => zoomBy(1.25)}><Plus size={14} /></button>
+          <button type="button" class="lh-icon-btn" aria-label="Zoom out" title="Zoom out" data-testid="lh-dia-zoom-out" onClick={() => zoomBy(0.8)}><Minus size={14} /></button>
+          <button type="button" class="lh-icon-btn" aria-label="Fit the graph" title="Fit to view" data-testid="lh-dia-fit" onClick={fit}><ScanSearch size={14} /></button>
+          <Show when={!props.full}>
+            <button type="button" class="lh-icon-btn" aria-label="Open in full window" title="Full window" data-testid="lh-dia-full-open" onClick={() => props.onFull?.()}><Expand size={14} /></button>
+          </Show>
+        </div>
+        <Show when={props.full}>
+          <button type="button" class="lh-dia-close" aria-label="Close full window (Esc)" title="Close (Esc)" data-testid="lh-dia-full-close" onClick={() => props.onClose?.()} onPointerDown={(e) => e.stopPropagation()}><X size={16} /></button>
+        </Show>
         <Show when={props.work.length === 0}>
           <p class="lh-dia-empty status-empty">Nothing to draw.</p>
         </Show>

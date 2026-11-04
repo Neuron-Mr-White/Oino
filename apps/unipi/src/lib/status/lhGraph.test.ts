@@ -5,6 +5,11 @@ import {
   eventTitle,
   graphTimeline,
   layoutGraph,
+  layoutGraphElk,
+  graphEdges,
+  NODE_W,
+  NODE_H,
+  type Layout,
   lhCodeText,
   newestFirst,
   parseHistory,
@@ -99,5 +104,64 @@ describe('layout', () => {
   });
   it('survives a cycle', () => {
     expect(layoutGraph([w('a', 'queued', { inputIds: ['r-b'] }), w('b', 'queued', { inputIds: ['r-a'] })]).nodes).toHaveLength(2);
+  });
+});
+
+const crossesNode = (l: Layout): string[] => {
+  const bad: string[] = [];
+  for (const e of l.edges) {
+    for (let i = 0; i + 1 < e.points.length; i++) {
+      const a = e.points[i]!;
+      const b = e.points[i + 1]!;
+      for (const n of l.nodes) {
+        if (n.id === e.from || n.id === e.to) continue;
+        const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+        if (x1 > n.x && x0 < n.x + NODE_W && y1 > n.y && y0 < n.y + NODE_H) bad.push(`${e.from}>${e.to} x ${n.id}`);
+      }
+    }
+  }
+  return bad;
+};
+
+describe('elk layout', () => {
+  const diamond = [
+    w('a', 'completed'),
+    w('b', 'completed', { inputIds: ['r-a'] }),
+    w('c', 'running', { inputIds: ['r-a'] }),
+    w('d', 'queued', { inputIds: ['r-b', 'r-c', 'r-a'] }),
+    w('e', 'failed', { inputIds: ['r-a'], supersededBy: 'f' }),
+    w('f', 'queued', { inputIds: ['r-d'], replaces: 'e' }),
+  ];
+  it('routes every edge without crossing a foreign node box, nodes do not overlap', async () => {
+    const l = await layoutGraphElk(diamond);
+    expect(l.nodes).toHaveLength(6);
+    expect(l.edges).toHaveLength(graphEdges(diamond).length);
+    expect(crossesNode(l)).toEqual([]);
+    for (const e of l.edges) {
+      expect(e.points.length).toBeGreaterThanOrEqual(2);
+      const to = l.nodes.find((n) => n.id === e.to)!;
+      expect(Math.abs(e.points[e.points.length - 1]!.y - to.y)).toBeLessThan(1); // ends on the target's top side
+    }
+    for (const a of l.nodes) for (const b of l.nodes) if (a !== b) expect(a.x + NODE_W <= b.x || b.x + NODE_W <= a.x || a.y + NODE_H <= b.y || b.y + NODE_H <= a.y).toBe(true);
+  });
+  it('edges into one node end on different points (no merging)', async () => {
+    const l = await layoutGraphElk(diamond);
+    const ends = l.edges.filter((e) => e.to === 'd').map((e) => e.points[e.points.length - 1]!.x);
+    expect(new Set(ends.map((x) => Math.round(x))).size).toBe(ends.length);
+  });
+  it('drops edges of hidden nodes (no dangling edge) and re-lays out', async () => {
+    const shown = diamond.filter((x) => x.status !== 'failed');
+    const l = await layoutGraphElk(shown);
+    expect(l.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'd', 'f']);
+    for (const e of l.edges) {
+      expect(shown.some((x) => x.workId === e.from)).toBe(true);
+      expect(shown.some((x) => x.workId === e.to)).toBe(true);
+    }
+    expect(l.edges.some((e) => e.kind === 'replaces')).toBe(false);
+    expect(crossesNode(l)).toEqual([]);
+  });
+  it('lays out 40 independent nodes and an empty graph', async () => {
+    expect((await layoutGraphElk(Array.from({ length: 40 }, (_, i) => w(`s${i}`, 'queued')))).nodes).toHaveLength(40);
+    expect((await layoutGraphElk([])).nodes).toHaveLength(0);
   });
 });

@@ -395,7 +395,9 @@ const GAP_Y = 44;
 const MAX_PER_ROW = 4;
 
 export type LaidNode = { id: string; x: number; y: number; layer: number };
-export type LaidEdge = { from: string; to: string; kind: 'input' | 'replaces' };
+export type Pt = { x: number; y: number };
+/** `points`: the routed polyline from the source's bottom side to the target's top side. */
+export type LaidEdge = { from: string; to: string; kind: 'input' | 'replaces'; points: Pt[] };
 export type Layout = { nodes: LaidNode[]; edges: LaidEdge[]; width: number; height: number };
 
 /**
@@ -448,13 +450,104 @@ export function layoutGraph(work: readonly LhWork[], perRow = MAX_PER_ROW): Layo
     const shift = (width - rowW) / 2;
     for (const n of row) n.x += shift;
   }
-  const edges: LaidEdge[] = [];
-  for (const w of work) {
-    for (const input of w.inputIds) {
-      const from = input.replace(/^r-/, '');
-      if (ids.has(from)) edges.push({ from, to: w.workId, kind: 'input' });
-    }
-    if (w.supersededBy && ids.has(w.supersededBy)) edges.push({ from: w.workId, to: w.supersededBy, kind: 'replaces' });
-  }
+  const at = new Map(nodes.map((n) => [n.id, n]));
+  const edges = graphEdges(work).map((e) => {
+    const a = at.get(e.from)!;
+    const b = at.get(e.to)!;
+    const ax = a.x + NODE_W / 2;
+    const bx = b.x + NODE_W / 2;
+    const ay = a.y + NODE_H;
+    const midY = ay + GAP_Y / 2;
+    return { ...e, points: ax === bx ? [{ x: ax, y: ay }, { x: bx, y: b.y }] : [{ x: ax, y: ay }, { x: ax, y: midY }, { x: bx, y: midY }, { x: bx, y: b.y }] };
+  });
   return { nodes, edges, width, height: Math.max(0, y - GAP_Y) };
+}
+
+/** The edges between the given work items (input → step, superseded → replacement). An edge to an
+ *  item that is not in the list (hidden errors, trimmed history) is dropped, never left dangling. Pure. */
+export function graphEdges(work: readonly LhWork[]): Omit<LaidEdge, 'points'>[] {
+  const ids = new Set(work.map((w) => w.workId));
+  const seen = new Set<string>();
+  const out: Omit<LaidEdge, 'points'>[] = [];
+  const add = (from: string, to: string, kind: LaidEdge['kind']) => {
+    const k = `${kind}:${from}>${to}`;
+    if (from === to || !ids.has(from) || !ids.has(to) || seen.has(k)) return;
+    seen.add(k);
+    out.push({ from, to, kind });
+  };
+  for (const w of work) {
+    for (const input of w.inputIds) add(input.replace(/^r-/, ''), w.workId, 'input');
+    if (w.supersededBy) add(w.workId, w.supersededBy, 'replaces');
+  }
+  return out;
+}
+
+/** A cache key of the graph's STRUCTURE (ids + edges): status changes do not re-layout. */
+export const graphShapeKey = (work: readonly LhWork[]): string =>
+  work.map((w) => w.workId).join('|') + '#' + graphEdges(work).map((e) => `${e.kind[0]}${e.from}>${e.to}`).join('|');
+
+const ELK_OPTS = {
+  'elk.algorithm': 'layered',
+  'elk.direction': 'DOWN',
+  'elk.edgeRouting': 'ORTHOGONAL',
+  'elk.spacing.nodeNode': '28',
+  'elk.spacing.edgeEdge': '14',
+  'elk.spacing.edgeNode': '18',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '56',
+  'elk.layered.spacing.edgeNodeBetweenLayers': '22',
+  'elk.layered.spacing.edgeEdgeBetweenLayers': '14',
+  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+  'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+  'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+  'elk.aspectRatio': '1.1',
+  'elk.padding': '[top=4,left=4,bottom=4,right=4]',
+};
+
+type ElkSection = { startPoint: Pt; endPoint: Pt; bendPoints?: Pt[] };
+type ElkOut = { children?: { id: string; x?: number; y?: number }[]; edges?: { id: string; sections?: ElkSection[] }[]; width?: number; height?: number };
+
+/**
+ * The real layout: elkjs layered, orthogonal routing, one port per edge end (north = in,
+ * south = out) so parallel edges never merge onto one point. Async; the engine is loaded
+ * lazily. Falls back to the grid `layoutGraph` if the engine fails. Hidden nodes are simply not
+ * in `work`, so their edges are gone too.
+ */
+export async function layoutGraphElk(work: readonly LhWork[]): Promise<Layout> {
+  if (work.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
+  try {
+    const { default: ELK } = await import('elkjs/lib/elk.bundled.js');
+    const edges = graphEdges(work);
+    const layer = layoutGraph(work).nodes; // the grid's layer numbers (longest input chain)
+    const layerOf = new Map(layer.map((n) => [n.id, n.layer]));
+    const graph = {
+      id: 'root',
+      layoutOptions: ELK_OPTS,
+      children: work.map((w) => ({
+        id: w.workId,
+        width: NODE_W,
+        height: NODE_H,
+        layoutOptions: { 'elk.portConstraints': 'FIXED_SIDE', 'elk.portAlignment.default': 'DISTRIBUTED' },
+        ports: [
+          ...edges.filter((e) => e.to === w.workId).map((e, i) => ({ id: `${w.workId}:in:${e.from}:${e.kind}:${i}`, layoutOptions: { 'elk.port.side': 'NORTH' } })),
+          ...edges.filter((e) => e.from === w.workId).map((e, i) => ({ id: `${w.workId}:out:${e.to}:${e.kind}:${i}`, layoutOptions: { 'elk.port.side': 'SOUTH' } })),
+        ],
+      })),
+      edges: edges.map((e, i) => ({
+        id: `e${i}`,
+        sources: [`${e.from}:out:${e.to}:${e.kind}:${edges.filter((x) => x.from === e.from).indexOf(e)}`],
+        targets: [`${e.to}:in:${e.from}:${e.kind}:${edges.filter((x) => x.to === e.to).indexOf(e)}`],
+      })),
+    };
+    const out = (await new ELK().layout(graph as never)) as ElkOut;
+    const nodes: LaidNode[] = (out.children ?? []).map((c) => ({ id: c.id, x: c.x ?? 0, y: c.y ?? 0, layer: layerOf.get(c.id) ?? 0 }));
+    const laid: LaidEdge[] = edges.map((e, i) => {
+      const sec = out.edges?.find((x) => x.id === `e${i}`)?.sections?.[0];
+      const points = sec ? [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint] : [];
+      return { ...e, points };
+    });
+    // An edge ELK could not route is dropped rather than drawn to nowhere.
+    return { nodes, edges: laid.filter((e) => e.points.length >= 2), width: out.width ?? 0, height: out.height ?? 0 };
+  } catch {
+    return layoutGraph(work, 2);
+  }
 }

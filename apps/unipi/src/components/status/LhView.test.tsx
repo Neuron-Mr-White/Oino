@@ -37,7 +37,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const mount = () => render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+const mount = () => render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
 
 describe('LhView', () => {
   it('lists newest first with status / profile / model chips; errored is not failed and has Retry', async () => {
