@@ -8,15 +8,14 @@
  */
 import { useClock as sharedClock } from '../../lib/clock';
 import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show } from 'solid-js';
-import { History, Pause, Play, Square } from 'lucide-solid';
+import { Pause, Play, Square } from 'lucide-solid';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { liveSource, parseExtensions } from '../session/modalData';
 import { ModeIcon } from '../chat/ModeChip';
 import { durationText } from './lhProgress';
-import { LhGraph } from './LhGraph';
+import { LhView } from './LhView';
+import { LhLoop } from './LhLoop';
 import {
-  graphCountLine,
-  graphSettled,
   lhModeCommand,
   lhSummary,
   LH_EXTENSION_ID,
@@ -116,53 +115,15 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
                 <p class="lh-line" data-testid="lh-elapsed">Working for {elapsed()}</p>
               </Show>
 
-              <Show when={m().goal}>
-                {(g) => (
-                  <div class="lh-metric" data-testid="lh-goal">
-                    <div class="lh-metric-row">
-                      <span>Turn {g().turn}{g().maxTurns > 0 ? ` of ${g().maxTurns}` : ''}</span>
-                      <span class="status-dim">{g().status}</span>
-                    </div>
-                    <div class="status-bar" role="progressbar" aria-label="Goal turns" aria-valuemin={0} aria-valuemax={g().maxTurns || undefined} aria-valuenow={g().turn}>
-                      <span style={{ width: `${g().maxTurns > 0 ? Math.min(100, (g().turn / g().maxTurns) * 100) : 0}%` }} data-mode="goal" />
-                    </div>
-                  </div>
-                )}
-              </Show>
-
-              <Show when={m().ralph}>
-                {(r) => (
-                  <div class="lh-metric" data-testid="lh-ralph">
-                    <div class="lh-metric-row">
-                      <span>Iteration {r().iteration}</span>
-                      <span class="status-dim">{r().checked}/{r().total} checked</span>
-                    </div>
-                    <Show when={r().total > 0}>
-                      <div class="status-bar" role="progressbar" aria-label="Checklist" aria-valuemin={0} aria-valuemax={r().total} aria-valuenow={r().checked}>
-                        <span style={{ width: `${Math.min(100, (r().checked / r().total) * 100)}%` }} data-mode="ralph" />
-                      </div>
-                    </Show>
-                  </div>
-                )}
+              <Show when={m().goal || m().ralph}>
+                <LhLoop s={s()} summary={m()} onToast={props.onToast} />
               </Show>
 
               <Show when={m().graph}>
                 {(g) => (
                   <div class="lh-metric" data-testid="lh-graph">
-                    <div class="lh-metric-row">
-                      <span class="status-dim capitalize">{g().mode}</span>
-                      <span>{graphCountLine(g().counts)}</span>
-                    </div>
-                    <Show when={graphSettled(g().counts).total > 0}>
-                      <div class="status-bar" role="progressbar" aria-label="Graph progress" aria-valuemin={0} aria-valuemax={graphSettled(g().counts).total} aria-valuenow={graphSettled(g().counts).settled}>
-                        <span style={{ width: `${m().percent ?? 0}%` }} data-mode={g().mode} />
-                        <Show when={graphSettled(g().counts).failed > 0}>
-                          <span class="status-bar-fail" style={{ width: `${(graphSettled(g().counts).failed / graphSettled(g().counts).total) * 100}%` }} data-testid="lh-graph-failed" />
-                        </Show>
-                      </div>
-                    </Show>
-                    {/* P1-04: the DAG and one row per node, each opening its worker session. */}
-                    <LhGraph s={s()} counts={JSON.stringify(g().counts)} onToast={props.onToast} />
+                    {/* The graph / swarm view: header, bar, list · diagram · timeline, History. */}
+                    <LhView s={s()} counts={JSON.stringify(g().counts)} onToast={props.onToast} />
                   </div>
                 )}
               </Show>
@@ -183,11 +144,6 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
                       <Pause size={12} />
                     </Show>
                     {armed() ? 'Tap again to stop' : 'Stop'}
-                  </button>
-                </Show>
-                <Show when={m().graph && (m().mode === 'graph' || m().mode === 'swarm')}>
-                  <button type="button" class="status-action" data-testid="lh-history" title="Earlier runs print in the chat" onClick={() => send(lhModeCommand(m().mode, 'history'), 'History printed in the chat')}>
-                    <History size={12} /> History
                   </button>
                 </Show>
               </div>

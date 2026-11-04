@@ -24,7 +24,7 @@ export type LhState = {
 /** `LH_PROGRESS` (sticky): one compact snapshot of the active work. */
 export type LhProgressTopic = {
   mode: string;
-  goal?: { objective: string; status: string; turn: number; maxTurns: number };
+  goal?: { objective: string; status: string; turn: number; maxTurns: number; error?: string };
   ralph?: { name: string; iteration: number; checked: number; total: number };
   graph?: { graphId?: string; mode: string; task?: string; counts: Record<string, number> };
   /** ralph::todo_line — "2/5 · ▶ next item". */
@@ -71,7 +71,7 @@ export function parseLhProgress(v: unknown): LhProgressTopic | undefined {
   return {
     mode,
     ...(goal && goalObjective
-      ? { goal: { objective: goalObjective, status: str(goal.status) ?? 'active', turn: num(goal.turn) ?? 0, maxTurns: num(goal.maxTurns) ?? 0 } }
+      ? { goal: { objective: goalObjective, status: str(goal.status) ?? 'active', turn: num(goal.turn) ?? 0, maxTurns: num(goal.maxTurns) ?? 0, ...(str(goal.error) ? { error: str(goal.error) } : {}) } }
       : {}),
     ...(ralph && ralphName
       ? { ralph: { name: ralphName, iteration: num(ralph.iteration) ?? 0, checked: num(ralph.checked) ?? 0, total: num(ralph.total) ?? 0 } }
@@ -148,19 +148,21 @@ function progressParts(progress: LhProgressTopic | undefined): Pick<LhSummary, '
   return out;
 }
 
-/** Settled (completed + failed + stopped + cancelled + superseded) of the graph counts. */
-export function graphSettled(counts: Record<string, number>): { settled: number; total: number; running: number; failed: number } {
+/** Settled (completed + failed + stopped + cancelled + superseded) of the graph counts.
+ *  `errored` is live (it waits for a Retry), never settled and never failed. */
+export function graphSettled(counts: Record<string, number>): { settled: number; total: number; running: number; failed: number; errored: number } {
   const get = (k: string) => counts[k] ?? 0;
   const terminal = get('completed') + get('failed') + get('stopped') + get('cancelled') + get('superseded');
-  const live = get('running') + get('queued') + get('blocked');
-  return { settled: terminal, total: terminal + live, running: get('running'), failed: get('failed') };
+  const live = get('running') + get('queued') + get('blocked') + get('errored');
+  return { settled: terminal, total: terminal + live, running: get('running'), failed: get('failed'), errored: get('errored') };
 }
 
-/** One compact line of the graph counts: "3/7 settled · 1 running". */
+/** One compact line of the graph counts: "3/7 settled · 1 running · 1 errored". */
 export function graphCountLine(counts: Record<string, number>): string {
   const c = graphSettled(counts);
   const parts = [`${c.settled}/${c.total} settled`];
   if (c.running) parts.push(`${c.running} running`);
+  if (c.errored) parts.push(`${c.errored} errored`);
   if (c.failed) parts.push(`${c.failed} failed`);
   return parts.join(' · ');
 }

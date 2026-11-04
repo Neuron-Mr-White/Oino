@@ -22,9 +22,9 @@ import { desktopShell } from '../../../lib/layout';
 const HOST = 'this-pc';
 const CWD = '/home/you/projects/unipi';
 
-const topic = (name: string, data: unknown) => ({ topic: name, data, sticky: true, publisher: 'unipi.long-horizon' });
+export const topic = (name: string, data: unknown) => ({ topic: name, data, sticky: true, publisher: 'unipi.long-horizon' });
 
-const LH_EXTENSIONS = [
+export const LH_EXTENSIONS = [
   { id: 'unipi.long-horizon', kind: 'extension', enabled: true, loaded: true, path: '/opt/unipi/ext/lh.wasm' },
   { id: 'unipi.workflow', kind: 'extension', enabled: true, loaded: true, path: '/opt/unipi/ext/wf.wasm' },
   { id: 'unipi.background-tasks', kind: 'extension', enabled: true, loaded: true, path: '/opt/unipi/ext/bg.wasm' },
@@ -118,7 +118,7 @@ const FILES: MockGitFile[] = [
 
 const git = { repo: true, root: CWD, branch: 'v2/status', head: 'f3d2a1b', upstream: 'origin/v2/status', ahead: 3, behind: 0, remotes: ['origin'], stashes: 0, base: 'origin/v2/status', files: FILES, commits: [] };
 
-function host(topics: unknown[], cmd?: MockSession['cmd'], runState: 'idle' | 'working' = 'working') {
+export function host(topics: unknown[], cmd?: MockSession['cmd'], runState: 'idle' | 'working' = 'working') {
   const base = genSession('s001', { seed: 9, turns: 3, toolsPerTurn: 1, cwd: CWD });
   const session: MockSession = {
     ...base,
@@ -158,7 +158,7 @@ function seedNoPane(): void {
 }
 
 /** The app's `/` route reopens the last session (`unipi.shell.last`). */
-function seedSessionRoute(): void {
+export function seedSessionRoute(): void {
   if (desktopShell()) seedPane();
   else seedNoPane();
 }

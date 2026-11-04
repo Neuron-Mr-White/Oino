@@ -57,15 +57,21 @@ afterEach(() => {
 });
 
 describe('LH section', () => {
-  it('renders from the LH topics (graph counts, task, phase)', async () => {
-    await boot('status-lh-graph');
+  it('renders from the LH topics + the graph service (counts, task, phase, History)', async () => {
+    await boot('lh-history');
     render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('lh-section')).toBeTruthy());
     expect(screen.getByTestId('lh-phase').textContent).toBe('Running');
+    await waitFor(() => expect(screen.getByTestId('lh-counts').textContent).toContain('3/7 done'));
     expect(screen.getByTestId('lh-section').textContent).toContain('Land the status pane sections');
-    expect(screen.getByTestId('lh-graph').textContent).toContain('4/7 settled');
-    expect(screen.getByTestId('lh-section').textContent).toContain('2 running');
+    expect(screen.getByTestId('lh-counts').textContent).toContain('2 running');
     expect(screen.getByTestId('lh-history')).toBeTruthy();
+  });
+
+  it('a host without the graph service keeps the older inspector (fallback)', async () => {
+    await boot('status-lh-graph');
+    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('lh-graph-inspector')).toBeTruthy());
   });
 
   it('LH disabled ⇒ the section is gone (owner enablement)', async () => {

@@ -18,6 +18,7 @@ import { modalLimits } from './modal-limits';
 import { modalRunning } from './modal-running';
 import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
+import { lhGoal, lhGoalErrored, lhGraphBig, lhHistory, lhRalph, lhSwarm } from './lh';
 import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
 import { slots, slotsDialogs, slotsOverlay, slotsTray } from './slots';
@@ -81,6 +82,12 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'git-history': gitHistory,
   'git-pane-many': gitPaneMany,
   'status-lh-graph': statusLhGraph,
+  'lh-graph-big': lhGraphBig,
+  'lh-history': lhHistory,
+  'lh-swarm': lhSwarm,
+  'lh-goal': lhGoal,
+  'lh-goal-errored': lhGoalErrored,
+  'lh-ralph': lhRalph,
   'status-todos': statusTodos,
   'status-running': statusRunning,
   capsule: capsuleScenario,

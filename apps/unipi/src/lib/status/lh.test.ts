@@ -76,9 +76,15 @@ describe('lhSummary', () => {
 });
 
 describe('graph counts + commands', () => {
+  it('errored is live, counted on its own, never settled nor failed', () => {
+    const c = graphSettled({ queued: 1, running: 1, errored: 2, completed: 3, failed: 0 });
+    expect(c).toEqual({ settled: 3, total: 7, running: 1, failed: 0, errored: 2 });
+    expect(graphCountLine({ queued: 1, running: 1, errored: 2, completed: 3 })).toBe('3/7 settled · 1 running · 2 errored');
+  });
+
   it('settled counts every terminal status', () => {
     const c = graphSettled({ queued: 1, running: 2, blocked: 1, completed: 4, failed: 1, stopped: 1, cancelled: 1, superseded: 1 });
-    expect(c).toEqual({ settled: 8, total: 12, running: 2, failed: 1 });
+    expect(c).toEqual({ settled: 8, total: 12, running: 2, failed: 1, errored: 0 });
     expect(graphCountLine({ queued: 1, running: 2, blocked: 1, completed: 4, failed: 1, stopped: 1, cancelled: 1, superseded: 1 })).toBe('8/12 settled · 2 running · 1 failed');
   });
 
