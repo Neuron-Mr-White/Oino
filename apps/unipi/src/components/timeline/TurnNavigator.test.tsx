@@ -135,9 +135,9 @@ describe('navigatorItems', () => {
 });
 
 describe('TurnNavigator', () => {
-  it('renders nothing below 1100 px, nor with a single query', async () => {
+  it('renders nothing below 720 px, nor with a single query', async () => {
     const { s } = await open(6);
-    const narrow = render(() => <TurnNavigator turns={s.turns} width={() => 1000} onJump={() => {}} />);
+    const narrow = render(() => <TurnNavigator turns={s.turns} width={() => 600} onJump={() => {}} />);
     expect(narrow.container.querySelector('.tl-nav')).toBeNull();
     cleanup();
     const single = render(() => <TurnNavigator turns={() => s.turns().slice(0, 1)} width={() => 1400} onJump={() => {}} />);
@@ -153,7 +153,7 @@ describe('TurnNavigator', () => {
       await L.frames();
       const nav = await waitFor(() => r.getByTestId('tl-nav'));
       expect(nav.querySelectorAll('[data-testid=tl-nav-bar]').length).toBe(40);
-      expect(nav.querySelector('[data-testid=tl-nav-bar]')!.getAttribute('title')).toContain('Question 0');
+      expect(nav.querySelector('[data-testid=tl-nav-bar]')!.getAttribute('aria-label')).toContain('Question 0');
       expect(tl.scrollTop).toBe(tl.scrollHeight - tl.clientHeight);
       fireEvent.click(nav.querySelector('[data-turn=u10]') as HTMLElement);
       await L.frames();
@@ -166,5 +166,28 @@ describe('TurnNavigator', () => {
     } finally {
       L.restore();
     }
+  });
+
+  it('hover opens the one-line list; a row click jumps', async () => {
+    const { s } = await open(12);
+    const jumped: string[] = [];
+    const r = render(() => <TurnNavigator turns={s.turns} width={() => 1400} activeId={() => 'u3'} onJump={(id) => jumped.push(id)} />);
+    const nav = r.getByTestId('tl-nav');
+    expect(r.queryByTestId('tl-nav-panel')).toBeNull();
+    fireEvent.pointerEnter(nav);
+    const rows = await waitFor(() => r.getAllByTestId('tl-nav-row'));
+    expect(rows.length).toBe(12);
+    expect(rows[3]!.hasAttribute('data-active')).toBe(true);
+    fireEvent.click(rows[5]!);
+    fireEvent.click(r.getAllByTestId('tl-nav-bar')[7]!);
+    expect(jumped).toEqual(['u5', 'u7']);
+  });
+
+  it('compresses 300 turns into a bounded tick count', async () => {
+    const { s } = await open(300);
+    const r = render(() => <TurnNavigator turns={s.turns} width={() => 1400} onJump={() => {}} />);
+    const n = r.getAllByTestId('tl-nav-bar').length;
+    expect(n).toBeLessThanOrEqual(140);
+    expect(n).toBeGreaterThan(20);
   });
 });

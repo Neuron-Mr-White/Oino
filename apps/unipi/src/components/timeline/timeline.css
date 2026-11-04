@@ -155,38 +155,87 @@ html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
 /* the rail + scroller wrapper (the rail must not scroll with the timeline) */
 .tl-outer { position: relative; flex: 1; min-height: 0; display: flex; }
 
-/* query navigator rail (Z-25): only ≥ 1100 px conversation width */
+/* turn rail: thin vertical rail of horizontal ticks, fisheye on hover (≥ 720 px) */
 .tl-nav {
   position: absolute;
-  left: 10px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 5;
-  width: 18px;
-  height: auto;
-  max-height: min(56vh, 520px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 4px 2px;
-  scrollbar-width: none;
+  width: 30px;
+  padding: 8px 0;
 }
-.tl-nav::-webkit-scrollbar { display: none; }
-.tl-nav-track { position: relative; width: 100%; }
-.tl-nav-bar {
+.tl-nav-ticks { position: relative; width: 30px; }
+.tl-nav-tick {
   position: absolute;
-  left: 2px;
-  width: 10px;
-  height: 6px;
+  left: 0;
+  width: 30px;
   min-height: 0;
   padding: 0;
-  border-radius: 3px;
-  background: var(--color-line);
-  transition: background-color 140ms ease-out, transform 140ms ease-out;
+  border: 0;
+  background: transparent;
+  --s: 1;
 }
-.tl-nav-bar::after { content: ''; position: absolute; inset: -3px -4px; }
-.tl-nav-bar:hover, .tl-nav-bar:focus-visible { background: var(--color-text-muted); transform: scaleX(1.35); }
-.tl-nav-bar[data-active] { background: var(--color-claw); }
-.tl-nav-bar[data-live] { background: var(--color-amber); }
+.tl-nav-tick::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 8px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--color-line);
+  transform: scaleX(var(--s));
+  transform-origin: left center;
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), background-color 140ms ease-out;
+  will-change: transform;
+}
+.tl-nav-tick[data-hot]::before, .tl-nav-tick:focus-visible::before { background: var(--color-text-muted); }
+.tl-nav-tick[data-live]::before { background: var(--color-amber); }
+.tl-nav-tick[data-active]::before { background: var(--color-claw); }
+.tl-nav-tick:focus-visible { outline: none; }
+.tl-nav-tick:focus-visible::before { outline: 2px solid var(--color-claw); outline-offset: 2px; }
+
+.tl-nav-panel {
+  position: absolute;
+  left: 34px; /* hugs the rail so the pointer never crosses a dead zone */
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(300px, 36vw);
+  display: flex;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.35);
+  animation: tl-nav-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tl-nav-in { from { opacity: 0; transform: translateY(-50%) translateX(-4px); } }
+.tl-nav-list { flex: 1; min-width: 0; overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.tl-nav-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: block;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 28px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-nav-row[data-active] { color: var(--color-claw); font-weight: 600; }
+.tl-nav-row[data-hot] { background: var(--color-line); color: var(--color-text); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-nav-tick::before { transition: none; }
+  .tl-nav-panel { animation: none; }
+}
 
 /* turn tail (Z-26/Z-27): metadata aligned left with prose, actions fade in right beside it */
 .tl-tail-line {
