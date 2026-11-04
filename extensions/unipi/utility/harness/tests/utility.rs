@@ -612,6 +612,8 @@ async fn answer_reply_questions_and_hint() {
             .unwrap()
             .contains("2 questions in the reply")
     );
+    // [ask-user] "/answer" is the terminal's: the app never shows this hint.
+    assert_eq!(hint["surfaces"], json!(["tui"]));
     env.event(
         &ext,
         EventKind::Input,

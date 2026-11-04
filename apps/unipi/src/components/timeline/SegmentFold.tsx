@@ -23,6 +23,7 @@ import { TOOL_ICON } from './tools/toolIcons';
 import { toolImages } from './tools/toolData';
 import { WorkNodes } from './tools/WorkItem';
 import { useClock } from '../../lib/clock';
+import { layout } from '../../lib/layout';
 import type { TimelineCtx } from './context';
 
 /** 1 s clock for the running fold's "Working for" (the app's shared clock, ticking only while live). */
@@ -47,6 +48,8 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
   // §3.2 `setWorkingMessage`, split ([ui-subagents]): "Subagent running · Ctrl+B to run in
   // background" keeps its words in the title and moves the key hint to a quiet tail chip.
   const working = () => (running() ? splitWorkingMessage(workingMessageOf(props.ctx.session.key)) : undefined);
+  // [ask-user] a key hint ("Ctrl+B to run in background") is a keyboard's: the phone drops it.
+  const keyHint = () => (layout().desktop() ? working()?.hint : undefined);
   const label = () => {
     if (!running()) return fold().label;
     const head = working()?.head;
@@ -58,7 +61,7 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
     return last && last.kind === 'tool' ? toolCategory(last.tool.name) : 'think';
   };
   const anyError = () => props.segment.work.some((w) => (w.kind === 'tool' && w.tool.state === 'error') || w.kind === 'error');
-  const fullTitle = () => [label(), fold().detail, working()?.hint].filter(Boolean).join(' · ');
+  const fullTitle = () => [label(), fold().detail, keyHint()].filter(Boolean).join(' · ');
   // F-08: surface tool result images (screenshots, generated images) even while the work fold is closed.
   const foldImages = () =>
     props.segment.work.flatMap((w) => (w.kind === 'tool' && w.tool.state !== 'running' && w.tool.state !== 'preparing' ? toolImages(props.ctx, w.tool) : []));
@@ -80,9 +83,9 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
             {fold().detail}
           </span>
         </Show>
-        <Show when={working()?.hint}>
+        <Show when={keyHint()}>
           <span class="proc-hint" data-testid="tl-fold-hint">
-            {working()!.hint}
+            {keyHint()}
           </span>
         </Show>
         <Show when={!fold().forcedOpen}>

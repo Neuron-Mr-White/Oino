@@ -265,9 +265,14 @@ pub fn namespace(extension_id: &str) -> Namespace {
                     // `/answer` is a terminal command; the app answers through its own card.
                     .only_on(&[Surface::Tui]),
                 )
-                .field(Field::boolean("answer.hint", "Questions hint").description(
-                    "After a reply that asks questions, offer to answer them above the input.",
-                ))
+                .field(
+                    Field::boolean("answer.hint", "Questions hint")
+                        .description(
+                            "After a reply that asks questions, offer /answer above the input.",
+                        )
+                        // The hint names /answer (terminal): the app hides it ([ask-user]).
+                        .only_on(&[Surface::Tui]),
+                )
                 .field(
                     Field::number("answer.port", "Web form port")
                         .with_kind(|k| {

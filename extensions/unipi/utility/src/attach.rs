@@ -206,6 +206,8 @@ impl Attachments {
             "widgetLines": [line(&items, hint)],
             "widgetPlacement": "aboveEditor",
             "widgetSpec": serde_json::to_value(view(&items, preview, hint)).unwrap_or(Value::Null),
+            // The terminal editor's attachment tokens; the app's composer shows its own chips.
+            "surfaces": ["tui"],
         }));
     }
 

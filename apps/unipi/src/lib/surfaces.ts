@@ -37,6 +37,8 @@ export function shownInApp(surfaces: unknown): boolean {
 const LEGACY_TUI_ENTRIES = new Set([
   // utility: "N questions in the reply — /answer …"
   'unipi.utility/widget:unipi-answer-hint',
+  // utility: the terminal editor's attachment tokens ("attached to your next message")
+  'unipi.utility/widget:unipi-attachments',
   // info-screen: the ASCII Unicrab splash header
   'unipi.info-screen/setHeader:splash',
   // subagents: the tray's `f` foreground watch cards
