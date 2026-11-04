@@ -10,7 +10,7 @@ import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } 
 import { git } from '../../lib/git';
 import { hubs } from '../../lib/session/hub';
 import { sessions } from '../../lib/session/store';
-import { openStatusSection } from './StatusPane';
+import { openStatusSection, type StatusSectionId } from './StatusPane';
 import { ModeIcon } from '../chat/ModeChip';
 import { compactCount } from '../../lib/git';
 import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhProgress, parseLhState } from '../../lib/status/lh';
@@ -82,45 +82,43 @@ export function Capsule(props: { hostId: string; sessionId?: string; cwd?: strin
     const n = s ? topicRunningCount(s.state.topics) : 0;
     return n > 0 ? n : undefined;
   });
-  const open = () => openStatusSection({ hostId: props.hostId, sessionId: props.sessionId, path: props.cwd || '~' });
+  const open = (section?: StatusSectionId) => openStatusSection({ hostId: props.hostId, sessionId: props.sessionId, path: props.cwd || '~' }, section);
 
   return (
     <Show when={branch() || lh() || running()}>
-      <div class="status-capsule" data-testid="status-capsule">
-        <button type="button" class="status-capsule-btn" aria-label="Open the status pane" data-tip="Git, long-horizon, todos, running" onClick={open}>
-          <Show when={branch()}>
-            {(b) => (
-              <span class="cap-seg cap-branch" data-testid="cap-branch">
-                {b().name}
-                <Show when={(b().add ?? 0) + (b().del ?? 0) > 0}>
-                  {' '}
-                  <span class="cap-add">+{compactCount(b().add ?? 0)}</span> <span class="cap-del">−{compactCount(b().del ?? 0)}</span>
-                </Show>
-              </span>
-            )}
-          </Show>
-          <Show when={lh()}>
-            {(m) => (
-              <span class="cap-seg cap-lh" data-mode={m().mode} data-phase={m().phase} data-testid="cap-lh">
-                <ModeIcon mode={m().mode} size={12} />
-                <span class="cap-lh-label">{m().label}</span>
-                <Show when={m().countText}>
-                  {(c) => <span class="cap-lh-count">{c()}</span>}
-                </Show>
-                <Show when={m().phase === 'active'}>
-                  <span class="cap-pulse" aria-hidden="true" />
-                </Show>
-              </span>
-            )}
-          </Show>
-          <Show when={running()}>
-            {(n) => (
-              <span class="cap-seg cap-running" data-testid="cap-running">
-                {n()} running
-              </span>
-            )}
-          </Show>
-        </button>
+      <div class="status-capsule" data-testid="status-capsule" role="group" aria-label="Status">
+        <Show when={branch()}>
+          {(b) => (
+            <button type="button" class="status-capsule-btn cap-seg cap-branch" aria-label="Open Git changes" data-tip="Git changes" data-testid="cap-branch" onClick={() => open()}>
+              {b().name}
+              <Show when={(b().add ?? 0) + (b().del ?? 0) > 0}>
+                {' '}
+                <span class="cap-add">+{compactCount(b().add ?? 0)}</span> <span class="cap-del">−{compactCount(b().del ?? 0)}</span>
+              </Show>
+            </button>
+          )}
+        </Show>
+        <Show when={lh()}>
+          {(m) => (
+            <button type="button" class="status-capsule-btn cap-seg cap-lh" data-mode={m().mode} data-phase={m().phase} aria-label={`Open the ${m().label} view`} data-tip="Long-horizon graph" data-testid="cap-lh" onClick={() => open('lh')}>
+              <ModeIcon mode={m().mode} size={12} />
+              <span class="cap-lh-label">{m().label}</span>
+              <Show when={m().countText}>
+                {(c) => <span class="cap-lh-count">{c()}</span>}
+              </Show>
+              <Show when={m().phase === 'active'}>
+                <span class="cap-pulse" aria-hidden="true" />
+              </Show>
+            </button>
+          )}
+        </Show>
+        <Show when={running()}>
+          {(n) => (
+            <button type="button" class="status-capsule-btn cap-seg cap-running" aria-label="Open what is running" data-tip="Running" data-testid="cap-running" onClick={() => open('running')}>
+              {n()} running
+            </button>
+          )}
+        </Show>
       </div>
     </Show>
   );

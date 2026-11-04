@@ -20,7 +20,7 @@
 /* The section inside the pane tab / phone layer. The pane tab body scrolls
    by default; the status pane owns its scrolling (the changes list scrolls,
    the composer stays at the bottom), so it becomes a flex column. */
-.pane-tab-body[data-kind='git'] { display: flex; flex-direction: column; overflow: hidden; }
+.pane-tab-body[data-kind='git'], .pane-tab-body[data-kind='status'] { display: flex; flex-direction: column; overflow: hidden; }
 .status-pane, .status-pane-layer { flex: 1 1 auto; min-height: 0; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
 .status-pane .git-section, .status-pane-layer .git-section { flex: 1 1 auto; min-height: 0; }
 .git-section { display: flex; flex-direction: column; min-height: 0; position: relative; }

@@ -92,7 +92,7 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
       : unsupported() ? `Working mode unknown: ${UNSUPPORTED_TEXT} Open the mode menu` : `Working mode: ${label()}${summary()?.phase === 'paused' ? ', paused' : dot() === 'needs-you' ? ', needs you' : dot() === 'working' ? ', working' : ''}. Open the mode menu`;
 
   return (
-    <Show when={enabled()}>
+    <Show when={enabled() && !opensGraph()}>
       <button
         type="button"
         class="hdr-mode"
@@ -128,21 +128,6 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
           {(d) => <span class="hdr-mode-pulse" data-activity={d()} aria-hidden="true" />}
         </Show>
       </button>
-      <Show when={opensGraph()}>
-        <button
-          type="button"
-          class="hdr-mode-more"
-          data-mode={summary()?.mode ?? 'none'}
-          aria-label="Working mode menu"
-          aria-haspopup="menu"
-          aria-expanded={open()}
-          title="Working mode — switch or stop"
-          onClick={(e) => menuAt(((e.currentTarget as HTMLElement).previousElementSibling as HTMLElement | null) ?? (e.currentTarget as HTMLElement))}
-          data-testid="mode-chip-menu"
-        >
-          <ChevronDown size={13} />
-        </button>
-      </Show>
       <Show when={open() && anchor()}>
         <AnchoredMenu anchor={anchor()!} alignEnd width={300} label="Working mode" onDismiss={() => setOpen(false)}>
           <div class="mode-switch-head" data-mode={summary()?.mode ?? 'none'}>

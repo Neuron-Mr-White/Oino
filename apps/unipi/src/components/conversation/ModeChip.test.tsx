@@ -15,8 +15,6 @@ import { composerDraft, resetComposerDrafts, setComposerText } from '../../lib/c
 import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
 import { ModeChip } from './ModeChip';
-import { statusSectionFocus } from '../status/StatusPane';
-import { graphSheetTarget, closeGraphView } from '../status/GraphView';
 
 const HOST = 'this-pc';
 const SESSION = 's001';
@@ -47,6 +45,13 @@ function withoutLh(scenario: MockScenario): MockScenario {
 const promptMessages = (world: MockWorld) =>
   world.log.filter((l) => l.kind === 'cmd' && l.op === 'prompt').map((l) => (l.args as { message: string }).message);
 
+/** Graph mode with no graph yet: the chip shows (with a graph the capsule owns the entry). */
+async function withoutGraph(world: MockWorld) {
+  const seq = sessions().peek(HOST, SESSION)!.state.seq;
+  world.push(HOST, SESSION, [{ session: SESSION, seq: seq + 1, event: { type: 'topic', topic: 'unipi:long-horizon:progress', data: { mode: 'graph', goal: null, ralph: null, graph: null }, sticky: true, publisher: 'unipi.long-horizon' } }]);
+  await tick();
+}
+
 beforeEach(() => setDesktopOverride(true));
 afterEach(() => {
   cleanup();
@@ -59,24 +64,24 @@ afterEach(() => {
 });
 
 describe('ModeChip (Z-74)', () => {
-  it('shows the running mode with its live count and a pulse', async () => {
-    await boot(SCENARIOS['mode-chip']!);
+  it('shows the running mode with its pulse', async () => {
+    const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await tick();
+    await withoutGraph(world);
     await waitFor(() => expect(screen.getByTestId('mode-chip')).toBeTruthy());
-    const chip = screen.getByTestId('mode-chip');
-    expect(chip.getAttribute('data-mode')).toBe('graph');
-    expect(chip.getAttribute('data-phase')).toBe('active');
+    expect(screen.getByTestId('mode-chip').getAttribute('data-mode')).toBe('graph');
     expect(screen.getByTestId('mode-chip-label').textContent).toBe('Graph');
-    expect(chip.textContent).toContain('3/6');
-    expect(chip.querySelector('.hdr-mode-pulse')).toBeTruthy();
   });
 
   it('starts Goal / Ralph / Graph as starter commands in the composer', async () => {
     const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await tick();
+    await withoutGraph(world);
     await waitFor(() => expect(screen.getByTestId('mode-chip')).toBeTruthy());
     setComposerText(KEY, '');
-    fireEvent.click(screen.getByTestId('mode-chip-menu'));
+    fireEvent.click(screen.getByTestId('mode-chip'));
     const menu = await screen.findByRole('menu');
     expect(menu.textContent).toContain('Start');
     fireEvent.click(screen.getByTestId('mode-start-goal'));
@@ -84,7 +89,7 @@ describe('ModeChip (Z-74)', () => {
     expect(composerDraft(KEY).text).toBe('/goal ');
     // and the chip's own starter keeps the words already typed
     setComposerText(KEY, 'ship the picker');
-    fireEvent.click(screen.getByTestId('mode-chip-menu'));
+    fireEvent.click(screen.getByTestId('mode-chip'));
     await screen.findByRole('menu');
     fireEvent.click(screen.getByTestId('mode-start-ralph'));
     await tick();
@@ -96,46 +101,33 @@ describe('ModeChip (Z-74)', () => {
   it('Plain stops the mode with /regular', async () => {
     const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
+    await tick();
+    await withoutGraph(world);
     await waitFor(() => expect(screen.getByTestId('mode-chip')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('mode-chip-menu'));
+    fireEvent.click(screen.getByTestId('mode-chip'));
     await screen.findByRole('menu');
     fireEvent.click(screen.getByTestId('mode-plain'));
     await waitFor(() => expect(promptMessages(world)).toContain('/regular'));
   });
 
-  // [graph-view] owner 2026-11-03: "where can I see the graph?" — with graph / swarm mode
-  // running a graph, the chip opens it (desktop: the status pane's LH section); the
-  // chevron beside it keeps the mode menu.
-  it('opens the graph directly in graph mode; the chevron opens the menu', async () => {
+  // owner 2026-11-04: the header "Graph 6/12" button was redundant with the status capsule —
+  // while a graph runs the chip is gone (the capsule's Graph segment opens the graph).
+  it('hides while graph mode has a graph (the capsule opens it)', async () => {
     await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} cwd="/home/me/proj" />);
-    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
-    fireEvent.click(screen.getByTestId('mode-chip'));
-    expect(statusSectionFocus()).toBe('lh');
-    expect(screen.queryByRole('menu')).toBeNull();
-    expect(screen.getByTestId('mode-chip').getAttribute('aria-label')).toContain('Open the graph');
-    fireEvent.click(screen.getByTestId('mode-chip-menu'));
-    expect((await screen.findByRole('menu')).textContent).toContain('Start');
-  });
-
-  it('opens the full-screen graph sheet on the phone', async () => {
-    setDesktopOverride(false);
-    await boot(SCENARIOS['mode-chip']!);
-    render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
-    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
-    fireEvent.click(screen.getByTestId('mode-chip'));
-    expect(graphSheetTarget()).toEqual({ hostId: HOST, sessionId: SESSION });
-    closeGraphView();
+    await tick();
+    await tick();
+    expect(screen.queryByTestId('mode-chip')).toBeNull();
+    expect(screen.queryByTestId('mode-chip-menu')).toBeNull();
   });
 
   it('keeps the menu on the chip while graph mode has no graph yet', async () => {
     const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
-    await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBe('graph'));
+    await tick();
     let seq = sessions().peek(HOST, SESSION)!.state.seq;
     world.push(HOST, SESSION, [{ session: SESSION, seq: ++seq, event: { type: 'topic', topic: 'unipi:long-horizon:progress', data: { mode: 'graph', goal: null, ralph: null, graph: null }, sticky: true, publisher: 'unipi.long-horizon' } }]);
     await waitFor(() => expect(screen.getByTestId('mode-chip').getAttribute('data-opens')).toBeNull());
-    expect(screen.queryByTestId('mode-chip-menu')).toBeNull();
     fireEvent.click(screen.getByTestId('mode-chip'));
     expect(await screen.findByRole('menu')).toBeTruthy();
   });
@@ -145,7 +137,7 @@ describe('ModeChip (Z-74)', () => {
   it('follows the mode event: Plain → Graph → Plain', async () => {
     const world = await boot(SCENARIOS['mode-chip']!);
     render(() => <ModeChip hostId={HOST} sessionId={SESSION} />);
-    await waitFor(() => expect(screen.getByTestId('mode-chip-label').textContent).toBe('Graph'));
+    await tick();
     let seq = sessions().peek(HOST, SESSION)!.state.seq;
     const topic = (name: string, data: unknown) => ({ session: SESSION, seq: ++seq, event: { type: 'topic', topic: name, data, sticky: true, publisher: 'unipi.long-horizon' } });
     const plain = { mode: 'none', goal: null, ralph: null, graph: null, todos: 'no plan' };

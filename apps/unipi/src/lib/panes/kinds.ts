@@ -14,7 +14,7 @@
  * persisted tab of it renders the "not available" state.
  */
 import { createSignal, lazy, type Component } from 'solid-js';
-import { Bot, FileDiff, FolderTree, GitBranch, Globe, Image, ListTree, MessageSquareText, Plug, Puzzle, SquareTerminal } from 'lucide-solid';
+import { Bot, FileDiff, FolderTree, GitBranch, Globe, Image, ListTree, MessageSquareText, Network, Plug, Puzzle, SquareTerminal } from 'lucide-solid';
 import { reservedGate } from '../../ui/slots/reserved';
 import { confirmTerminalClose, endTerminal } from '../../components/panes/tabs/terminalClose';
 import { setPaneRules, type KindRule, type PaneArea, type PaneTab } from '../panes';
@@ -57,6 +57,8 @@ const leaf = (path: unknown, fallback: string): string => str(path, fallback).sp
 export const BUILTIN_KINDS: PaneKindDef[] = [
   { kind: 'files', icon: FolderTree, title: () => 'Files', singleton: true, scope: 'project', reserved: 'host/files', launcher: { label: 'Files', order: 10, keywords: 'tree editor' } },
   { kind: 'git', icon: GitBranch, title: () => 'Git', singleton: true, scope: 'project', reserved: 'host/git', launcher: { label: 'Git', order: 20, keywords: 'changes commit status' } },
+  // One status section per tab (long-horizon graph / plan & todos / running); opened by the capsule, never stacked under Git.
+  { kind: 'status', icon: Network, title: (p) => (p.section === 'running' ? 'Running' : p.section === 'plan' ? 'Plan' : 'Graph'), singleton: (p) => str(p.section, 'lh'), scope: 'session' },
   { kind: 'tree', icon: ListTree, title: () => 'Tree', singleton: true, scope: 'session', launcher: { label: 'Tree', order: 30, needsSession: true, keywords: 'session branches fork' } },
   { kind: 'btw', icon: MessageSquareText, title: (p) => str(p.title, 'Side chat'), singleton: false, scope: 'session', launcher: { label: 'Side chat', order: 40, needsSession: true, keywords: 'btw aside question' } },
   { kind: 'diff', icon: FileDiff, title: (p) => leaf(p.path, 'Diff'), singleton: (p) => str(p.path, ''), scope: 'session' },

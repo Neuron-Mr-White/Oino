@@ -80,9 +80,10 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .status-row-more:hover { color: var(--color-text-muted); }
 
 /* ── The collapsed-pane capsule (top-right of the timeline) ───────────── */
-.status-capsule { position: absolute; top: 64px; right: 14px; z-index: 12; pointer-events: auto; }
-.status-capsule-btn { display: inline-flex; align-items: center; gap: 0; max-width: min(60vw, 420px); padding: 0; border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); cursor: pointer; overflow: hidden; }
+.status-capsule { position: absolute; top: 64px; right: 14px; z-index: 12; pointer-events: auto; display: inline-flex; align-items: stretch; max-width: min(60vw, 420px); border-radius: 9999px; background: var(--color-surface-2); box-shadow: 0 6px 22px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%); overflow: hidden; }
+.status-capsule-btn { appearance: none; border: 0; background: transparent; font: inherit; cursor: pointer; min-width: 0; }
 .status-capsule-btn:hover { background: var(--color-surface-3); }
+.status-capsule-btn:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .cap-seg { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 6px 11px; font-size: 12px; line-height: 16px; color: var(--color-text-muted); white-space: nowrap; }
 .cap-seg + .cap-seg { border-left: 1px solid var(--color-line); }
 /* At the 60 vw cap the branch shrinks first (ellipsis), never a mid-word cut. */
@@ -148,3 +149,6 @@ html[data-shell=phone] .lh-node-main { min-height: 40px; }
 .graph-sheet-body .status-section { border: 0; padding-inline: 12px; }
 .graph-sheet-body .lh-graph-svg { max-height: 46vh; }
 .graph-sheet-body .lh-graph-svg svg { max-height: calc(46vh - 16px); }
+
+.status-layer-back { display: inline-flex; align-items: center; gap: 6px; margin: 10px var(--page-gutter) 0; align-self: flex-start; min-height: 32px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--color-text-muted); font-size: 13px; cursor: pointer; }
+.status-layer-back:hover { color: var(--color-text); background: var(--color-surface-2); }

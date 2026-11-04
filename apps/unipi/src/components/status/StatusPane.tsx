@@ -12,7 +12,7 @@
  * command, the ModeChip's routing and the reserved
  * `unipi.long-horizon/visualize` entry all funnel here.
  */
-import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { ArrowLeft } from 'lucide-solid';
 import type { PaneTabProps } from '../../lib/panes/kinds';
 import { setPaneComponent } from '../../lib/panes/kinds';
@@ -25,6 +25,7 @@ import '../git/git.css';
 import { GitSection } from './GitSection';
 import { LhSection } from './LhSection';
 import { PlanSection } from './PlanSection';
+import { openGraphView } from './GraphView';
 import { RunningSummary } from './RunningSummary';
 import './status.css';
 
@@ -49,26 +50,32 @@ function Toast(props: { text?: string }) {
   );
 }
 
-/** A pending "scroll to this section" request (the pane may already be open). */
+/** The status sections a pane tab (or the phone layer) can show — one at a time. */
 export type StatusSectionId = 'lh' | 'plan' | 'running';
-const [sectionFocus, setSectionFocus] = createSignal<StatusSectionId | undefined>(undefined);
-export const statusSectionFocus = sectionFocus;
+const [layerSection, setLayerSection] = createSignal<StatusSectionId | undefined>(undefined);
 
 /**
- * Opens/focuses the status pane — the side-pane `git` tab on the desktop
- * (Z-100), this PC's full-screen layer on the phone — and asks it to scroll
- * to `section` when given.
+ * Opens the Git tab (no `section`) or ONE status section — the long-horizon
+ * graph, Plan & todos, Running — as its own side-pane tab (`status` kind) on
+ * the desktop, or this PC's full-screen layer on the phone. Sections are never
+ * stacked under Git: each tab renders only its own content.
  */
 export function openStatusSection(base: { hostId: string; sessionId?: string; path: string }, section?: StatusSectionId): void {
-  setSectionFocus(section);
   if (desktopShell()) {
     const ws = currentWorkspace();
     if (ws) {
-      panes().open(ws.scope, 'side', ws.view, { kind: 'git', params: gitParams({ hostId: base.hostId, path: base.path }) });
+      const params = section
+        ? { section, hostId: base.hostId, path: base.path }
+        : gitParams({ hostId: base.hostId, path: base.path });
+      panes().open(ws.scope, 'side', ws.view, { kind: section ? 'status' : 'git', params });
       layout().toggleSide(true);
       return;
     }
   }
+  if (section === 'lh') {
+    if (base.sessionId) return openGraphView({ hostId: base.hostId, sessionId: base.sessionId, path: base.path });
+  }
+  setLayerSection(section);
   openGit({ hostId: base.hostId, path: base.path, ...(base.sessionId ? { sessionId: base.sessionId } : {}) });
 }
 
@@ -107,7 +114,6 @@ export function StatusPane(props: PaneTabProps) {
           initialTab={tab()}
           onToast={show}
         />
-        <StatusSections hostId={props.hostId} sessionId={props.sessionId} onToast={show} />
       </div>
       <Toast text={toast()} />
     </div>
@@ -116,33 +122,45 @@ export function StatusPane(props: PaneTabProps) {
 
 setPaneComponent('git', StatusPane);
 
-/** The A16 sections (LH, Plan & todos, Running summary) — session-scoped. */
-export function StatusSections(props: { hostId: string; sessionId?: string; onToast?: (text: string) => void }) {
-  let lh: HTMLDivElement | undefined;
-  let plan: HTMLDivElement | undefined;
-  let running: HTMLDivElement | undefined;
-  createEffect(() => {
-    const want = sectionFocus();
-    if (!want) return;
-    setSectionFocus(undefined);
-    queueMicrotask(() => {
-      const el = want === 'lh' ? lh : want === 'plan' ? plan : running;
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  });
+/** The `status` pane tab: exactly one session-scoped section (`params.section`). */
+export function StatusSectionPane(props: PaneTabProps) {
+  const { toast, show } = useToast();
+  const section = (): StatusSectionId => {
+    const v = props.tab.params?.section;
+    return v === 'plan' || v === 'running' ? v : 'lh';
+  };
   return (
-    <Show when={props.sessionId}>
+    <div class="status-pane" data-testid="status-pane" data-section={section()}>
+      <div class="status-pane-scroll">
+        <StatusSections section={section()} hostId={props.hostId} sessionId={props.sessionId} onToast={show} />
+      </div>
+      <Toast text={toast()} />
+    </div>
+  );
+}
+
+setPaneComponent('status', StatusSectionPane);
+
+/** One A16 section (LH graph, Plan & todos, or Running) — session-scoped. */
+export function StatusSections(props: { section?: StatusSectionId; hostId: string; sessionId?: string; onToast?: (text: string) => void }) {
+  return (
+    <Show
+      when={props.sessionId}
+      fallback={<p class="status-empty" data-testid="status-no-session">Open a chat to see this.</p>}
+    >
       {(id) => (
         <div class="status-sections" data-testid="status-sections">
-          <div ref={lh}>
-            <LhSection hostId={props.hostId} sessionId={id()} onToast={props.onToast} />
-          </div>
-          <div ref={plan}>
-            <PlanSection hostId={props.hostId} sessionId={id()} />
-          </div>
-          <div ref={running}>
-            <RunningSummary hostId={props.hostId} sessionId={id()} />
-          </div>
+          <Switch>
+            <Match when={(props.section ?? 'lh') === 'lh'}>
+              <LhSection hostId={props.hostId} sessionId={id()} onToast={props.onToast} />
+            </Match>
+            <Match when={props.section === 'plan'}>
+              <PlanSection hostId={props.hostId} sessionId={id()} />
+            </Match>
+            <Match when={props.section === 'running'}>
+              <RunningSummary hostId={props.hostId} sessionId={id()} />
+            </Match>
+          </Switch>
         </div>
       )}
     </Show>
@@ -170,20 +188,33 @@ function StatusLayerBody(props: { hostId: string; path: string; sessionId?: stri
   // Back closes the layer; the pop MUST ride the cleanup, or a stale handler
   // stays on the stack and swallows the next Back after the layer is gone.
   onMount(() => onCleanup(pushBack(props.onClose)));
+  const section = layerSection();
+  onCleanup(() => setLayerSection(undefined));
   return (
     <div class="git-view status-pane-layer" role="dialog" aria-label="Git and status" data-testid="git-view">
       <div class="status-pane-scroll">
-        <GitSection
-          hostId={props.hostId}
-          path={props.path}
-          sessionId={props.sessionId}
-          cwd={props.path}
-          onBack={props.onClose}
-          onToast={show}
-          initialSource={props.source}
-          initialTab={props.tab}
-        />
-        <StatusSections hostId={props.hostId} sessionId={props.sessionId} onToast={show} />
+        <Show
+          when={section}
+          fallback={
+            <GitSection
+              hostId={props.hostId}
+              path={props.path}
+              sessionId={props.sessionId}
+              cwd={props.path}
+              onBack={props.onClose}
+              onToast={show}
+              initialSource={props.source}
+              initialTab={props.tab}
+            />
+          }
+        >
+          {(sec) => (
+            <>
+              <button type="button" class="status-layer-back" onClick={props.onClose} aria-label="Back"><ArrowLeft size={16} /> Back</button>
+              <StatusSections section={sec()} hostId={props.hostId} sessionId={props.sessionId} onToast={show} />
+            </>
+          )}
+        </Show>
       </div>
       <Toast text={toast()} />
     </div>

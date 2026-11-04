@@ -59,7 +59,7 @@ afterEach(() => {
 describe('LH section', () => {
   it('renders from the LH topics + the graph service (counts, task, phase, History)', async () => {
     await boot('lh-history');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('lh-section')).toBeTruthy());
     expect(screen.getByTestId('lh-phase').textContent).toBe('Running');
     await waitFor(() => expect(screen.getByTestId('lh-counts').textContent).toContain('3/7 done'));
@@ -70,23 +70,21 @@ describe('LH section', () => {
 
   it('a host without the graph service keeps the older inspector (fallback)', async () => {
     await boot('status-lh-graph');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('lh-graph-inspector')).toBeTruthy());
   });
 
   it('LH disabled ⇒ the section is gone (owner enablement)', async () => {
     const world = await boot(withoutLh(SCENARIOS['status-lh-graph']!));
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
     await tick();
     await waitFor(() => expect(world.log.some((l) => l.op === '_oino/extensions')).toBe(true));
     expect(screen.queryByTestId('lh-section')).toBeNull();
-    // the other sections still render (the pane is not empty)
-    expect(screen.getByTestId('running-summary')).toBeTruthy();
   });
 
   it('Stop asks for a second tap, then sends the mode command as a prompt', async () => {
     const world = await boot('status-lh-graph');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('lh-stop')).toBeTruthy());
     fireEvent.click(screen.getByTestId('lh-stop'));
     expect(world.log.filter((l) => l.op === 'prompt')).toHaveLength(0);
@@ -99,7 +97,7 @@ describe('LH section', () => {
 describe('Plan & todos section', () => {
   it('renders the plan-mode chip, the plan file and the todowrite checklist', async () => {
     await boot('status-todos');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="plan" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('plan-section')).toBeTruthy());
     expect(screen.getByTestId('plan-mode').textContent).toContain('Plan mode');
     expect(screen.getByTestId('plan-mode').textContent).toContain('2026-02-14-a16status.md');
@@ -114,7 +112,7 @@ describe('Plan & todos section', () => {
 describe('Running summary ≡ Session modal', () => {
   it("the counts equal the modal's over the same data (shared selector)", async () => {
     const world = await boot('status-running');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="running" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('running-counts').textContent).not.toBe('nothing'));
     // the summary's DOM says what the shared selector says for the same session
     const s = sessions().ensure('this-pc', 's001');
@@ -134,7 +132,7 @@ describe('Running summary ≡ Session modal', () => {
 
   it('"Open in Session" opens the Session modal on Running', async () => {
     await boot('status-running');
-    render(() => <StatusSections hostId="this-pc" sessionId="s001" />);
+    render(() => <StatusSections section="running" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('running-open')).toBeTruthy());
     fireEvent.click(screen.getByTestId('running-open'));
     expect(sessionModal()?.tab).toBe('running');
