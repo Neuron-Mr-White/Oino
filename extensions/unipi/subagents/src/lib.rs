@@ -458,7 +458,8 @@ impl Subagents {
 
     /// Re-registers `run_subagent` when the offered profile set changed, so its `profile`
     /// description lists only enabled profiles. The schema (part of the prompt prefix)
-    /// stays byte-identical while the set does not change.
+    /// stays byte-identical while the set does not change. Call it from a session context
+    /// (session start, `before_agent_start`) only.
     fn sync_schema(&'static self, cx: &Ctx) {
         if cx.is_child() {
             return;
@@ -2132,9 +2133,10 @@ impl Extension for Subagents {
             )
         });
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
-            let out = ext.before_agent_start(&ev, &cx);
+            // In the session's context, so the host refreshes the session's tool list
+            // before this turn's request is built.
             ext.sync_schema(&cx);
-            Ok(out)
+            Ok(ext.before_agent_start(&ev, &cx))
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.restore(cx.session_id());
@@ -2148,8 +2150,10 @@ impl Extension for Subagents {
         });
         cx.on(EventKind::OinoSettingsChanged, |ext, ev, cx| async move {
             if ext.settings.on_changed(&ev.payload).is_some() {
+                // The schema follows on the next turn's `before_agent_start`: a
+                // registration from this (session-less) event context would update the
+                // registry without refreshing any session's tool list.
                 ext.refresh(&cx);
-                ext.sync_schema(&cx);
             }
             Ok(())
         });

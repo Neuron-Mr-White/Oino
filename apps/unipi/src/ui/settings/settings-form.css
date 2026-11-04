@@ -291,7 +291,7 @@ html:not([data-shell=desktop]) .agent-row2 { grid-template-columns: minmax(0, 1f
 .agent-prompt { min-height: 160px; }
 .agent-editor-sheet { max-width: 640px; }
 /* agent-disable: the row opens the profile; the switch sits before the lock / chevron. */
-.agent-row { gap: 10px; padding: 0 12px 0 0; }
+.settings-namespace-row.agent-row { gap: 10px; padding: 0 12px 0 0; }
 .agent-row-open { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; padding: 10px 0 10px 16px; text-align: left; }
 .agent-row-switch { display: inline-flex; flex-shrink: 0; }
 .agent-row-end { display: inline-flex; align-items: center; justify-content: center; width: 20px; align-self: stretch; flex-shrink: 0; }
@@ -300,4 +300,5 @@ html:not([data-shell=desktop]) .agent-row2 { grid-template-columns: minmax(0, 1f
 .agent-off-chip { flex-shrink: 0; padding: 1px 7px; border-radius: 6px; font-size: 11px; color: var(--color-text-muted); box-shadow: inset 0 0 0 1px var(--color-line); }
 .agent-enabled { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-2); }
 html[data-shell=phone] .agent-row .settings-ns-badge { display: none; }
-html[data-shell=phone] .agent-row-open { min-height: 56px; }
+html[data-shell=phone] .settings-phone .settings-namespace-row.agent-row { min-height: 0; padding: 0 12px 0 0; }
+html[data-shell=phone] .agent-row-open { min-height: 56px; padding-block: 8px; }
