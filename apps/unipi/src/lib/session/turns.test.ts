@@ -270,6 +270,20 @@ describe('turns index: incremental tail recompute', () => {
     expect(turns).toEqual(buildTurns(input(s.entries)));
   });
 
+  it('[owner-fix-2] one long streamed answer counts to when it ended (its entry), not when it started', () => {
+    const s = session();
+    s.user('marathon');
+    const a = s.answer('tick 0 s. … Marathon stream finished.');
+    // the message started streaming 50 ms after the prompt; the entry was appended 330 s later
+    a.message!.timestamp = Date.parse(s.entries[0]!.timestamp!) + 50;
+    a.timestamp = new Date(Date.parse(s.entries[0]!.timestamp!) + 330_000).toISOString();
+    const [turn] = buildTurns(input(s.entries));
+    expect(turn!.durationMs).toBe(330_000);
+    // a copied entry with a far later time does not inflate it
+    a.timestamp = new Date(Date.parse(s.entries[0]!.timestamp!) + 86_400_000 * 3).toISOString();
+    expect(buildTurns(input(s.entries))[0]!.durationMs).toBe(50);
+  });
+
   it('trailing custom / wake-up entries never hide the assistant answer or inflate turn duration', () => {
     const s = session();
     s.user('click the button');

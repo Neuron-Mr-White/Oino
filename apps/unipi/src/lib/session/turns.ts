@@ -286,6 +286,18 @@ const tsOf = (e: SessionEntry): number | undefined => {
   return Number.isFinite(t) ? t : undefined;
 };
 
+/**
+ * When an entry's work ENDED. An assistant message's own `timestamp` is when it started
+ * streaming; the entry is appended when it ends. So a turn whose last step is one long stream
+ * ("marathon": 330 s of text) read "Done in 0s". The entry time counts only for an assistant
+ * message and only within 6 h of its start (a copied / migrated entry can carry a later time).
+ */
+const doneOf = (e: SessionEntry, at: number | undefined): number | undefined => {
+  if (at === undefined || e.message?.role !== 'assistant' || !e.timestamp) return at;
+  const t = Date.parse(e.timestamp);
+  return Number.isFinite(t) && t > at && t - at < 6 * 3_600_000 ? t : at;
+};
+
 const isUser = (e: SessionEntry | undefined): boolean => e?.type === 'message' && e.message?.role === 'user';
 
 /** A user message delivered while the run continued (after a tool result or a `toolUse` stop). */
@@ -496,9 +508,9 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       (e.type === 'message' && (mRole === 'user' || mRole === 'assistant' || mRole === 'toolResult' || mRole === 'bashExecution')) ||
       (e.type === 'custom' && STEP_TYPES.has(String(e.customType ?? '')));
     if (at !== undefined && countsForDuration) {
-      endedAt = at;
+      endedAt = doneOf(e, at);
       // [ask-user] the time the user takes to answer is not the segment's work.
-      if (!seg.ask) segMeta[seg.index]!.endedAt = at;
+      if (!seg.ask) segMeta[seg.index]!.endedAt = endedAt;
     }
     if (i === 0 && start.kind === 'turn') {
       turn.user = e;
