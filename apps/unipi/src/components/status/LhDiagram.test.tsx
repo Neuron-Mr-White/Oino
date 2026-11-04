@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LhDiagram, roundedPath, zoomAt } from './LhDiagram';
+import { clampView, openView, LhDiagram, roundedPath, zoomAt } from './LhDiagram';
 import { asStatus, type LhWork } from '../../lib/status/lhGraph';
 
 const w = (id: string, status: string, extra: Partial<LhWork> = {}): LhWork => ({
@@ -42,5 +42,21 @@ describe('LhDiagram', () => {
   it('pure helpers', () => {
     expect(zoomAt({ x: 0, y: 0, z: 1 }, 2, 10, 10)).toEqual({ z: 2, x: -10, y: -10 });
     expect(roundedPath([{ x: 0, y: 0 }, { x: 0, y: 20 }, { x: 20, y: 20 }, { x: 20, y: 40 }])).toMatch(/^M0,0 L0,12 Q0,20 8,20/);
+  });
+});
+
+describe('LhDiagram open + pan bounds (owner-fix-6)', () => {
+  it('opens fitting the whole graph when that keeps zoom >= 0.6', () => {
+    const v = openView(600, 540, 700, 440);
+    expect(v.z).toBeGreaterThanOrEqual(0.6);
+    expect(540 * v.z + v.y).toBeLessThanOrEqual(440);
+  });
+  it('else starts at 0.6 top-left, and the pan bounds reach the last row', () => {
+    const v = openView(1200, 1500, 500, 400);
+    expect(v.z).toBe(0.6);
+    expect(v.y).toBe(12);
+    const down = clampView({ ...v, y: -99999 }, 1200, 1500, 500, 400);
+    expect(down.y + 1500 * v.z).toBe(400 - 12);
+    expect(clampView({ ...v, y: 500 }, 1200, 1500, 500, 400).y).toBe(12);
   });
 });

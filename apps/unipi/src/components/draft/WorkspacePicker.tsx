@@ -108,6 +108,7 @@ export function WorkspacePicker(props: {
   const openFolder = () => {
     const start = props.value || props.home || props.roots[0] || '/';
     if (layout().desktop()) {
+      setAnchor(undefined);
       setPane(true);
       return;
     }
@@ -326,7 +327,7 @@ export function WorkspacePicker(props: {
           initial={props.value}
           recentItems={recentItems()}
           ownPc={isOwnPcFile(props.hostId)}
-          onClose={() => (setPane(false), setAnchor(undefined))}
+          onClose={() => setPane(false)}
           onUse={(picked) => {
             rememberOpened(picked);
             pick(picked);

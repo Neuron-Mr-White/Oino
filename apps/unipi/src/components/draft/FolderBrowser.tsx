@@ -13,10 +13,12 @@
  * native dialog demotes to the footer's secondary button. The phone keeps its
  * Sheet + crumbs flow and never renders this.
  */
+import { Portal } from 'solid-js/web';
 import { createEffect, createMemo, createResource, createSignal, For, Index, on, onCleanup, onMount, Show } from 'solid-js';
 import { ChevronRight, Clock, Folder, Home, X } from 'lucide-solid';
 import { fsList } from '../../lib/fs';
 import { shortPath, folderName } from '../../lib/session/newSession';
+import { isTauriDesktop } from '../../lib/platform';
 import { pickFolderNative } from '../../lib/openLocal';
 import { useHostsOptional } from '../../hosts/context';
 import { wrapTab } from '../../lib/focusTrap';
@@ -53,6 +55,13 @@ export function FolderBrowser(props: {
     const h = hosts?.hosts().find((x) => x.id === props.hostId);
     return h ? (h.transport === 'local' ? 'This computer' : h.name) : undefined;
   });
+  /** The native dialog needs the desktop app AND this computer's host. The host's real id is not
+   *  the literal 'local' (owner-fix-5 P2-3), so the transport decides, not only the prop. */
+  const canNative = () => {
+    if (!isTauriDesktop()) return false;
+    const h = hosts?.hosts().find((x) => x.id === props.hostId);
+    return props.ownPc || h?.transport === 'local';
+  };
   const short = (p: string) => shortPath(p, props.home);
 
   // ── listings (one fs_list per column, cached for this pane's session) ──
@@ -264,6 +273,7 @@ export function FolderBrowser(props: {
   };
 
   return (
+    <Portal>
     <div class="sm-overlay fb-overlay" role="presentation" onClick={props.onClose}>
       <div
         class="sm-dialog fb-dialog"
@@ -403,7 +413,7 @@ export function FolderBrowser(props: {
             </span>
           </Show>
           <span class="fb-foot-grow" />
-          <Show when={props.ownPc}>
+          <Show when={canNative()}>
             <button type="button" class="ws-btn" onClick={useSystemDialog} data-testid="workspace-sysdlg">
               System dialog…
             </button>
@@ -418,6 +428,7 @@ export function FolderBrowser(props: {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }
 

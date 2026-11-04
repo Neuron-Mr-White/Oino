@@ -180,6 +180,7 @@ describe('FolderBrowser', () => {
     expect(screen.queryByTestId('workspace-sysdlg')).toBeNull();
     unmount();
     cleanup();
+    setPlatformOverride('tauri-desktop');
     render(() => (
       <FolderBrowser hostId="h" home="/home/you" roots={[]} recentItems={[]} ownPc={true} onClose={() => {}} onUse={() => {}} />
     ));
@@ -212,5 +213,22 @@ describe('WorkspacePicker → FolderBrowser (desktop)', () => {
     fireEvent.click(await screen.findByTestId('workspace-open'));
     await waitFor(() => expect(screen.getByTestId('workspace-browser')).toBeTruthy());
     await waitFor(() => expect(screen.getByTestId('workspace-sysdlg')).toBeTruthy());
+  });
+
+  it('Browse folders… closes the chip menu and the portaled pane takes mouse clicks (owner-fix-6)', async () => {
+    setDesktopOverride(true);
+    render(() => (
+      <div class="draft" style={{ isolation: 'isolate' }}>
+        <WorkspacePicker hostId="local" value={undefined} onChange={() => {}} recent={[]} roots={['/home/you']} home="/home/you" />
+      </div>
+    ));
+    fireEvent.click(screen.getByTestId('workspace-chip'));
+    fireEvent.click(await screen.findByTestId('workspace-open'));
+    const dialog = await waitFor(() => screen.getByTestId('workspace-browser'));
+    expect(screen.queryByTestId('workspace-menu')).toBeNull();
+    expect(dialog.closest('.draft')).toBeNull();
+    await waitFor(() => expect(rows(0).length).toBeGreaterThan(0));
+    fireEvent.click(rows(0)[0]!);
+    expect(screen.getByTestId('workspace-browser')).toBeTruthy();
   });
 });

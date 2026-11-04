@@ -36,6 +36,17 @@ export function openView(w: number, h: number, vw: number, vh: number, pad = 12)
   return { z, x: w * z + pad * 2 <= vw ? (vw - w * z) / 2 : pad, y: pad };
 }
 
+/** Keeps the drawing reachable: a drawing larger than the viewport pans so each edge can be brought
+ *  to the viewport edge (the last row is always reachable); a smaller one stays inside it. Pure. */
+export function clampView(v: View, w: number, h: number, vw: number, vh: number, pad = 12): View {
+  if (w <= 0 || h <= 0 || vw <= 0 || vh <= 0) return v;
+  const axis = (pos: number, size: number, vsize: number) => {
+    const s = size * v.z;
+    return s + pad * 2 <= vsize ? Math.min(vsize - s - pad, Math.max(pad, pos)) : Math.min(pad, Math.max(vsize - s - pad, pos));
+  };
+  return { z: v.z, x: axis(v.x, w, vw), y: axis(v.y, h, vh) };
+}
+
 /** Zoom by `factor` keeping the viewport point (`px`,`py`) fixed. Pure. */
 export function zoomAt(v: View, factor: number, px: number, py: number): View {
   const z = Math.max(MIN_Z, Math.min(MAX_Z, v.z * factor));
@@ -101,6 +112,7 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
   const edges = createMemo(() => layout().edges.filter((e) => byId().has(e.from) && byId().has(e.to)));
   const [view, setView] = createSignal<View>({ x: 0, y: 0, z: 1 });
   const [touched, setTouched] = createSignal(false);
+  const clampNow = (v: View): View => (host ? clampView(v, layout().width, layout().height, host.clientWidth, host.clientHeight) : v);
   let host: HTMLDivElement | undefined;
   const size = () => ({ w: host?.clientWidth ?? 0, h: host?.clientHeight ?? 0 });
   const place = (all: boolean) => {
@@ -127,13 +139,13 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
 
   const zoomBy = (f: number) => {
     const s = size();
-    setView((v) => zoomAt(v, f, s.w / 2, s.h / 2));
+    setView((v) => clampNow(zoomAt(v, f, s.w / 2, s.h / 2)));
     setTouched(true);
   };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const r = host!.getBoundingClientRect();
-    setView((v) => zoomAt(v, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top));
+    setView((v) => clampNow(zoomAt(v, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top)));
     setTouched(true);
   };
   // Pointer pan + two-pointer pinch.
@@ -159,14 +171,14 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
     moved += Math.abs(dx) + Math.abs(dy);
     if (moved > 4 && pointers.size === 1) {
       if (!host?.hasPointerCapture(e.pointerId)) host?.setPointerCapture(e.pointerId);
-      setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      setView((v) => clampNow({ ...v, x: v.x + dx, y: v.y + dy }));
       setTouched(true);
     } else if (pointers.size === 2) {
       const d = dist();
       if (pinch > 0 && d > 0) {
         const r = host!.getBoundingClientRect();
         const [a, b] = [...pointers.values()];
-        setView((v) => zoomAt(v, d / pinch, (a!.x + b!.x) / 2 - r.left, (a!.y + b!.y) / 2 - r.top));
+        setView((v) => clampNow(zoomAt(v, d / pinch, (a!.x + b!.x) / 2 - r.left, (a!.y + b!.y) / 2 - r.top)));
         setTouched(true);
       }
       pinch = d;
@@ -184,10 +196,10 @@ function Canvas(props: Props & { layout: Layout; full?: boolean; onFull?: () => 
     if (e.key === '+' || e.key === '=') zoomBy(1.2);
     else if (e.key === '-') zoomBy(1 / 1.2);
     else if (e.key === '0') fit();
-    else if (e.key === 'ArrowLeft') (setView((v) => ({ ...v, x: v.x + step })), setTouched(true));
-    else if (e.key === 'ArrowRight') (setView((v) => ({ ...v, x: v.x - step })), setTouched(true));
-    else if (e.key === 'ArrowUp') (setView((v) => ({ ...v, y: v.y + step })), setTouched(true));
-    else if (e.key === 'ArrowDown') (setView((v) => ({ ...v, y: v.y - step })), setTouched(true));
+    else if (e.key === 'ArrowLeft') (setView((v) => clampNow({ ...v, x: v.x + step })), setTouched(true));
+    else if (e.key === 'ArrowRight') (setView((v) => clampNow({ ...v, x: v.x - step })), setTouched(true));
+    else if (e.key === 'ArrowUp') (setView((v) => clampNow({ ...v, y: v.y + step })), setTouched(true));
+    else if (e.key === 'ArrowDown') (setView((v) => clampNow({ ...v, y: v.y - step })), setTouched(true));
     else return;
     e.preventDefault();
   };
