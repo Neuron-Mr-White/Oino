@@ -3,7 +3,8 @@
  * like the session is running"). Pure: the activity model (`lib/session/activity`) decides the
  * state, this picks the words.
  *
- * - `needs-you`: an `ask_user` question waits (the merged "Answer ↑" chip) — accent, still.
+ * - `needs-you`: an `ask_user` question waits (the merged "Answer ↑" chip), or a dialog docked
+ *   right above (a tool approval, an extension's select/confirm) — accent, still.
  * - `working`: the agent runs, or the idle session waits on work that will wake it — animated.
  * - `background`: quiet work without a wake (a background task) — still, dim.
  */
@@ -19,6 +20,8 @@ export type WorkingLineModel = {
   since?: number;
   /** Running work a click opens in the Running tab. */
   openRunning: boolean;
+  /** needs-you for a docked dialog (not an inline ask card): the button focuses the dialog. */
+  dialog?: boolean;
 };
 
 const list = (v: readonly string[] | undefined): string => (v ?? []).join(' · ');
@@ -39,9 +42,13 @@ export function workingLineOf(input: {
   tray?: string;
   /** `setWorkingMessage` from the host / extensions. */
   message?: string;
+  /** What a dialog docked above the composer asks ("Approval waiting"), if one waits. */
+  dialog?: string;
 }): WorkingLineModel | undefined {
   const { run } = input;
   if (input.ask) return { kind: 'needs-you', text: input.ask, openRunning: false };
+  // The sidebar already reads "Needs you" here; a "Working…" line under the approval said otherwise.
+  if (input.dialog) return { kind: 'needs-you', text: input.dialog, openRunning: false, dialog: true };
   if (liveBusy(run)) {
     const since = run.startedAt;
     if (run.phase === 'compacting') return { kind: 'working', text: 'Compacting…', since, openRunning: !!input.tray };

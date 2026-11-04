@@ -234,4 +234,16 @@ describe('[working-line] the one line above the composer', () => {
     expect(screen.getByTestId('work-tray-button')).toBeTruthy();
     expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(false);
   });
+  it('[owner-fix-2] a docked approval while the run goes reads Needs you, not Working (like the sidebar)', async () => {
+    const w = world();
+    const s = await open(w);
+    startRun(w);
+    const approval: UiRequest = { id: 'a1', method: 'approval', title: 'bash', message: 'ls' } as unknown as UiRequest;
+    render(() => <BottomDock session={s} dialogs={[approval]} onAnswer={() => {}} />);
+    const line = await screen.findByTestId('working-line');
+    expect(line.getAttribute('data-kind')).toBe('needs-you');
+    expect(line.textContent).toContain('Approval waiting');
+    expect(screen.queryByTestId('working-line-time')).toBeNull();
+    expect(screen.getByTestId('dialog-pending')).toBeTruthy();
+  });
 });

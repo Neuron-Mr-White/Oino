@@ -76,6 +76,12 @@ export function BottomDock(props: {
     const all = (props.dialogs ?? []).filter(dialogShownInApp);
     return inline.length ? all.filter((d) => !inline.some((c) => c.dialog.id === d.id)) : all;
   };
+  // A docked dialog waits on the reader: the working line reads "Needs you", like the sidebar.
+  const dockedWaiting = () => {
+    const d = docked();
+    if (!d.length) return undefined;
+    return d[0]!.method === 'approval' ? (d.length > 1 ? `${d.length} approvals waiting` : 'Approval waiting') : 'Waiting for your answer';
+  };
   return (
     <div class="dock" data-testid="bottom-dock" ref={dockEl}>
       <Show when={props.widgets}>
@@ -96,7 +102,7 @@ export function BottomDock(props: {
         {props.queue ?? <QueuePanel session={props.session} phone={props.phone} />}
       </div>
       <div class="dock-region dock-region-working" data-region="working">
-        <WorkingLine session={props.session} askCalls={askCalls()} tray={props.trayLabel} />
+        <WorkingLine session={props.session} askCalls={askCalls()} tray={props.trayLabel} dialog={dockedWaiting()} />
       </div>
       <div class="dock-region dock-region-composer" data-region="composer">
         {/* §3.11 / §6.2: an `editorReplace` entry takes the composer's place

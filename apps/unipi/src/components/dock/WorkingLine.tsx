@@ -28,13 +28,22 @@ function askText(calls: readonly AskCall[]): string | undefined {
   return calls.length === 1 && qs.length === 1 ? qs[0]!.question : `${count} questions waiting`;
 }
 
-export function WorkingLine(props: { session: SessionHandle; askCalls: readonly AskCall[]; tray?: string }) {
+/** Brings a docked dialog (approval / select / …) into view and focuses its first control. */
+function revealDockedDialog(from: HTMLElement): void {
+  const panel = from.closest('[data-testid=bottom-dock]')?.querySelector<HTMLElement>('[data-testid=dialog-panel], [data-testid=approval-panel]');
+  if (!panel) return;
+  panel.scrollIntoView({ block: 'nearest' });
+  panel.querySelector<HTMLElement>('button, input, textarea, [tabindex]')?.focus();
+}
+
+export function WorkingLine(props: { session: SessionHandle; askCalls: readonly AskCall[]; tray?: string; dialog?: string }) {
   const model = createMemo<WorkingLineModel | undefined>(() =>
     workingLineOf({
       run: props.session.state.run,
       ask: askText(props.askCalls),
       tray: props.tray,
       message: workingMessageOf(props.session.key),
+      dialog: props.dialog,
     }),
   );
   // Keep the last model while the shell eases out, so the text does not blank mid-collapse.
@@ -79,13 +88,13 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
                   <button
                     type="button"
                     class="wl-ask"
-                    onClick={() => props.askCalls[0] && revealAskCard(props.askCalls[0])}
-                    title="Show the question in the chat"
-                    data-testid="ask-pending"
+                    onClick={(e) => (line().dialog ? revealDockedDialog(e.currentTarget) : props.askCalls[0] && revealAskCard(props.askCalls[0]))}
+                    title={line().dialog ? 'Go to the request above' : 'Show the question in the chat'}
+                    data-testid={line().dialog ? 'dialog-pending' : 'ask-pending'}
                   >
                     <MessageCircleQuestion size={15} aria-hidden="true" />
                     <span class="wl-text">{line().text}</span>
-                    <span class="wl-go">Needs you · Answer ↑</span>
+                    <span class="wl-go">{line().dialog ? 'Needs you ↑' : 'Needs you · Answer ↑'}</span>
                   </button>
                 </Show>
               </div>

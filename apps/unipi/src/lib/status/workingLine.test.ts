@@ -26,6 +26,12 @@ describe('workingLineOf', () => {
     expect(line).toMatchObject({ kind: 'needs-you', text: 'Which DB?' });
     expect(line?.since).toBeUndefined();
   });
+  it('[owner-fix-2] a docked dialog is needs-you (no clock); an ask_user question still wins', () => {
+    const run: RunInfo = { phase: 'running', running: true, startedAt: 5 };
+    expect(workingLineOf({ run, dialog: 'Approval waiting' })).toMatchObject({ kind: 'needs-you', text: 'Approval waiting', dialog: true });
+    expect(workingLineOf({ run, dialog: 'Approval waiting' })?.since).toBeUndefined();
+    expect(workingLineOf({ run, dialog: 'Approval waiting', ask: 'Which DB?' })).toMatchObject({ kind: 'needs-you', text: 'Which DB?' });
+  });
   it('background work without a wake is the quiet kind; the tray summary alone too', () => {
     expect(workingLineOf({ run: { ...idle, backgroundOn: ['background task t1'] } })).toMatchObject({ kind: 'background', openRunning: true });
     expect(workingLineOf({ run: idle, tray: 'Subagents 1 running' })).toMatchObject({ kind: 'background', text: 'Subagents 1 running' });
