@@ -155,7 +155,7 @@ describe('TurnNavigator', () => {
       expect(nav.querySelectorAll('[data-testid=tl-nav-bar]').length).toBe(40);
       expect(nav.querySelector('[data-testid=tl-nav-bar]')!.getAttribute('aria-label')).toContain('Question 0');
       expect(tl.scrollTop).toBe(tl.scrollHeight - tl.clientHeight);
-      fireEvent.click(nav.querySelector('[data-turn=u10]') as HTMLElement);
+      fireEvent.click(nav.querySelector('[data-nav-turn=u10]') as HTMLElement);
       await L.frames();
       // The row (not mounted before: far above the bottom window) is mounted and sits at the top of the viewport.
       const row = L.rows(tl).find((x) => x.id === 'u10');

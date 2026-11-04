@@ -186,7 +186,7 @@ describe('store: persistence + scope switch', () => {
 describe('kind registry', () => {
   it('declares the §3.8 kinds with their singleton / scope rules', () => {
     const k = Object.fromEntries(BUILTIN_KINDS.map((d) => [d.kind, d]));
-    expect(Object.keys(k).sort()).toEqual(['browser', 'btw', 'diff', 'ext', 'files', 'forward', 'git', 'preview', 'subagent', 'terminal', 'tree']);
+    expect(Object.keys(k).sort()).toEqual(['browser', 'btw', 'diff', 'ext', 'files', 'forward', 'git', 'preview', 'status', 'subagent', 'terminal', 'tree']);
     expect(k.files!.singleton).toBe(true);
     expect(k.git!.scope).toBe('project');
     expect(k.tree!.scope).toBe('session');

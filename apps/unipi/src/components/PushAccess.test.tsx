@@ -40,7 +40,7 @@ describe('Files from your PCs', () => {
     await waitFor(() => expect(screen.getByTestId('push-access-down').dataset.state).toBe('offline'));
     expect(screen.getByTestId('push-access-off').textContent).toContain('Off');
     fireEvent.click(screen.getByText('Turn on'));
-    expect((await screen.findByTestId('share-ask-push')).textContent).toContain('Sending files to phones is off');
+    expect((await screen.findByTestId('share-ask-push')).textContent).toContain('Sending files is off on laptop');
   });
 
   it('nothing when no PC is paired', () => {

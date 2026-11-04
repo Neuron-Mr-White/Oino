@@ -261,7 +261,8 @@ describe('Settings › Providers (G-15 /login, /logout)', () => {
     expect(r.getByTestId('provider-signin-anthropic')).toBeTruthy(); // oauth
     expect(r.queryByTestId('provider-signin-openai')).toBeNull(); // api key only
     expect(r.getByTestId('provider-signout-anthropic')).toBeTruthy(); // stored credential
-    expect(r.getByTestId('provider-openai').textContent).toContain('API key saved');
+    // the live key check reads 'Checking…' first, then the stored credential state
+    await waitFor(() => expect(r.getByTestId('provider-openai').textContent).toContain('API key saved'));
     expect(r.getByTestId('provider-deepseek').textContent).toContain('from DEEPSEEK_API_KEY');
     expect(r.getByTestId('provider-google').textContent).toContain('Not configured');
   });

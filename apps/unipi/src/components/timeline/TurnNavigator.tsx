@@ -210,7 +210,7 @@ export function TurnNavigator(props: {
                   type="button"
                   class="tl-nav-tick"
                   data-testid="tl-nav-bar"
-                  data-turn={item().turnId}
+                  data-nav-turn={item().turnId}
                   data-active={activeTick() === k ? '' : undefined}
                   data-hot={hover() >= 0 && tickOf(hover()) === k ? '' : undefined}
                   data-live={item().live ? '' : undefined}
@@ -249,7 +249,7 @@ export function TurnNavigator(props: {
                       type="button"
                       class="tl-nav-row"
                       data-testid="tl-nav-row"
-                      data-turn={item.turnId}
+                      data-nav-turn={item.turnId}
                       data-active={props.activeId?.() === item.turnId ? '' : undefined}
                       data-hot={hover() === first() + i() ? '' : undefined}
                       style={{ top: `${(first() + i()) * ROW}px`, height: `${ROW}px` }}
