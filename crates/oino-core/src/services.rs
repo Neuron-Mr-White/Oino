@@ -325,6 +325,15 @@ impl HostRouter {
             .collect()
     }
 
+    /// Every live session (root and child).
+    fn live_sessions(&self) -> Vec<AgentSession> {
+        lock(&self.sessions)
+            .values()
+            .filter_map(Weak::upgrade)
+            .map(AgentSession::from_inner)
+            .collect()
+    }
+
     /// Records a topic and offers it to every root session's frontend feed.
     pub fn publish_topic(&self, publisher: &str, topic: &str, data: JsonValue, sticky: bool) {
         if let Some(value) = self.topics.publish(publisher, topic, data, sticky) {
@@ -387,6 +396,12 @@ impl HostRouter {
                 loaded
                     .ok_or_else(need_loaded)?
                     .update(|s| s.tools.insert(spec.name.clone(), spec));
+                // A re-registration after init (a guest's registry calls carry no session):
+                // every live session of this set rebuilds its tool list, as the session path
+                // does, so a changed schema reaches the next request.
+                for session in self.live_sessions() {
+                    session.refresh_tool_registry(None, false);
+                }
             }
             HostOp::RegisterCommand(spec) => loaded
                 .ok_or_else(need_loaded)?

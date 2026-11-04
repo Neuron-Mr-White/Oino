@@ -302,3 +302,5 @@ html:not([data-shell=desktop]) .agent-row2 { grid-template-columns: minmax(0, 1f
 html[data-shell=phone] .agent-row .settings-ns-badge { display: none; }
 html[data-shell=phone] .settings-phone .settings-namespace-row.agent-row { min-height: 0; padding: 0 12px 0 0; }
 html[data-shell=phone] .agent-row-open { min-height: 56px; padding-block: 8px; }
+/* 44 px touch target around the 26 px switch. */
+html[data-shell=phone] .agent-row-switch > * { padding-block: 9px; }

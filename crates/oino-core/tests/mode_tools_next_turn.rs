@@ -18,7 +18,8 @@ use oino_ai::{JsonObject, Message};
 use oino_core::extensions::api::{
     CallKind, ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
 };
-use oino_core::extensions::host::HostOp;
+use oino_core::extensions::api::CallContext;
+use oino_core::extensions::host::{HostApi, HostOp};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions, StaticLoader};
 use oino_core::session::PromptOptions;
@@ -177,4 +178,64 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
     turn("thanks").await;
     let tools = declared(&provider.requests()[2]);
     assert!(!tools.iter().any(|t| t.contains("agent_graph")), "{tools:?}");
+}
+
+/// The tool definitions (name → description) a provider request declares.
+fn declared_descriptions(request: &Value) -> Vec<(String, String)> {
+    let messages: Vec<Message> = serde_json::from_value(
+        request.pointer("/context/messages").cloned().expect("request context"),
+    )
+    .unwrap();
+    oino_ai::transcript::current_tools(&messages)
+        .into_iter()
+        .map(|t| (t.name, t.description))
+        .collect()
+}
+
+/// agent-disable: a guest re-registering one of its tools after init (wasm guests' registry
+/// calls carry no session — `subagents` rewrites `run_subagent`'s profile list when a profile
+/// is disabled) reaches the live session's next request.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![
+        FauxResponse::Text("one".into()),
+        FauxResponse::Text("two".into()),
+    ]);
+    let runtime = runtime(dir.path(), Arc::clone(&provider)).await;
+    let session = runtime.session();
+    let cx = session.runner().call_context().with_kind(CallKind::Command);
+    session
+        .host_call(
+            "unipi.long-horizon",
+            &cx,
+            HostOp::UpdateActiveTools {
+                enable: vec!["view_agent_graph".into()],
+                disable: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+    session.prompt("one".into(), PromptOptions::default()).await.unwrap();
+    session.wait_for_idle().await;
+    let before = declared_descriptions(&provider.requests()[0]);
+    assert!(
+        before.contains(&("view_agent_graph".into(), "view_agent_graph tool".into())),
+        "{before:?}"
+    );
+    let mut changed = tool("view_agent_graph");
+    changed.description = "view the graph (profiles: a, b)".into();
+    runtime
+        .services()
+        .host
+        .call("unipi.long-horizon", &CallContext::default(), HostOp::RegisterTool(changed))
+        .await
+        .unwrap();
+    session.prompt("two".into(), PromptOptions::default()).await.unwrap();
+    session.wait_for_idle().await;
+    let after = declared_descriptions(&provider.requests()[1]);
+    assert!(
+        after.contains(&("view_agent_graph".into(), "view the graph (profiles: a, b)".into())),
+        "{after:?}"
+    );
 }
