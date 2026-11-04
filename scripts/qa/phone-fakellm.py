@@ -10,6 +10,7 @@ Prompt keywords pick a script:
   "error"  -> HTTP 500
   "quiz"   -> a text reply that asks two questions (no tool)
   "long"   -> very long markdown answer (scrolling)
+  "marathon" -> one text stream of ~330 s (FAKELLM_MARATHON_S), a chunk every 5 s (stream-timeout QA)
   "edit"   -> edit/write tool calls (diff rows)
   "grow"   -> one bash call whose output streams for ~12 s (chat-scroll: output inside a tool row)
   "subagents" -> run_subagent x4 in the background (2 slow, 1 quick, 1 failing) + bg_run x1
@@ -162,6 +163,13 @@ class H(BaseHTTPRequestHandler):
         elif "quiz" in low:
             # A plain reply that asks (the utility /answer hint's trigger; [ask-user] QA).
             text = "I can do that. Which storage should the cache use?\n\n- SQLite\n- Postgres\n\nAnd should it expire entries after a day?"
+        elif "marathon" in low:
+            # [owner-fix-2] stream-timeout QA: ONE provider stream longer than the old 300 s client
+            # read timeout (a chunk every 5 s, never idle long enough for httpIdleTimeoutMs).
+            secs = int(os.environ.get("FAKELLM_MARATHON_S", "330"))
+            for i in range(secs // 5):
+                sse(self, delta(content=f"tick {i * 5:>3} s. ")); time.sleep(5)
+            text = "Marathon stream finished."
         elif "long" in low:
             text = "\n\n".join(f"### Section {i}\n" + ("Lorem ipsum dolor sit amet, consectetur adipiscing elit. " * 6) + f"\n\n```sh\ncargo run --example s{i}\n```" for i in range(1, 25))
             slow = 0.005
