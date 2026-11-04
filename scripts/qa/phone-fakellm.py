@@ -102,7 +102,7 @@ class H(BaseHTTPRequestHandler):
         last_user = " ".join(reversed(tail))
         after_tool = bool(msgs) and msgs[-1].get("role") == "tool"
         LOG.write(json.dumps({"t": time.time(), "last_user": last_user[:200], "after_tool": after_tool, "tools": tools}) + "\n"); LOG.flush()
-        low = last_user.lower()
+        low = last_user.split("## \U0001f9e0 Memory System Active")[0].lower()  # the memory nudge quotes "tools"/"error"
         if "error" in low and not after_tool and "checkpoint" not in low:  # a graph checkpoint note quotes child errors
             body = b'{"error":{"message":"fake upstream overloaded (QA error case)","type":"server_error"}}'
             self.send_response(500); self.send_header("content-type", "application/json")
