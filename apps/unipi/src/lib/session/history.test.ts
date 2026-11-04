@@ -129,16 +129,18 @@ describe('store: load earlier', () => {
     return createRoot((dispose) => ({ s: createSession('h1', 's1', { client: world.client('h1') }), asked, dispose }));
   }
 
-  it('fetches the page before the cursor and prepends it', async () => {
+  it('fetches the page before the cursor and prepends it from its oldest KNOWN turn start (chat-load: whole turns only)', async () => {
     const { s, asked, dispose } = open(() => ({ entries: conversation(4, 8), total: 20, hasMore: true, cursor: 'u4' }));
     for (let i = 0; i < 5 && s.state.conn !== 'live'; i++) await tick();
     expect(s.state.conn).toBe('live');
     expect(s.state.history?.cursor).toBe('u8');
     await s.loadEarlier!();
-    expect(asked).toEqual([{ type: 'get_entries', before: 'u8', limit: 80 }]);
-    expect(s.state.entries[0]!.id).toBe('u4');
-    expect(s.state.entries).toHaveLength(12);
-    expect(s.state.history).toMatchObject({ total: 20, hasMore: true, cursor: 'u4' });
+    expect(asked).toEqual([{ type: 'get_entries', before: 'u8', limit: 200 }]);
+    // u4 opens the page, but what precedes it is unknown (a steer looks the same): the chunk
+    // starts at u5 (its previous message a4 is loaded) and u4/a4 come with the next chunk.
+    expect(s.state.entries[0]!.id).toBe('u5');
+    expect(s.state.entries).toHaveLength(10);
+    expect(s.state.history).toMatchObject({ total: 20, hasMore: true, cursor: 'u5' });
     expect(s.state.history?.loading).toBeFalsy();
     // Nothing older: a page with hasMore false ends the paging.
     dispose();

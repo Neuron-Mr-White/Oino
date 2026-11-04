@@ -17,6 +17,7 @@
 import type { SessionEventDto, SessionSnapshot } from '../host/client';
 import { hostEventBanner } from '@unipi/protocol';
 import { settleByMessage, settleByQueue } from './outbox';
+import { isTurnStart, turnStartAtOrBefore } from './chunks';
 import {
   LIVE_PREFIX,
   isProvisional,
@@ -611,20 +612,14 @@ export function replaceBranch(
 export function trimHistory(s: SessionState, keep: number): boolean {
   const h = s.history;
   if (!h || h.loading || s.entries.length <= keep) return false;
-  const isUser = (e: SessionEntry | undefined) => e?.type === 'message' && e.message?.role === 'user';
-  // render-loop: the cut moves BACK to the user message that starts the turn it falls in,
-  // so at least `keep` entries stay. It used to move forward, and a chat whose last user
-  // message is near the end (an open-ended turn after one giant subagent turn) kept just a
-  // few entries — a short page, which the timeline paged straight back in, past
-  // LOADED_MAX, trimmed again… a flicker loop that starved the app.
-  // Bounded: when that turn alone is longer than `keep`, the cut moves forward as before
-  // (the timeline's paging guards keep that from looping).
+  // [chat-load] the cut is a TURN START (lib/session/chunks — never a steer inside a turn):
+  // back to the start of the turn the cut falls in, so at least `keep` entries stay; forward
+  // to the next start only when that turn alone is longer than `keep`.
   const target = s.entries.length - keep;
-  let cut = target;
-  while (cut > 0 && !isUser(s.entries[cut])) cut--;
+  let cut = turnStartAtOrBefore(s.entries, target);
   if (cut <= 0 || target - cut > keep) {
     cut = target;
-    while (cut < s.entries.length && !isUser(s.entries[cut])) cut++;
+    while (cut < s.entries.length && !isTurnStart(s.entries, cut, false)) cut++;
   }
   // No user message to cut at (one giant turn): keep everything.
   if (cut <= 0 || cut >= s.entries.length) return false;

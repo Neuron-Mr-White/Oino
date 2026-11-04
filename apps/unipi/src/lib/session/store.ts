@@ -18,6 +18,7 @@ import { applyEvents, applySnapshot, initialState, prependEntries, reconcileEntr
 import { enqueue, loadOutbox, markAcked, markLost, markSending, removeItem, saveOutbox, sweep } from './outbox';
 import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
+import { assembleChunk, type HostPage } from './chunks';
 import { hubs, onHostBack } from './hub';
 import { routeNotify, reportTextOf } from '../reports';
 import { isUnknownOpError } from '../../components/status/lhProgress';
@@ -223,17 +224,19 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       .catch(() => {});
   };
 
+  // [chat-load] One chunk of WHOLE turns (lib/session/chunks): as many host pages as it
+  // takes to reach a real turn start, committed in one mutation. One chunk in flight at a time.
   const loadEarlier = async (): Promise<void> => {
     const h = state.history;
     if (!h?.hasMore || !h.cursor || h.loading || !stream.live) return;
     setState('history', { loading: true, error: undefined });
     try {
-      const reply = await stream.cmd<{ entries?: SessionEntry[]; total?: number; hasMore?: boolean; cursor?: string | null }>({
-        type: 'get_entries',
-        before: h.cursor,
-        limit: EARLIER_PAGE,
-      });
-      batch(() => mutate((s) => prependEntries(s, reply ?? {})));
+      const chunk = await assembleChunk(
+        h.cursor,
+        (before, limit) => stream.cmd<HostPage>({ type: 'get_entries', before, limit }),
+        (id) => state.byId[id] !== undefined,
+      );
+      batch(() => mutate((s) => prependEntries(s, { entries: chunk.entries, total: chunk.total, hasMore: chunk.hasMore, cursor: chunk.cursor ?? null })));
     } catch (error) {
       setState('history', { loading: false, error: toAppError(error).message || 'Could not load earlier messages' });
     }
