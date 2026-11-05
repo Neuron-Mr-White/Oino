@@ -68,7 +68,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ['lifetime', 'close', 'quit', 'tray', 'login', 'startup', 'autostart', 'window'],
     rows: [
       { key: 'closeAction', label: 'Close button', description: 'Ask, minimize to the tray, or quit' },
-      { key: 'autostart', label: 'Start at login', description: 'Starts hidden in the tray' },
+      { key: 'autostart', label: 'Start at login', description: 'Opens in the tray when you sign in and starts the agent host' },
     ],
   },
   {

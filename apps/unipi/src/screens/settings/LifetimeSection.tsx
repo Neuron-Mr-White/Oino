@@ -56,7 +56,7 @@ export function LifetimeSection() {
       <Show when={error()}>
         <p class="px-4 pb-3 text-xs text-shell" role="alert">{error()}</p>
       </Show>
-      <Row label="Start at login" description="Starts hidden in the tray; the app then adopts or spawns the host">
+      <Row label="Start at login" description="Opens in the tray when you sign in and starts the agent host">
         <SwitchField label="Start at login" checked={autostart.on()} onChange={(v) => void autostart.set(v)} testId="autostart" />
       </Row>
     </Section>
