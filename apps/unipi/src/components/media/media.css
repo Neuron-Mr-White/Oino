@@ -16,9 +16,9 @@
 
 .media-page { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; box-sizing: border-box; background: var(--color-bg); color: var(--color-text); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); }
 .media-page-head { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 56px; padding: 4px 8px 4px 6px; box-sizing: border-box; }
-.media-page-title { margin: 0; font-size: 16px; font-weight: 600; }
-.media-page-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px calc(28px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); font-size: 16px; line-height: 25px; }
-.reader-pre { margin: 0; color: var(--color-text); font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.media-page-title { margin: 0; font-size: calc(16px * var(--ui-font-scale)); font-weight: 600; }
+.media-page-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px calc(28px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); font-size: calc(16px * var(--ui-font-scale)); line-height: calc(25px * var(--ui-font-scale)); }
+.reader-pre { margin: 0; color: var(--color-text); font-family: var(--font-mono); font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .media-pdf-frame { width: 100%; height: calc(100vh - 140px); border: 0; background: #fff; border-radius: 8px; }
 .media-audio, .media-video { width: 100%; margin-top: 12px; }
@@ -29,9 +29,9 @@
 .chat-image-chip.is-loading { background: linear-gradient(90deg, var(--color-surface-3), var(--color-surface-2), var(--color-surface-3)); background-size: 200% 100%; animation: composer-image-pulse 1.2s ease-in-out infinite; }
 .chat-image-chip-img { width: 100%; height: 100%; object-fit: cover; }
 .chat-image-chip-icon { color: var(--color-text-dim); }
-.chat-image-chip-error { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--color-red, #e5484d); color: #fff; font-size: 11px; line-height: 16px; text-align: center; }
+.chat-image-chip-error { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--color-red, #e5484d); color: #fff; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); text-align: center; }
 .chat-attachment-chip { width: auto; min-width: 72px; max-width: 160px; height: 36px; padding: 0 10px; gap: 6px; border-radius: 9999px; justify-content: flex-start; }
-.chat-attachment-chip-name { font-size: 12px; color: var(--color-text-muted); }
+.chat-attachment-chip-name { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .ucard-attachments { padding: 0 12px 10px; }
 
 .composer-image-strip { display: flex; gap: 8px; margin: 0 12px 6px; overflow-x: auto; }
@@ -45,17 +45,17 @@
 
 /* UNI-169: no-preview card (docx/zip/apk…) and the transfer toast. */
 .media-nopreview { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 24px; text-align: center; }
-.media-nopreview-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--color-text); }
-.media-nopreview-sub { margin: 0 0 10px; font-size: 14px; color: var(--color-text-muted); }
+.media-nopreview-title { margin: 0; font-size: calc(16px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.media-nopreview-sub { margin: 0 0 10px; font-size: calc(14px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .media-nopreview-actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; width: 100%; max-width: 280px; }
 .media-nopreview-actions .media-btn { width: 100%; white-space: nowrap; }
-.media-toast { position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; padding: 8px 14px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text); font-size: 13px; box-shadow: 0 6px 24px rgb(0 0 0 / 40%); }
-.media-btn { height: 44px; min-width: 120px; padding: 0 18px; border-radius: 12px; background: var(--color-surface-3); font-size: 15px; font-weight: 500; color: var(--color-text); }
+.media-toast { position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; padding: 8px 14px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text); font-size: calc(13px * var(--ui-font-scale)); box-shadow: 0 6px 24px rgb(0 0 0 / 40%); }
+.media-btn { height: 44px; min-width: 120px; padding: 0 18px; border-radius: 12px; background: var(--color-surface-3); font-size: calc(15px * var(--ui-font-scale)); font-weight: 500; color: var(--color-text); }
 .media-btn.primary { background: var(--color-wm-red); color: var(--color-bg); }
 
 /* UNI-168: folder media pager — edge swipe zones, chevrons, position pill. */
 .media-pager { position: fixed; inset: 0; z-index: 50; }
-.media-pager-pos { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%); z-index: 54; padding: 3px 10px; border-radius: 999px; background: rgb(20 18 16 / 80%); color: var(--color-text-muted); font-size: 12px; pointer-events: none; }
+.media-pager-pos { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%); z-index: 54; padding: 3px 10px; border-radius: 999px; background: rgb(20 18 16 / 80%); color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); pointer-events: none; }
 .media-pager-zone { position: fixed; top: 76px; bottom: 0; width: 34px; z-index: 52; display: flex; align-items: center; }
 .media-pager-left { left: 0; justify-content: flex-start; }
 .media-pager-right { right: 0; justify-content: flex-end; }
@@ -65,7 +65,7 @@
 
 /* UNI-197: pdf.js pages (Android WebView can't show a PDF in an iframe). */
 .pdf-view { display: flex; flex-direction: column; gap: 10px; padding: 0 0 24px; }
-.pdf-count { font-size: 12px; color: var(--color-text-dim); text-align: center; }
+.pdf-count { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); text-align: center; }
 .pdf-page { width: 100%; background: #fff; border-radius: 4px; overflow: hidden; }
 .pdf-page canvas { display: block; width: 100%; height: 100%; }
 
@@ -76,8 +76,8 @@
 /* UNI-227: image editor */
 .img-edit { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; box-sizing: border-box; padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); background: #0b0a09; color: var(--color-text); }
 .img-edit-head { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
-.img-edit-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; text-align: center; }
-.img-edit-done { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 9999px; border: 0; background: var(--color-claw); color: #1a0e04; font-weight: 600; font-size: 14px; }
+.img-edit-title { flex: 1; min-width: 0; font-size: calc(15px * var(--ui-font-scale)); font-weight: 600; text-align: center; }
+.img-edit-done { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 9999px; border: 0; background: var(--color-claw); color: #1a0e04; font-weight: 600; font-size: calc(14px * var(--ui-font-scale)); }
 .img-edit-done:disabled { opacity: .5; }
 .img-edit-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .img-edit-canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
@@ -93,24 +93,24 @@
 .img-edit-width span { border-radius: 9999px; }
 .img-edit-width[aria-checked="true"] { background: rgb(255 255 255 / 18%); }
 .img-edit-tools { display: flex; justify-content: center; gap: 8px; }
-.img-edit-tool { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 76px; padding: 8px 10px; border-radius: 14px; border: 0; background: none; color: var(--color-text-muted); font-size: 12px; }
+.img-edit-tool { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 76px; padding: 8px 10px; border-radius: 14px; border: 0; background: none; color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); }
 .img-edit-tool[aria-checked="true"] { background: rgb(240 120 24 / 15%); color: var(--color-claw); }
-.img-edit-pill { height: 38px; padding: 0 16px; border-radius: 9999px; border: 0; background: rgb(255 255 255 / 10%); color: var(--color-text); font-size: 14px; }
+.img-edit-pill { height: 38px; padding: 0 16px; border-radius: 9999px; border: 0; background: rgb(255 255 255 / 10%); color: var(--color-text); font-size: calc(14px * var(--ui-font-scale)); }
 .img-edit-pill.primary { background: var(--color-claw); color: #1a0e04; font-weight: 600; }
-.img-edit-hint { flex: 1; text-align: center; font-size: 12.5px; color: var(--color-text-dim); }
+.img-edit-hint { flex: 1; text-align: center; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); }
 html[data-shell=desktop] .img-edit-foot { flex-direction: row; justify-content: center; align-items: center; gap: 24px; }
 html[data-shell=desktop] .img-edit-tools { order: -1; }
 
 /* ── Preview tab (WP-A20, Z-103) ─────────────────────────────────────── */
 .ptab { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--color-surface-1); }
 .ptab-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--color-line); }
-.ptab-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 12.5px; color: var(--color-text); }
+.ptab-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text); }
 .ptab-body { position: relative; flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .ptab-md { padding: 12px 20px 28px; max-width: 820px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 /* Markdown files read like the chat (same .chat-prose typography). */
 .media-page-scroll > .chat-prose { max-width: 820px; margin: 0 auto; }
 .ptab-body > .empty-state { height: 100%; justify-content: center; }
-.ptab-note { margin: 10px 12px; font-size: 12.5px; color: var(--color-text-dim); }
+.ptab-note { margin: 10px 12px; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .ptab-img { flex: 1; min-height: 0; display: grid; place-items: center; padding: 16px;
   /* Images sit on a checkerboard so transparency reads (Z-103). */
   background-image:

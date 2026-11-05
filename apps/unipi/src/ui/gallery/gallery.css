@@ -3,11 +3,11 @@ html, body { overflow: auto !important; height: auto; }
 .g-page { box-sizing: border-box; max-width: 1240px; margin: 0 auto; padding: 20px 20px 64px; }
 html:not([data-shell=desktop]) .g-page { padding: 12px 12px 48px; }
 .g-top { position: sticky; top: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 8px 0 14px; background: linear-gradient(var(--color-bg) 80%, transparent); }
-.g-title { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -.01em; }
-.g-meta { margin: 2px 0 0; font-size: 13px; color: var(--color-text-muted); }
+.g-title { margin: 0; font-size: calc(22px * var(--ui-font-scale)); line-height: calc(28px * var(--ui-font-scale)); font-weight: 600; letter-spacing: -.01em; }
+.g-meta { margin: 2px 0 0; font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .g-last { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text-muted); font: 500 12px var(--font-mono); }
 .g-section { margin-top: 18px; }
-.g-kind { margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-dim); }
+.g-kind { margin: 0 0 10px; font-size: calc(13px * var(--ui-font-scale)); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-dim); }
 .g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; align-items: start; }
 .g-grid-wide { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
 html:not([data-shell=desktop]) .g-grid, html:not([data-shell=desktop]) .g-grid-wide { grid-template-columns: minmax(0, 1fr); }
@@ -17,9 +17,9 @@ html:not([data-shell=desktop]) .g-grid, html:not([data-shell=desktop]) .g-grid-w
 .g-tag { font: 500 11px var(--font-mono); color: var(--color-claw); }
 .g-body { padding: 10px 14px 14px; min-width: 0; }
 .g-card[data-definite] .g-body { box-sizing: content-box; }
-.g-perf { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.g-perf { width: 100%; border-collapse: collapse; font-size: calc(13.5px * var(--ui-font-scale)); }
 .g-perf th, .g-perf td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--color-line); }
-.g-perf th { color: var(--color-text-muted); font-weight: 600; font-size: 12px; }
+.g-perf th { color: var(--color-text-muted); font-weight: 600; font-size: calc(12px * var(--ui-font-scale)); }
 .g-perf td.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .g-ok { color: var(--color-wm-green); }
 .g-bad { color: var(--color-wm-red); }

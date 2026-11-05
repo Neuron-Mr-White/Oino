@@ -142,7 +142,8 @@ describe('ui.css tokens (DESIGN.md §1.6)', () => {
 
   it('one section label: 12px / 500 / .1em / uppercase / text-dim (F3)', () => {
     const rule = /\.section-label, \.board-section-label[^{]*\{([^}]*)\}/.exec(css)?.[1] ?? '';
-    for (const part of ['font-size: 12px', 'font-weight: 500', 'letter-spacing: .1em', 'text-transform: uppercase', 'var(--color-text-dim)']) expect(rule).toContain(part);
+    // [owner-fix-8] the text sizes carry the type scale (calc(<px> * var(--ui-font-scale))).
+    for (const part of ['font-size: calc(12px * var(--ui-font-scale))', 'font-weight: 500', 'letter-spacing: .1em', 'text-transform: uppercase', 'var(--color-text-dim)']) expect(rule).toContain(part);
   });
 
   it('primary buttons are shell red, never the error red (F6)', () => {

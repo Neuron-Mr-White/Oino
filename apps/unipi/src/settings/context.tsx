@@ -104,10 +104,22 @@ export function SettingsProvider(props: SettingsProviderProps): JSX.Element {
   const [error, setError] = createSignal<AppError | undefined>(undefined);
   const [resetKeys, setResetKeys] = createSignal<string[]>([]);
   const [newerVersionNotice, setNewerVersionNotice] = createSignal(false);
+  /**
+   * [owner-fix-8] A change the user made while the settings were still
+   * loading. The load lands afterwards and would overwrite it (the UI font
+   * size stepper lost its change that way — the size snapped back to the
+   * loaded value). The load merges around it.
+   */
+  const pending = new Map<string, unknown>();
 
   onMount(async () => {
     try {
       const result = await loadSettingsFromAdapter(adapter);
+      // Keep what the user changed in the meantime (per key).
+      for (const [path, value] of pending) {
+        const [group, key] = path.split('.');
+        if (group && key) (result.settings[group as keyof SettingsV1] as Record<string, unknown>)[key] = value;
+      }
       setStore(result.settings);
       setResetKeys(result.resetKeys);
       setNewerVersionNotice(result.newerVersion);
@@ -147,6 +159,9 @@ export function SettingsProvider(props: SettingsProviderProps): JSX.Element {
       }),
     );
     setError(undefined);
+    // [owner-fix-8] a change made before the settings finished loading must
+    // survive the load.
+    pending.set(`${group}.${key}`, result.value);
     persist({ ...current, [group]: { ...(current[group] as object), [key]: result.value } });
     return undefined;
   };

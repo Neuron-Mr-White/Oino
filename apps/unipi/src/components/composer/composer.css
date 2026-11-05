@@ -28,8 +28,8 @@
   color: var(--color-text);
   caret-color: var(--color-claw);
   font: inherit;
-  font-size: 15px;
-  line-height: 22px;
+  font-size: calc(15px * var(--ui-font-scale));
+  line-height: calc(22px * var(--ui-font-scale));
   text-align: left;
   white-space: pre-wrap;
   word-break: break-word;
@@ -126,7 +126,7 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
   border-radius: 12px;
   text-align: left;
   color: var(--color-text);
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--ui-font-scale));
 }
 
 .cmenu-row[data-sel],
@@ -156,13 +156,13 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-font-scale));
   color: var(--color-claw);
 }
 
 .cmenu-row .cmenu-name:not(:first-child) {
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--ui-font-scale));
   color: var(--color-text);
 }
 
@@ -173,12 +173,12 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--color-text-dim);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-font-scale));
 }
 
 .cmenu-path {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--ui-font-scale));
 }
 
 .cmenu-src {
@@ -187,7 +187,7 @@ html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placehol
   border-radius: 9999px;
   background: var(--color-surface-3);
   color: var(--color-text-dim);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -384,7 +384,7 @@ html:not([data-shell='desktop']) .cmenu {
   border-radius: 9999px;
   background: var(--color-surface-3);
   color: var(--color-text-muted);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-font-scale));
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -438,12 +438,12 @@ html:not([data-shell='desktop']) .cmenu {
 }
 
 /* P3: keep the active permission mode (Ask / Auto / Full — 3–4 chars) readable on phone. */
-html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-label { display: inline; font-size: 12px; }
+html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-label { display: inline; font-size: calc(12px * var(--ui-font-scale)); }
 html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-chip { width: auto; padding: 0 9px; gap: 5px; }
 
 /* The permission menu rows (`.tb-menu-*` inside an AnchoredMenu). */
 .tb-menu-dot { display: block; width: 16px; height: 16px; }
-.tb-menu-hint { font-size: 11px; color: var(--color-text-dim); white-space: nowrap; }
+.tb-menu-hint { font-size: calc(11px * var(--ui-font-scale)); color: var(--color-text-dim); white-space: nowrap; }
 
 /* The permission menu (G-6): full labels over their descriptions. */
 .perm-menu-row {
@@ -466,9 +466,9 @@ html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permis
 .menu-keys { display: contents; }
 .perm-menu-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
 .perm-menu-check { grid-row: 1 / span 2; display: grid; place-items: center; color: var(--color-claw); }
-.perm-menu-label { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; }
-.perm-menu-scope { margin: 4px 10px 6px; padding-top: 6px; border-top: 1px solid var(--color-line); font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
-.perm-menu-desc { grid-column: 2; font-size: 12.5px; line-height: 17px; color: var(--color-text-muted); white-space: nowrap; }
+.perm-menu-label { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 600; white-space: nowrap; }
+.perm-menu-scope { margin: 4px 10px 6px; padding-top: 6px; border-top: 1px solid var(--color-line); font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.perm-menu-desc { grid-column: 2; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: nowrap; }
 .perm-menu-row[data-mode='auto'] .perm-menu-label { color: var(--color-claw); }
 .perm-menu-row[data-mode='full'] .perm-menu-label { color: #f6a89d; }
 
@@ -514,8 +514,8 @@ html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permis
   color: var(--color-text);
 }
 .att-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; padding-right: 2px; }
-.att-name { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 15px; }
-.att-meta { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; line-height: 14px; color: var(--color-text-dim); }
+.att-name { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(15px * var(--ui-font-scale)); }
+.att-meta { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(14px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .att-chip[data-status="failed"] .att-meta { color: #f6a89d; }
 .att-bar { display: block; height: 2px; border-radius: 2px; background: var(--color-line); overflow: hidden; }
 .att-bar-fill { display: block; height: 100%; background: var(--color-claw); transition: width 160ms linear; }
@@ -531,7 +531,7 @@ html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permis
   border-radius: 50%;
   background: transparent;
   color: var(--color-text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale));
   line-height: 1;
 }
 .att-act:hover { background: var(--color-surface-2); color: var(--color-text); }
@@ -548,7 +548,7 @@ html[data-shell=phone] .att-remove { width: 26px; height: 26px; min-height: 26px
 html[data-shell=phone] .tl-composer.tl-composer-dock { border-radius: 24px; padding: 8px 8px 4px 12px; gap: 0; }
 html[data-shell=phone] .tl-composer .ph-field {
   display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 8px 4px 6px; resize: none; border: 0; outline: none;
-  background: transparent; color: var(--color-text); font: inherit; font-size: 16px; line-height: 22px;
+  background: transparent; color: var(--color-text); font: inherit; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale));
   min-height: 36px; max-height: min(138px, calc(var(--vvh, 100dvh) * 0.4)); overflow-y: auto; overscroll-behavior: contain;
 }
 html[data-shell=phone][data-short] .tl-composer .ph-field { max-height: calc(var(--vvh, 100dvh) * 0.4 - 56px); }
@@ -556,7 +556,7 @@ html[data-shell=phone] .tl-composer .ph-field::placeholder { color: var(--color-
 html[data-shell=phone] .tl-composer .ph-field:disabled { opacity: .7; }
 html[data-shell=phone] .tl-composer .comp-bar { height: 48px; gap: 4px; margin-left: -8px; }
 html[data-shell=phone] .tl-composer .comp-bar .composer-plus-btn { width: 48px; height: 48px; min-height: 48px; border-radius: 9999px; }
-html[data-shell=phone] .tl-composer .comp-bar .tb-chip { position: relative; height: 36px; min-height: 36px; padding: 0 10px; font-size: 14px; gap: 6px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip { position: relative; height: 36px; min-height: 36px; padding: 0 10px; font-size: calc(14px * var(--ui-font-scale)); gap: 6px; }
 html[data-shell=phone] .tl-composer .comp-bar .tb-chip::after { content: ''; position: absolute; inset: -6px -2px; }
 html[data-shell=phone] .tl-composer .comp-bar .tb-chip .tb-chev { display: none; }
 html[data-shell=phone] .tl-composer .comp-bar .tb-chip-model { min-width: 0; }
@@ -586,16 +586,16 @@ html[data-shell=phone] .cmenu {
   z-index: var(--z-sticky, 10);
 }
 html[data-shell=phone][data-short] .cmenu { max-height: 152px; }
-html[data-shell=phone] .cmenu-row { min-height: 48px; padding: 4px 12px; font-size: 16px; line-height: 22px; gap: 10px; }
-html[data-shell=phone] .cmenu-name { font-size: 16px; }
-html[data-shell=phone] .cmenu-desc { font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-shell=phone] .cmenu-row { min-height: 48px; padding: 4px 12px; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); gap: 10px; }
+html[data-shell=phone] .cmenu-name { font-size: calc(16px * var(--ui-font-scale)); }
+html[data-shell=phone] .cmenu-desc { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 html[data-shell=phone] .cmenu-src { display: none; }
-html[data-shell=phone] .cmenu-src[data-src='command'] { display: inline; background: none; padding: 0; font-size: 12px; color: var(--color-text-dim); text-transform: none; letter-spacing: 0; }
+html[data-shell=phone] .cmenu-src[data-src='command'] { display: inline; background: none; padding: 0; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); text-transform: none; letter-spacing: 0; }
 html[data-shell=phone] .tl-composer-wrap:has(.cmenu) .tl-composer.tl-composer-dock { border-top-left-radius: 0; border-top-right-radius: 0; }
 
 /* Model sheet footer: Thinking (§3.5). */
 .ph-think-foot { display: flex; flex-direction: column; gap: 8px; }
-.ph-think-title { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-text-muted); }
+.ph-think-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text-muted); }
 /* Send / Stop / Queue: one 44 px circle with a 48 px hit; the options chevron is a 44 px target. */
 html[data-shell=phone] .tl-composer .comp-bar .tl-composer-send,
 html[data-shell=phone] .tl-composer .comp-bar .tl-composer-stop { width: 44px; height: 44px; min-height: 44px; }
@@ -610,7 +610,7 @@ html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 28px; h
 .ph-field-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ph-field-mirror-in {
   box-sizing: border-box; width: 100%; padding: 8px 4px 6px; color: var(--color-text);
-  font: inherit; font-size: 16px; line-height: 22px; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;
+  font: inherit; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;
 }
 html[data-shell=phone] .tl-composer .ph-field-box[data-chips] .ph-field { position: relative; color: transparent; caret-color: var(--color-claw); }
 .phf-chip { position: relative; border-radius: 6px; background: var(--color-surface-3); box-shadow: 0 0 0 1.5px var(--color-surface-3); }
@@ -621,7 +621,7 @@ html[data-shell=phone] .tl-composer .ph-field-box[data-chips] .ph-field { positi
 .phf-chip[data-covered] { color: transparent; }
 .phf-chip-label {
   position: absolute; inset: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px; overflow: hidden;
-  white-space: nowrap; color: var(--color-text); font-size: 14px;
+  white-space: nowrap; color: var(--color-text); font-size: calc(14px * var(--ui-font-scale));
 }
 .phf-chip-thumb { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
 .phf-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

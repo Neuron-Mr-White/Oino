@@ -9,12 +9,12 @@
 .settings-number-step:focus-visible { outline: 2px solid var(--color-claw); outline-offset: -2px; }
 .settings-number-step:disabled { opacity: 0.35; }
 .settings-number-box { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 6px; border-inline: 1px solid var(--color-line); }
-.settings-number-input { width: 52px; height: 100%; min-height: 0; padding: 0; border: none; border-radius: 0; background: transparent; text-align: center; font-size: 13px; color: var(--color-text); font-variant-numeric: tabular-nums; box-shadow: none; }
+.settings-number-input { width: 52px; height: 100%; min-height: 0; padding: 0; border: none; border-radius: 0; background: transparent; text-align: center; font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text); font-variant-numeric: tabular-nums; box-shadow: none; }
 .settings-number-input:focus { outline: none; box-shadow: none; }
 .settings-number-input::placeholder { color: var(--color-text-dim); }
-.settings-unit { font-size: 11.5px; color: var(--color-text-dim); white-space: nowrap; }
+.settings-unit { font-size: calc(11.5px * var(--ui-font-scale)); color: var(--color-text-dim); white-space: nowrap; }
 html:not([data-shell=desktop]) .settings-number { height: 40px; }
 html:not([data-shell=desktop]) .settings-number-step { width: 40px; }
 html[data-shell=phone] .settings-number { height: 48px; }
 html[data-shell=phone] .settings-number-step { width: 48px; }
-html[data-shell=phone] .settings-number-input { font-size: 16px; width: 64px; }
+html[data-shell=phone] .settings-number-input { font-size: calc(16px * var(--ui-font-scale)); width: 64px; }

@@ -1,6 +1,6 @@
 /* The web notice's "Get the UniPi app" link (UNI-117 kanboard migration). */
 .platform-notice[data-variant=page] .platform-notice-action { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.platform-notice-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--color-shell); color: #fff; font-weight: 600; font-size: 15px; text-decoration: none; }
+.platform-notice-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--color-shell); color: #fff; font-weight: 600; font-size: calc(15px * var(--ui-font-scale)); text-decoration: none; }
 .platform-notice-link:focus-visible, .platform-notice-alt:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: 2px; }
-.platform-notice-alt { min-height: 36px; display: inline-flex; align-items: center; color: var(--color-text-muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+.platform-notice-alt { min-height: 36px; display: inline-flex; align-items: center; color: var(--color-text-muted); font-size: calc(14px * var(--ui-font-scale)); text-decoration: underline; text-underline-offset: 3px; }
 @media (hover: hover) { .platform-notice-link:hover { filter: brightness(1.08); } .platform-notice-alt:hover { color: var(--color-text); } }

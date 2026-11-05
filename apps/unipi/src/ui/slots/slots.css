@@ -7,8 +7,8 @@
 .ui-widgets { display: flex; flex-direction: column; max-width: 760px; margin: 0 auto; }
 .ui-widget { padding: 6px 12px 8px; }
 .ui-widget + .ui-widget { border-top: 1px solid var(--color-line); }
-.ui-widget-title { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
-.ui-widgets-more { align-self: center; margin: 2px 0 4px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 12.5px; font-weight: 500; }
+.ui-widget-title { margin: 0 0 4px; font-size: calc(12px * var(--ui-font-scale)); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
+.ui-widgets-more { align-self: center; margin: 2px 0 4px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(12.5px * var(--ui-font-scale)); font-weight: 500; }
 /* G-08: real button opening the Running panel, only while work is running. */
 .ui-tray-btn {
   display: inline-flex;
@@ -20,8 +20,8 @@
   background: var(--color-surface-2);
   box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%);
   color: var(--color-text-muted);
-  font-size: 12.5px;
-  line-height: 18px;
+  font-size: calc(12.5px * var(--ui-font-scale));
+  line-height: calc(18px * var(--ui-font-scale));
   cursor: pointer;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
@@ -31,12 +31,12 @@ html[data-shell='phone'] .ui-tray-btn { min-height: 40px; padding: 6px 14px; }
 .ui-tray-btn:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 2px; }
 .ui-tray-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-wm-green); flex: none; }
 .ui-tray-btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-tray-btn-open { display: inline-flex; align-items: center; gap: 2px; color: var(--color-text-dim); font-size: 12px; flex: none; }
+.ui-tray-btn-open { display: inline-flex; align-items: center; gap: 2px; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); flex: none; }
 
 /* ── composer tray (editorReplace): takes the composer's place ───────── */
 .ui-tray { max-width: 760px; margin: 0 auto; border-radius: 20px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%); overflow: hidden; }
 .ui-tray-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--color-line); }
-.ui-tray-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
+.ui-tray-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--ui-font-scale)); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--color-text-dim); }
 .ui-tray-close { flex: none; width: 30px; height: 30px; min-height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--color-text-dim); }
 .ui-tray-body { max-height: 50vh; overflow: auto; padding: 10px 14px 12px; }
 
@@ -53,12 +53,12 @@ html[data-shell='phone'] .ui-tray-btn { min-height: 40px; padding: 6px 14px; }
 .ui-modal[data-full] { width: 100%; max-height: 100%; height: 100%; border-radius: 0; }
 .ui-modal-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--color-line); }
 .ui-modal-icon { color: var(--color-claw); }
-.ui-modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: var(--color-text); }
-.ui-modal-badge { padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 12px; }
+.ui-modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.ui-modal-badge { padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); }
 .ui-modal-x { flex: none; width: 34px; height: 34px; min-height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--color-text-dim); }
 .ui-modal-body { min-height: 0; overflow: auto; padding: 14px 16px; }
 .ui-modal-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--color-line); }
-.ui-modal-key { font-size: 11.5px; }
+.ui-modal-key { font-size: calc(11.5px * var(--ui-font-scale)); }
 @keyframes ui-fade { from { opacity: 0; } }
 @keyframes ui-modal-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
 
@@ -83,7 +83,7 @@ html:not([data-shell=desktop]) .ui-modal[data-full] { border-radius: 0; }
 /* ── phone pane layer (§13.6 row 6) ──────────────────────────────────── */
 .ui-phone-pane { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--color-bg); padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); animation: ui-sheet-in 180ms cubic-bezier(.2, .8, .2, 1) both; }
 .ui-phone-pane-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--color-line); }
-.ui-phone-pane-title { font-size: 16px; font-weight: 600; color: var(--color-text); }
+.ui-phone-pane-title { font-size: calc(16px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
 .ui-phone-pane-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
 
 /* phone: touch targets ≥ 44 px for the hosts' own chrome (§13.6 rule 2) */
@@ -100,10 +100,10 @@ html:not([data-shell=desktop]) .conv > .status-strip { padding-right: 76px; }
 .status-seg > .ui-entry { max-height: 24px; overflow: hidden; }
 
 /* pane body fallback (entry gone while the tab lingers) */
-.ui-pane-missing { display: grid; place-items: center; height: 100%; color: var(--color-text-dim); font-size: 14px; }
+.ui-pane-missing { display: grid; place-items: center; height: 100%; color: var(--color-text-dim); font-size: calc(14px * var(--ui-font-scale)); }
 
 /* dialogs: editExternally monospace area + custom body */
-.dlg-edit-area { font-family: var(--font-mono, ui-monospace), monospace; font-size: 13px; line-height: 19px; max-height: 50vh; }
+.dlg-edit-area { font-family: var(--font-mono, ui-monospace), monospace; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); max-height: 50vh; }
 .dlg-custom-body { max-height: 50vh; overflow: auto; padding: 2px 2px 8px; }
 
 @media (prefers-reduced-motion: reduce) {

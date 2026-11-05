@@ -27,25 +27,25 @@ html[data-shell=phone] .settings-phone .section-label {
 }
 html[data-shell=phone] .settings-phone section { margin-bottom: 0; }
 html[data-shell=phone] .settings-phone .settings-group { border-radius: var(--ph-radius-card, 16px); }
-html[data-shell=phone] .settings-phone .settings-page-blurb { font-size: 14px; line-height: 20px; color: var(--color-text-muted); margin: 0 4px var(--ph-3, 12px); }
+html[data-shell=phone] .settings-phone .settings-page-blurb { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); margin: 0 4px var(--ph-3, 12px); }
 
 /* Rows: label 16/22, description 14/20 (wraps), the control trailing. */
 html[data-shell=phone] .settings-phone .settings-row { min-height: 56px; padding: 12px 16px; }
-html[data-shell=phone] .settings-phone .settings-row p:first-child { font-size: 16px; line-height: 22px; }
-html[data-shell=phone] .settings-phone .settings-row p.text-xs { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .settings-phone .settings-row p:first-child { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+html[data-shell=phone] .settings-phone .settings-row p.text-xs { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); }
 html[data-shell=phone] .settings-phone .settings-namespace-row { min-height: 56px; padding: 12px 16px; }
-html[data-shell=phone] .settings-phone .settings-namespace-row .text-\[15px\] { font-size: 16px; line-height: 22px; }
-html[data-shell=phone] .settings-phone .settings-namespace-row .text-xs { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .settings-phone .settings-namespace-row .text-\[15px\] { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+html[data-shell=phone] .settings-phone .settings-namespace-row .text-xs { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
 
 /* 48 px targets (PH-22): steppers, segmented options, inputs ≥ 16 px (no zoom on focus). */
-html[data-shell=phone] .settings-phone [role=radiogroup] > [role=radio] { min-height: 44px; padding-inline: 14px; font-size: 14px; }
+html[data-shell=phone] .settings-phone [role=radiogroup] > [role=radio] { min-height: 44px; padding-inline: 14px; font-size: calc(14px * var(--ui-font-scale)); }
 html[data-shell=phone] .settings-phone input:not([type=checkbox]):not([type=radio]),
 html[data-shell=phone] .settings-phone select,
-html[data-shell=phone] .settings-phone textarea { font-size: 16px; min-height: 48px; }
+html[data-shell=phone] .settings-phone textarea { font-size: calc(16px * var(--ui-font-scale)); min-height: 48px; }
 
 /* Toolbar editor (Input & keyboard): 48 px reorder / remove buttons, 48 px add chips. */
 html[data-shell=phone] .settings-phone .toolbar-key-btn { width: 48px; height: 48px; display: inline-grid; place-items: center; border-radius: 12px; }
-html[data-shell=phone] .settings-phone .toolbar-add-chip { min-height: 44px; padding-inline: 14px; font-size: 14px; }
+html[data-shell=phone] .settings-phone .toolbar-add-chip { min-height: 44px; padding-inline: 14px; font-size: calc(14px * var(--ui-font-scale)); }
 html[data-shell=phone] .settings-phone .toolbar-key { min-height: 56px; }
 
 /* Flash a row landed on from search. */
@@ -53,20 +53,20 @@ html[data-shell=phone] .settings-phone .settings-flash-target { scroll-margin-to
 
 /* Form sheets (New agent, PH-39): no 41 px text links — Cancel / Save / Delete are 48 px buttons. */
 html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot { gap: var(--ph-2, 8px); flex-wrap: wrap; }
-html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot button { min-height: 48px; padding-inline: 16px; font-size: 16px; border-radius: 999px; }
+html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot button { min-height: 48px; padding-inline: 16px; font-size: calc(16px * var(--ui-font-scale)); border-radius: 999px; }
 html[data-shell=phone] .agent-editor-sheet .settings-cmd-foot .settings-link { background: var(--color-surface-2); color: var(--color-text); text-decoration: none; }
 html[data-shell=phone] .agent-editor-sheet input,
 html[data-shell=phone] .agent-editor-sheet textarea,
-html[data-shell=phone] .agent-editor-sheet select { font-size: 16px; min-height: 48px; }
+html[data-shell=phone] .agent-editor-sheet select { font-size: calc(16px * var(--ui-font-scale)); min-height: 48px; }
 
 /* Provider / capability rows: 14 px secondary text, not 12.5 (≤ 5 sizes per screen). */
 html[data-shell=phone] .settings-phone .text-\[12\.5px\],
-html[data-shell=phone] .settings-phone .text-\[13px\] { font-size: 14px; line-height: 20px; }
-html[data-shell=phone] .settings-phone .text-\[15px\] { font-size: 16px; line-height: 22px; }
+html[data-shell=phone] .settings-phone .text-\[13px\] { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
+html[data-shell=phone] .settings-phone .text-\[15px\] { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
 
 /* Sub-pages: the page header already names the page — no second title or icon in the hero. */
 html[data-shell=phone] .settings-phone-section .settings-subpage-title,
 html[data-shell=phone] .settings-phone-section .settings-subpage-hero > .settings-namespace-icon { display: none; }
-html[data-shell=phone] .settings-phone-section .settings-subpage-desc { font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+html[data-shell=phone] .settings-phone-section .settings-subpage-desc { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); }
 html[data-shell=phone] .settings-phone-section .settings-subpage-hero .settings-btn { min-height: 48px; }
-html[data-shell=phone] .settings-phone .settings-in-card-label { font-size: 14px; line-height: 20px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-text-muted); }
+html[data-shell=phone] .settings-phone .settings-in-card-label { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--color-text-muted); }

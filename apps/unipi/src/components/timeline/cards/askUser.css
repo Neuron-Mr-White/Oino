@@ -10,14 +10,14 @@
 .ask-card[data-state=settled] { padding: 0; background: transparent; box-shadow: none; margin: 4px 0; }
 .ask-head { display: flex; align-items: center; gap: 7px; min-height: 24px; }
 .ask-head-icon { color: var(--color-claw); flex: 0 0 auto; }
-.ask-title { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--color-claw); }
+.ask-title { font-size: calc(12px * var(--ui-font-scale)); font-weight: 600; letter-spacing: .02em; color: var(--color-claw); }
 .ask-expand { width: 36px; height: 36px; min-height: 36px; margin: -6px -6px -6px 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--color-text-dim); }
 .ask-form { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
 .ask-form[data-sheet] { margin-top: 0; padding-bottom: 12px; }
 .ask-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ask-item + .ask-item { padding-top: 12px; border-top: 1px solid rgb(46 40 37 / 80%); }
-.ask-chip { align-self: flex-start; padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: 11.5px; font-weight: 600; }
-.ask-q { margin: 0 1px 2px; font-size: 15px; line-height: 22px; font-weight: 550; color: var(--color-text); overflow-wrap: anywhere; }
+.ask-chip { align-self: flex-start; padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(11.5px * var(--ui-font-scale)); font-weight: 600; }
+.ask-q { margin: 0 1px 2px; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-weight: 550; color: var(--color-text); overflow-wrap: anywhere; }
 .ask-q > :first-child { margin-top: 0; }
 .ask-q > :last-child { margin-bottom: 0; }
 .ask-options { display: flex; flex-direction: column; gap: 4px; }
@@ -30,22 +30,22 @@
 .ask-opt[aria-checked=true] { box-shadow: inset 0 0 0 1.5px var(--color-claw); background: rgb(240 120 24 / 10%); }
 .ask-opt:disabled { cursor: default; opacity: .7; }
 .ask-opt:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: 1px; }
-.ask-mark { flex: 0 0 20px; width: 20px; height: 20px; margin-top: 1px; border-radius: 6px; display: grid; place-items: center; background: var(--color-surface-1); color: var(--color-text-muted); font-size: 11.5px; font-weight: 600; }
+.ask-mark { flex: 0 0 20px; width: 20px; height: 20px; margin-top: 1px; border-radius: 6px; display: grid; place-items: center; background: var(--color-surface-1); color: var(--color-text-muted); font-size: calc(11.5px * var(--ui-font-scale)); font-weight: 600; }
 .ask-mark[data-multi] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-text-dim); }
 .ask-mark[data-on] { background: var(--color-claw); box-shadow: none; color: var(--color-face); }
 .ask-opt-text { min-width: 0; flex: 1 1 auto; }
-.ask-opt-label { display: block; font-size: 14px; line-height: 20px; font-weight: 500; overflow-wrap: anywhere; }
-.ask-opt-desc { display: block; margin-top: 1px; font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
+.ask-opt-label { display: block; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 500; overflow-wrap: anywhere; }
+.ask-opt-desc { display: block; margin-top: 1px; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .ask-other {
   display: block; width: 100%; box-sizing: border-box; resize: none; min-height: 36px; max-height: 160px; padding: 7px 10px;
   border: 0; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line);
-  color: var(--color-text); font: inherit; font-size: 14px; line-height: 20px; outline: none;
+  color: var(--color-text); font: inherit; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); outline: none;
 }
 .ask-other:focus { box-shadow: inset 0 0 0 1.5px var(--color-claw); }
 .ask-other::placeholder { color: var(--color-text-dim); }
 .ask-foot { display: flex; align-items: center; gap: 8px; }
-.ask-wait { font-size: 12.5px; color: var(--color-text-dim); }
-.ask-btn { min-height: 32px; padding: 0 14px; border-radius: 9999px; font-size: 13.5px; font-weight: 600; }
+.ask-wait { font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.ask-btn { min-height: 32px; padding: 0 14px; border-radius: 9999px; font-size: calc(13.5px * var(--ui-font-scale)); font-weight: 600; }
 .ask-btn.ghost { background: var(--color-surface-3); color: var(--color-text); }
 .ask-btn.primary { background: var(--color-shell); color: var(--color-face); }
 .ask-btn:disabled { opacity: .4; cursor: default; }
@@ -53,7 +53,7 @@
 /* settled: one row that stays where the question was */
 .ask-done {
   display: flex; align-items: center; gap: 7px; width: 100%; min-height: 30px; padding: 4px 8px 4px 6px; border-radius: 9px;
-  background: transparent; text-align: left; font-size: 13px; line-height: 19px; color: var(--color-text-muted);
+  background: transparent; text-align: left; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); color: var(--color-text-muted);
 }
 .ask-done:hover { background: var(--color-surface-2); }
 .ask-done:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
@@ -65,11 +65,11 @@
 .ask-done-chev { flex: 0 0 auto; margin-left: auto; color: var(--color-text-dim); transition: transform 160ms ease-out; }
 .ask-done-chev[data-open] { transform: rotate(90deg); }
 .ask-recap { margin: 2px 0 6px 28px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.ask-recap .ask-q { font-size: 13.5px; line-height: 19px; font-weight: 500; color: var(--color-text-muted); }
-.ask-recap-a { margin: 1px 0 0; font-size: 13.5px; line-height: 19px; color: var(--color-text); }
+.ask-recap .ask-q { font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 500; color: var(--color-text-muted); }
+.ask-recap-a { margin: 1px 0 0; font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); color: var(--color-text); }
 
 /* the dock chip: "1 question waiting" → scrolls to the card */
-.ask-pending { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 30px; margin: 0 0 6px; padding: 0 12px 0 10px; border-radius: 9999px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(240 120 24 / 45%); color: var(--color-text); font-size: 13px; font-weight: 550; }
+.ask-pending { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 30px; margin: 0 0 6px; padding: 0 12px 0 10px; border-radius: 9999px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(240 120 24 / 45%); color: var(--color-text); font-size: calc(13px * var(--ui-font-scale)); font-weight: 550; }
 .ask-pending:hover { background: var(--color-surface-3); }
 .ask-pending > svg { flex: 0 0 auto; color: var(--color-claw); }
 .ask-pending-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -79,12 +79,12 @@
 
 /* phone: touch targets */
 html[data-shell=phone] .ask-opt { min-height: 44px; padding: 10px 12px 10px 10px; }
-html[data-shell=phone] .ask-opt-label { font-size: 15px; line-height: 21px; }
-html[data-shell=phone] .ask-q { font-size: 16px; }
-html[data-shell=phone] .ask-other { min-height: 44px; font-size: 16px; padding: 10px 12px; }
-html[data-shell=phone] .ask-btn { min-height: 44px; padding: 0 20px; font-size: 15px; }
+html[data-shell=phone] .ask-opt-label { font-size: calc(15px * var(--ui-font-scale)); line-height: calc(21px * var(--ui-font-scale)); }
+html[data-shell=phone] .ask-q { font-size: calc(16px * var(--ui-font-scale)); }
+html[data-shell=phone] .ask-other { min-height: 44px; font-size: calc(16px * var(--ui-font-scale)); padding: 10px 12px; }
+html[data-shell=phone] .ask-btn { min-height: 44px; padding: 0 20px; font-size: calc(15px * var(--ui-font-scale)); }
 html[data-shell=phone] .ask-done { min-height: 40px; }
-html[data-shell=phone] .ask-pending { min-height: 40px; font-size: 14px; }
+html[data-shell=phone] .ask-pending { min-height: 40px; font-size: calc(14px * var(--ui-font-scale)); }
 @media (prefers-reduced-motion: reduce) {
   .ask-card[data-flash] { animation: none; }
   .ask-done-chev, .ask-opt { transition: none; }

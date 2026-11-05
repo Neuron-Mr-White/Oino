@@ -1,9 +1,9 @@
 /* Phone first-run onboarding (phone spec §3.1). */
 .onboard { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18vh var(--ph-6, 24px) var(--ph-6, 24px); gap: var(--ph-3, 12px); }
 .onboard-crab { width: 88px; height: 88px; image-rendering: pixelated; }
-.onboard-title { margin: var(--ph-2, 8px) 0 0; font-size: 20px; line-height: 26px; font-weight: 600; color: var(--color-text); }
-.onboard-body { margin: 0; max-width: 320px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+.onboard-title { margin: var(--ph-2, 8px) 0 0; font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.onboard-body { margin: 0; max-width: 320px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .onboard-actions { display: flex; flex-direction: column; gap: var(--ph-2, 8px); width: 100%; max-width: 320px; margin-top: var(--ph-4, 16px); }
-.onboard-steps { margin: 0; padding: 0 4px 0 24px; display: flex; flex-direction: column; gap: var(--ph-4, 16px); font-size: 16px; line-height: 22px; color: var(--color-text-muted); text-align: left; }
+.onboard-steps { margin: 0; padding: 0 4px 0 24px; display: flex; flex-direction: column; gap: var(--ph-4, 16px); font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); color: var(--color-text-muted); text-align: left; }
 .onboard-steps b { color: var(--color-text); font-weight: 600; }
 html[data-short] .onboard { padding-top: var(--ph-6, 24px); }

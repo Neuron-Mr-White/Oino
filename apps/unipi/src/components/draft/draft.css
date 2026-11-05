@@ -60,8 +60,8 @@
 }
 .draft .empty-chat[data-variant='start'] .empty-chat-greeting {
   margin: 0;
-  font-size: 28px;
-  line-height: 36px;
+  font-size: calc(28px * var(--ui-font-scale));
+  line-height: calc(36px * var(--ui-font-scale));
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -99,7 +99,7 @@
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--color-line);
   color: var(--color-text-muted);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-font-scale));
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
@@ -122,7 +122,7 @@
 }
 .ws-label {
   padding: 8px 10px 4px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale));
   font-weight: 650;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -139,7 +139,7 @@
   box-shadow: inset 0 0 0 1px var(--color-line);
   color: var(--color-text);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale));
   caret-color: var(--color-claw);
 }
 .dm-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
@@ -161,8 +161,8 @@
 .ws-row-ic { flex: 0 0 auto; color: var(--color-text-dim); }
 .ws-row[aria-checked='true'] .ws-row-ic { color: var(--color-claw); }
 .ws-row-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
-.ws-row-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13.5px; line-height: 18px; font-weight: 500; }
-.ws-row-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 11.5px; line-height: 15px; color: var(--color-text-dim); }
+.ws-row-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); font-weight: 500; }
+.ws-row-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); line-height: calc(15px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .ws-row-check { flex: 0 0 auto; color: var(--color-claw); }
 .ws-row-open .ws-row-label { color: var(--color-text-muted); }
 .ws-row-dir { min-height: 34px; }
@@ -170,7 +170,7 @@
 .ws-browse { display: flex; flex-direction: column; min-height: 0; }
 .ws-browse-list { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; }
 .ws-browse-recent { display: flex; flex-direction: column; padding-bottom: 4px; border-bottom: 1px solid var(--color-line); margin-bottom: 4px; }
-.ws-browse-note { padding: 10px 12px; font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
+.ws-browse-note { padding: 10px 12px; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .ws-btn {
   display: inline-flex;
   align-items: center;
@@ -181,7 +181,7 @@
   border-radius: 9999px;
   background: var(--color-surface-3);
   color: var(--color-text);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-font-scale));
   font-weight: 600;
 }
 .ws-btn-primary { background: var(--color-claw); color: var(--color-ink); }
@@ -204,28 +204,28 @@
 }
 .connect-card-ic { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9999px; background: rgb(240 120 24 / 12%); color: var(--color-claw); }
 .connect-card-text { text-align: left; display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.connect-card-title { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--color-text); }
-.connect-card-body { font-size: 12.5px; line-height: 17px; color: var(--color-text-dim); }
-.connect-card-btn { flex: none; height: 36px; min-height: 36px; padding: 0 16px; font-size: 14px; }
+.connect-card-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.connect-card-body { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.connect-card-btn { flex: none; height: 36px; min-height: 36px; padding: 0 16px; font-size: calc(14px * var(--ui-font-scale)); }
 @media (max-width: 640px) { .connect-card { flex-wrap: wrap; } .connect-card-btn { width: 100%; } }
 
 .draft-error {
   margin: 0;
   width: 100%;
   padding: 0 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale));
   color: var(--color-wm-red);
 }
 .draft-error-hint {
   display: block;
   color: var(--color-text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale));
 }
 
 @media (max-width: 640px) {
   .draft { padding: 20px 12px 8vh; justify-content: flex-end; }
   .draft-center { gap: 16px; }
-  .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 22px; line-height: 28px; }
+  .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(22px * var(--ui-font-scale)); line-height: calc(28px * var(--ui-font-scale)); }
 }
 
 /* ── Phone (phone spec §3.6, PH-30): greeting at ~22 % with the crab watermark
@@ -235,8 +235,8 @@ html[data-shell=phone] .draft[data-phone] { justify-content: flex-start; align-i
 html[data-shell=phone] .draft[data-phone] .draft-mark { inset: auto 0 auto 0; top: calc(22% - 72px); height: 200px; opacity: 0.04; }
 html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 200px; transform: none; }
 html[data-shell=phone] .draft[data-phone] .draft-center { flex: 1 1 auto; min-height: 0; width: 100%; gap: 20px; align-items: stretch; padding: 22% var(--ph-gutter, 16px) 0; box-sizing: border-box; overflow-y: auto; }
-html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 20px; line-height: 26px; }
-html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: 14px; line-height: 20px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
 html[data-shell=phone] .draft[data-phone] .draft-composer { margin: auto calc(-1 * var(--ph-gutter, 16px)) 0; width: auto; padding: 8px 8px calc(8px + var(--safe-bottom, 0px)); }
 html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-composer { padding-bottom: 8px; }
 html[data-shell=phone] .draft[data-phone] .draft-composer .tl-composer .tl-composer-field { min-height: 36px; }
@@ -247,20 +247,20 @@ html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-center { padding-
 .ph-draft-pickers { display: flex; flex-direction: column; border-radius: var(--ph-radius-card, 16px); background: var(--color-surface-1); overflow: hidden; }
 .ph-draft-pickers > * + * { border-top: 1px solid rgb(46 40 37 / 60%); }
 html[data-shell=phone] .ph-draft-pickers .ws-chip,
-html[data-shell=phone] .ph-draft-pickers .host-chip { display: flex; align-items: center; gap: 12px; width: 100%; max-width: none; min-height: 56px; height: auto; padding: 0 12px 0 16px; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: var(--color-text); font-size: 16px; text-align: left; }
+html[data-shell=phone] .ph-draft-pickers .host-chip { display: flex; align-items: center; gap: 12px; width: 100%; max-width: none; min-height: 56px; height: auto; padding: 0 12px 0 16px; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: var(--color-text); font-size: calc(16px * var(--ui-font-scale)); text-align: left; }
 .ph-draft-pickers .ws-chip-ic { flex: none; width: 22px; height: 22px; color: var(--color-text-muted); }
 .ph-draft-pickers .ws-chip-key { flex: 1 1 auto; font-weight: 500; color: var(--color-text); }
-.ph-draft-pickers .ws-chip-label { flex: 0 1 auto; max-width: 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-muted); }
+.ph-draft-pickers .ws-chip-label { flex: 0 1 auto; max-width: 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .ph-draft-pickers .ws-chip-chev { flex: none; color: var(--color-text-dim); }
 
 /* The workspace sheet (phone): 56 px folder rows, a breadcrumb starting at "/" or "~". */
 .ws-sheet .ws-menu { display: flex; flex-direction: column; }
-.ws-sheet .ws-row { min-height: 56px; padding: 0 8px; gap: 16px; font-size: 16px; border-radius: 12px; }
+.ws-sheet .ws-row { min-height: 56px; padding: 0 8px; gap: 16px; font-size: calc(16px * var(--ui-font-scale)); border-radius: 12px; }
 .ws-sheet .ws-row-ic { width: 22px; height: 22px; }
-.ws-sheet .ws-row-detail { font-size: 14px; }
-.ws-sheet .ws-label { padding: 12px 8px 4px; font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); }
+.ws-sheet .ws-row-detail { font-size: calc(14px * var(--ui-font-scale)); }
+.ws-sheet .ws-label { padding: 12px 8px 4px; font-size: calc(14px * var(--ui-font-scale)); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); }
 .ws-crumbs { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 0 0 8px; }
-.ws-crumb { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 14px; cursor: pointer; }
+.ws-crumb { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: calc(14px * var(--ui-font-scale)); cursor: pointer; }
 .ws-crumb[aria-current] { color: var(--color-text); font-weight: 600; }
 .ws-crumb-back { background: transparent; color: var(--color-text); }
 .ws-sheet .ws-browse-list { max-height: none; }
@@ -269,25 +269,25 @@ html[data-shell=phone] .ph-draft-pickers .host-chip { display: flex; align-items
 html[data-shell=phone] .draft[data-phone] .draft-center { padding-top: 10%; gap: 12px; }
 html[data-shell=phone] .draft[data-phone] .draft-mark { top: calc(10% - 40px); height: 140px; }
 html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 140px; }
-html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 17px; line-height: 22px; }
-html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: 12.5px; line-height: 17px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(17px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
 html[data-shell=phone] .ph-draft-pickers .ws-chip,
-html[data-shell=phone] .ph-draft-pickers .host-chip { min-height: 44px; font-size: 14.5px; padding: 0 10px 0 12px; }
-html[data-shell=phone] .ph-draft-pickers .ws-chip-label { font-size: 13px; }
+html[data-shell=phone] .ph-draft-pickers .host-chip { min-height: 44px; font-size: calc(14.5px * var(--ui-font-scale)); padding: 0 10px 0 12px; }
+html[data-shell=phone] .ph-draft-pickers .ws-chip-label { font-size: calc(13px * var(--ui-font-scale)); }
 html[data-shell=phone] .draft[data-phone] .draft-composer { padding: 6px 6px calc(6px + var(--safe-bottom, 0px)); }
 
 /* Quick navigate (zoxide). */
 .qn-form { display: flex; gap: 8px; }
 .qn-form .settings-btn { display: inline-flex; align-items: center; gap: 6px; }
-.qn-input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text); font: inherit; font-size: 14px; }
+.qn-input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text); font: inherit; font-size: calc(14px * var(--ui-font-scale)); }
 .qn-input:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
-.qn-note { margin: 10px 0 0; font-size: 12.5px; color: var(--color-amber); }
+.qn-note { margin: 10px 0 0; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-amber); }
 .qn-list { list-style: none; margin: 10px 0 0; padding: 4px; border-radius: 12px; background: var(--color-surface-2); }
 .qn-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--color-text); text-align: left; }
 .qn-row:hover { background: var(--color-surface-3); }
 .qn-row[aria-selected=true] { background: rgb(240 120 24 / 12%); box-shadow: inset 2px 0 0 var(--color-claw); }
-.qn-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; direction: rtl; text-align: left; }
-.qn-best { flex: none; font-size: 11px; color: var(--color-claw); }
+.qn-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: calc(12.5px * var(--ui-font-scale)); direction: rtl; text-align: left; }
+.qn-best { flex: none; font-size: calc(11px * var(--ui-font-scale)); color: var(--color-claw); }
 .qn-foot { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
 
 /* Owner 2026-11-05 (phone Browse): rows never shrink under each other — the crumbs and
@@ -297,4 +297,4 @@ html[data-shell=phone] .draft[data-phone] .draft-composer { padding: 6px 6px cal
 .ws-sheet .ws-browse { gap: 6px; }
 .ws-sheet .ws-label-browse { padding-top: 14px; }
 .ws-sheet .ws-crumbs { min-height: 48px; align-items: center; padding: 2px 0 6px; }
-.ws-sheet .dm-search { height: 44px; min-height: 44px; margin: 0 0 4px; font-size: 16px; }
+.ws-sheet .dm-search { height: 44px; min-height: 44px; margin: 0 0 4px; font-size: calc(16px * var(--ui-font-scale)); }

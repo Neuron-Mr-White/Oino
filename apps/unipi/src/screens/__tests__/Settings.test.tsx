@@ -139,8 +139,11 @@ describe('Settings screen', () => {
     const r = renderSettings(adapter, '#/settings/appearance');
     await waitFor(() => expect(r.getByLabelText('Increase UI font size')).toBeTruthy());
     expect(document.documentElement.style.getPropertyValue('--ui-font-size')).toBe('15px');
+    // [owner-fix-8] the type scale moves with it, so the whole app's text grows
+    expect(document.documentElement.style.getPropertyValue('--ui-font-scale')).toBe('1');
     fireEvent.click(r.getByLabelText('Increase UI font size'));
     await waitFor(() => expect(document.documentElement.style.getPropertyValue('--ui-font-size')).toBe('16px'));
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--ui-font-scale')).toBe('1.067'));
     const persisted = (await adapter.read()) as { appearance?: { uiFontSize: number } } | undefined;
     expect(persisted?.appearance?.uiFontSize).toBe(16);
     // The root html font-size is never touched (ZCode rule).

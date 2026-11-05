@@ -49,8 +49,8 @@
   background: var(--color-surface-3);
   border: 1px solid var(--color-line);
   box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: calc(13px * var(--ui-font-scale));
+  line-height: calc(18px * var(--ui-font-scale));
   color: var(--color-text);
   cursor: pointer;
   user-select: none;
@@ -109,8 +109,8 @@
   min-height: 24px;
   padding: 0 8px;
   border-radius: 6px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
   color: var(--color-gold);
   font-weight: 600;
   background: rgb(240 192 48 / 10%);
@@ -147,7 +147,7 @@
 /* Phone spec §2.9: one toast at a time, bottom-centre, full width minus the gutters (max 420), 48 px. */
 html[data-shell='phone'] .app-toasts:not([data-pos='top']) { left: 16px; right: 16px; align-items: center; max-width: none; }
 html[data-shell='phone'] .app-toasts { z-index: var(--z-toast, 70); }
-html[data-shell='phone'] .app-toast { width: 100%; max-width: 420px; min-height: 48px; padding: 4px 4px 4px 14px; border-radius: 12px; font-size: 14px; line-height: 20px; gap: 10px; }
+html[data-shell='phone'] .app-toast { width: 100%; max-width: 420px; min-height: 48px; padding: 4px 4px 4px 14px; border-radius: 12px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); gap: 10px; }
 html[data-shell='phone'] .app-toast:not(:last-child) { display: none; }
-html[data-shell='phone'] .app-toast-action { height: 40px; min-height: 40px; padding: 0 14px; border-radius: 9999px; font-size: 14px; }
+html[data-shell='phone'] .app-toast-action { height: 40px; min-height: 40px; padding: 0 14px; border-radius: 9999px; font-size: calc(14px * var(--ui-font-scale)); }
 html[data-shell='phone'] .app-toast-close { width: 40px; height: 40px; min-height: 40px; border-radius: 9999px; }

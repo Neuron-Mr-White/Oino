@@ -1,6 +1,6 @@
 /* [ui-chat-bits] The chat header's "Cron · <job>" chip (a cron-run chat). Same
    geometry as the mode chip; amber like the sidebar's cron clock. */
-.cron-head-chip { margin-right: 4px; flex: 0 1 auto; min-width: 0; max-width: 220px; display: inline-flex; align-items: center; gap: 5px; height: 30px; min-height: 30px; padding: 0 10px 0 8px; border-radius: 9999px; border: 1px solid color-mix(in srgb, var(--color-amber) 40%, transparent); background: color-mix(in srgb, var(--color-amber) 11%, transparent); color: var(--color-amber); font-size: 12.5px; line-height: 16px; font-weight: 600; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+.cron-head-chip { margin-right: 4px; flex: 0 1 auto; min-width: 0; max-width: 220px; display: inline-flex; align-items: center; gap: 5px; height: 30px; min-height: 30px; padding: 0 10px 0 8px; border-radius: 9999px; border: 1px solid color-mix(in srgb, var(--color-amber) 40%, transparent); background: color-mix(in srgb, var(--color-amber) 11%, transparent); color: var(--color-amber); font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 600; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
 .cron-head-chip:hover { background: color-mix(in srgb, var(--color-amber) 18%, transparent); }
 .cron-head-chip:focus-visible { outline: 2px solid var(--color-shell); outline-offset: 2px; }
 .cron-head-chip svg { flex: 0 0 auto; }

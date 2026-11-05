@@ -1,22 +1,22 @@
 /* Command report panel (P1-02): reads like a terminal printout inside the app's sheet. */
 html[data-shell=desktop] .sheet.report-sheet { width: min(720px, calc(100vw - 64px)); max-height: min(78vh, 720px); }
 .report-sheet .board-sheet-head { padding-right: 10px; }
-.report-sheet .board-sheet-title { font-size: 15px; line-height: 22px; font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; }
-html[data-shell=desktop] .report-sheet .board-sheet-title { font-size: 14px; }
+.report-sheet .board-sheet-title { font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; }
+html[data-shell=desktop] .report-sheet .board-sheet-title { font-size: calc(14px * var(--ui-font-scale)); }
 .report-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .report-actions { display: flex; align-items: center; gap: 4px; flex: none; }
-.report-copy { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: var(--color-text-muted); background: transparent; border: 1px solid var(--color-line); transition: background-color 120ms ease-out, color 120ms ease-out; }
+.report-copy { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px; font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text-muted); background: transparent; border: 1px solid var(--color-line); transition: background-color 120ms ease-out, color 120ms ease-out; }
 .report-copy:hover { background: var(--color-surface-2); color: var(--color-text); }
 .report-copy:active { background: var(--color-surface-3); }
 .report-copy:focus-visible, .report-close:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: 2px; }
 html[data-shell=desktop] .report-close { width: 32px; height: 32px; min-height: 32px; border-radius: 8px; }
 html:not([data-shell=desktop]) .report-copy { height: 40px; min-height: 40px; padding: 0 14px; }
-.report-body { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--color-surface-1, rgb(0 0 0 / 20%)); border: 1px solid rgb(46 40 37 / 60%); font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; line-height: 19px; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; user-select: text; }
+.report-body { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--color-surface-1, rgb(0 0 0 / 20%)); border: 1px solid rgb(46 40 37 / 60%); font-family: var(--font-mono, ui-monospace, monospace); font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; user-select: text; }
 .report-body[data-kind=error] { border-color: rgb(220 70 60 / 45%); }
 .report-body[data-kind=warning] { border-color: rgb(230 160 40 / 40%); }
 /* Above the phone workspace layer (z 40) and the phone pane (z 60), like the other chat sheets. */
 body > div:has(> .sheet.report-sheet) > .sheet-overlay { z-index: 69; }
 .sheet.report-sheet { z-index: 70; }
-.report-body.report-md { font-family: var(--font-sans, inherit); white-space: normal; font-size: 13.5px; line-height: 21px; }
+.report-body.report-md { font-family: var(--font-sans, inherit); white-space: normal; font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(21px * var(--ui-font-scale)); }
 .report-body.report-md h1, .report-body.report-md h2, .report-body.report-md h3 { margin: 12px 0 6px; line-height: 1.3; }
 .report-body.report-md > :first-child { margin-top: 0; }

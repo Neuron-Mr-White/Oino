@@ -25,8 +25,8 @@
   border: 1px solid color-mix(in srgb, var(--mode-tint) 45%, transparent);
   background: color-mix(in srgb, var(--mode-tint) 13%, transparent);
   color: var(--mode-tint);
-  font-size: 12.5px;
-  line-height: 16px;
+  font-size: calc(12.5px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
   font-weight: 600;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
@@ -60,7 +60,7 @@
 .hdr-mode-more:focus-visible, .hdr-mode:focus-visible { outline: 2px solid var(--mode-tint); outline-offset: 1px; }
 .hdr-mode-icon { flex: 0 0 auto; display: grid; place-items: center; }
 .hdr-mode-label { min-width: 0; max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
-.hdr-mode-count { flex: 0 0 auto; font-size: 11.5px; font-weight: 500; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.hdr-mode-count { flex: 0 0 auto; font-size: calc(11.5px * var(--ui-font-scale)); font-weight: 500; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .hdr-mode-pulse { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--mode-tint); box-shadow: 0 0 0 2px var(--color-bg); animation: hdr-mode-pulse 1.2s ease-in-out infinite; }
 @keyframes hdr-mode-pulse { 50% { opacity: 0.35; } }
 /* [status] a dialog waits: the accent, steady (it blocks; nothing is running). */
@@ -75,12 +75,12 @@ html:not([data-shell='desktop']) .hdr-mode-label { display: none; }
 /* ── the switch menu ────────────────────────────────────────────────────── */
 .mode-switch-head { display: flex; align-items: center; gap: 10px; padding: 6px 14px 4px; }
 .mode-switch-icon { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: var(--mode-tint); background: color-mix(in srgb, var(--mode-tint) 15%, transparent); }
-.mode-switch-title { display: block; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--color-text); }
-.mode-switch-phase { display: block; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
+.mode-switch-title { display: block; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.mode-switch-phase { display: block; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .mode-switch-phase[data-phase='active'] { color: var(--mode-tint); }
-.mode-switch-desc { margin: 4px 14px 8px; font-size: 13px; line-height: 18px; color: var(--color-text-muted); }
+.mode-switch-desc { margin: 4px 14px 8px; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); }
 .mode-pick { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 7px 14px; background: transparent; text-align: left; color: var(--color-text); }
 .mode-pick:hover { background: var(--color-surface-2); }
 .mode-pick-icon { flex: 0 0 auto; display: grid; place-items: center; width: 22px; color: var(--mode-tint); }
-.mode-pick-label { display: block; font-size: 14px; line-height: 19px; font-weight: 500; }
-.mode-pick-hint { display: block; font-size: 11.5px; line-height: 15px; color: var(--color-text-dim); }
+.mode-pick-label { display: block; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 500; }
+.mode-pick-hint { display: block; font-size: calc(11.5px * var(--ui-font-scale)); line-height: calc(15px * var(--ui-font-scale)); color: var(--color-text-dim); }

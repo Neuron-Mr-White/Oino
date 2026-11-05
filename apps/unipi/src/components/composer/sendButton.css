@@ -10,13 +10,13 @@
 
 /* the menu opens above the dock's composer */
 .send-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; min-width: 264px; padding: 6px; border-radius: 16px; background: var(--color-surface-2); box-shadow: 0 10px 34px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); }
-.send-menu-heading { padding: 6px 10px 4px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.send-menu-heading { padding: 6px 10px 4px; font-size: calc(11px * var(--ui-font-scale)); font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
 .send-menu-item { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; width: 100%; min-height: 42px; padding: 6px 10px; border-radius: 12px; background: transparent; text-align: left; }
 .send-menu-item:hover { background: var(--color-surface-3); }
 .send-menu-item[aria-checked='true'] { background: rgb(240 120 24 / 10%); box-shadow: inset 0 0 0 1.5px rgb(240 120 24 / 45%); }
-.send-menu-label { grid-column: 1; font-size: 14.5px; font-weight: 600; color: var(--color-text); white-space: nowrap; }
-.send-menu-desc { grid-column: 1; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
-.send-menu-key { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 11px; font-weight: 600; color: var(--color-text-dim); white-space: nowrap; }
+.send-menu-label { grid-column: 1; font-size: calc(14.5px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); white-space: nowrap; }
+.send-menu-desc { grid-column: 1; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.send-menu-key { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: calc(11px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text-dim); white-space: nowrap; }
 .send-menu-item[aria-checked='false'] .send-menu-key { opacity: .55; }
 .send-menu-sep { height: 1px; margin: 5px 8px; background: var(--color-line); }
 .send-menu-now { grid-template-columns: auto 1fr; }

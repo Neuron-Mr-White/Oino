@@ -24,7 +24,7 @@ html[data-shell=desktop] { --page-gutter: 20px; }
 .page-head-tools { grid-area: tools; display: flex; align-items: center; justify-content: flex-end; gap: 2px; height: var(--page-head-bar); margin-right: -6px; }
 .page-head-title { grid-area: title; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 36px; margin-top: 4px; }
 .page-head-title > .large-title { min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.page-head-meta { grid-area: meta; min-width: 0; margin: 2px 0 0; min-height: 18px; font-size: 13px; line-height: 18px; color: var(--color-text-muted); }
+.page-head-meta { grid-area: meta; min-width: 0; margin: 2px 0 0; min-height: 18px; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); }
 html:not([data-shell=desktop]) .page-head:not([data-lead]) { grid-template-areas: 'title tools' 'meta meta'; padding-top: 12px; }
 html:not([data-shell=desktop]) .page-head:not([data-lead]) .page-head-lead { display: none; }
 html:not([data-shell=desktop]) .page-head:not([data-lead]) .page-head-title { margin-top: 0; min-height: var(--page-head-bar); }
@@ -32,7 +32,7 @@ html:not([data-shell=desktop]) .page-head:not([data-lead]) .page-head-title { ma
 html:not([data-shell=desktop]) .page-head-tools { padding-right: 52px; }
 html:not([data-shell=desktop]) .page-head[data-no-bell] .page-head-tools { padding-right: 0; }
 html[data-shell=desktop] .page-head { padding-top: 10px; padding-bottom: 16px; }
-.page-head .large-title { font-size: 30px; line-height: 36px; font-weight: 600; letter-spacing: -.01em; }
+.page-head .large-title { font-size: calc(30px * var(--ui-font-scale)); line-height: calc(36px * var(--ui-font-scale)); font-weight: 600; letter-spacing: -.01em; }
 
 /* ── Gutter (F2) ──────────────────────────────────────────────────────── */
 .page-body { padding-left: var(--page-gutter); padding-right: var(--page-gutter); }
@@ -49,31 +49,31 @@ html[data-shell=desktop] .preview-body { max-width: 760px; margin: 0; padding-le
 
 /* ── Section label (F3): Settings h2 = board-section-label ─────────────── */
 .section-label, .board-section-label, .palette-group, .shortcuts-group-title, .chat-group-head {
-  margin: 18px 0 10px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-dim);
+  margin: 18px 0 10px; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--color-text-dim);
 }
 .section-label { display: block; }
 .section-label:first-child, .board-section-label:first-child { margin-top: 4px; }
 .section-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .section-row > .section-label { margin-bottom: 10px; }
-.section-row-aside { font-size: 12px; color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.section-row-aside { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
 .palette-group { margin: 10px 10px 4px; }
 .shortcuts-group-title { margin: 14px 0 6px; }
 .chat-group-head { margin: 0 4px 8px; }
 .chat-group-session { letter-spacing: 0; text-transform: none; }
 
 /* ── PC chip (F4) + toolbar pills (F5) ─────────────────────────────────── */
-.pc-chip { height: 34px; min-height: 34px; font-size: 13px; font-weight: 500; color: var(--color-text-muted); }
+.pc-chip { height: 34px; min-height: 34px; font-size: calc(13px * var(--ui-font-scale)); font-weight: 500; color: var(--color-text-muted); }
 .page-head-lead > .pc-chip { max-width: 100%; min-width: 0; }
 /* F60: an unreachable PC's dot is red on every screen (Board's 'offline' state was grey, Files/Chat/Preview 'error' red). */
 .pc-dot[data-state=offline] { background: var(--color-wm-red); }
-.files-pill { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: var(--chip-h); min-height: var(--chip-h); padding: 0 14px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-size: 14px; font-weight: 500; white-space: nowrap; }
+.files-pill { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: var(--chip-h); min-height: var(--chip-h); padding: 0 14px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-size: calc(14px * var(--ui-font-scale)); font-weight: 500; white-space: nowrap; }
 .files-pill::after { content: ''; position: absolute; inset: -3px 0; }
 .files-pill.active { background: rgb(240 48 24 / 14%); color: var(--color-text); box-shadow: inset 0 0 0 1px rgb(240 48 24 / 38%); }
 .seg-option { height: 32px; min-height: 32px; }
 .seg { height: var(--chip-h); box-sizing: border-box; }
 
 /* ── Buttons (F6): one primary (shell red pill), one secondary ─────────── */
-.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--btn-h); min-height: var(--btn-h); padding: 0 20px; border-radius: 9999px; font-size: 15px; font-weight: 600; white-space: nowrap; background: var(--color-surface-3); color: var(--color-text); }
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--btn-h); min-height: var(--btn-h); padding: 0 20px; border-radius: 9999px; font-size: calc(15px * var(--ui-font-scale)); font-weight: 600; white-space: nowrap; background: var(--color-surface-3); color: var(--color-text); }
 .btn-primary, .pair-primary, .files-sheet-btn.primary, .preview-btn.primary, .media-btn.primary, .conflict-sheet-btn.primary, .banner-button.primary, .empty-add.bg-shell {
   background: var(--color-shell); color: var(--color-face); font-weight: 600;
 }
@@ -82,7 +82,7 @@ html[data-shell=desktop] .preview-body { max-width: 760px; margin: 0; padding-le
 .btn-ghost { background: transparent; color: var(--color-text-muted); }
 .btn-danger { background: rgb(240 60 50 / 16%); color: var(--color-wm-red); }
 .btn-block { width: 100%; }
-.pair-primary, .pair-secondary, .files-sheet-btn, .preview-btn, .conflict-sheet-btn { height: var(--btn-h); min-height: var(--btn-h); border-radius: 9999px; font-size: 15px; }
+.pair-primary, .pair-secondary, .files-sheet-btn, .preview-btn, .conflict-sheet-btn { height: var(--btn-h); min-height: var(--btn-h); border-radius: 9999px; font-size: calc(15px * var(--ui-font-scale)); }
 .files-sheet-btn, .preview-btn, .pair-secondary { font-weight: 500; }
 .files-sheet-btn.danger { background: var(--color-shell); color: var(--color-face); font-weight: 600; }
 .empty-add.bg-shell { height: var(--btn-h); min-height: var(--btn-h); padding: 0 22px; margin-top: 8px; }
@@ -97,25 +97,25 @@ html[data-shell=desktop] .preview-body { max-width: 760px; margin: 0; padding-le
 .empty-state .crab { width: 88px; margin-bottom: 6px; image-rendering: pixelated; }
 .empty-state[data-tone=error] .crab { filter: grayscale(.85) brightness(.75); }
 .empty-state-icon { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 6px; border-radius: 16px; background: var(--color-surface-2); color: var(--color-text-muted); }
-.empty-state h2 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; color: var(--color-text); }
-.empty-state p { margin: 0; max-width: 340px; font-size: 14px; line-height: 21px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.empty-state h2 { margin: 0; font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.empty-state p { margin: 0; max-width: 340px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(21px * var(--ui-font-scale)); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .empty-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .empty-state-actions > .empty-add.bg-shell { margin-top: 0; }
 .empty-state[data-compact] { padding: 32px 16px 24px; gap: 6px; }
 .empty-state[data-compact] .empty-state-icon { width: 44px; height: 44px; border-radius: 14px; }
 .empty-state[data-compact] .crab { width: 56px; }
-.empty-state[data-compact] h2 { font-size: 16px; line-height: 22px; }
-.empty-state[data-compact] p { font-size: 13px; line-height: 19px; }
-.empty-state[data-compact] .btn { height: 38px; min-height: 38px; font-size: 14px; }
+.empty-state[data-compact] h2 { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+.empty-state[data-compact] p { font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); }
+.empty-state[data-compact] .btn { height: 38px; min-height: 38px; font-size: calc(14px * var(--ui-font-scale)); }
 
 /* ── Dialogs on the desktop (F7, F17) ──────────────────────────────────── */
 html[data-shell=desktop] .sheet, html[data-shell=desktop] .picker-sheet { border-radius: var(--radius-float); }
 html[data-shell=desktop] .palette, html[data-shell=desktop] .recent-popover { border-radius: var(--radius-float); }
 html[data-shell=desktop] .picker-sheet.picker-full { height: auto; max-height: min(80vh, 760px); padding-top: 14px; }
 .picker-dialog-title { display: none; }
-html[data-shell=desktop] .picker-dialog-title { display: block; padding: 0 20px 10px; font-size: 20px; line-height: 26px; font-weight: 600; }
+html[data-shell=desktop] .picker-dialog-title { display: block; padding: 0 20px 10px; font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); font-weight: 600; }
 /* Pairing dialogs: the option cards and paste field sit in a BoardSheet body. */
-.pair-intro { margin: 0 0 4px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+.pair-intro { margin: 0 0 4px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); }
 
 /* ── Focus ring (F8): follows the control's own radius ─────────────────── */
 :focus-visible { outline: 2px solid var(--color-shell); outline-offset: 2px; }
@@ -162,11 +162,11 @@ html[data-shell=desktop][data-detail] .app-shell > .page-head { grid-column: 2; 
 .settings-section-label { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
 html[data-shell=desktop] .settings-page { padding-top: 0; }
 /* Settings → PCs: Forget is a ghost button, "Add a PC" a real row. */
-.hosts-add-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px 16px; text-align: left; color: var(--color-text); font-size: 15px; font-weight: 500; position: relative; background: transparent; }
+.hosts-add-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px 16px; text-align: left; color: var(--color-text); font-size: calc(15px * var(--ui-font-scale)); font-weight: 500; position: relative; background: transparent; }
 .settings-row + .hosts-add-row::before, .hosts-empty + .hosts-add-row::before { content: ''; position: absolute; left: 58px; right: 0; top: 0; border-top: 1px solid rgb(46 40 37 / 60%); }
 .hosts-add-row .settings-icon { color: var(--color-shell); background: rgb(240 48 24 / 12%); }
-.hosts-empty { margin: 0; padding: 16px; font-size: 14px; color: var(--color-text-muted); }
-.btn-sm { height: 34px; min-height: 34px; padding: 0 14px; font-size: 13.5px; font-weight: 500; }
+.hosts-empty { margin: 0; padding: 16px; font-size: calc(14px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.btn-sm { height: 34px; min-height: 34px; padding: 0 14px; font-size: calc(13.5px * var(--ui-font-scale)); font-weight: 500; }
 .shell-placeholder > .empty-state { flex: 0 0 auto; max-width: 360px; padding: 0 24px; }
 .shell-placeholder > .empty-state h2 { color: var(--color-text-muted); }
 
@@ -181,17 +181,17 @@ html[data-shell=desktop] .settings-page { padding-top: 0; }
 .files-places-menu { gap: 6px; padding: 0 12px; }
 .files-places-menu svg { flex: none; color: var(--color-text-muted); }
 .files-toolbar-sep { flex: none; width: 1px; height: 20px; background: var(--color-line); margin: 0 2px; }
-.files-place-path { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-dim); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.files-place-path { font-family: var(--font-mono); font-size: calc(11px * var(--ui-font-scale)); color: var(--color-text-dim); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .files-breadcrumb { min-height: 32px; padding-top: 2px; padding-bottom: 6px; gap: 0; }
-.files-crumb { height: 28px; display: inline-flex; align-items: center; padding: 0 6px; font-size: 13.5px; }
-.files-crumb[data-root] { font-family: var(--font-mono); font-size: 12.5px; }
+.files-crumb { height: 28px; display: inline-flex; align-items: center; padding: 0 6px; font-size: calc(13.5px * var(--ui-font-scale)); }
+.files-crumb[data-root] { font-family: var(--font-mono); font-size: calc(12.5px * var(--ui-font-scale)); }
 .files-row-icon { width: 32px; height: 32px; border-radius: 10px; }
-.files-row-name { font-size: 15px; line-height: 20px; font-weight: 500; }
-.files-row-meta { font-size: 12px; line-height: 16px; color: var(--color-text-dim); margin-top: 1px; }
+.files-row-name { font-size: calc(15px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 500; }
+.files-row-meta { font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); margin-top: 1px; }
 html[data-shell=desktop] .files-row { min-height: 48px; padding: 4px 6px 4px 10px; gap: 12px; }
 .files-row .files-row-menu { width: 32px; height: 32px; min-height: 32px; }
-html[data-shell=desktop] .files-row-name { font-size: 14px; line-height: 19px; }
-html[data-shell=desktop] .files-row-meta { line-height: 16px; margin-top: 0; }
+html[data-shell=desktop] .files-row-name { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); }
+html[data-shell=desktop] .files-row-meta { line-height: calc(16px * var(--ui-font-scale)); margin-top: 0; }
 html[data-shell=desktop] .files-list > * { max-width: 1040px; }
 html[data-shell=desktop] .files-breadcrumb, html[data-shell=desktop] .files-host-row { max-width: calc(1040px + 2 * var(--page-gutter)); box-sizing: border-box; }
 
@@ -202,13 +202,13 @@ html[data-shell=desktop] .files-breadcrumb, html[data-shell=desktop] .files-host
 :root { --detail-head-h: 56px; }
 html[data-shell=desktop] :is(.detail-head, .task-head) { flex: 0 0 auto; height: var(--detail-head-h); min-height: var(--detail-head-h); box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 8px; border-bottom: 1px solid rgb(46 40 37 / 70%); }
 html[data-shell=desktop] :is(.detail-head, .task-head) > .ghost-icon-button, html[data-shell=desktop] .detail-head > a.ghost-icon-button { width: 40px; height: 40px; min-height: 40px; flex: none; }
-html[data-shell=desktop] .detail-head :is(.chat-head-name, .editor-title-name, .media-page-title) { font-size: 16px; line-height: 21px; font-weight: 600; }
-html[data-shell=desktop] .detail-head :is(.chat-head-sub, .editor-title-path, .review-viewer-edit-count) { font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
+html[data-shell=desktop] .detail-head :is(.chat-head-name, .editor-title-name, .media-page-title) { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(21px * var(--ui-font-scale)); font-weight: 600; }
+html[data-shell=desktop] .detail-head :is(.chat-head-sub, .editor-title-path, .review-viewer-edit-count) { font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
 html[data-shell=desktop] .preview-viewer-head.detail-head { background: var(--color-bg); }
 html[data-shell=desktop] .preview-viewer-head.detail-head .preview-urlbar { height: 40px; }
 html[data-shell=desktop] .image-viewer-head.detail-head { border-bottom: 0; }
 /* Chat (F42): the session strip is a compact button in the header, not a band of its own. */
-html[data-shell=desktop] .chat-head .chat-footer-strip { flex: 0 1 auto; width: auto; max-width: 46%; min-width: 0; height: 32px; padding: 0 12px; margin-right: 4px; border: 0; border-radius: 9999px; background: transparent; font-size: 12px; line-height: 16px; color: var(--color-text-dim); justify-content: flex-end; }
+html[data-shell=desktop] .chat-head .chat-footer-strip { flex: 0 1 auto; width: auto; max-width: 46%; min-width: 0; height: 32px; padding: 0 12px; margin-right: 4px; border: 0; border-radius: 9999px; background: transparent; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); justify-content: flex-end; }
 html[data-shell=desktop] .chat-head .chat-footer-strip:hover, html[data-shell=desktop] .chat-head .chat-footer-strip[aria-expanded=true] { background: var(--color-surface-2); color: var(--color-text-muted); }
 html[data-shell=desktop] .chat-head-menu { border-radius: 50%; }
 
@@ -220,11 +220,11 @@ html[data-shell=desktop][data-detail] .page-screen :is(.sessions-hgrid, .session
 html[data-shell=desktop][data-detail] .page-screen :is(.sessions-hgrid, .sessions-hscroll) > [data-group] + [data-group]::before { content: ''; position: absolute; left: 14px; right: 0; top: 0; border-top: 1px solid rgb(46 40 37 / 60%); }
 html[data-shell=desktop][data-detail] .page-screen :is(.sessions-hgrid, .sessions-hscroll) > [data-group]:hover { background: var(--color-surface-2); }
 html[data-shell=desktop][data-detail] .page-screen [data-group] .recent-card { display: none; }
-html[data-shell=desktop][data-detail] .page-screen [data-group] > p { margin-top: 0; font-size: 15px; }
-html[data-shell=desktop][data-detail] .page-screen [data-group] > div { margin-top: 2px; font-size: 13px; }
+html[data-shell=desktop][data-detail] .page-screen [data-group] > p { margin-top: 0; font-size: calc(15px * var(--ui-font-scale)); }
+html[data-shell=desktop][data-detail] .page-screen [data-group] > div { margin-top: 2px; font-size: calc(13px * var(--ui-font-scale)); }
 
 /* ── Chat list (F40): the group's folder path is an aside, not mono. ── */
-.chat-group-session { font-family: inherit; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--color-text-dim); }
+.chat-group-session { font-family: inherit; font-size: calc(12px * var(--ui-font-scale)); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--color-text-dim); }
 /* ── Needs-you drawer (F41): head actions are ghost text buttons next to ✕. ── */
 .ny-action.btn { height: 34px; min-height: 34px; padding: 0 12px; background: transparent; color: var(--color-text-muted); }
 /* ── Model picker (F43): the model list fades out at its bottom edge when it scrolls. ── */
@@ -255,22 +255,22 @@ html[data-shell=desktop] .settings-nav { margin-top: -8px; }
 
 /* Settings › Editor › Language servers (WP-A21) */
 /* The rows' rules live once in style.css (Settings › Editor: a 3-column grid). */
-.lsp-note { display: block; padding: 4px 14px 2px; font-size: 11.5px; line-height: 1.6; color: var(--color-text-dim); white-space: normal; }
+.lsp-note { display: block; padding: 4px 14px 2px; font-size: calc(11.5px * var(--ui-font-scale)); line-height: 1.6; color: var(--color-text-dim); white-space: normal; }
 .lsp-note > svg { display: inline; vertical-align: -2px; margin-right: 5px; }
-.lsp-note code { font-family: var(--font-mono); font-size: 10.5px; }
+.lsp-note code { font-family: var(--font-mono); font-size: calc(10.5px * var(--ui-font-scale)); }
 
 /* ── New-chat empty state (Z-87, WP-A28) ────────────────────────────────── */
 .empty-chat { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 540px; padding: 20px 8px 8px; text-align: center; }
 .empty-chat-crab { flex: 0 0 auto; image-rendering: pixelated; }
-.empty-chat-greeting { margin: 4px 0 0; font-size: 24px; line-height: 31px; font-weight: 600; color: var(--color-text); text-wrap: balance; }
-.empty-chat-hint { margin: 0; max-width: 460px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); text-wrap: pretty; }
-.empty-chat-lore { margin: 4px 0 0; max-width: 430px; font-size: 12px; line-height: 17px; color: var(--color-text-dim); text-wrap: pretty; }
+.empty-chat-greeting { margin: 4px 0 0; font-size: calc(24px * var(--ui-font-scale)); line-height: calc(31px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); text-wrap: balance; }
+.empty-chat-hint { margin: 0; max-width: 460px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); text-wrap: pretty; }
+.empty-chat-lore { margin: 4px 0 0; max-width: 430px; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); text-wrap: pretty; }
 .empty-chat[data-compact] { gap: 6px; padding-top: 12px; }
-.empty-chat[data-compact] .empty-chat-greeting { font-size: 20px; line-height: 26px; }
-.empty-chat[data-compact] .empty-chat-hint { font-size: 13px; line-height: 18px; }
+.empty-chat[data-compact] .empty-chat-greeting { font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); }
+.empty-chat[data-compact] .empty-chat-hint { font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); }
 @media (max-width: 480px) {
-  .empty-chat-greeting { font-size: 21px; line-height: 27px; }
-  .empty-chat-hint { font-size: 13px; line-height: 18px; }
+  .empty-chat-greeting { font-size: calc(21px * var(--ui-font-scale)); line-height: calc(27px * var(--ui-font-scale)); }
+  .empty-chat-hint { font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); }
 }
 
 /* ── Tooltip (Z-116, WP-A28): one bubble, 300 ms, per trigger ───────────── */
@@ -284,8 +284,8 @@ html[data-shell=desktop] .settings-nav { margin-top: -8px; }
   background: var(--color-surface-3);
   box-shadow: 0 0 0 1px rgb(46 40 37 / 85%), 0 8px 24px rgb(0 0 0 / 55%);
   color: var(--color-text);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
   text-align: left;
   pointer-events: none;
   animation: tip-in 120ms ease-out both;

@@ -30,33 +30,33 @@ html[data-shell=desktop] .lane-page[data-lane-page=done] { --lane: var(--s-done,
 
 /* Column head (F30, F32): 42 px, name · count · ⓘ … quick action · ⋯, sticky. */
 html[data-shell=desktop] .lane-head-desk { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; height: 42px; min-height: 42px; padding: 0 4px 0 12px; border-radius: 14px 14px 0 0; background: var(--lane-bg); }
-.lane-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--color-text); white-space: nowrap; }
+.lane-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(13px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); white-space: nowrap; }
 .lane-title > span { overflow: hidden; text-overflow: ellipsis; }
-.lane-count { font-size: 13px; color: var(--color-text-muted); white-space: nowrap; }
+.lane-count { font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: nowrap; }
 .lane-info-dot { display: inline-grid; place-items: center; width: 20px; height: 20px; color: var(--color-text-dim); cursor: help; }
 .lane-info-dot:hover { color: var(--color-text-muted); }
 .lane-spacer { flex: 1 1 auto; }
-html[data-shell=desktop] .lane-head-desk .lane-quick { height: 26px; min-height: 26px; padding: 0 9px; gap: 5px; border-radius: 8px; font-size: 12.5px; }
+html[data-shell=desktop] .lane-head-desk .lane-quick { height: 26px; min-height: 26px; padding: 0 9px; gap: 5px; border-radius: 8px; font-size: calc(12.5px * var(--ui-font-scale)); }
 html[data-shell=desktop] .lane-head-desk .lane-quick::after { inset: -6px 0; }
 html[data-shell=desktop] .lane-head-desk .lane-more { width: 32px; height: 32px; min-height: 32px; margin: 0; border-radius: 8px; color: var(--color-text-dim); }
-.lane-menu-info { margin: 0; padding: 10px 14px 10px; font-size: 12.5px; line-height: 18px; color: var(--color-text-muted); border-bottom: 1px solid var(--color-line); }
+.lane-menu-info { margin: 0; padding: 10px 14px 10px; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); border-bottom: 1px solid var(--color-line); }
 
 /* Cards (F30): 8 px apart in an 8 px inset column, radius 12, padding 10/12/11. */
 html[data-shell=desktop] .lane-cards { gap: 8px; padding: 0 8px; }
 html[data-shell=desktop] .lane-cards > .bcard { gap: 5px; padding: 10px 12px 11px; border-radius: 12px; contain-intrinsic-size: auto 84px; transition: transform 140ms ease-out, opacity 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out; }
 html[data-shell=desktop] .lane-cards > .bcard.compact { padding: 8px 10px; }
 html[data-shell=desktop] .lane-cards .bcard-top, .bcard-ghost .bcard-top { min-height: 18px; flex-wrap: wrap; row-gap: 4px; }
-html[data-shell=desktop] .lane-cards .bcard-id { font-size: 11px; }
-html[data-shell=desktop] .lane-cards .bcard-title { font-size: 14px; line-height: 20px; }
-html[data-shell=desktop] .lane-cards .bcard-excerpt, html[data-shell=desktop] .lane-cards .bcard-blocked { font-size: 12.5px; line-height: 17px; }
-html[data-shell=desktop] .lane-cards .btag { height: 20px; font-size: 11.5px; }
+html[data-shell=desktop] .lane-cards .bcard-id { font-size: calc(11px * var(--ui-font-scale)); }
+html[data-shell=desktop] .lane-cards .bcard-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
+html[data-shell=desktop] .lane-cards .bcard-excerpt, html[data-shell=desktop] .lane-cards .bcard-blocked { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+html[data-shell=desktop] .lane-cards .btag { height: 20px; font-size: calc(11.5px * var(--ui-font-scale)); }
 html[data-shell=desktop] .lane-cards .bcard-top .btag.label { height: 17px; }
-html[data-shell=desktop] .lane-cards .agent-chip { height: 20px; font-size: 11.5px; }
+html[data-shell=desktop] .lane-cards .agent-chip { height: 20px; font-size: calc(11.5px * var(--ui-font-scale)); }
 html[data-shell=desktop] .lane-cards .bcard-skeleton { border-radius: 12px; }
 html[data-shell=desktop] .lane-cards > .bcard[data-chain=middle], html[data-shell=desktop] .lane-cards > .bcard[data-chain=last] { margin-top: -2px; }
 html[data-shell=desktop] .lane-cards > .bcard[data-chain=first]::after, html[data-shell=desktop] .lane-cards > .bcard[data-chain=middle]::after { bottom: -19px; }
-html[data-shell=desktop] .lane-empty { padding: 22px 12px; border-radius: 12px; font-size: 13px; gap: 8px; }
-html[data-shell=desktop] .lane-add { justify-content: flex-start; min-height: 32px; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; font-size: 13px; }
+html[data-shell=desktop] .lane-empty { padding: 22px 12px; border-radius: 12px; font-size: calc(13px * var(--ui-font-scale)); gap: 8px; }
+html[data-shell=desktop] .lane-add { justify-content: flex-start; min-height: 32px; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; font-size: calc(13px * var(--ui-font-scale)); }
 @media (hover: hover) and (pointer: fine) {
   html[data-shell=desktop] .lane-add:hover { background: rgb(245 239 230 / 5%); color: var(--color-text); }
 }
@@ -70,10 +70,10 @@ html[data-shell=desktop] .lane-cards > .bcard.dragging { opacity: .35; transform
 .bcard-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; will-change: transform; }
 .bcard-ghost > .bcard { margin: 0 !important; padding: 10px 12px 11px; gap: 5px; border-radius: 12px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(110 101 93 / 55%); content-visibility: visible; transform-origin: 30% 30%; transition: transform 140ms ease-out, box-shadow 140ms ease-out; }
 .bcard-ghost > .bcard::before, .bcard-ghost > .bcard::after { display: none; }
-.bcard-ghost .bcard-id { font-size: 11px; }
-.bcard-ghost .bcard-title { font-size: 14px; line-height: 20px; }
-.bcard-ghost .bcard-excerpt, .bcard-ghost .bcard-blocked { font-size: 12.5px; line-height: 17px; }
-.bcard-ghost .btag, .bcard-ghost .agent-chip { height: 20px; font-size: 11.5px; }
+.bcard-ghost .bcard-id { font-size: calc(11px * var(--ui-font-scale)); }
+.bcard-ghost .bcard-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
+.bcard-ghost .bcard-excerpt, .bcard-ghost .bcard-blocked { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+.bcard-ghost .btag, .bcard-ghost .agent-chip { height: 20px; font-size: calc(11.5px * var(--ui-font-scale)); }
 .bcard-ghost[data-lifted] > .bcard { transform: rotate(1.5deg) scale(1.03); box-shadow: 0 18px 40px rgb(0 0 0 / 55%), 0 4px 12px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(110 101 93 / 70%); }
 
 /* Insert line (F26): 2 px with a hollow 8 px cap on its left end, inset to the card width. */
@@ -107,8 +107,8 @@ html[data-shell=desktop][data-detail] .board-screen { --lane-w: min(288px, calc(
    pane, a 22/28 title, plain section counts. */
 html[data-shell=desktop] .task-head .ghost-icon-button { width: 40px; height: 40px; min-height: 40px; }
 html[data-shell=desktop] .task-crumb { height: 34px; min-height: 34px; }
-html[data-shell=desktop] .task-title-edit { font-size: 22px; line-height: 28px; font-weight: 600; }
-html[data-shell=desktop] .task-section-count { padding: 0; background: none; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
+html[data-shell=desktop] .task-title-edit { font-size: calc(22px * var(--ui-font-scale)); line-height: calc(28px * var(--ui-font-scale)); font-weight: 600; }
+html[data-shell=desktop] .task-section-count { padding: 0; background: none; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
 html[data-shell=desktop] .task-composer :is(.composer-round, .composer-send) { width: 40px; height: 40px; min-height: 40px; }
 
 /* OS file drop onto a note / description / new-task field (lib/board/fileDrop.ts). */
