@@ -13,7 +13,7 @@
 import { For, Show, createSignal, type JSX } from 'solid-js';
 import { appError, type AppError } from '@unipi/protocol';
 import { CheckCircle2, FolderOpen, Download, RotateCw, X, AlertTriangle } from 'lucide-solid';
-import { installExtension, removeExtension, listExtensions, type InstallReply } from '../../settings/hostCmd';
+import { installExtension, removeExtension, listExtensions, reloadExtensions, type InstallReply } from '../../settings/hostCmd';
 import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
 import { uploadPicked } from '../../lib/blob';
 import { canRestartHost, restartAgentHost } from '../../lib/host/restart';
@@ -110,7 +110,7 @@ export function ExtensionInstallCard(props: {
         kind: 'restart',
         id: reply.id,
         warnings: reply.warnings,
-        text: `${installedText(reply)} Restart the agent host to load it — its settings open next.`,
+        text: `${installedText(reply)} Load it now — its settings open next.`,
       });
       return;
     }
@@ -164,6 +164,33 @@ export function ExtensionInstallCard(props: {
     // The phone / a remote PC: only a .zip can travel.
     if (desktop()) setPhase({ kind: 'choose' });
     else pickZip();
+  };
+
+  /**
+   * [owner-fix-8] Load the package without restarting the host: the host
+   * discovers its extension packages again and answers with the fresh list.
+   * The restart button was the only way before, and it never restarted
+   * anything (an adopted host keeps running), so the card sat on
+   * "Restarting the agent host…" until the poll gave up.
+   */
+  const reload = async () => {
+    const current = phase();
+    const id = current.kind === 'restart' ? current.id : undefined;
+    const warnings = current.kind === 'restart' ? current.warnings : [];
+    setPhase({ kind: 'waiting', id });
+    const result = await reloadExtensions(props.hostId).catch(() => undefined);
+    if (!result?.ok) {
+      setError(appError('E_INTERNAL', 'Could not load the extension', { hint: 'Restart the agent host to load it.' }));
+      setPhase(current);
+      return;
+    }
+    await props.onChanged();
+    const loaded = id ? result.value.some((row) => row.id === id && row.loaded) : true;
+    if (!loaded) {
+      setPhase({ kind: 'done', text: `The host did not load ${id} — restart the agent host to pick it up.`, warnings });
+      return;
+    }
+    await live(id, `${id} is loaded.`, warnings);
   };
 
   const restart = async () => {
@@ -237,7 +264,7 @@ export function ExtensionInstallCard(props: {
         <p class="text-xs text-text-muted" role="status" data-testid="ext-install-busy">
           {(() => {
             const p = phase();
-            return p.kind === 'busy' ? p.text : 'Restarting the agent host…';
+            return p.kind === 'busy' ? p.text : 'Loading the extension…';
           })()}
         </p>
       </Show>
@@ -280,12 +307,12 @@ export function ExtensionInstallCard(props: {
                   </button>
                 }
               >
-                <Show
-                  when={canRestartHost()}
-                  fallback={<span class="text-xs text-text-dim" data-testid="ext-install-restart-manual">Restart Unipi on the PC to load it.</span>}
-                >
-                  <button type="button" class={primary} data-testid="ext-install-restart-host" onClick={() => void restart()}>
-                    <RotateCw size={13} /> Restart agent host
+                <button type="button" class={primary} data-testid="ext-install-load-now" onClick={() => void reload()}>
+                  <RotateCw size={13} /> Load it now
+                </button>
+                <Show when={canRestartHost()}>
+                  <button type="button" class={button} data-testid="ext-install-restart-host" onClick={() => void restart()}>
+                    Restart agent host
                   </button>
                 </Show>
                 <button type="button" class={button} onClick={() => setPhase({ kind: 'idle' })}>
@@ -308,7 +335,7 @@ export async function removeInstalled(hostId: string, id: string, name: string):
   return {
     ok: true,
     phase: result.value.needsRestart
-      ? { kind: 'restart', warnings: [], text: `Removed ${name}. Restart the agent host to unload it.${tail}` }
+      ? { kind: 'restart', warnings: [], text: `Removed ${name}. Load it now to unload it.${tail}` }
       : { kind: 'done', warnings: [], text: `Removed ${name}.${tail}` },
   };
 }

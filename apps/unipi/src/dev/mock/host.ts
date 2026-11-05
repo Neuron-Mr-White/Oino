@@ -469,6 +469,12 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
       const list = (fixtures.extensions ??= []);
       return { extensions: list.map((e) => ({ id: e.id, kind: e.kind ?? 'extension', enabled: e.enabled !== false, loaded: e.loaded !== false && e.enabled !== false, ...(e.path ? { path: e.path } : {}), ...(e.removable !== undefined ? { removable: e.removable } : {}) })) };
     }
+    case 'reload_extensions': {
+      // [owner-fix-8] the host discovers its packages again: the mock answers
+      // with the current list (a test pushes the new package before the call).
+      const list = (fixtures.extensions ??= []);
+      return { extensions: list.map((e) => ({ id: e.id, kind: e.kind ?? 'extension', enabled: e.enabled !== false, loaded: e.loaded !== false && e.enabled !== false, ...(e.path ? { path: e.path } : {}), ...(e.removable !== undefined ? { removable: e.removable } : {}) })) };
+    }
     case 'set_extension_enabled': {
       const list = (fixtures.extensions ??= []);
       const row = list.find((e) => e.id === cmd.id);

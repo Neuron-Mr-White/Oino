@@ -127,6 +127,23 @@ describe('Install extension… (desktop)', () => {
     expect(invoke).toHaveBeenCalledWith('restart_host', {});
   });
 
+  it('[owner-fix-8] loads the installed package without restarting the host', async () => {
+    const w = world((cmd) => (cmd.kind === 'install_extension' ? installed() : { removed: true }));
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pick_folder') return '/home/me/Downloads/gateway-bridge';
+      throw new Error(`unexpected ${cmd}`);
+    });
+    renderSection();
+    fireEvent.click(await screen.findByTestId('ext-install-open'));
+    fireEvent.click(await screen.findByTestId('ext-install-folder'));
+    await waitFor(() => expect(screen.getByTestId('ext-install-restart')).toBeTruthy());
+    // the host discovers its packages again: the new one is in the fresh list
+    w.extensions.push({ id: OMNI.id, enabled: true, loaded: true, path: '/home/me/.oino/extensions/gateway.bridge' });
+    fireEvent.click(screen.getByTestId('ext-install-load-now'));
+    await waitFor(() => expect(screen.getByTestId('ext-install-done')).toBeTruthy());
+    expect(screen.getByTestId('ext-install-done').textContent).toContain('gateway.bridge is loaded');
+  });
+
   it('a same-id package asks before replacing, then sends replace: true', async () => {
     const w = world((cmd) =>
       cmd.replace
@@ -214,6 +231,7 @@ describe('Install extension… (phone)', () => {
     await screen.findByTestId('ext-install-restart');
     expect(putBytes).toHaveBeenCalled();
     expect(w.calls).toEqual([{ kind: 'install_extension', path: '/home/me/.oino/host/blobs/abab' }]);
-    expect(screen.getByTestId('ext-install-restart-manual').textContent).toContain('Restart Unipi on the PC');
+    // [owner-fix-8] the package can be loaded without restarting the host
+    expect(screen.getByTestId('ext-install-load-now').textContent).toContain('Load it now');
   });
 });

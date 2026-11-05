@@ -247,6 +247,10 @@ pub enum HostCmd {
     /// Remove a user-installed package (`<agent dir>/extensions/<id>`); bundled packages
     /// are refused (turn them off instead) → `{id, path, bundledRemains, needsRestart}`.
     RemoveExtension { id: String },
+    /// `_oino/reload_extensions`: drop the host's cached extension sets and
+    /// discover the packages again — the freshly installed (or removed) package
+    /// is loaded without restarting the host. → `{extensions: [...]}`.
+    ReloadExtensions,
     /// `_oino/auth_providers`: providers with sign-in support and credential state →
     /// `{providers: […]}`. Rows carry the hub's cached credential validation (D-37):
     /// `state` (`ready` | `invalid_key` | `unreachable` | `unknown` | `not_configured`),
@@ -293,6 +297,7 @@ impl HostCmd {
             Self::SetExtensionEnabled { .. } => "set_extension_enabled",
             Self::InstallExtension { .. } => "install_extension",
             Self::RemoveExtension { .. } => "remove_extension",
+            Self::ReloadExtensions => "reload_extensions",
             Self::AuthProviders { .. } => "auth_providers",
             Self::DefaultModel => "default_model",
             Self::AvailableModels => "available_models",

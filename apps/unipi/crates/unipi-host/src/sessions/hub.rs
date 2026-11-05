@@ -628,6 +628,13 @@ impl SessionHub {
         self.inner.core.services().await.map_err(HubError::Client)
     }
 
+    /// Drops the cached core services sets: the next command discovers the
+    /// extensions again, so a freshly installed (or removed) extension package
+    /// is live without restarting the host (`host_cmd`'s `reload_extensions`).
+    pub async fn reset_core_services(&self) {
+        self.inner.core.reset_services().await;
+    }
+
     /// Every cached core services set (one per project): a hub-level global settings
     /// write is replayed into the others (`host_cmd`).
     pub async fn core_services_sets(&self) -> Vec<Arc<oino_core::services::Services>> {

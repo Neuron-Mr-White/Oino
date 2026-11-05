@@ -146,6 +146,29 @@ async fn run_on(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<serde_json::Value
 }
 
 #[tokio::test]
+async fn reload_extensions_answers_with_the_fresh_list() {
+    // [owner-fix-8] The host discovers its packages again (a freshly installed
+    // package is live without a restart).
+    let dir = tempfile::tempdir().unwrap();
+    let before = run(&dir, HostCmd::Extensions).await.unwrap();
+    let before_ids: Vec<String> = before["extensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    let reloaded = run(&dir, HostCmd::ReloadExtensions).await.unwrap();
+    let after_ids: Vec<String> = reloaded["extensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(before_ids, after_ids);
+    assert!(!after_ids.is_empty());
+}
+
+#[tokio::test]
 async fn extension_toggle_round_trips_without_a_session() {
     let dir = tempfile::tempdir().unwrap();
     // The faux provider extension is loaded and enabled.

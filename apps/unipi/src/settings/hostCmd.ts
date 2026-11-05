@@ -61,6 +61,7 @@ export type HostCmdOp =
   | { kind: 'set_extension_enabled'; id: string; enabled: boolean }
   | { kind: 'install_extension'; path: string; replace?: boolean }
   | { kind: 'remove_extension'; id: string }
+  | { kind: 'reload_extensions' }
   | { kind: 'auth_providers'; validate?: boolean }
   | { kind: 'default_model' }
   | { kind: 'available_models' }
@@ -82,6 +83,17 @@ const ValuesSchema = z.object({ values: z.unknown(), diagnostics: z.array(z.unkn
 /** `_oino/extensions`: loaded + disabled extensions of the host. */
 export function listExtensions(hostId = settingsHostId()): Promise<HostResult<ExtensionInfo[]>> {
   return hostCmd({ kind: 'extensions' }, ExtensionsSchema, hostId).then((r) =>
+    r.ok ? { ok: true as const, value: r.value.extensions } : r,
+  );
+}
+
+/**
+ * `_oino/reload_extensions`: the host drops its cached extension sets and
+ * discovers the packages again — a freshly installed (or removed) package is
+ * live right away, without restarting the host.
+ */
+export function reloadExtensions(hostId = settingsHostId()): Promise<HostResult<ExtensionInfo[]>> {
+  return hostCmd({ kind: 'reload_extensions' }, ExtensionsSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.extensions } : r,
   );
 }

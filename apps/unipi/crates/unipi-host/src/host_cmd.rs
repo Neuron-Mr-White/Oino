@@ -85,6 +85,17 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
             return install_extension(hub, path, replace.unwrap_or(false)).await;
         }
         HostCmd::RemoveExtension { id } => return remove_extension(hub, id).await,
+        // The extension packages changed on disk: drop the cached services sets
+        // and discover them again, so a freshly installed (or removed) package is
+        // live right away — the host does not have to be restarted.
+        HostCmd::ReloadExtensions => {
+            hub.reset_core_services().await;
+            let services = hub
+                .core_services()
+                .await
+                .map_err(|error| failed(error.to_string()))?;
+            return Ok(json!({ "extensions": extension_infos(&services, hub.agent_dir()) }));
+        }
         _ => {}
     }
     let services = match settings_cwd(&cmd)? {
@@ -383,7 +394,9 @@ async fn dispatch(
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
         // Served before the services spin up (`run`).
-        HostCmd::InstallExtension { .. } | HostCmd::RemoveExtension { .. } => Err(unsupported(
+        HostCmd::InstallExtension { .. }
+        | HostCmd::RemoveExtension { .. }
+        | HostCmd::ReloadExtensions => Err(unsupported(
             "package installs are served by `run`",
         )),
     }

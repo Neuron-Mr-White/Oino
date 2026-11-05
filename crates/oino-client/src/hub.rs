@@ -727,6 +727,18 @@ impl SessionHub {
         self.services_for(&mut state, &cwd).await
     }
 
+    /// Drops every cached services set: the next [`Hub::services`] (or
+    /// [`Hub::warm_services`]) discovers the extensions again — the way a
+    /// freshly installed (or removed) extension package is picked up without
+    /// restarting the host.
+    ///
+    /// Live sessions keep the services they hold; only the hub's cache is
+    /// dropped, so the next command builds a fresh set.
+    pub async fn reset_services(&self) {
+        let mut state = self.inner.state.lock().await;
+        state.services.clear();
+    }
+
     /// Every cached services set (one per project cwd, busy or idle-warm) — a hub-level
     /// global settings write reaches the other sets through these.
     pub async fn services_sets(&self) -> Vec<Arc<Services>> {
