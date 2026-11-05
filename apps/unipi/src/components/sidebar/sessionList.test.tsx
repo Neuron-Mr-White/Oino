@@ -13,6 +13,7 @@ import { createMockHost, type MockScenario } from '../../dev/mock/host';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { resetHubs } from '../../lib/session/hub';
 import { resetHostCollapse } from './HostGroup';
+import { resetListViews, setListView } from '../../lib/session/listView';
 import type { SessionCard } from '../../lib/host/client';
 import { SessionList } from './SessionList';
 
@@ -63,6 +64,30 @@ afterEach(() => {
   cleanup();
   setHostClientFactory(undefined);
   resetHubs();
+  resetListViews();
+});
+
+describe('the row stats (owner-fix-8)', () => {
+  it('compact rows show the title only; the comfortable row stacks its stats', async () => {
+    const cards = [card('c1', { changes: { add: 3, del: 1 } })];
+    const { container } = boot(cards);
+    await waitFor(() => expect(screen.getByTestId('srow-c1')).toBeTruthy());
+    const row = screen.getByTestId('srow-c1');
+    expect(row.querySelector('.srow-meta')).toBeTruthy();
+    expect(row.querySelector('.srow-changes')?.textContent).toContain('+3');
+    expect(container.querySelector('.srow-meta .srow-changes')).toBeTruthy();
+    cleanup();
+
+    // the compact view: the title and nothing else
+    setListView('this-pc', { compact: true });
+    boot(cards);
+    await waitFor(() => expect(screen.getByTestId('srow-c1')).toBeTruthy());
+    const compact = screen.getByTestId('srow-c1');
+    expect(compact.hasAttribute('data-compact')).toBe(true);
+    expect(compact.querySelector('.srow-meta')).toBeNull();
+    expect(compact.querySelector('.srow-changes')).toBeNull();
+    expect(compact.querySelector('.srow-time')).toBeNull();
+  });
 });
 
 describe('SessionList', () => {

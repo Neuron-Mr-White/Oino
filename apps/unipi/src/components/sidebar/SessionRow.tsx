@@ -325,10 +325,8 @@ export function SessionRow(props: {
             <span class="srow-unread" title="Unread" aria-label="Unread" />
           </Show>
           {word()}
-          <Show when={props.compact}>
-            <span class="srow-chips">{chips()}</span>
-            {timeEl()}
-          </Show>
+          {/* [owner-fix-8] The compact row is the title and nothing else: no
+              stats, no age — the comfortable row carries them. */}
         </span>
         <Show when={!props.compact}>
           <span class="srow-meta">

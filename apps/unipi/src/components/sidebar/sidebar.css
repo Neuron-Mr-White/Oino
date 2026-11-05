@@ -94,6 +94,16 @@
   cursor: pointer;
   transition: background-color 140ms ease-out, color 140ms ease-out;
 }
+/* [owner-fix-8] The comfortable row is a card of its own: a subtle hairline and
+   a little more room around it, so the stats under the title have space. */
+.srow:not([data-compact]) {
+  margin-bottom: 4px;
+  padding: 7px 8px 8px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface-1);
+}
+.srow:not([data-compact]):hover { border-color: color-mix(in srgb, var(--color-line) 70%, var(--color-text-muted)); }
 .srow[data-compact] { min-height: 28px; padding-block: 3px; }
 .srow[data-archived] { opacity: 0.78; }
 .srow:hover { background: var(--color-surface-2); color: var(--color-text); }
@@ -162,9 +172,11 @@
 /* Fade mask only when the title genuinely overflows its flex slot (last 24 px). */
 .srow-body { flex: 1 1 0%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
 .srow-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.srow-meta { display: flex; align-items: center; gap: 6px; min-width: 0; height: 14px; overflow: hidden; }
-.srow-meta .srow-chips { flex: 1 1 0%; }
-.srow-meta .srow-time { margin-left: auto; }
+/* [owner-fix-8] The stats sit under the title, left aligned, one per line (no
+   justify-between): each one reads on its own. */
+.srow-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; margin-top: 2px; }
+.srow-meta .srow-chips { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.srow-meta .srow-time { margin-left: 0; }
 .srow:not([data-compact]) { min-height: 44px; }
 .srow-title {
   flex: 1 1 0%;
