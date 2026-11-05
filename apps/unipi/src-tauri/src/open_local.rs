@@ -33,22 +33,37 @@ fn search_path() -> std::ffi::OsString {
 
 #[cfg(desktop)]
 fn find_in_path(bin: &str) -> Option<std::path::PathBuf> {
-    use std::os::unix::fs::PermissionsExt;
-    for dir in std::env::split_paths(&search_path()) {
-        let candidate = dir.join(bin);
-        if let Ok(meta) = std::fs::metadata(&candidate) {
-            if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
-                return Some(candidate);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in std::env::split_paths(&search_path()) {
+            let candidate = dir.join(bin);
+            if let Ok(meta) = std::fs::metadata(&candidate) {
+                if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
+                    return Some(candidate);
+                }
             }
         }
+        None
     }
-    None
+    #[cfg(windows)]
+    {
+        for dir in std::env::split_paths(&search_path()) {
+            for ext in [".cmd", ".exe", ""] {
+                let candidate = dir.join(format!("{bin}{ext}"));
+                if std::fs::metadata(&candidate).map(|m| m.is_file()).unwrap_or(false) {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Editors installed on this PC (the `id` is the binary name).
 #[tauri::command]
 pub fn local_open_targets() -> Vec<OpenTarget> {
-    #[cfg(all(desktop, unix))]
+    #[cfg(desktop)]
     {
         EDITORS
             .iter()
@@ -59,7 +74,7 @@ pub fn local_open_targets() -> Vec<OpenTarget> {
             })
             .collect()
     }
-    #[cfg(not(all(desktop, unix)))]
+    #[cfg(not(desktop))]
     {
         let _ = EDITORS;
         Vec::new()
@@ -74,7 +89,7 @@ fn unsupported() -> AppErrorDto {
 /// `how`: `reveal` | `default` | an editor id from `local_open_targets`.
 #[tauri::command]
 pub async fn local_open(path: String, how: String) -> Result<(), AppErrorDto> {
-    #[cfg(all(desktop, unix))]
+    #[cfg(desktop)]
     {
         use std::process::{Command, Stdio};
         let p = std::path::PathBuf::from(&path);
@@ -85,6 +100,12 @@ pub async fn local_open(path: String, how: String) -> Result<(), AppErrorDto> {
             AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("can't open {path}: {e}"), false)
         };
         let spawn = |mut c: Command| {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                c.creation_flags(CREATE_NO_WINDOW);
+            }
             c.env("PATH", search_path())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -97,7 +118,9 @@ pub async fn local_open(path: String, how: String) -> Result<(), AppErrorDto> {
             "default" => {
                 #[cfg(target_os = "macos")]
                 let mut c = Command::new("open");
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(target_os = "windows")]
+                let mut c = Command::new("explorer.exe");
+                #[cfg(all(unix, not(target_os = "macos")))]
                 let mut c = Command::new("xdg-open");
                 c.arg(&p);
                 spawn(c)
@@ -109,7 +132,13 @@ pub async fn local_open(path: String, how: String) -> Result<(), AppErrorDto> {
                     c.arg("-R").arg(&p);
                     return spawn(c);
                 }
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(target_os = "windows")]
+                {
+                    let mut c = Command::new("explorer.exe");
+                    c.arg(format!("/select,{}", p.display()));
+                    return spawn(c);
+                }
+                #[cfg(all(unix, not(target_os = "macos")))]
                 {
                     if let (Ok(url), true) = (url::Url::from_file_path(&p), find_in_path("gdbus").is_some()) {
                         let ok = Command::new("gdbus")
@@ -149,10 +178,10 @@ pub async fn local_open(path: String, how: String) -> Result<(), AppErrorDto> {
             }
         }
     }
-    #[cfg(not(all(desktop, unix)))]
+    #[cfg(not(desktop))]
     {
         let _ = (path, how);
-        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Not available on this device", false))
+        Err(unsupported())
     }
 }
 
