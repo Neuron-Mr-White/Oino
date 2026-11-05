@@ -432,6 +432,13 @@ impl Settings {
         self.bool_at(&["enableSkillCommands"], defaults::ENABLE_SKILL_COMMANDS)
     }
 
+    /// `includeClaudeSkills` (default `true`): also discover `.claude/skills`
+    /// — the project ancestors and `~/.claude/skills`.
+    #[must_use]
+    pub fn include_claude_skills(&self) -> bool {
+        self.bool_at(&["includeClaudeSkills"], defaults::INCLUDE_CLAUDE_SKILLS)
+    }
+
     /// `defaultProjectTrust`, global layer only (default `ask`).
     #[must_use]
     pub fn default_project_trust(&self) -> ProjectTrustDefault {

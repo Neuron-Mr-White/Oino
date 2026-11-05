@@ -236,9 +236,24 @@ fn add_auto_discovered(
         .filter(|home| !agent_dir_overridden(input.agent_dir, home))
         .map(|home| home.join(".agents").join("skills"));
     let project_agents_dirs: Vec<PathBuf> = if input.project_trusted {
-        ancestor_agents_skill_dirs(input.cwd)
+        ancestor_skill_dirs(input.cwd, ".agents")
             .into_iter()
             .filter(|dir| Some(dir) != user_agents_skills.as_ref())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    // [owner-fix-8] `.claude/skills` (the project ancestors and `~/.claude/skills`):
+    // the same flavour as `.agents/skills` (SkillMode::Agents). The setting
+    // `includeClaudeSkills` (default on) decides whether they are discovered.
+    let include_claude = settings.include_claude_skills();
+    let user_claude_skills = home
+        .filter(|home| !agent_dir_overridden(input.agent_dir, home))
+        .map(|home| home.join(".claude").join("skills"));
+    let project_claude_dirs: Vec<PathBuf> = if input.project_trusted && include_claude {
+        ancestor_skill_dirs(input.cwd, ".claude")
+            .into_iter()
+            .filter(|dir| Some(dir) != user_claude_skills.as_ref())
             .collect()
     } else {
         Vec::new()
@@ -264,6 +279,17 @@ fn add_auto_discovered(
             &meta,
             &project_skills,
             agents_base,
+        );
+    }
+    for dir in &project_claude_dirs {
+        let claude_base = dir.parent().unwrap_or(dir);
+        let meta = metadata("auto", SourceScope::Project, Some(claude_base));
+        add(
+            skills,
+            collect_skill_entries(dir, SkillMode::Agents),
+            &meta,
+            &project_skills,
+            claude_base,
         );
     }
     if input.project_trusted {
@@ -299,6 +325,19 @@ fn add_auto_discovered(
             &user_skills,
             agents_base,
         );
+    }
+    if include_claude {
+        if let Some(dir) = &user_claude_skills {
+            let claude_base = dir.parent().unwrap_or(dir);
+            let meta = metadata("auto", SourceScope::User, Some(claude_base));
+            add(
+                skills,
+                collect_skill_entries(dir, SkillMode::Agents),
+                &meta,
+                &user_skills,
+                claude_base,
+            );
+        }
     }
     add(
         prompts,
@@ -337,13 +376,13 @@ fn overridden_by(env: Option<&std::ffi::OsStr>, agent_dir: &Path, home: &Path) -
         && canonicalize_or_self(agent_dir) != canonicalize_or_self(&home.join(".oino"))
 }
 
-/// `.agents/skills` from cwd up to the repo root (or the
-/// filesystem root outside a repo).
-fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
+/// `<dot>/skills` from cwd up to the repo root (or the filesystem root outside
+/// a repo) — `.agents/skills` and (with the setting on) `.claude/skills`.
+fn ancestor_skill_dirs(start: &Path, dot: &str) -> Vec<PathBuf> {
     let root = find_git_repo_root(start);
     let mut dirs = Vec::new();
     for dir in start.ancestors() {
-        dirs.push(dir.join(".agents").join("skills"));
+        dirs.push(dir.join(dot).join("skills"));
         if root.as_deref() == Some(dir) {
             break;
         }

@@ -43,7 +43,10 @@ export function parseCatalog(raw: unknown): SkillCatalog {
     defaultMustShow: s.defaultMustShow === true,
     ...(typeof s.path === 'string' ? { path: s.path } : {}),
   }));
-  return { skills, global: states(o.global), project: states(o.project), proxy: o.proxy !== false, ...(typeof o.cwd === 'string' ? { cwd: o.cwd } : {}) };
+  // [owner-fix-8] The skill proxy is OFF unless the reply says it is on: the
+  // old `o.proxy !== false` read a missing field as ON, so a host that does
+  // not answer the flag put every discovered skill through the registry.
+  return { skills, global: states(o.global), project: states(o.project), proxy: o.proxy === true, ...(typeof o.cwd === 'string' ? { cwd: o.cwd } : {}) };
 }
 
 /** The effective state of a skill in `scope` (project over global over the defaults). Pure. */

@@ -356,3 +356,102 @@ fn keybindings_file_migrates_and_drops_invalid_values() {
     assert_eq!(missing.bindings.len(), 0);
     assert_eq!(missing.diagnostics.len(), 0);
 }
+
+/// [owner-fix-8] `.claude/skills` is discovered like `.agents/skills` (the
+/// project ancestors and `~/.claude/skills`), and the setting
+/// `includeClaudeSkills` (default on) decides.
+#[test]
+fn claude_skills_are_discovered_and_can_be_turned_off() {
+    let tree = Tree::new();
+    tree.write(
+        "work/.claude/skills/project-skill/SKILL.md",
+        "---\ndescription: d\n---\n",
+    );
+    tree.write(
+        "home/.claude/skills/home-skill/SKILL.md",
+        "---\ndescription: d\n---\n",
+    );
+    tree.write(
+        "work/.agents/skills/agents-skill/SKILL.md",
+        "---\ndescription: d\n---\n",
+    );
+
+    // On by default: both the project's and the home directory's skills show up.
+    let loader = tree.loader(ResourceLoaderOptions::default(), true);
+    let paths: Vec<String> = loader
+        .skills()
+        .iter()
+        .map(|s| s.source_info.path.display().to_string())
+        .collect();
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.ends_with(".claude/skills/project-skill/SKILL.md")),
+        "{paths:?}"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.ends_with(".claude/skills/home-skill/SKILL.md")),
+        "{paths:?}"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.ends_with(".agents/skills/agents-skill/SKILL.md")),
+        "{paths:?}"
+    );
+
+    // Off: only `.agents/skills` remains.
+    let mut settings = SettingsManager::create(&tree.cwd(), &tree.agent(), true);
+    settings
+        .set(
+            oino_settings::SettingsScope::Global,
+            &["includeClaudeSkills"],
+            Some(false.into()),
+        )
+        .unwrap();
+    let mut loader = ResourceLoader::new(ResourceLoaderOptions {
+        cwd: tree.cwd(),
+        agent_dir: tree.agent(),
+        home_dir: Some(tree.root.join("home")),
+        ..ResourceLoaderOptions::default()
+    });
+    loader.reload(settings.settings(), true);
+    let paths: Vec<String> = loader
+        .skills()
+        .iter()
+        .map(|s| s.source_info.path.display().to_string())
+        .collect();
+    assert!(
+        !paths
+            .iter()
+            .any(|p| p.contains(".claude/skills")),
+        "{paths:?}"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|p| p.ends_with(".agents/skills/agents-skill/SKILL.md")),
+        "{paths:?}"
+    );
+}
+
+/// [owner-fix-8] The project's `.claude/skills` are trust-gated like the
+/// project's `.agents/skills`: an untrusted project shows none of them.
+#[test]
+fn claude_project_skills_follow_the_project_trust() {
+    let tree = Tree::new();
+    tree.write(
+        "work/.claude/skills/project-skill/SKILL.md",
+        "---\ndescription: d\n---\n",
+    );
+    let untrusted = tree.loader(ResourceLoaderOptions::default(), false);
+    assert!(
+        !untrusted
+            .skills()
+            .iter()
+            .any(|s| s.source_info.path.display().to_string().contains(".claude/skills")),
+        "an untrusted project must not load its .claude/skills"
+    );
+}

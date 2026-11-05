@@ -21,4 +21,12 @@ describe('skills manager rules', () => {
     expect(c.global).toEqual({ a: { enabled: true } });
     expect(c.proxy).toBe(false);
   });
+  it('[owner-fix-8] the skill proxy is off unless the reply says it is on', () => {
+    // A missing flag is OFF (the proxy is opt-in), not ON.
+    expect(parseCatalog({ skills: [] }).proxy).toBe(false);
+    expect(parseCatalog({ skills: [], proxy: undefined }).proxy).toBe(false);
+    expect(parseCatalog({ skills: [], proxy: null }).proxy).toBe(false);
+    expect(parseCatalog({ skills: [], proxy: false }).proxy).toBe(false);
+    expect(parseCatalog({ skills: [], proxy: true }).proxy).toBe(true);
+  });
 });

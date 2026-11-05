@@ -1295,6 +1295,21 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                             defaults::ENABLE_SKILL_COMMANDS,
                         ),
                         {
+                            // [owner-fix-8] `.claude/skills` are discovered like
+                            // `.agents/skills` (the project ancestors and
+                            // `~/.claude/skills`); this switch turns them off.
+                            let mut field = core_boolean(
+                                "includeClaudeSkills",
+                                "Include .claude/skills",
+                                defaults::INCLUDE_CLAUDE_SKILLS,
+                            );
+                            field.description = Some(
+                                "Also discover the skills of .claude/skills — the project folders and your home directory."
+                                    .into(),
+                            );
+                            field
+                        },
+                        {
                             let mut field = core_string("sessionDir", "Session storage folder");
                             field.description = Some(
                                 "Where chat history files are saved. Empty = ~/.oino/sessions (default)."

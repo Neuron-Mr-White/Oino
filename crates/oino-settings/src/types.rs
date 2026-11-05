@@ -30,6 +30,9 @@ pub mod defaults {
     pub const SHOW_CACHE_MISS_NOTICES: bool = false;
     /// `enableSkillCommands`.
     pub const ENABLE_SKILL_COMMANDS: bool = true;
+    /// `includeClaudeSkills`: discover `.claude/skills` (project ancestors and
+    /// `~/.claude/skills`) as well.
+    pub const INCLUDE_CLAUDE_SKILLS: bool = true;
     /// `images.autoResize`.
     pub const IMAGES_AUTO_RESIZE: bool = true;
     /// `images.blockImages`.
