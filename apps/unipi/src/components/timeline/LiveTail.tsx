@@ -26,7 +26,8 @@ function OutboxBubble(props: { item: OutboxItem; ctx: TimelineCtx }) {
         chat={props.ctx.refs}
         text={props.item.text}
         images={[]}
-        pending={status() === 'waiting' || status() === 'lost' ? 'waiting' : 'sending'}
+        pending={status() === 'waiting' ? 'waiting' : status() === 'lost' ? 'lost' : 'sending'}
+        error={status() === 'lost' ? props.item.error : undefined}
         onDismiss={status() === 'waiting' ? () => props.ctx.session.dismiss(props.item.ref) : undefined}
         commands={props.ctx.commands}
       />

@@ -457,11 +457,11 @@ describe('send ↔ stop (WP-A11 matrix: Enter = default, Cmd/Ctrl+Enter the oppo
     const c = mountComposer(s);
     c.setText('a queued follow-up');
     c.key({ key: 'Enter' });
-    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'follow_up')).toBe(true));
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt' && (e.args as { streamingBehavior?: string }).streamingBehavior === 'followUp')).toBe(true));
     expect(composerDraft(s.key).text).toBe('');
     c.setText('a steer via modifier');
     c.key({ key: 'Enter', ctrlKey: true });
-    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'steer')).toBe(true));
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt' && (e.args as { streamingBehavior?: string }).streamingBehavior === 'steer')).toBe(true));
   });
 
   it('Esc stops the run through the dock root (Z-55), not the composer itself', async () => {

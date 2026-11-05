@@ -37,6 +37,14 @@ import { ImageChipRow, openImagePreviewer } from '../chat/ImageChip';
 
 /** Longest collapsed body (Z-29; ZCode folds when `scrollHeight > 121`). */
 export const FOLD_PX = 120;
+/** The error of a lost message: one short line (the full text is in the tooltip). */
+const ERROR_MAX = 90;
+
+/** Shortens an error to one muted line (the tooltip keeps the whole text). */
+export function truncateError(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > ERROR_MAX ? `${flat.slice(0, ERROR_MAX - 1)}…` : flat;
+}
 /** Motion 120–200 ms ease-out (ui-bar.md Global). */
 const FOLD_MS = 180;
 
@@ -154,8 +162,11 @@ export function UserBubble(props: {
   chat: RefChat;
   text: string;
   images?: ImageRef[];
-  /** 'sending': the host hasn't confirmed it yet; 'waiting': the stream is down (Z-50). */
-  pending?: 'sending' | 'waiting';
+  /** 'sending': the host hasn't confirmed it yet; 'waiting': the stream is down (Z-50);
+   *  'lost': the send failed — the note shows the real error, never "Waiting for connection…". */
+  pending?: 'sending' | 'waiting' | 'lost';
+  /** The error of a lost message (one short muted line, the full text in the tooltip). */
+  error?: string;
   /** ✕ on a waiting outbox bubble. */
   onDismiss?: () => void;
   /** A steered message (Z-54) — smaller, marked. */
@@ -268,6 +279,7 @@ export function UserBubble(props: {
       ref={setRootEl}
       data-pending={props.pending === 'sending' ? '' : undefined}
       data-waiting={props.pending === 'waiting' ? '' : undefined}
+      data-lost={props.pending === 'lost' ? '' : undefined}
       data-steer={props.steer ? '' : undefined}
     >
       <Show when={props.steer}>
@@ -321,6 +333,14 @@ export function UserBubble(props: {
       </Show>
       <Show when={props.pending === 'sending'}>
         <span class="chat-user-note">Sending…</span>
+      </Show>
+      <Show when={props.pending === 'lost'}>
+        <span class="chat-user-note chat-user-error" data-testid="tl-outbox-error" title={props.error}>
+          <span class="chat-user-error-label">Not sent</span>
+          <Show when={props.error}>
+            <span class="chat-user-error-text">{truncateError(props.error!)}</span>
+          </Show>
+        </span>
       </Show>
     </div>
   );

@@ -254,10 +254,63 @@ describe('outbox lifecycle (Z-50)', () => {
     c.frame();
     s.send('also this');
     await tick();
-    expect(w.log.at(-1)).toMatchObject({ op: 'steer', args: { type: 'steer', message: 'also this' } });
+    expect(w.log.at(-1)).toMatchObject({ op: 'prompt', args: { type: 'prompt', message: 'also this', streamingBehavior: 'steer' } });
     w.push('h1', 's1', [{ session: 's1', seq: 12, event: { type: 'queue_update', steering: ['also this'], followUp: [] } }]);
     c.frame();
     expect(s.state.outbox.map((o) => o.text)).toEqual(['one', 'two']); // the queue strip shows it now
+  });
+
+  it('a queued message goes out as a `prompt` with a streamingBehavior (owner-fix-9)', async () => {
+    const w = world(sessionSpec({ events: [] }));
+    const c = clock();
+    const { s, dispose } = open(w, c);
+    disposers.push(() => (s.close(), dispose()));
+    await tick();
+    // The run is going: the composer queues the message as a follow-up.
+    w.push('h1', 's1', [{ session: 's1', seq: 11, event: { type: 'agent_start' } }]);
+    c.frame();
+    expect(s.state.run.running).toBe(true);
+    s.send('/graph of the session', { mode: 'followUp' });
+    await tick();
+    const cmd = w.log.at(-1)!;
+    expect(cmd.op).toBe('prompt');
+    expect(cmd.args).toEqual({ type: 'prompt', message: '/graph of the session', streamingBehavior: 'followUp' });
+  });
+
+  it('a lost follow-up retried while idle is sent as a plain prompt (owner-fix-9)', async () => {
+    let fail = true;
+    const w = world(
+      sessionSpec({
+        events: [],
+        cmd: {
+          prompt: () => {
+            if (fail) throw { code: 'E_TRANSPORT', message: 'The session stream closed', retryable: true };
+            return {};
+          },
+        },
+      }),
+    );
+    const c = clock();
+    const { s, dispose } = open(w, c);
+    disposers.push(() => (s.close(), dispose()));
+    await tick();
+    // Queued while a run is going → lost when the command fails.
+    w.push('h1', 's1', [{ session: 's1', seq: 11, event: { type: 'agent_start' } }]);
+    c.frame();
+    s.send('deliver me later', { mode: 'followUp' });
+    await tick();
+    expect(s.state.outbox[0]).toMatchObject({ status: 'lost', mode: 'followUp' });
+    // The run ended meanwhile: the retry is a plain prompt (a queued one would wait forever).
+    w.push('h1', 's1', [{ session: 's1', seq: 12, event: { type: 'agent_end' } }]);
+    c.frame();
+    expect(s.state.run.running).toBe(false);
+    fail = false;
+    s.resend(s.state.outbox[0]!.ref);
+    await tick();
+    const cmd = w.log.at(-1)!;
+    expect(cmd.op).toBe('prompt');
+    expect(cmd.args).toEqual({ type: 'prompt', message: 'deliver me later' });
+    expect(s.state.outbox[0]!.mode).toBe('prompt');
   });
 });
 

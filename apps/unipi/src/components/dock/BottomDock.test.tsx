@@ -92,8 +92,8 @@ describe('BottomDock', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     // Z-52 (WP-A11): Enter follows the global follow-up default — `queue` →
     // a follow-up; Cmd/Ctrl+Enter is the opposite (a steer).
-    await waitFor(() => expect(cmds(w, 'follow_up')).toHaveLength(1));
-    expect((cmds(w, 'follow_up')[0] as { message?: string }).message).toBe('also check cli.ts');
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
+    expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'also check cli.ts', streamingBehavior: 'followUp' });
     expect(input.value).toBe('');
     // Answering the dialog still reaches the caller (the conversation sends `extension_ui_response`).
     fireEvent.click(screen.getByText('cli.ts'));
@@ -151,11 +151,10 @@ describe('BottomDock · WP-A11 (queue, steering, stop)', () => {
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
     fireEvent.input(input, { target: { value: 'a steer via ctrl' } });
     fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
-    await waitFor(() => expect(cmds(w, 'follow_up')).toHaveLength(1));
-    expect(cmds(w, 'follow_up')[0]).toMatchObject({ message: 'a queue default' });
-    expect(cmds(w, 'steer')).toHaveLength(2);
-    expect(cmds(w, 'steer')[0]).toMatchObject({ message: 'a steer via modifier' });
-    expect(cmds(w, 'steer')[1]).toMatchObject({ message: 'a steer via ctrl' });
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(3));
+    expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'a queue default', streamingBehavior: 'followUp' });
+    expect(cmds(w, 'prompt')[1]).toMatchObject({ message: 'a steer via modifier', streamingBehavior: 'steer' });
+    expect(cmds(w, 'prompt')[2]).toMatchObject({ message: 'a steer via ctrl', streamingBehavior: 'steer' });
   });
 
   it('the chevron menu switches the default and "Send now (stops run)" aborts then prompts', async () => {
@@ -168,15 +167,16 @@ describe('BottomDock · WP-A11 (queue, steering, stop)', () => {
     const input = screen.getByPlaceholderText('Keep typing to steer…') as HTMLInputElement;
     fireEvent.input(input, { target: { value: 'now the default is steer' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(cmds(w, 'steer')).toHaveLength(1));
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
+    expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'now the default is steer', streamingBehavior: 'steer' });
 
     // "Send now (stops run)": abort, then send the text as a prompt once idle.
     fireEvent.input(input, { target: { value: 'right now' } });
     fireEvent.click(screen.getByTestId('send-chevron'));
     fireEvent.click(screen.getByTestId('send-now'));
     await waitFor(() => expect(cmds(w, 'abort')).toHaveLength(1));
-    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
-    expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'right now' });
+    await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(2));
+    expect(cmds(w, 'prompt')[1]).toMatchObject({ message: 'right now' });
   });
 
   it('Esc stops from any focus in the conversation, but a docked dialog consumes it (Z-55)', async () => {

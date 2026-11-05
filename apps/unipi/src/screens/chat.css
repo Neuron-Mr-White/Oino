@@ -68,6 +68,11 @@
 .chat-user[data-waiting] .chat-bubble { opacity: .55; box-shadow: inset 0 0 0 1px var(--color-text-dim); }
 .chat-user-note { font-size: calc(11px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .chat-user[data-waiting] .chat-user-note { color: var(--color-amber); display: inline-flex; align-items: center; gap: 6px; }
+/* a lost send: the note carries the real error (muted, one line) */
+.chat-user[data-lost] .chat-user-note { color: var(--color-amber); display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.chat-user-error { overflow: hidden; }
+.chat-user-error-label { flex: none; }
+.chat-user-error-text { color: var(--color-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-outbox-remove { width: 16px; height: 16px; min-height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--color-surface-3); color: var(--color-text-dim); font-size: calc(9px * var(--ui-font-scale)); }
 .chat-harness { align-self: stretch; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 1px rgb(46 40 37 / 75%); text-align: left; min-height: 0; }
 .chat-harness-head { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); }

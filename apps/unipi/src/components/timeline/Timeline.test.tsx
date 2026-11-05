@@ -271,7 +271,7 @@ describe('Timeline', () => {
     expect(r.queryByTestId('tl-jump-dot')).toBeNull();
   });
 
-  it('a lost outbox message renders its own row with Retry', async () => {
+  it('a lost outbox message renders its own row with Retry and the real error (owner-fix-9)', async () => {
     const { s } = await openSession(2, {
       cmd: {
         prompt: () => {
@@ -285,6 +285,9 @@ describe('Timeline', () => {
     await waitFor(() => expect(r.getByTestId('tl-outbox')).toBeTruthy());
     expect(r.getByTestId('tl-outbox').textContent).toContain('deliver me later');
     expect(r.getByTestId('tl-outbox').textContent).toContain('Retry');
+    // The real error, never "Waiting for connection…".
+    expect(r.getByTestId('tl-outbox-error').textContent).toContain('The session stream closed');
+    expect(r.getByTestId('tl-outbox').textContent).not.toContain('Waiting for connection');
   });
 
   it('an empty session shows the timeline empty state', async () => {

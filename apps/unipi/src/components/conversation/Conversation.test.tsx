@@ -74,8 +74,8 @@ describe('dialog dock (acceptance)', () => {
     sel.addRange(range);
     fireEvent.input(field);
     fireEvent.keyDown(field, { key: 'Enter' });
-    // WP-A11's matrix: Enter while running = the global default (queue ⇒ follow_up).
-    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'follow_up')).toBe(true));
+    // WP-A11's matrix: Enter while running = the global default (queue ⇒ followUp).
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt' && (e.args as { streamingBehavior?: string }).streamingBehavior === 'followUp')).toBe(true));
 
     // The answer goes back as the pi response form; the dialog disappears.
     fireEvent.click(screen.getByText('src/math.ts — the failing test'));

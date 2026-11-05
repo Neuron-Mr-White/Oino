@@ -37,14 +37,20 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
     ...base,
     events: steps,
     cmd: {
-      steer: (cmd, host) => {
-        q.steering.push(String(cmd.message ?? ''));
-        push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
-        return {};
-      },
-      follow_up: (cmd, host) => {
-        q.followUp.push(String(cmd.message ?? ''));
-        push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
+      // The app sends a queued message as `prompt` with a `streamingBehavior`
+      // (core's `prompt()` queues it; an extension command runs right away).
+      prompt: (cmd, host) => {
+        const behavior = String((cmd as { streamingBehavior?: unknown }).streamingBehavior ?? '');
+        if (behavior === 'steer') {
+          q.steering.push(String(cmd.message ?? ''));
+          push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
+          return {};
+        }
+        if (behavior === 'followUp') {
+          q.followUp.push(String(cmd.message ?? ''));
+          push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
+          return {};
+        }
         return {};
       },
       abort: (cmd, host) => {

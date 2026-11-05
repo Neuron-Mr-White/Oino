@@ -99,11 +99,22 @@ type BranchPage = { entries?: SessionEntry[]; leafId?: string | null; total?: nu
 /** [chat-tree] The tail page a tree jump reloads (the snapshot's page size, host `PAGE_LIMIT`). */
 export const BRANCH_PAGE = 80;
 
+/**
+ * The wire command for an outbox item.
+ *
+ * A steer / follow-up goes out as a `prompt` with a `streamingBehavior`
+ * (`steer` / `followUp`), NOT as the old `steer` / `follow_up` commands:
+ * those refuse an extension command (`/graph …` ⇒ CommandNotAllowed), so a
+ * slash command typed while the run streamed stayed "Not sent · Retry" for
+ * good. Core's `prompt()` runs an extension command right away (pi parity)
+ * and otherwise queues it by the behaviour — and ignores the behaviour when
+ * the run is idle (a run starts instead).
+ */
 function sendCommand(mode: OutboxMode, item: OutboxItem): RpcCommand {
   const images = item.images?.map((img) => ({ type: 'image', data: img.data, mimeType: img.mimeType }));
   const base = { message: item.text, ...(images?.length ? { images } : {}) };
-  if (mode === 'steer') return { type: 'steer', ...base };
-  if (mode === 'followUp') return { type: 'follow_up', ...base };
+  if (mode === 'steer') return { type: 'prompt', ...base, streamingBehavior: 'steer' };
+  if (mode === 'followUp') return { type: 'prompt', ...base, streamingBehavior: 'followUp' };
   return { type: 'prompt', ...base };
 }
 
@@ -167,6 +178,15 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
   const dispatch = (ref: string) => {
     const item = state.outbox.find((o) => o.ref === ref);
     if (!item) return;
+    // The mode was picked when the message was typed; the run may have ended
+    // since (a retry of a lost follow-up while the session is idle). An idle
+    // session starts a run for a plain prompt — a queued one would wait for a
+    // run that never comes.
+    if (!state.run.running && item.mode !== 'prompt')
+      mutate((s) => {
+        const o = s.outbox.find((x) => x.ref === ref);
+        if (o) o.mode = 'prompt';
+      });
     mutate((s) => markSending(s, ref));
     ensureSweep();
     stream.cmd<{ disposition?: string } | undefined>(sendCommand(item.mode, unwrap(item))).then(
