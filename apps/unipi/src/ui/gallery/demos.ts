@@ -153,7 +153,7 @@ export const USAGE: UiNode = {
 /** A form-style panel (values collected on submit). */
 export const FORM: UiNode = {
   t: 'Block',
-  title: 'New cron job',
+  title: 'New automation',
   borders: 'ALL',
   borderType: 'Rounded',
   padding: { left: 1, right: 1, top: 0, bottom: 0 },

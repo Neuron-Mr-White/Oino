@@ -96,7 +96,7 @@ export function CloseAskRunner() {
   return (
     <BoardSheet open={open()} onClose={() => answer('tray')} label="Close Unipi?" testId="close-ask-sheet">
       <p class="preview-muted" style={{ margin: '0 0 12px' }} data-testid="close-ask-message">
-        {message() || "Close Unipi, or keep it running in the tray so phones and cron keep working?"}
+        {message() || "Close Unipi, or keep it running in the tray so phones and automations keep working?"}
       </p>
       <label class="flex items-center gap-2 text-sm text-text-muted mb-3" data-testid="close-ask-remember">
         <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} />

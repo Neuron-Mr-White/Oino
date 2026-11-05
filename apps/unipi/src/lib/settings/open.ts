@@ -24,7 +24,7 @@ const KNOWN_SECTIONS = new Set([
  */
 export const NAMESPACE_HOME: Record<string, { href: string; anchor?: string; label: string }> = {
   notify: { href: '/settings/notifications', anchor: 'sec-notify-pc', label: 'Notifications' },
-  cron: { href: '/cron', anchor: 'cron-scheduler', label: 'Cron' },
+  cron: { href: '/cron', anchor: 'cron-scheduler', label: 'Automations' },
 };
 
 /** Opens a namespace's own place (`NAMESPACE_HOME`); false when it has none. */

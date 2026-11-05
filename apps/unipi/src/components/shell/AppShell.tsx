@@ -233,7 +233,7 @@ function DesktopFrame(props: ParentProps) {
     registerCommands([
       { id: 'chat.new', title: 'New chat', group: 'Go to', keywords: 'start session folder project', icon: () => <SquarePen size={16} />, run: () => navigate(`/new/${encodeURIComponent(newChatHost())}`) },
       { id: 'go.board', title: 'Go to Board', group: 'Go to', keywords: 'kanban tasks', icon: () => <Columns3 size={16} />, when: () => reservedGate('unipi.kanboard/board'), run: () => navigate('/board') },
-      { id: 'go.cron', title: 'Go to Cron', group: 'Go to', keywords: 'schedule jobs', icon: () => <Clock size={16} />, run: () => navigate('/cron') },
+      { id: 'go.cron', title: 'Go to Automations', group: 'Go to', keywords: 'schedule jobs', icon: () => <Clock size={16} />, run: () => navigate('/cron') },
       { id: 'go.settings', title: 'Go to Settings', group: 'Go to', keywords: 'preferences', icon: () => <SettingsIcon size={16} />, keys: `${modKey()} ,`, run: () => navigate('/settings') },
       { id: 'view.sidebar', title: 'Toggle sidebar', group: 'View', keys: `${modKey()} B`, icon: () => <PanelLeft size={16} />, run: () => L.toggleSidebar() },
       { id: 'view.side', title: 'Toggle side pane', group: 'View', keywords: 'files git panel right', keys: `${modKey()} Alt B`, icon: () => <PanelRight size={16} />, run: () => runBinding({ kind: 'app', id: 'shell.side' }, { navigate, newChatHost, hosts: hostsCtx?.hosts() ?? [] }) },

@@ -110,7 +110,7 @@ function TurnHead(props: {
       <Show when={t().source === 'cron' || scheduled()}>
         <div class="tl-cron" data-testid="tl-cron">
           <Clock size={12} />
-          <span>{scheduled() ? 'Scheduled run' : 'Sent by cron'}</span>
+          <span>{scheduled() ? 'Scheduled run' : 'Sent by an automation'}</span>
         </div>
       </Show>
       <Show

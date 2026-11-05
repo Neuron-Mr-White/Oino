@@ -146,9 +146,9 @@ describe('Properties menu', () => {
     openProps();
     fireEvent.click(screen.getByTestId('lp-compact'));
     await waitFor(() => expect(screen.getByTestId('srow-a').hasAttribute('data-compact')).toBe(true));
-    // Compact: ONE line — title + age, no meta line.
+    // Compact: the title and nothing else — no meta line, no age (owner-fix-8).
     expect(screen.getByTestId('srow-a').querySelector('.srow-meta')).toBeNull();
-    expect(screen.getByTestId('srow-a').querySelector('.srow-line > .srow-time')).toBeTruthy();
+    expect(screen.getByTestId('srow-a').querySelector('.srow-line > .srow-time')).toBeNull();
     fireEvent.click(screen.getByTestId('lp-props'));
     fireEvent.click(screen.getByTestId('lp-prop-updated'));
     await waitFor(() => expect(screen.getByTestId('srow-a').querySelector('.srow-time')).toBeNull());

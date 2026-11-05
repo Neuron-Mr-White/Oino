@@ -339,7 +339,7 @@ export function ListProperties(props: {
           <For each={['cron', 'manual'] as AutomationKey[]}>
             {(k) => (
               <Choice
-                label={k === 'cron' ? 'Automation (cron)' : AUTOMATION_LABEL[k]}
+                label={AUTOMATION_LABEL[k]}
                 count={automationCounts().get(k) ?? 0}
                 testId={`lp-automation-${k}`}
                 checked={view().filters.automation.includes(k)}

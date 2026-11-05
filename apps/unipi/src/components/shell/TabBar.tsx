@@ -21,7 +21,7 @@ type TabDef = { id: PhoneTab; label: string; icon: Component<{ size?: number; st
 export const TABS: readonly TabDef[] = [
   { id: 'chat', label: 'Chats', icon: MessagesSquare },
   { id: 'board', label: 'Board', icon: SquareKanban, when: () => reservedGate('unipi.kanboard/board') },
-  { id: 'cron', label: 'Cron', icon: CalendarClock },
+  { id: 'cron', label: 'Automations', icon: CalendarClock },
   { id: 'files', label: 'Files', icon: Folder, when: () => can('files') },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];

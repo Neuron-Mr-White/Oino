@@ -318,7 +318,7 @@ export default function Cron() {
   const body = () => (
     <>
         <Show when={view().kind === 'loading'}>
-          <div class="preview-loading" data-testid="cron-loading"><RefreshCw size={18} class="refresh-spinning" /> Checking cron on {hostName(hostId())}…</div>
+          <div class="preview-loading" data-testid="cron-loading"><RefreshCw size={18} class="refresh-spinning" /> Checking automations on {hostName(hostId())}…</div>
         </Show>
 
         <Show when={view().kind === 'disabled'}>
@@ -367,7 +367,7 @@ export default function Cron() {
                       type="search"
                       class="cron-search"
                       placeholder={`Search ${v.jobs.length} job${v.jobs.length === 1 ? '' : 's'}…`}
-                      aria-label="Search cron jobs"
+                      aria-label="Search automations"
                       value={query()}
                       onInput={(e) => setQuery(e.currentTarget.value)}
                       data-testid="cron-search"
@@ -389,7 +389,7 @@ export default function Cron() {
                         </Show>
                       </div>
                       <Show when={shown().length > CRON_PAGE_SIZES[0]}>
-                        <nav class="cron-pager" aria-label="Cron pages" data-testid="cron-pager">
+                        <nav class="cron-pager" aria-label="Automation pages" data-testid="cron-pager">
                           <span class="cron-pager-count">{(pg().page - 1) * pageSize() + 1}–{Math.min(pg().page * pageSize(), shown().length)} of {shown().length}</span>
                           <button type="button" class="cron-page-btn" disabled={pg().page <= 1} onClick={() => setPage(pg().page - 1)} aria-label="Previous page" data-testid="cron-page-prev">‹</button>
                           <For each={pageButtons(pg().page, pg().pages)}>
@@ -407,7 +407,7 @@ export default function Cron() {
                   );
                 })()}>
                   <EmptyState
-                    title="No cron jobs yet"
+                    title="No automations yet"
                     body="Schedule an unattended agent run — a daily digest, a nightly cleanup, a weekly report."
                     action={
                       <button type="button" class="empty-add bg-shell text-face rounded-pill" onClick={() => setFormOpen('new')} data-testid="cron-empty-add">
@@ -475,8 +475,8 @@ export default function Cron() {
 
   return (
     <Show when={hosts.hosts().length > 0} fallback={
-      <Show when={phone()} fallback={<div class="page-screen"><PageHeader title="Cron" /><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></div>}>
-        <PageScaffold title="Cron" testId="cron-screen"><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></PageScaffold>
+      <Show when={phone()} fallback={<div class="page-screen"><PageHeader title="Automations" /><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></div>}>
+        <PageScaffold title="Automations" testId="cron-screen"><NoHostState what="scheduled runs" onAdd={() => setAddHostOpen(true)} /></PageScaffold>
       </Show>
     }>
       <Show
@@ -484,7 +484,7 @@ export default function Cron() {
         fallback={
           <div class="page-screen cron-screen" data-testid="cron-screen">
         <PageHeader
-          title="Cron"
+          title="Automations"
           lead={desktopShell() ? undefined : <PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
           tools={
             <>
@@ -513,19 +513,19 @@ export default function Cron() {
           keyed
           fallback={
             <PageScaffold
-              title="Cron"
+              title="Automations"
               testId="cron-screen"
               onRefresh={refresh}
               tools={
                 <>
                   <IconButton icon={Settings2} label="Scheduler settings" onClick={() => setSchedulerOpen(true)} testId="cron-scheduler-open" />
-                  <IconButton icon={Ellipsis} label="More cron actions" onClick={() => setMenuOpen(true)} testId="cron-more" />
+                  <IconButton icon={Ellipsis} label="More automation actions" onClick={() => setMenuOpen(true)} testId="cron-more" />
                 </>
               }
               fab={view().kind === 'ready' ? { icon: Plus, label: 'New job', onClick: () => setFormOpen('new') } : undefined}
             >
               <div class="cron-screen cron-phone">{body()}</div>
-              <ActionSheet open={menuOpen()} onClose={() => setMenuOpen(false)} title="Cron" sections={phoneMenu()} testId="cron-menu" />
+              <ActionSheet open={menuOpen()} onClose={() => setMenuOpen(false)} title="Automations" sections={phoneMenu()} testId="cron-menu" />
               {overlays()}
             </PageScaffold>
           }
@@ -572,7 +572,7 @@ function SchedulerSettings(props: { hostId: string; onClose: () => void }) {
   return (
     <BoardSheet open onClose={props.onClose} label="Scheduler settings" class="settings-cmd-sheet" testId="cron-scheduler">
       <p class="cron-hint px-1 pb-2">How many run at once, missed runs, history kept, time limit, default notifications.</p>
-      <Show when={ns()} fallback={<p class="cron-hint px-1 pb-3">{ns.loading ? 'Loading…' : 'This PC’s cron extension reports no settings.'}</p>}>
+      <Show when={ns()} fallback={<p class="cron-hint px-1 pb-3">{ns.loading ? 'Loading…' : 'This PC’s automation extension reports no settings.'}</p>}>
         {(n) => <NamespaceForm namespace={n()} hostId={props.hostId} bare flat testId="cron-scheduler-form" />}
       </Show>
     </BoardSheet>
@@ -1175,7 +1175,7 @@ function JobFormSheet(props: { hostId: string; job?: CronJob; onClose: () => voi
             </For>
           </div>
           <Show when={notifyMode() === 'default'}>
-            <p class="cron-hint">{notifyText(undefined, pcDefault()).replace('PC default: ', 'On ')} — set in Scheduler settings on the Cron screen.</p>
+            <p class="cron-hint">{notifyText(undefined, pcDefault()).replace('PC default: ', 'On ')} — set in Scheduler settings on the Automations screen.</p>
           </Show>
           <Show when={notifyMode() === 'choose'}>
             <div class="cron-checks">

@@ -38,7 +38,7 @@ export const PLUG_ITEMS: PlugItem[] = [
   { id: 'skills', label: 'Skills', icon: Sparkles, group: 'app' },
   { id: 'agents', label: 'Agent profiles', icon: Bot, group: 'app' },
   { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'app' },
-  { id: 'cron', label: 'Cron', icon: CalendarClock, group: 'app' },
+  { id: 'cron', label: 'Automations', icon: CalendarClock, group: 'app' },
   { id: 'notify', label: 'Notification events', icon: Bell, group: 'app' },
   { id: 'changelog', label: "What's new", icon: Newspaper, group: 'app' },
   { id: 'bug', label: 'Report a bug', icon: Bug, group: 'app' },

@@ -194,7 +194,7 @@ export function SessionRow(props: {
   };
   const cronTip = () => {
     const run = cronRun();
-    return run ? `Automation · ${run.jobName}` : 'Automation (run by the cron scheduler)';
+    return run ? `Automation · ${run.jobName}` : 'Automation (run by the scheduler)';
   };
   let titleEl: HTMLSpanElement | undefined;
   createEffect(() => {

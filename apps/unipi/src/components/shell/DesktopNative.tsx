@@ -23,7 +23,7 @@ import { routeSession } from './Sidebar';
 /** Pure: the window title's page label for a route (WP-A3 routes). */
 export function pageLabel(pathname: string): string | undefined {
   const first = pathname.split('/').filter(Boolean)[0] ?? '';
-  const labels: Record<string, string> = { board: 'Board', cron: 'Cron', settings: 'Settings', setup: 'Setup', new: 'New chat', chat: 'Chat', files: 'Files', preview: 'Preview' };
+  const labels: Record<string, string> = { board: 'Board', cron: 'Automations', settings: 'Settings', setup: 'Setup', new: 'New chat', chat: 'Chat', files: 'Files', preview: 'Preview' };
   return labels[first];
 }
 

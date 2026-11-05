@@ -42,7 +42,7 @@ export function LifetimeSection() {
     <Section title="General" id="sec-general" icon={<Settings2 size={14} />}>
       <Row
         label="Close button"
-        description="Ask, minimize to the tray, or quit — phones and cron keep working while the tray lives"
+        description="Ask, minimize to the tray, or quit — phones and automations keep working while the tray lives"
         icon={<LogOut size={18} />}
       >
         <Segmented

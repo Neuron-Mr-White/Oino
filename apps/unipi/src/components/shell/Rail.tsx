@@ -28,7 +28,7 @@ export type RailItem = {
 
 export const BUILTIN_RAIL: RailItem[] = [
   { id: 'board', label: 'Board', href: '/board', icon: Columns3, cap: 'board', reserved: 'unipi.kanboard/board', order: 10 },
-  { id: 'cron', label: 'Cron', href: '/cron', icon: Clock, reserved: 'unipi.cron/jobs', order: 20 },
+  { id: 'cron', label: 'Automations', href: '/cron', icon: Clock, reserved: 'unipi.cron/jobs', order: 20 },
 ];
 
 const [extPages, setExtPages] = createSignal<RailItem[]>([]);

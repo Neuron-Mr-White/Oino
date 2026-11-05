@@ -39,8 +39,8 @@ export function CronChip(props: { hostId: string; sessionId: string }) {
           type="button"
           class="cron-head-chip"
           data-testid="conv-cron-chip"
-          title={j().name ? `Started by the cron job “${j().name}” — open it in Cron` : 'Started by a cron job — open Cron'}
-          aria-label={j().name ? `Cron job ${j().name}` : 'Cron job'}
+          title={j().name ? `Started by the automation “${j().name}” — open it in Automations` : 'Started by an automation — open Automations'}
+          aria-label={j().name ? `Automation ${j().name}` : 'Automation'}
           onClick={() => navigate(cronJobHref(props.hostId, j().id))}
         >
           <Clock size={13} aria-hidden="true" />
