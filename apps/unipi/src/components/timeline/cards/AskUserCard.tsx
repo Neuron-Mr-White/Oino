@@ -12,7 +12,7 @@
  *
  * Phone: the same card inline; the expand button opens it in a full sheet, only on a tap.
  */
-import { createMemo, createSignal, For, Index, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from 'solid-js';
 import { Check, ChevronRight, Maximize2, MessageCircleQuestion } from 'lucide-solid';
 import { layout } from '../../../lib/layout';
 import { expansionOpen, toggleExpansion } from '../../../lib/timeline/expansion';
@@ -21,6 +21,7 @@ import { answerWords, askAnswers, askDialogFor, askQuestions, askResponse, askSe
 import type { ToolRun } from '../../../lib/session/turns';
 import { sessionUi } from '../../../ui/registries';
 import { dialogResponse } from '../../../ui/dialogs/adapter';
+import { registerPendingAsk } from '../../../lib/chat/askPending';
 import { Sheet } from '../../phone';
 import type { TimelineCtx } from '../context';
 import './askUser.css';
@@ -101,6 +102,13 @@ export function AskUserCard(props: { tool: ToolRun; ctx: TimelineCtx }) {
     send(askResponse(qs, list), { tone: 'ok', label: 'You answered', text });
   };
   const skip = () => send(skipResponse(questions()), { tone: 'muted', label: 'You skipped the questions', text: '' });
+  // [owner-fix-9] While this card waits, a composer send submits it first (the typed text
+  // follows as a normal message): picks as they are, nothing picked = skipped.
+  createEffect(() => {
+    if (!waiting() || !dialog()) return;
+    const key = props.ctx.session.key;
+    onCleanup(registerPendingAsk(key, { id: props.tool.id, submit: () => (any() ? submit() : skip()) }));
+  });
 
   const expandKey = () => `ask:${props.tool.id}`;
   const open = () => expansionOpen(props.ctx.sessionId(), expandKey(), false);

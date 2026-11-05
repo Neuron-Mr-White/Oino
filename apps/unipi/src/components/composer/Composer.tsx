@@ -62,6 +62,7 @@ import {
 import { matchModel } from '../../lib/model/find';
 import { rememberCommands } from '../draft/hostCache';
 import { connectComposerMentions } from '../../lib/chat/mention';
+import { answerPendingAsk, hasPendingAsk } from '../../lib/chat/askPending';
 import { connectEditorTokens } from '../../lib/composer/tokens';
 import { modelName, parseModels } from '../../lib/model/picker';
 import { parseLevels, setThinkingLevel, thinkingLabel } from '../../lib/model/thinking';
@@ -184,7 +185,9 @@ export function Composer(props: ComposerProps) {
     props.placeholder ??
     (props.readOnly
       ? 'Read-only — this session is open elsewhere'
-      : running()
+      : !props.draft && hasPendingAsk(props.session.key)
+        ? 'Add a note to your answer…'
+        : running()
         ? `Keep typing to ${followUpMode() === 'steer' ? 'steer' : 'queue'}…`
         : !hasHistory()
           ? props.phone
@@ -870,6 +873,9 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (!cmd && props.sendHold?.()) return;
+    // [owner-fix-9] A question card waiting in this chat is answered first (its picks as they
+    // are); the text then goes out as the note that follows the answer.
+    if (!cmd && !props.draft) answerPendingAsk(key());
     if (cmd) noteCommandRun(key(), text.trim().split('\n')[0]!.slice(1, 80));
     const item = props.session.send(text, { ...(mode ? { mode } : {}), ...(images.length ? { images } : {}) });
     promptStore().add(text);

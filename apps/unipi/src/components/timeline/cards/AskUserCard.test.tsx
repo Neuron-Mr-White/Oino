@@ -6,6 +6,7 @@ import { askDialogFor, askQuestions, askResponse, askSettled, isAskDialog, skipR
 import { inlineAskCalls } from '../../dock/AskPendingChip';
 import { sessionUi } from '../../../ui/registries';
 import { fakeCtx } from '../tools/testutil';
+import { answerPendingAsk, hasPendingAsk } from '../../../lib/chat/askPending';
 import type { ToolRun, Turn } from '../../../lib/session/turns';
 
 afterEach(cleanup);
@@ -109,6 +110,30 @@ describe('AskUserCard', () => {
     fireEvent.input(screen.getAllByTestId('ask-other')[0]!, { target: { value: 'MySQL' } });
     expect(screen.getAllByRole('radio').every((b) => b.getAttribute('aria-checked') === 'false')).toBe(true);
     fireEvent.click(screen.getByTestId('ask-skip'));
+    expect(cmd).toHaveBeenCalledWith({ type: 'extension_ui_response', id: 'dlg-1', value: { answers: [{ id: 'q0', selected: [] }, { id: 'q1', selected: [] }] } });
+    expect(screen.getByTestId('ask-answered').textContent).toContain('You skipped the questions');
+  });
+
+  it('owner-fix-9: a waiting card is pending for its chat; a composer send submits its picks, then it is no longer pending', () => {
+    const ctx = fakeCtx([]);
+    const cmd = vi.spyOn(ctx.session, 'cmd');
+    sessionUi('h1', 's1').applyRequest({ type: 'extension_ui_request', ...FORM });
+    render(() => <AskUserCard tool={tool()} ctx={ctx} />);
+    expect(hasPendingAsk(ctx.session.key)).toBe(true);
+    fireEvent.click(screen.getByText('SQLite'));
+    expect(answerPendingAsk(ctx.session.key)).toBe(true);
+    expect(cmd).toHaveBeenCalledWith({ type: 'extension_ui_response', id: 'dlg-1', value: { answers: [{ id: 'q0', selected: ['sqlite'] }, { id: 'q1', selected: [] }] } });
+    expect(screen.getByTestId('ask-answered').textContent).toContain('You answered');
+    expect(hasPendingAsk(ctx.session.key)).toBe(false);
+    expect(answerPendingAsk(ctx.session.key)).toBe(false);
+  });
+
+  it('owner-fix-9: nothing picked, a composer send skips the questions', () => {
+    const ctx = fakeCtx([]);
+    const cmd = vi.spyOn(ctx.session, 'cmd');
+    sessionUi('h1', 's1').applyRequest({ type: 'extension_ui_request', ...FORM });
+    render(() => <AskUserCard tool={tool()} ctx={ctx} />);
+    answerPendingAsk(ctx.session.key);
     expect(cmd).toHaveBeenCalledWith({ type: 'extension_ui_response', id: 'dlg-1', value: { answers: [{ id: 'q0', selected: [] }, { id: 'q1', selected: [] }] } });
     expect(screen.getByTestId('ask-answered').textContent).toContain('You skipped the questions');
   });

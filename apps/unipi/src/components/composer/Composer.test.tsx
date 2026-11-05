@@ -20,6 +20,7 @@ import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { Composer } from './Composer';
 import { shortcutsOpen } from '../shell/ShortcutsDialog';
 import { actionNotice } from '../../lib/timeline/actions';
+import { registerPendingAsk } from '../../lib/chat/askPending';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
@@ -185,6 +186,30 @@ describe('phone field (phone spec §3.5, PH-11)', () => {
     const c = mountComposer(s, { phone: true });
     expect(c.view.container.querySelector('[data-testid="plan-toggle"]')).toBeNull();
     expect(c.view.container.querySelector('[data-testid="thinking-chip"]')).toBeNull();
+  });
+});
+
+describe('owner-fix-9: the note goes with the answer', () => {
+  it('a waiting question card: the placeholder asks for a note, Send submits the card first, then the text', async () => {
+    const s = await openSession(1);
+    const order: string[] = [];
+    const send = vi.spyOn(s, 'send').mockImplementation(((text: string) => {
+      order.push(`send:${text}`);
+      return { ref: 'r1', text, mode: 'prompt', at: 0, status: 'sending' };
+    }) as never);
+    const off = registerPendingAsk(s.key, { id: 'a1', submit: () => order.push('answer') });
+    const c = mountComposer(s);
+    expect(c.field().getAttribute('data-placeholder')).toBe('Add a note to your answer…');
+    c.type('use the cheaper one');
+    c.key({ key: 'Enter' });
+    expect(order).toEqual(['answer', 'send:use the cheaper one']);
+    off();
+    send.mockClear();
+    order.length = 0;
+    expect(c.field().getAttribute('data-placeholder')).toBe('Ask for follow-up changes');
+    c.type('plain');
+    c.key({ key: 'Enter' });
+    expect(order).toEqual(['send:plain']);
   });
 });
 
