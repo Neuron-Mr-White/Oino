@@ -131,4 +131,24 @@ describe('bottom lock ([chat-load] rules)', () => {
     now.t += SCROLL_IDLE_MS + 1;
     expect(lock.scrolling()).toBe(false);
   });
+
+  it('owner-fix-9: the top mode is not detached for the dot, grew() does not pin, a reader scroll up releases it', () => {
+    const lock = make();
+    const el = scroller();
+    lock.jump(el);
+    lock.enterTop();
+    expect(lock.mode()).toBe('top');
+    lock.set(el, 900); // the sent message placed at the top
+    expect(lock.onScroll(el)).toBe(false);
+    el.h = 2400;
+    lock.grew(el);
+    expect(el.scrollTop).toBe(900);
+    lock.arrived();
+    expect(lock.unread()).toBe(false);
+    el.scrollTop = 850; // the reader
+    lock.onScroll(el);
+    expect(lock.mode()).toBe('detached');
+    lock.releaseTop();
+    expect(lock.mode()).toBe('detached');
+  });
 });

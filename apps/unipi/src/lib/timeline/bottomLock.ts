@@ -12,6 +12,11 @@
  *
  * While locked the timeline pins the bottom in the frame the content grew. The unread dot
  * is NOT geometry: only `arrived()` (new entries / tail growth after the detach) sets it.
+ *
+ * A third mode (owner-fix-9): **top** — the message the user just sent is pinned with its
+ * top at the top of the viewport (ChatGPT/Claude style) and the reply streams in below
+ * it. It ends when the content below the anchor fills the viewport (the bottom takes
+ * over again) or when the reader scrolls (the pin is released).
  */
 import { createSignal } from 'solid-js';
 
@@ -35,10 +40,15 @@ export function distanceToBottom(el: Scroller): number {
 
 const overflows = (el: Scroller) => el.scrollHeight - el.clientHeight > OVERFLOW_PX;
 
+/** The follow mode of the timeline. */
+export type LockMode = 'bottom' | 'detached' | 'top';
+
 export type BottomLock = {
   /** Currently following the tail. */
   readonly locked: () => boolean;
   readonly detached: () => boolean;
+  /** The follow mode: the bottom, the reader's own position, or the "sent message at the top". */
+  readonly mode: () => LockMode;
   /** New content arrived while detached (the jump button's dot, Z-24). */
   readonly unread: () => boolean;
   /** The one programmatic write (`scrollTop = top`); remembered so its scroll event is ours. */
@@ -63,10 +73,14 @@ export type BottomLock = {
   detach(): void;
   /** Clears the unread dot. */
   seen(): void;
+  /** Enters the "sent message at the top" mode (the timeline's settle() places the anchor). */
+  enterTop(): void;
+  /** Releases the top pin without scrolling (the reader scrolled away from it). */
+  releaseTop(): void;
 };
 
 export function createBottomLock(now: () => number = () => performance.now()): BottomLock {
-  const [locked, setLocked] = createSignal(true);
+  const [mode, setMode] = createSignal<LockMode>('bottom');
   const [unread, setUnread] = createSignal(false);
   /** The value our last write left (`NaN` = none pending). */
   let ours = Number.NaN;
@@ -80,18 +94,19 @@ export function createBottomLock(now: () => number = () => performance.now()): B
   };
   const pin = (el: Scroller) => set(el, Math.max(0, el.scrollHeight - el.clientHeight));
   const attach = () => {
-    setLocked(true);
+    setMode('bottom');
     setUnread(false);
   };
 
   return {
-    locked,
-    detached: () => !locked(),
+    locked: () => mode() === 'bottom',
+    detached: () => mode() !== 'bottom',
+    mode,
     unread,
     set,
     gestureUp(el) {
       lastReader = now();
-      if (overflows(el)) setLocked(false);
+      if (overflows(el)) setMode('detached');
     },
     onScroll(el) {
       const top = el.scrollTop;
@@ -104,20 +119,21 @@ export function createBottomLock(now: () => number = () => performance.now()): B
       const d = distanceToBottom(el);
       const up = top < prevTop - 0.5;
       prevTop = top;
-      if (up && d > 1 && overflows(el)) setLocked(false);
-      else if (!up && d <= BOTTOM_PX && !locked()) attach();
+      if (up && d > 1 && overflows(el)) setMode('detached');
+      else if (!up && d <= BOTTOM_PX && mode() !== 'bottom') attach();
       return true;
     },
     scrolling: () => now() - lastReader < SCROLL_IDLE_MS,
     grew(el) {
-      if (locked()) pin(el);
+      if (mode() === 'bottom') pin(el);
     },
     arrived() {
-      if (!locked()) setUnread(true);
+      // The top mode is not "detached": the reply streams below the anchor on purpose.
+      if (mode() === 'detached') setUnread(true);
     },
     reconcile(el) {
       if (overflows(el)) return;
-      if (!locked()) attach();
+      if (mode() !== 'bottom') attach();
       // F-12: content that fits shows from the top — a stale offset left the first bubble cut off above empty space.
       if (el.scrollTop > 0) set(el, 0);
     },
@@ -126,7 +142,14 @@ export function createBottomLock(now: () => number = () => performance.now()): B
       pin(el);
     },
     pin,
-    detach: () => setLocked(false),
+    detach: () => setMode('detached'),
     seen: () => setUnread(false),
+    enterTop() {
+      setMode('top');
+      setUnread(false);
+    },
+    releaseTop() {
+      if (mode() === 'top') setMode('detached');
+    },
   };
 }

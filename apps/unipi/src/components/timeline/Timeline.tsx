@@ -77,6 +77,8 @@ const OPEN_TIMEOUT_MS = 4_000;
 const WINDOW_MAX = 120;
 /** Rows of the first window before any geometry exists. */
 const INITIAL_ROWS = 12;
+/** owner-fix-9: the gap between the viewport top and a message the user just sent. */
+const TOP_OFFSET = 12;
 
 const sameTurns = (a: readonly Turn[], b: readonly Turn[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
@@ -97,6 +99,8 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
   let listEl: HTMLDivElement | undefined;
   let tailEl: HTMLDivElement | undefined;
   let dockEl: HTMLDivElement | undefined;
+  /** owner-fix-9: the room below the content that lets the sent message reach the top. */
+  let roomEl: HTMLDivElement | undefined;
 
   // owner5 #6: while this chat is on screen, its command reports are rows here.
   createEffect(() => onCleanup(showReportsInTimeline(session().key)));
@@ -272,6 +276,58 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     lock.set(el, el.scrollTop + (r.top - viewTop(el)) - want);
     anchor = { id: t.id, top: want };
   };
+  // ── owner-fix-9: the message the user just sent sits at the top of the viewport ──
+  /** A sent prompt is being kept at the top (until its turn's content fills the screen). */
+  let topOn = false;
+  /** That prompt's turn, once the host echoed it (live, then a settled row). */
+  let topTurn: string | undefined;
+  const setRoom = (px: number) => {
+    if (!roomEl) return;
+    const h = `${Math.max(0, Math.round(px))}px`;
+    if (roomEl.style.height !== h) roomEl.style.height = h;
+  };
+  const endTop = () => {
+    topOn = false;
+    topTurn = undefined;
+    setRoom(0);
+    lock.releaseTop();
+  };
+  const startTop = () => {
+    topOn = true;
+    topTurn = undefined;
+    toggled = undefined;
+    target = undefined;
+    lock.enterTop();
+  };
+  /** The sent message's node: its settled row, else the live tail (outbox bubble / live turn), else the last row. */
+  const topNode = (): HTMLElement | undefined => {
+    const row = topTurn ? rowNodes.get(topTurn) : undefined;
+    if (row?.isConnected) return row;
+    if (tailEl && tailEl.offsetHeight > 0) return tailEl;
+    const s = settled();
+    const last = s[s.length - 1];
+    return last ? rowNodes.get(last.turnId) : undefined;
+  };
+  /**
+   * Sizes the room below the content so the sent message can sit TOP_OFFSET px below the
+   * viewport top, and (in the lock's `top` mode) scrolls it there. Once the content from
+   * the message down fills the screen, the room goes and the normal bottom-follow resumes.
+   */
+  const placeTop = (el: HTMLElement, scroll: boolean) => {
+    const node = topNode();
+    if (!node || !roomEl) return endTop();
+    const r = node.getBoundingClientRect();
+    const avail = el.clientHeight - (dockEl?.offsetHeight ?? 0);
+    const below = roomEl.getBoundingClientRect().top - r.top;
+    if (below >= avail - TOP_OFFSET) {
+      const wasTop = lock.mode() === 'top';
+      endTop();
+      if (wasTop) lock.jump(el);
+      return;
+    }
+    setRoom(avail - TOP_OFFSET - below);
+    if (scroll) lock.set(el, el.scrollTop + (node.getBoundingClientRect().top - viewTop(el)) - TOP_OFFSET);
+  };
   const syncOverflow = () => {
     const el = scrollEl();
     if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
@@ -288,8 +344,11 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
     for (let i = 0; i < 4; i++) {
       const t = target;
       target = undefined;
+      if (topOn) placeTop(el, !t && lock.mode() === 'top');
       if (t) placeTarget(t);
-      else if (lock.locked()) lock.pin(el);
+      else if (lock.mode() === 'top') {
+        // placed above
+      } else if (lock.locked()) lock.pin(el);
       else restore();
       if (!computeWindow()) break;
     }
@@ -497,8 +556,13 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       const entries = session().state.entries;
       const len = entries.length;
       const last = entries[len - 1]?.id;
-      const outbox = session().state.outbox.length;
+      const ob = session().state.outbox;
+      const outbox = ob.length;
+      const live = liveTurn();
       if (!ready()) return;
+      // owner-fix-9: a prompt the user just sent from an idle chat goes to the top.
+      if (seenLen >= 0 && outbox > seenOutbox && ob[outbox - 1]?.mode === 'prompt' && ob[outbox - 1]?.status === 'sending' && !live) startTop();
+      if (topOn && !topTurn && live) topTurn = live.turnId;
       if (seenLen >= 0 && ((len > seenLen && last !== seenLast) || outbox > seenOutbox)) lock.arrived();
       seenLen = len;
       seenLast = last;
@@ -828,6 +892,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             </Show>
             <CommandReports sessionKey={session().key} />
           </div>
+          <div ref={roomEl} class="tl-top-room" aria-hidden="true" data-testid="tl-top-room" />
         </div>
         <div ref={dockEl} class="tl-dock" data-testid="tl-dock">
           <Show when={actionNotice()}>
@@ -835,7 +900,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
               {actionNotice()}
             </div>
           </Show>
-          <JumpButton show={lock.detached() && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && (lock.jump(scrollEl()!), settle())} />
+          <JumpButton show={lock.mode() === 'detached' && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && (lock.jump(scrollEl()!), settle())} />
           {props.dock}
           <div class="tl-overlay-host" data-testid="tl-overlay-host">
             {props.overlay}
