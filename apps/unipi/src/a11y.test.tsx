@@ -68,7 +68,8 @@ function problems(root: ParentNode): string[] {
     const name = accessibleName(el);
     const html = el.outerHTML.replace(/\s+/g, ' ').slice(0, 180);
     if (!name) out.push(`no accessible name: ${html}`);
-    else if (isIconOnly(el) && !tooltipTextFor(el)) out.push(`icon-only, no tooltip: ${html}`);
+    // [owner-fix-8] a header's icon buttons carry their name but no hover tip.
+    else if (isIconOnly(el) && !tooltipTextFor(el) && !el.closest('[data-no-tip]')) out.push(`icon-only, no tooltip: ${html}`);
   }
   return out;
 }
@@ -116,6 +117,16 @@ describe('shared tooltip (Z-116)', () => {
     expect(tip('d')).toBeUndefined(); // has a visible word
     expect(isIconOnly(doc.getElementById('a')!)).toBe(true);
     expect(isIconOnly(doc.getElementById('c')!)).toBe(false);
+  });
+
+  it('[owner-fix-8] a header\'s icon buttons have no hover tip (the name stays for screen readers)', () => {
+    const doc = document.implementation.createHTMLDocument('t');
+    doc.body.innerHTML = `
+      <div class="page-head-tools" data-no-tip><button id="h" aria-label="Board menu"><svg></svg></button></div>
+      <button id="o" aria-label="Refresh"><svg></svg></button>`;
+    expect(tooltipTextFor(doc.getElementById('h')!)).toBeUndefined();
+    expect(accessibleName(doc.getElementById('h')!)).toBe('Board menu');
+    expect(tooltipTextFor(doc.getElementById('o')!)).toBe('Refresh');
   });
 
   it('waits 300 ms per trigger, restarts for the next one, and shows at once on focus', async () => {

@@ -188,7 +188,8 @@ export function ConversationHeader(props: {
           </Show>
         </Show>
       </div>
-      <div class="conv-head-tools">
+      {/* [owner-fix-8] the header's icon buttons keep their aria-label, but no hover tip */}
+      <div class="conv-head-tools" data-no-tip>
         {props.chips}
         <Show when={rows().length > 0 || hasExtra()}>
           <button type="button" class="shell-icon-btn" aria-label="Chat actions" aria-haspopup="menu" aria-expanded={!!menu()} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())} data-testid="conv-more">

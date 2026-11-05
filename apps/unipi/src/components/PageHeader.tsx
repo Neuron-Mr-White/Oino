@@ -42,7 +42,8 @@ export function PageHeader(props: {
       data-testid={props.testId ?? 'page-head'}
     >
       <div class="page-head-lead">{props.lead}</div>
-      <div class="page-head-tools">
+      {/* [owner-fix-8] the header's icon buttons keep their aria-label, but no hover tip */}
+      <div class="page-head-tools" data-no-tip>
         {props.tools}
         {/* P1-06: with the sidebar open its head carries the bell (one per screen). */}
         <Show when={desktop() && !layout().sidebarOpen() && props.bell !== false && can('hosts')}>

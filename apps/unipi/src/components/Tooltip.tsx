@@ -80,6 +80,9 @@ export function isPlainText(text: string): boolean {
  * automatic tip.
  */
 export function tooltipTextFor(el: Element): string | undefined {
+  // [owner-fix-8] A header's icon buttons carry their name for screen readers
+  // but no hover tip: the bubble landed in an odd place over the header.
+  if (el.closest('[data-no-tip]')) return undefined;
   const clean = (v: string | null | undefined) => v?.replace(/\s+/g, ' ').trim() || undefined;
   const own = clean(el.getAttribute('data-tip'));
   const wrapped = clean(el.closest('.tip')?.getAttribute('data-tip'));
