@@ -7,7 +7,16 @@ import { describe, expect, it } from 'vitest';
 import { CHAT_EVENT_CORPUS } from '../../dev/mock/fixtures/chatEvents';
 import type { SessionEntry } from '../session/types';
 import { buildTurns } from '../session/turns';
-import { describeEvent, eventAudience, eventVisible, firstLine, xmlTag } from './eventKinds';
+import { describeEvent, eventAudience, eventVisible, firstLine, xmlTag, AUDIENCE_LABEL, AUDIENCE_TITLE } from './eventKinds';
+
+describe('the audience badge (owner 2026-11-06)', () => {
+  it('names the audiences the way the user reads them', () => {
+    expect(AUDIENCE_LABEL.user).toBe('Visible to you only');
+    expect(AUDIENCE_LABEL.agent).toBe('Hidden from you');
+    expect(AUDIENCE_LABEL.both).toBe('You & agent');
+    for (const title of Object.values(AUDIENCE_TITLE)) expect(title.length).toBeGreaterThan(10);
+  });
+});
 
 describe('describeEvent (chat event corpus)', () => {
   it.each(CHAT_EVENT_CORPUS.map(([kind, e]) => [kind ?? 'hidden', e.customType ?? e.message?.role ?? e.type, e] as const))(

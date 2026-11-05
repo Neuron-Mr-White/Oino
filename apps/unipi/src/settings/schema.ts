@@ -148,6 +148,22 @@ export const ShortcutSettingsSchema = z.object({
 export type ShortcutSettings = z.infer<typeof ShortcutSettingsSchema>;
 
 /**
+ * Chat (owner 2026-11-06): the chat filter — which audiences' event rows the
+ * timeline shows. An event row is visible to the user only, to the agent only
+ * (hidden from the user) or to both; the filter hides a whole audience.
+ * Normal user/assistant messages are never filtered.
+ */
+export const ChatSettingsSchema = z.object({
+  /** Event rows only the user sees (the default: shown). */
+  showAudienceUser: z.boolean().default(true),
+  /** Event rows both the user and the agent see (the default: shown). */
+  showAudienceBoth: z.boolean().default(true),
+  /** Event rows only the agent sees — hidden from the user (the default: OFF). */
+  showAudienceAgent: z.boolean().default(false),
+});
+export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
+
+/**
  * Every group schema of [`SettingsV1Schema`], in schema order — the ONE
  * list of settings groups, which both `load.ts` (validation) and
  * `context.tsx` (`update('group.key')`) derive their group handling from.
@@ -167,6 +183,7 @@ export const SETTINGS_GROUP_SCHEMAS = {
   editor: EditorSettingsSchema,
   shortcuts: ShortcutSettingsSchema,
   appearance: AppearanceSettingsSchema,
+  chat: ChatSettingsSchema,
 } as const;
 export type SettingsGroup = keyof typeof SETTINGS_GROUP_SCHEMAS;
 
@@ -191,6 +208,7 @@ export const SettingsV1Schema = z.object({
   editor: EditorSettingsSchema.prefault({}),
   shortcuts: ShortcutSettingsSchema.prefault({}),
   appearance: AppearanceSettingsSchema.prefault({}),
+  chat: ChatSettingsSchema.prefault({}),
 });
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 

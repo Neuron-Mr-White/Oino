@@ -186,12 +186,12 @@ describe('header ⋯ (Z-2)', () => {
     // WP-A25's `BuiltinActions` registers Duplicate (`/clone`) and Export
     // (`/export`); WP-A5's `SessionActions` registers Rename… and Fork — the
     // slots A3 reserved stay filled once their WP lands.
-    expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Session info']);
+    expect(labels()).toEqual(['Find in chat', 'Chat filter', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Session info']);
     fireEvent.click(screen.getByTestId('anchored-menu-backdrop'));
     const offs = (['reveal'] as const).map((id) => registerChatAction(id, { run: () => {} }));
     try {
       fireEvent.click(screen.getByTestId('conv-more'));
-      expect(labels()).toEqual(['Find in chat', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
+      expect(labels()).toEqual(['Find in chat', 'Chat filter', 'Rename…', 'Fork', 'Duplicate', 'Export…', 'Copy session id', 'Copy path', 'Reveal folder', 'Session info']);
     } finally {
       offs.forEach((o) => o());
     }

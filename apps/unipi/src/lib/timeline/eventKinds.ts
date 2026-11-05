@@ -49,16 +49,20 @@ export type EventTone = 'ok' | 'warning' | 'error';
 export type EventAudience = 'both' | 'agent' | 'user';
 export type EventBody = { format: 'markdown' | 'text' | 'json'; text: string };
 
+/**
+ * The audience badge on an event row (owner 2026-11-06): who sees it — the
+ * user only, the agent only, or both.
+ */
 export const AUDIENCE_LABEL: Record<EventAudience, string> = {
-  user: 'User only',
-  agent: 'Agent only',
-  both: 'User & agent',
+  user: 'Visible to you only',
+  agent: 'Hidden from you',
+  both: 'You & agent',
 };
 
 export const AUDIENCE_TITLE: Record<EventAudience, string> = {
-  user: 'Shown to you only — not sent to the agent',
-  agent: 'Sent to the agent only (background/system prompt)',
-  both: 'Shown to both you and the agent',
+  user: 'Visible to you only — the agent never sees it',
+  agent: 'Hidden from you — sent to the agent only',
+  both: 'Visible to you and to the agent',
 };
 
 export type EventView = {

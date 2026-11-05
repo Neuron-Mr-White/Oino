@@ -12,7 +12,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Attachments · 2 files · design.pdf · User only"
+    title="Attachments · 2 files · design.pdf · Visible to you only"
     type="button"
   >
     <span
@@ -52,9 +52,9 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -93,7 +93,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Attachments · 2 files · design.pdf · User only"
+    title="Attachments · 2 files · design.pdf · Visible to you only"
     type="button"
   >
     <span
@@ -133,9 +133,9 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -202,7 +202,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · Thinking contract validation · exit 1 · 42s · User & agent"
+    title="Background task · Thinking contract validation · exit 1 · 42s · You & agent"
     type="button"
   >
     <span
@@ -256,9 +256,9 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -298,7 +298,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · Thinking contract validation · exit 1 · 42s · User & agent"
+    title="Background task · Thinking contract validation · exit 1 · 42s · You & agent"
     type="button"
   >
     <span
@@ -352,9 +352,9 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -406,7 +406,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · vitest run · exit 0 · User & agent"
+    title="Background task · vitest run · exit 0 · You & agent"
     type="button"
   >
     <span
@@ -456,9 +456,9 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -498,7 +498,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · vitest run · exit 0 · User & agent"
+    title="Background task · vitest run · exit 0 · You & agent"
     type="button"
   >
     <span
@@ -548,9 +548,9 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -601,7 +601,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · User & agent"
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · You & agent"
     type="button"
   >
     <span
@@ -653,9 +653,9 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -694,7 +694,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · User & agent"
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · You & agent"
     type="button"
   >
     <span
@@ -746,9 +746,9 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -824,7 +824,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Browser · https://oino.dev/ · User only"
+    title="Browser · https://oino.dev/ · Visible to you only"
     type="button"
   >
     <span
@@ -870,9 +870,9 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -911,7 +911,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Browser · https://oino.dev/ · User only"
+    title="Browser · https://oino.dev/ · Visible to you only"
     type="button"
   >
     <span
@@ -957,9 +957,9 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -1011,7 +1011,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Side question · What is the overall progress right now? · glm-5.3 · User only"
+    title="Side question · What is the overall progress right now? · glm-5.3 · Visible to you only"
     type="button"
   >
     <span
@@ -1063,9 +1063,9 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -1104,7 +1104,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Side question · What is the overall progress right now? · glm-5.3 · User only"
+    title="Side question · What is the overall progress right now? · glm-5.3 · Visible to you only"
     type="button"
   >
     <span
@@ -1156,9 +1156,9 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -1234,7 +1234,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · User only"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · Visible to you only"
     type="button"
   >
     <span
@@ -1286,9 +1286,9 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -1327,7 +1327,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · User only"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · Visible to you only"
     type="button"
   >
     <span
@@ -1379,9 +1379,9 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -1461,7 +1461,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · Session recall: "phone sheet" · User & agent"
+    title="Compactor · Session recall: "phone sheet" · You & agent"
     type="button"
   >
     <span
@@ -1509,9 +1509,9 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -1550,7 +1550,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · Session recall: "phone sheet" · User & agent"
+    title="Compactor · Session recall: "phone sheet" · You & agent"
     type="button"
   >
     <span
@@ -1598,9 +1598,9 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -1673,7 +1673,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Agent only"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Hidden from you"
     type="button"
   >
     <span
@@ -1725,9 +1725,9 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -1766,7 +1766,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Agent only"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Hidden from you"
     type="button"
   >
     <span
@@ -1818,9 +1818,9 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -1874,7 +1874,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Acme · weekly report · User & agent"
+    title="Acme · weekly report · You & agent"
     type="button"
   >
     <span
@@ -1928,9 +1928,9 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -1969,7 +1969,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Acme · weekly report · User & agent"
+    title="Acme · weekly report · You & agent"
     type="button"
   >
     <span
@@ -2023,9 +2023,9 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -2077,7 +2077,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Dream · report ready · 3 proposals pending · User only"
+    title="Dream · report ready · 3 proposals pending · Visible to you only"
     type="button"
   >
     <span
@@ -2125,9 +2125,9 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2166,7 +2166,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Dream · report ready · 3 proposals pending · User only"
+    title="Dream · report ready · 3 proposals pending · Visible to you only"
     type="button"
   >
     <span
@@ -2214,9 +2214,9 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2265,7 +2265,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Goal · ~40% · timeline rows done, QA shots pending · User only"
+    title="Goal · ~40% · timeline rows done, QA shots pending · Visible to you only"
     type="button"
   >
     <span
@@ -2319,9 +2319,9 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2360,7 +2360,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Goal · ~40% · timeline rows done, QA shots pending · User only"
+    title="Goal · ~40% · timeline rows done, QA shots pending · Visible to you only"
     type="button"
   >
     <span
@@ -2414,9 +2414,9 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2474,7 +2474,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · OINO-42 · claimed · User only"
+    title="Kanboard · OINO-42 · claimed · Visible to you only"
     type="button"
   >
     <span
@@ -2530,9 +2530,9 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2571,7 +2571,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · OINO-42 · claimed · User only"
+    title="Kanboard · OINO-42 · claimed · Visible to you only"
     type="button"
   >
     <span
@@ -2627,9 +2627,9 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -2681,7 +2681,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · Next task: OINO-42 Chat events parity. · User & agent"
+    title="Kanboard · Next task: OINO-42 Chat events parity. · You & agent"
     type="button"
   >
     <span
@@ -2737,9 +2737,9 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -2778,7 +2778,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · Next task: OINO-42 Chat events parity. · User & agent"
+    title="Kanboard · Next task: OINO-42 Chat events parity. · You & agent"
     type="button"
   >
     <span
@@ -2834,9 +2834,9 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -2895,7 +2895,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · User & agent"
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · You & agent"
     type="button"
   >
     <span
@@ -2947,9 +2947,9 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -2988,7 +2988,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · User & agent"
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · You & agent"
     type="button"
   >
     <span
@@ -3040,9 +3040,9 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -3097,7 +3097,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · save nudge · store what this task taught · Agent only"
+    title="Memory · save nudge · store what this task taught · Hidden from you"
     type="button"
   >
     <span
@@ -3193,9 +3193,9 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -3234,7 +3234,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · save nudge · store what this task taught · Agent only"
+    title="Memory · save nudge · store what this task taught · Hidden from you"
     type="button"
   >
     <span
@@ -3330,9 +3330,9 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -3394,7 +3394,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · User & agent"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · You & agent"
     type="button"
   >
     <span
@@ -3494,9 +3494,9 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -3535,7 +3535,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · User & agent"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · You & agent"
     type="button"
   >
     <span
@@ -3635,9 +3635,9 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -3762,7 +3762,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · no memories yet for openmontage · Agent only"
+    title="Memory · no memories yet for openmontage · Hidden from you"
     type="button"
   >
     <span
@@ -3858,9 +3858,9 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -3899,7 +3899,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · no memories yet for openmontage · Agent only"
+    title="Memory · no memories yet for openmontage · Hidden from you"
     type="button"
   >
     <span
@@ -3995,9 +3995,9 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -4074,7 +4074,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · User only"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · Visible to you only"
     type="button"
   >
     <span
@@ -4137,9 +4137,9 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -4179,7 +4179,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · User only"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · Visible to you only"
     type="button"
   >
     <span
@@ -4242,9 +4242,9 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -4314,7 +4314,7 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · wake-up · 215 memories · oino · User only"
+    title="Memory · wake-up · 215 memories · oino · Visible to you only"
     type="button"
   >
     <span
@@ -4410,9 +4410,9 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -4451,7 +4451,7 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · wake-up · 215 memories · oino · User only"
+    title="Memory · wake-up · 215 memories · oino · Visible to you only"
     type="button"
   >
     <span
@@ -4547,9 +4547,9 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     <svg
       aria-hidden="true"
@@ -4606,7 +4606,7 @@ exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed o
     aria-disabled="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Mode · Graph · User only"
+    title="Mode · Graph · Visible to you only"
     type="button"
   >
     <span
@@ -4658,9 +4658,9 @@ exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed o
       class="tl-audience"
       data-audience="user"
       data-testid="tl-event-audience"
-      title="Shown to you only — not sent to the agent"
+      title="Visible to you only — the agent never sees it"
     >
-      User only
+      Visible to you only
     </span>
     
   </button>
@@ -4681,7 +4681,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Plan mode · Plan mode on · User & agent"
+    title="Plan mode · Plan mode on · You & agent"
     type="button"
   >
     <span
@@ -4746,9 +4746,9 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -4787,7 +4787,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Plan mode · Plan mode on · User & agent"
+    title="Plan mode · Plan mode on · You & agent"
     type="button"
   >
     <span
@@ -4852,9 +4852,9 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -4909,7 +4909,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Ralph · iteration 18/30 · agent-only-subtraction · Agent only"
+    title="Ralph · iteration 18/30 · agent-only-subtraction · Hidden from you"
     type="button"
   >
     <span
@@ -4961,9 +4961,9 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -5002,7 +5002,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Ralph · iteration 18/30 · agent-only-subtraction · Agent only"
+    title="Ralph · iteration 18/30 · agent-only-subtraction · Hidden from you"
     type="button"
   >
     <span
@@ -5054,9 +5054,9 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -5129,7 +5129,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · Mode command: Graph · User & agent"
+    title="Long-horizon · Mode command: Graph · You & agent"
     type="button"
   >
     <span
@@ -5181,9 +5181,9 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5222,7 +5222,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · Mode command: Graph · User & agent"
+    title="Long-horizon · Mode command: Graph · You & agent"
     type="button"
   >
     <span
@@ -5274,9 +5274,9 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5336,7 +5336,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · User & agent"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · You & agent"
     type="button"
   >
     <span
@@ -5400,9 +5400,9 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5442,7 +5442,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · User & agent"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · You & agent"
     type="button"
   >
     <span
@@ -5506,9 +5506,9 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5579,7 +5579,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Skills · Skills now available: browser, image. · User & agent"
+    title="Skills · Skills now available: browser, image. · You & agent"
     type="button"
   >
     <span
@@ -5651,9 +5651,9 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5692,7 +5692,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Skills · Skills now available: browser, image. · User & agent"
+    title="Skills · Skills now available: browser, image. · You & agent"
     type="button"
   >
     <span
@@ -5764,9 +5764,9 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5830,7 +5830,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · User & agent"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · You & agent"
     type="button"
   >
     <span
@@ -5898,9 +5898,9 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5940,7 +5940,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · User & agent"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · You & agent"
     type="button"
   >
     <span
@@ -6008,9 +6008,9 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6095,7 +6095,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · User & agent"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · You & agent"
     type="button"
   >
     <span
@@ -6163,9 +6163,9 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6205,7 +6205,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · User & agent"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · You & agent"
     type="button"
   >
     <span
@@ -6273,9 +6273,9 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6372,7 +6372,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Agent only"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Hidden from you"
     type="button"
   >
     <span
@@ -6424,9 +6424,9 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -6465,7 +6465,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Agent only"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Hidden from you"
     type="button"
   >
     <span
@@ -6517,9 +6517,9 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
       class="tl-audience"
       data-audience="agent"
       data-testid="tl-event-audience"
-      title="Sent to the agent only (background/system prompt)"
+      title="Hidden from you — sent to the agent only"
     >
-      Agent only
+      Hidden from you
     </span>
     <svg
       aria-hidden="true"
@@ -6568,7 +6568,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · git status --short · exit 0 · User & agent"
+    title="Shell · git status --short · exit 0 · You & agent"
     type="button"
   >
     <span
@@ -6625,9 +6625,9 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6666,7 +6666,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · git status --short · exit 0 · User & agent"
+    title="Shell · git status --short · exit 0 · You & agent"
     type="button"
   >
     <span
@@ -6723,9 +6723,9 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6776,7 +6776,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · cargo test -p oino-core · exit 101 · User & agent"
+    title="Shell · cargo test -p oino-core · exit 101 · You & agent"
     type="button"
   >
     <span
@@ -6833,9 +6833,9 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6875,7 +6875,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · cargo test -p oino-core · exit 101 · User & agent"
+    title="Shell · cargo test -p oino-core · exit 101 · You & agent"
     type="button"
   >
     <span
@@ -6932,9 +6932,9 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6984,7 +6984,7 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Watchdog · Tool bash has been running for 12m (limit 10m). · User & agent"
+    title="Watchdog · Tool bash has been running for 12m (limit 10m). · You & agent"
     type="button"
   >
     <span
@@ -7032,9 +7032,9 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"
@@ -7074,7 +7074,7 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Watchdog · Tool bash has been running for 12m (limit 10m). · User & agent"
+    title="Watchdog · Tool bash has been running for 12m (limit 10m). · You & agent"
     type="button"
   >
     <span
@@ -7122,9 +7122,9 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
       class="tl-audience"
       data-audience="both"
       data-testid="tl-event-audience"
-      title="Shown to both you and the agent"
+      title="Visible to you and to the agent"
     >
-      User & agent
+      You & agent
     </span>
     <svg
       aria-hidden="true"

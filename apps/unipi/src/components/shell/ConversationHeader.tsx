@@ -12,8 +12,8 @@
  *   registerChatAction('rename', { run: (ctx) => openRename(ctx) });
  */
 import { createEffect, createSignal, For, Show, type JSX } from 'solid-js';
-import { ArrowLeft, Brain, Copy, Network, CopyPlus, Ellipsis, FileText, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
-import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
+import { ArrowLeft, Brain, Copy, Network, CopyPlus, Ellipsis, FileText, Filter, Folder, FolderInput, FolderLock, FolderOpen, GitFork, Info, PanelLeftOpen, PanelRight, Pencil, Search, Share, SquarePen, SquareTerminal } from 'lucide-solid';
+import { AnchoredMenu, MenuCheckRow, MenuLabel, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
 import { observeTitleOverflow, syncTitleOverflow } from '../sidebar/SessionRow';
 import { copyText } from '../../lib/board/share';
 import { layout } from '../../lib/layout';
@@ -22,6 +22,7 @@ import { openFind } from '../../lib/find';
 import { can } from '../../lib/platform';
 import { ShellNeedsYouBell } from '../NeedsYouBell';
 import { setNeedsYouOpen } from '../../lib/needsYouOpen';
+import { useSettingsOptional } from '../../settings/context';
 import type { IconComponent } from '../../lib/panes/kinds';
 
 export type ChatActionId = 'rename' | 'fork' | 'duplicate' | 'export' | 'move-workspace' | 'copy-id' | 'copy-path' | 'copy-log' | 'reveal' | 'memory-consolidate' | 'view-graph' | 'info';
@@ -119,6 +120,15 @@ export function ConversationHeader(props: {
 }) {
   const [menu, setMenu] = createSignal<DOMRect | undefined>();
   const [folderMenu, setFolderMenu] = createSignal<DOMRect | undefined>();
+  /** [owner-fix-8] the chat filter popover (the ⋯ menu's "Chat filter"). */
+  const [filterMenu, setFilterMenu] = createSignal<DOMRect | undefined>();
+  const settings = useSettingsOptional();
+  const chat = () => settings?.settings.chat;
+  const toggleAudience = (key: 'showAudienceUser' | 'showAudienceBoth' | 'showAudienceAgent') => () => {
+    const current = chat();
+    if (!current) return;
+    settings?.update(`chat.${key}`, !current[key]);
+  };
   const rows = () => (props.ctx ? chatActionsFor(props.ctx) : []);
   /** The folder line's rows on a scratch chat: Move to a workspace… / Reveal scratch folder. */
   const folderRows = () => (props.scratch ? rows().filter((r) => r.id === 'move-workspace' || r.id === 'reveal') : []);
@@ -210,6 +220,31 @@ export function ConversationHeader(props: {
           </button>
         </Show>
       </div>
+      <Show when={filterMenu()}>
+        {(at) => (
+          <AnchoredMenu anchor={at()} alignEnd width={240} label="Chat filter" onDismiss={() => setFilterMenu(undefined)}>
+            <MenuLabel>Chat filter</MenuLabel>
+            <MenuCheckRow
+              label="Visible to you only"
+              checked={chat()?.showAudienceUser ?? true}
+              testId="conv-filter-user"
+              onSelect={toggleAudience('showAudienceUser')}
+            />
+            <MenuCheckRow
+              label="Visible to you & agent"
+              checked={chat()?.showAudienceBoth ?? true}
+              testId="conv-filter-both"
+              onSelect={toggleAudience('showAudienceBoth')}
+            />
+            <MenuCheckRow
+              label="Hidden from you"
+              checked={chat()?.showAudienceAgent ?? false}
+              testId="conv-filter-agent"
+              onSelect={toggleAudience('showAudienceAgent')}
+            />
+          </AnchoredMenu>
+        )}
+      </Show>
       <Show when={folderMenu()}>
         <AnchoredMenu anchor={folderMenu()!} width={260} label="Workspace" onDismiss={() => setFolderMenu(undefined)}>
           <For each={folderRows()}>
@@ -227,6 +262,19 @@ export function ConversationHeader(props: {
           {/* Find is a menu entry too (Z-79): the phone has no Cmd/Ctrl+F. */}
           <Show when={props.ctx}>
             <MenuRow icon={<Search size={18} />} label="Find in chat" onSelect={() => (setMenu(undefined), openFind())} />
+          </Show>
+          {/* [owner-fix-8] the chat filter: which audiences' event rows the timeline shows. */}
+          <Show when={chat()}>
+            <MenuRow
+              icon={<Filter size={18} />}
+              label="Chat filter"
+              testId="conv-chat-filter"
+              onSelect={() => {
+                const at = menu();
+                setMenu(undefined);
+                if (at) setFilterMenu(at);
+              }}
+            />
           </Show>
           <Show when={props.extraMenu}>{(lead) => <>{lead()(() => setMenu(undefined))}</>}</Show>          <For each={rows()}>
             {(row, i) => {

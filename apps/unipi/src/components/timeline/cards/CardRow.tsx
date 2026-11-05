@@ -19,10 +19,25 @@ import { openSubagentTab } from '../../panes/tabs/sessionTabs';
 import { ModelChangeCard } from './ModelChangeCard';
 import { RendererCard } from './RendererCard';
 import { EventCard } from './EventCard';
-import { describeEvent } from '../../../lib/timeline/eventKinds';
+import { describeEvent, eventAudience, type EventAudience } from '../../../lib/timeline/eventKinds';
+import { useSettingsOptional } from '../../../settings/context';
+
+/**
+ * [owner-fix-8] The chat filter (Settings › chat, the chat ⋯ menu): which
+ * audiences' event rows the timeline shows. Agent-only rows are hidden by
+ * default; user/assistant messages are never filtered — only the audience
+ * tagged event rows.
+ */
+export function audienceShown(audience: EventAudience, chat: { showAudienceUser: boolean; showAudienceBoth: boolean; showAudienceAgent: boolean } | undefined): boolean {
+  if (!chat) return true;
+  if (audience === 'user') return chat.showAudienceUser;
+  if (audience === 'agent') return chat.showAudienceAgent;
+  return chat.showAudienceBoth;
+}
 
 export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
   const e = () => props.entry;
+  const settings = useSettingsOptional();
   if (e().type === 'model_change' || e().type === 'thinking_level_change') {
     return <ModelChangeCard entry={e()} />;
   }
@@ -39,6 +54,13 @@ export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
     );
   }
   const view = () => describeEvent(e());
+  // [owner-fix-8] the chat filter: an event row of a hidden audience is not
+  // drawn. Rows without an audience badge (extension renderers) are kept.
+  const hidden = () => {
+    const v = view();
+    if (!v) return false;
+    return !audienceShown(v.audience ?? eventAudience(e()), settings?.settings.chat);
+  };
   // Z-42: a subagent / sidekick card has one way into the child transcript —
   // the `subagent` tab (a sheet on the phone). No second "Open session" path.
   const agent = () => agentOfEntry(e());
@@ -48,7 +70,7 @@ export function CardRow(props: { entry: SessionEntry; ctx: TimelineCtx }) {
     openSubagentTab({ hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), cwd: props.ctx.cwd() }, a);
   };
   return (
-    <Show when={view() !== null}>
+    <Show when={view() !== null && !hidden()}>
       <div class="tl-cardblock">
         <Show when={view()} keyed fallback={<RendererCard entry={e()} ctx={props.ctx} />}>
           {(v) => <EventCard entry={e()} view={v} ctx={props.ctx} />}

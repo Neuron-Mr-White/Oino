@@ -10,6 +10,7 @@ import { Portal } from 'solid-js/web';
 import { pushBack } from '../../lib/back';
 import { createExit } from '../../lib/motion';
 import { layout } from '../../lib/layout';
+import { Check } from 'lucide-solid';
 import { SheetFrame } from '../phone/Sheet';
 import './anchored-menu.css';
 
@@ -222,6 +223,29 @@ export function MenuRow(props: {
 
 export function MenuSeparator() {
   return <div class="board-menu-sep" role="separator" />;
+}
+
+/**
+ * A checkbox row (the chat filter): the tick shows the state, the row toggles
+ * it. The menu's arrow keys walk it like any other row.
+ */
+export function MenuCheckRow(props: { label: string; checked: boolean; testId?: string; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={props.checked}
+      class="recent-popover-row board-menu-row board-menu-check"
+      data-testid={props.testId}
+      data-checked={props.checked ? '' : undefined}
+      onClick={() => props.onSelect()}
+    >
+      <span class="board-menu-icon">
+        <Check size={16} />
+      </span>
+      <span class="min-w-0 flex-1 truncate text-left">{props.label}</span>
+    </button>
+  );
 }
 
 export function MenuLabel(props: { children: JSX.Element }) {

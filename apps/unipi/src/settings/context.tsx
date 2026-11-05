@@ -191,4 +191,13 @@ export function useSettingsApi(): SettingsApi {
   return api;
 }
 
+/**
+ * The settings when a provider is above (the timeline's audience filter reads
+ * them), `undefined` in a bare tree (unit tests, the capture harness). Never
+ * throws — the caller falls back to the defaults.
+ */
+export function useSettingsOptional(): SettingsApi | undefined {
+  return useContext(SettingsContext);
+}
+
 

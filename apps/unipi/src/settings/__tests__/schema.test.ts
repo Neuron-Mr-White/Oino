@@ -51,6 +51,11 @@ describe('SettingsV1Schema', () => {
       shortcuts: {
         chords: {},
       },
+      chat: {
+        showAudienceUser: true,
+        showAudienceBoth: true,
+        showAudienceAgent: false,
+      },
     });
     expect(parsed).toEqual(DEFAULT_SETTINGS);
   });
@@ -88,5 +93,20 @@ describe('settings: v1 terminal-multiplexer keys (D-14)', () => {
     expect(parsed.terminal).not.toHaveProperty('herdrFollowFocus');
     expect(parsed.terminal).not.toHaveProperty('tmuxFriendlyOptions');
     expect(parsed.terminal.fontSize).toBe(16);
+  });
+});
+
+describe('settings: the chat filter (owner 2026-11-06)', () => {
+  it('shows the user-only and shared event rows and hides the agent-only ones by default', () => {
+    const parsed = SettingsV1Schema.parse({});
+    expect(parsed.chat.showAudienceUser).toBe(true);
+    expect(parsed.chat.showAudienceBoth).toBe(true);
+    expect(parsed.chat.showAudienceAgent).toBe(false);
+  });
+
+  it('keeps the filter when the settings are loaded from an older blob', () => {
+    const parsed = SettingsV1Schema.parse({ version: 1, terminal: { fontSize: 16 } });
+    expect(parsed.chat.showAudienceUser).toBe(true);
+    expect(parsed.chat.showAudienceAgent).toBe(false);
   });
 });
