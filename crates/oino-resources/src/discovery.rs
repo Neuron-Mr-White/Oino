@@ -326,18 +326,16 @@ fn add_auto_discovered(
             agents_base,
         );
     }
-    if include_claude {
-        if let Some(dir) = &user_claude_skills {
-            let claude_base = dir.parent().unwrap_or(dir);
-            let meta = metadata("auto", SourceScope::User, Some(claude_base));
-            add(
-                skills,
-                collect_skill_entries(dir, SkillMode::Agents),
-                &meta,
-                &user_skills,
-                claude_base,
-            );
-        }
+    if include_claude && let Some(dir) = &user_claude_skills {
+        let claude_base = dir.parent().unwrap_or(dir);
+        let meta = metadata("auto", SourceScope::User, Some(claude_base));
+        add(
+            skills,
+            collect_skill_entries(dir, SkillMode::Agents),
+            &meta,
+            &user_skills,
+            claude_base,
+        );
     }
     add(
         prompts,

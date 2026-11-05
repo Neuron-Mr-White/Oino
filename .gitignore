@@ -13,3 +13,4 @@ extensions/*/*/harness/target/
 node_modules/
 .DS_Store
 *.log
+.agents/
