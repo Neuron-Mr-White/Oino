@@ -435,10 +435,16 @@ async fn http_request(
     want: Option<u64>,
     timeout_ms: u64,
 ) -> Result<Option<Result<Value, String>>, Failure> {
-    let mut b = http::post(url)
-        .timeout_ms(u32::try_from(timeout_ms).unwrap_or(u32::MAX))
-        .header("content-type", "application/json")
-        .header("accept", "application/json, text/event-stream");
+    let mut b = http::post(url).timeout_ms(u32::try_from(timeout_ms).unwrap_or(u32::MAX));
+    // A header set in mcp.json replaces the built-in one of the same name (case-insensitive):
+    // a duplicate `Content-Type` makes servers like refero answer 415.
+    let configured = |name: &str| headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name));
+    if !configured("content-type") {
+        b = b.header("content-type", "application/json");
+    }
+    if !configured("accept") {
+        b = b.header("accept", "application/json, text/event-stream");
+    }
     for (k, v) in headers {
         b = b.header(k, v);
     }
