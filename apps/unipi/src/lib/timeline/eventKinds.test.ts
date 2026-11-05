@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { CHAT_EVENT_CORPUS } from '../../dev/mock/fixtures/chatEvents';
 import type { SessionEntry } from '../session/types';
 import { buildTurns } from '../session/turns';
-import { describeEvent, eventVisible, firstLine, xmlTag } from './eventKinds';
+import { describeEvent, eventAudience, eventVisible, firstLine, xmlTag } from './eventKinds';
 
 describe('describeEvent (chat event corpus)', () => {
   it.each(CHAT_EVENT_CORPUS.map(([kind, e]) => [kind ?? 'hidden', e.customType ?? e.message?.role ?? e.type, e] as const))(
@@ -109,5 +109,32 @@ describe('turns: where event cards render', () => {
     expect(seg.work.map((w) => w.key)).toContain('ev10');
     expect(seg.answer?.text).toBe('Done.');
     expect(JSON.stringify(seg)).not.toContain('ev33');
+  });
+
+  it('discriminates user-only, agent-only and shared (both) entries, and lifts trailing compaction out of the fold', () => {
+    // display:false recall reminder → agent only
+    expect(describeEvent(corpus('ev02'))!.audience).toBe('agent');
+    // custom state card (memory-saved) → user only
+    expect(describeEvent(corpus('ev05'))!.audience).toBe('user');
+    // !bash without excludeFromContext → both; with excludeFromContext → user only
+    expect(describeEvent(corpus('ev28'))!.audience).toBe('both');
+    expect(describeEvent({ ...corpus('ev28'), message: { ...corpus('ev28').message!, excludeFromContext: true } })!.audience).toBe('user');
+    // system prompt checkpoint → agent only
+    expect(eventAudience({ type: 'message', id: 'sys1', message: { role: 'system', content: 'You are powered by Fusion.' } } as SessionEntry)).toBe('agent');
+    // compaction summary → both
+    const cmp = { type: 'compaction', id: 'cmp1', summary: '## Summary\nKept full history.', tokensBefore: 80_000 } as unknown as SessionEntry;
+    expect(eventAudience(cmp)).toBe('both');
+
+    const entries = [
+      user('u1', 'summarize'),
+      assistant('a1', [{ type: 'text', text: 'Here is the answer.' }]),
+      cmp,
+      corpus('ev12'), // unipi-compaction card
+    ];
+    const turns = buildTurns({ entries, leafId: 'ev12', entriesRev: 1, liveTools: {}, run: { running: false } });
+    expect(turns[0]!.segments[0]!.answer?.text).toBe('Here is the answer.');
+    // Between-turn compaction becomes its own top-level compaction turn unit (never folded away).
+    expect(turns[1]!.kind).toBe('compaction');
+    expect(turns[1]!.compaction).toBe(cmp);
   });
 });

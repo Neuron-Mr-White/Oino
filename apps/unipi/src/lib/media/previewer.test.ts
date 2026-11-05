@@ -72,3 +72,17 @@ describe('isDirectPreview: unknown extensions are sniffed, not routed to no-prev
     expect(isDirectPreview(path)).toBe(true);
   });
 });
+
+import { classifyBytes, looksLikeText } from './previewer';
+describe('byte sniff (dotfiles / unknown text types)', () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  it('a .env with an octet-stream mime renders as text', () => {
+    expect(classifyBytes('application/octet-stream', '/p/.env', enc('API_KEY=abc\nDEBUG=1\n'))).toBe('text');
+    expect(classifyBytes(undefined, '/p/Makefile', enc('all:\n\techo hi\n'))).toBe('text');
+  });
+  it('real binaries stay no-preview', () => {
+    expect(looksLikeText(new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]))).toBe(false);
+    expect(classifyBytes('application/octet-stream', '/p/blob', new Uint8Array([0, 1, 2, 3]))).toBe('other');
+    expect(classifyBytes(undefined, '/p/a.zip', enc('PK text-looking'))).toBe('other');
+  });
+});

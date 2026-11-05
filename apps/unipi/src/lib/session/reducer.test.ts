@@ -239,4 +239,35 @@ describe('branchOf', () => {
     expect(branchOf(forked, 'y').map((x) => x.id)).toEqual(['a', 'b', 'x', 'y']);
     expect(branchOf(forked, 'c').map((x) => x.id)).toEqual(['a', 'b', 'c']);
   });
+
+  it('bridges across unannounced intermediate parents (Fusion switch / compaction) instead of wiping history', () => {
+    // Forked chat where model_change ('m1') + thinking_level_change ('t1') were persisted without
+    // entry_appended before unipi:fusion-sidekick ('fs1', parentId: 't1') and a new system/user entry arrived.
+    const forked = [
+      e('a', null),
+      e('b', 'a'),
+      e('alt', 'a'),
+      e('c', 'b'),
+      e('fs1', 't1'),
+      e('live:40', 'fs1'),
+    ];
+    expect(branchOf(forked, 'live:40').map((x) => x.id)).toEqual(['a', 'b', 'c', 'fs1', 'live:40']);
+
+    // And applyEvent asks catchUp from the last connected confirmed entry on both entry_appended gap and compaction_end.
+    const s = fresh();
+    applySnapshot(s, structuredClone(rt.snapshot), NOW);
+    const lastId = s.entries.at(-1)!.id;
+    const r1 = applyEvent(
+      s,
+      { session: 's1', seq: 11, event: { type: 'entry_appended', entry: { type: 'custom', id: 'fs1', parentId: 'missing_t1', customType: 'unipi:fusion-sidekick', data: { active: true } } } },
+      NOW,
+    );
+    expect(r1.catchUp).toBe(lastId);
+    const r2 = applyEvent(
+      s,
+      { session: 's1', seq: 12, event: { type: 'compaction_end', aborted: false, result: { summary: 'Compacted summary', tokensBefore: 50000 } } },
+      NOW,
+    );
+    expect(r2.catchUp).toBe(lastId);
+  });
 });

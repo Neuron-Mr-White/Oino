@@ -105,13 +105,15 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
   };
   const view = createMemo(() => {
     const v = listView(p.hostId);
-    // The phone never groups by project (the PC is the chip; §3.3) and lists the trash on its own page.
-    return { ...v, group: 'none' as const, filters: { ...v.filters, archived: ['unarchived' as const] } };
+    // The phone honours the same Properties grouping/sort/visibility as the desktop; the trash lives on its own page.
+    return { ...v, filters: { ...v.filters, archived: ['unarchived' as const] } };
   });
   const groups = createMemo(() => viewGroups(cards(), hub().state.meta, view(), factsOf));
   const filtered = (list: SessionCard[]) => list.filter((c) => matchesQuery(titleOf(c), projectName(c.cwd), p.query));
   const pinned = createMemo(() => filtered(groups().pinned));
   const rest = createMemo(() => filtered(groups().groups.flatMap((g) => g.cards)));
+  const grouped = createMemo(() => view().group !== 'none');
+  const sections = createMemo(() => groups().groups.map((g) => ({ key: g.key, label: g.label, cards: filtered(g.cards) })).filter((g) => g.cards.length > 0));
   const [menuFor, setMenuFor] = createSignal<SessionCard | undefined>();
 
   const setPinned = (card: SessionCard, on: boolean) => {
@@ -145,7 +147,11 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
     const selecting = () => !!p.selecting;
     const picked = () => !!p.selecting?.has(card.session_id);
     const subtitle = () => {
-      const project = projectName(card.cwd);
+      const pr = view().props;
+      const project = pr.workspace !== false && view().group !== 'project' ? projectName(card.cwd) : undefined;
+      const liveModel = sessions().peek(p.hostId, card.session_id)?.state.model?.id;
+      const modelId = pr.model ? String(liveModel ?? card.model ?? '') : '';
+      const model = modelId ? modelId.split('/').pop() : undefined;
       const what =
         state() === 'working'
           ? 'Working…'
@@ -158,7 +164,7 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
               : card.message_count
                 ? `${card.message_count} message${card.message_count === 1 ? '' : 's'}`
                 : undefined;
-      return [project, what].filter(Boolean).join(' · ') || undefined;
+      return [project, pr.status !== false ? what : undefined, model].filter(Boolean).join(' · ') || undefined;
     };
     return (
       <ListRow
@@ -172,7 +178,7 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
         }
         title={<span class="chat-row-title" data-unread={(meta()?.unread ?? card.unread) ? '' : undefined}>{titleOf(card)}</span>}
         subtitle={<span class="chat-row-sub" data-state={state()}>{subtitle()}</span>}
-        caption={shortTime(card.last_activity ?? card.updated_at)}
+        caption={view().props.updated !== false ? shortTime(card.last_activity ?? card.updated_at) : undefined}
         trailing={meta()?.pinned && !selecting() ? <Pin size={16} class="chat-row-pin" aria-label="Pinned" /> : undefined}
         dim={p.offline}
         selected={picked()}
@@ -191,10 +197,23 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
           <For each={pinned()}>{row}</For>
         </ListGroup>
       </Show>
-      <Show when={rest().length > 0}>
-        <ListGroup title={pinned().length > 0 ? 'Recent' : undefined}>
-          <For each={rest()}>{row}</For>
-        </ListGroup>
+      <Show
+        when={grouped()}
+        fallback={
+          <Show when={rest().length > 0}>
+            <ListGroup title={pinned().length > 0 ? 'Recent' : undefined}>
+              <For each={rest()}>{row}</For>
+            </ListGroup>
+          </Show>
+        }
+      >
+        <For each={sections()}>
+          {(g) => (
+            <ListGroup title={`${g.label} · ${g.cards.length}`}>
+              <For each={g.cards}>{row}</For>
+            </ListGroup>
+          )}
+        </For>
       </Show>
       <Show when={p.query.trim() && pinned().length === 0 && rest().length === 0}>
         <p class="ph-chats-none" data-testid="chats-no-match">No chats match “{p.query.trim()}”.</p>

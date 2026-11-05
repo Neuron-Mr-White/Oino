@@ -33,7 +33,7 @@ import { getEditorTarget, clearEditorTarget, setEditorGuard, setEditorTarget, ty
 import { desktopShell } from '../lib/layout';
 import { fsRead, fsWrite } from '../lib/fs';
 import { blobTransport } from '../lib/blob';
-import { classifyMedia } from '../lib/media/previewer';
+import { classifyBytes } from '../lib/media/previewer';
 import { openPreviewer, ownedObjectUrl } from '../lib/media/previewerState';
 import { pushBack } from '../lib/back';
 import { hapticTick } from '../lib/haptics';
@@ -208,7 +208,7 @@ export default function Editor() {
     if (!target) return;
     try {
       const got = await blobTransport().getBytes(target.hostId, { path: target.path });
-      const kind = classifyMedia(got.mime, target.path);
+      const kind = classifyBytes(got.mime, target.path, got.bytes as Uint8Array);
       const blob = new Blob([got.bytes as BlobPart], { type: got.mime || 'application/octet-stream' });
       const name = target.path.split('/').pop() ?? target.path;
       const source = { hostId: target.hostId, path: target.path };

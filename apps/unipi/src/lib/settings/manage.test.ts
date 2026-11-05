@@ -49,7 +49,7 @@ describe('the Manage table', () => {
     // memory-consolidate prompts a chat: it is the chat's (⋯ menu, /memory-consolidate), not a Settings row.
     expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'global-memory-list', 'dream status', 'dream report', 'dream run']);
     expect(manageActionsFor('chat').map((a) => a.command)).toEqual(['memory-consolidate']);
-    expect(manageActionsFor('skills').map((a) => a.command)).toEqual(['skills', 'skills-editor']);
+    expect(manageActionsFor('skills').map((a) => a.command)).toEqual([]);
     expect(manageActionsFor('subagents').map((a) => a.command)).toEqual(['agents']);
   });
 

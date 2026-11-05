@@ -73,7 +73,13 @@ function slimEntry(e: SessionEntry | undefined): SessionEntry | undefined {
       ...(msg.unipiHarness ? { unipiHarness: msg.unipiHarness } : {}),
       // [chat-events] a `!cmd` row's command / exit / output head.
       ...(msg.role === 'bashExecution'
-        ? { command: trimStr(msg.command as string | undefined, EVENT_STR_CAP), output: trimStr(msg.output as string | undefined, EVENT_STR_CAP), exitCode: msg.exitCode, cancelled: msg.cancelled }
+        ? {
+            command: trimStr(msg.command as string | undefined, EVENT_STR_CAP),
+            output: trimStr(msg.output as string | undefined, EVENT_STR_CAP),
+            exitCode: msg.exitCode,
+            cancelled: msg.cancelled,
+            ...(msg.excludeFromContext !== undefined ? { excludeFromContext: msg.excludeFromContext } : {}),
+          }
         : {}),
     },
   } as SessionEntry;

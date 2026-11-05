@@ -116,14 +116,18 @@ export function BrowserSidePane(props: { show: boolean; hostId: string; hostName
   );
 }
 
-/** Phone: the browser as a full-height sheet over the chat. */
+/** Phone: the browser as a full-screen pane with a ← Back header (never a bottom drawer). */
 export function BrowserSheet(props: { open: boolean; hostId: string; hostName: string; onClose: () => void }) {
   const pane = browserPane();
   return (
     <Show when={props.open}>
-      <div class="browser-sheet-scrim" aria-hidden="true" onClick={() => props.onClose()} />
-      <div class="browser-sheet" role="dialog" aria-modal="true" aria-label={`Browser on ${props.hostName}`} data-testid="browser-sheet">
-        <div class="browser-sheet-handle" aria-hidden="true" />
+      <div class="browser-sheet browser-full-pane" role="dialog" aria-modal="true" aria-label={`Browser on ${props.hostName}`} data-testid="browser-sheet">
+        <header class="stab-layer-head browser-pane-mobile-head">
+          <button type="button" class="ghost-icon-button" aria-label="Back" onClick={() => props.onClose()} data-testid="browser-pane-back">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>
+          </button>
+          <span class="stab-layer-title truncate">Browser · {props.hostName}</span>
+        </header>
         <Show when={`${props.hostId}\u0000${pane.profileFor(props.hostId)}`} keyed>
           {(_key: string) => (
             <BrowserViewer

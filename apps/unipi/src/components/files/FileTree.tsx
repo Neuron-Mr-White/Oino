@@ -6,10 +6,14 @@
  * watchers (`lib/files/watch.ts`). Opening a file is delegated up: text →
  * the editor area, media → the preview tab (desktop) or layer (phone).
  */
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import {
+  AppWindow,
+  Code2,
   Copy,
+  Download,
   Ellipsis,
+  FolderSearch,
   Eye,
   FilePenLine,
   FilePlus2,
@@ -37,6 +41,8 @@ import {
   pushRecent,
 } from '../../lib/fs';
 import { uploadPicked } from '../../lib/blob';
+import { downloadWithNotify, progressLabel, transferMessage } from '../../lib/filesTransfer';
+import { isOwnPcFile, localEditors, localOpen, type OpenTarget } from '../../lib/openLocal';
 import { queueMention } from '../../lib/chat/mention';
 import { clearReturnToChat, openChatHref, openNewChat, parseChatRoute } from '../../lib/session/open';
 import type { ChatTarget } from '../../lib/session/list';
@@ -60,7 +66,7 @@ import { VIRTUAL_THRESHOLD, VirtualWindow, useVirtual } from '../../ui/virtual';
 
 const ROW_H = 26;
 
-type MenuAction = 'open' | 'preview' | 'edit-text' | 'rename' | 'delete' | 'copy' | 'mention' | 'new-file' | 'new-dir';
+type MenuAction = 'open' | 'preview' | 'edit-text' | 'rename' | 'delete' | 'copy' | 'mention' | 'new-file' | 'new-dir' | 'download' | `local:${string}`;
 
 export function FileTree(props: {
   hostId: string;
@@ -171,7 +177,18 @@ export function FileTree(props: {
   // ── Row menu (Rename / Delete / Copy path / Mention in chat, …) ────────
   function runAction(id: MenuAction, row: { path: string; kind: string }) {
     setMenu(undefined);
+    if (id.startsWith('local:')) {
+      void localOpen(row.path, id.slice(6)).then((r) => !r.ok && showToast(r.message));
+      return;
+    }
     switch (id) {
+      case 'download': {
+        setToast(progressLabel('Downloading', undefined));
+        void downloadWithNotify(props.hostId, row.path, (p) => setToast(progressLabel('Downloading', p))).then((r) =>
+          showToast(transferMessage(r, basename(row.path), desktopShell())),
+        );
+        return;
+      }
       case 'open':
         return openPath(row.path);
       case 'preview':
@@ -466,7 +483,7 @@ export function FileTree(props: {
       <Show when={menu()}>
         {(m) => (
           <AnchoredMenu anchor={m().anchor} width={230} label={`Actions for ${basename(m().path)}`} onDismiss={() => setMenu(undefined)}>
-            <MenuItems kind={m().kind} path={m().path} onRun={(id) => runAction(id, { path: m().path, kind: m().kind })} />
+            <MenuItems kind={m().kind} path={m().path} ownPc={isOwnPcFile(props.hostId)} onRun={(id) => runAction(id, { path: m().path, kind: m().kind })} />
           </AnchoredMenu>
         )}
       </Show>
@@ -511,9 +528,10 @@ export function FileTree(props: {
   );
 }
 
-function MenuItems(props: { kind: string; path: string; onRun: (id: MenuAction) => void }) {
+function MenuItems(props: { kind: string; path: string; ownPc: boolean; onRun: (id: MenuAction) => void }) {
   const isDir = () => props.kind === 'dir' || props.kind === 'root';
   const media = () => !isDir() && isDirectPreview(props.path);
+  const [editors] = createResource(() => (props.ownPc ? true : undefined), () => localEditors().catch((): OpenTarget[] => []));
   return (
     <>
       <Show when={isDir()}>
@@ -526,6 +544,18 @@ function MenuItems(props: { kind: string; path: string; onRun: (id: MenuAction) 
       </Show>
       <Show when={!isDir() && !media()}>
         <MenuRow icon={<FileText size={15} />} label="Edit as text" onSelect={() => props.onRun('edit-text')} />
+      </Show>
+      <Show when={!isDir()}>
+        <MenuRow icon={<Download size={15} />} label="Download" testId="files-download" onSelect={() => props.onRun('download')} />
+      </Show>
+      <Show when={props.ownPc}>
+        <MenuSeparator />
+        <MenuRow icon={<FolderSearch size={15} />} label="Open in file explorer" testId="files-reveal" onSelect={() => props.onRun('local:reveal')} />
+        <Show when={!isDir()}>
+          <MenuRow icon={<AppWindow size={15} />} label="Open with default app" onSelect={() => props.onRun('local:default')} />
+        </Show>
+        <For each={editors() ?? []}>{(ed) => <MenuRow icon={<Code2 size={15} />} label={`Open in ${ed.name}`} onSelect={() => props.onRun(`local:${ed.id}`)} />}</For>
+        <MenuSeparator />
       </Show>
       <MenuRow icon={<FilePenLine size={15} />} label="Rename…" onSelect={() => props.onRun('rename')} />
       <MenuRow icon={<Copy size={15} />} label="Copy path" onSelect={() => props.onRun('copy')} />

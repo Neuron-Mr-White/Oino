@@ -46,7 +46,20 @@ export type EventIcon =
   | 'generic';
 
 export type EventTone = 'ok' | 'warning' | 'error';
+export type EventAudience = 'both' | 'agent' | 'user';
 export type EventBody = { format: 'markdown' | 'text' | 'json'; text: string };
+
+export const AUDIENCE_LABEL: Record<EventAudience, string> = {
+  user: 'User only',
+  agent: 'Agent only',
+  both: 'User & agent',
+};
+
+export const AUDIENCE_TITLE: Record<EventAudience, string> = {
+  user: 'Shown to you only — not sent to the agent',
+  agent: 'Sent to the agent only (background/system prompt)',
+  both: 'Shown to both you and the agent',
+};
 
 export type EventView = {
   /** Stable kind id (`data-event` on the row; tests and QA key on it). */
@@ -57,6 +70,8 @@ export type EventView = {
   title: string;
   meta?: string;
   tone?: EventTone;
+  /** Who receives this entry in chat/context: user only, agent only, or both. */
+  audience?: EventAudience;
   /** What the row expands to (absent: the row is a plain marker). */
   body?: EventBody;
   /**
@@ -180,6 +195,23 @@ function harnessOf(e: SessionEntry): { source?: string; title?: string; synopsis
 
 const hiddenByDisplay = (e: SessionEntry): boolean =>
   (e as { display?: unknown }).display === false || (e.message as { display?: unknown } | undefined)?.display === false;
+
+/** Determines whether an entry is visible to the user only, sent to the agent only, or shared with both. */
+export function eventAudience(e: SessionEntry): EventAudience {
+  if (e.type === 'compaction' || e.type === 'branch_summary') return 'both';
+  if (e.type === 'custom') return 'user';
+  if (e.type === 'message') {
+    if (e.message?.role === 'system') return 'agent';
+    if (e.message?.role === 'bashExecution') {
+      return (e.message as Record<string, unknown>).excludeFromContext === true ? 'user' : 'both';
+    }
+    return 'both';
+  }
+  if (e.type === 'custom_message') {
+    return hiddenByDisplay(e) ? 'agent' : 'both';
+  }
+  return 'both';
+}
 
 /**
  * Whether a `custom_message` / `custom` entry produces a transcript row at
@@ -508,11 +540,16 @@ function humanType(ct: string): string {
 }
 
 /** Every visible non-prose entry (see the module doc for the answer kinds). */
+function withAudience(e: SessionEntry, v: EventView | null | undefined): EventView | null | undefined {
+  if (!v) return v;
+  return v.audience ? v : { ...v, audience: eventAudience(e) };
+}
+
 export function describeEvent(e: SessionEntry): EventView | null | undefined {
-  if (e.type === 'custom_message' || e.type === 'custom') return describeCustom(e);
+  if (e.type === 'custom_message' || e.type === 'custom') return withAudience(e, describeCustom(e));
   if (e.type === 'branch_summary') {
     const summary = str((e as { summary?: unknown }).summary) ?? '';
-    return { kind: 'branch-summary', icon: 'branch', source: 'Branch', title: firstLine(summary) || 'summary of the other branch', body: md(summary) };
+    return { kind: 'branch-summary', icon: 'branch', source: 'Branch', title: firstLine(summary) || 'summary of the other branch', audience: 'both', body: md(summary) };
   }
   if (e.type === 'message' && e.message?.role === 'bashExecution') {
     const m = e.message as Record<string, unknown>;
@@ -527,6 +564,7 @@ export function describeEvent(e: SessionEntry): EventView | null | undefined {
       title: command || 'command',
       meta: join(cancelled ? 'cancelled' : exit !== undefined ? `exit ${exit}` : undefined, m.truncated === true ? 'truncated' : undefined, m.excludeFromContext === true ? 'not sent to the model' : undefined),
       tone: cancelled ? 'warning' : exit !== undefined && exit !== 0 ? 'error' : undefined,
+      audience: m.excludeFromContext === true ? 'user' : 'both',
       body: plain(output) ?? { format: 'text', text: '(no output)' },
     };
   }
@@ -536,7 +574,7 @@ export function describeEvent(e: SessionEntry): EventView | null | undefined {
     const text = [textOf(m.content as string | Part[] | undefined), ...Object.values(sections).filter((v): v is string => typeof v === 'string')].filter((s) => s.trim()).join('\n\n');
     if (!text.trim()) return null;
     const agent = /<active_agent name="([^"]+)"/.exec(text)?.[1];
-    return { kind: 'system', icon: 'system', source: 'System', title: agent ? `agent prompt · ${agent}` : firstLine(text.replace(/<[^>]+>/g, '')) || 'instructions updated', body: plain(text) };
+    return { kind: 'system', icon: 'system', source: 'System', title: agent ? `agent prompt · ${agent}` : firstLine(text.replace(/<[^>]+>/g, '')) || 'instructions updated', audience: 'agent', body: plain(text) };
   }
   return undefined;
 }

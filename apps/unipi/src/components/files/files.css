@@ -118,3 +118,9 @@
 .ftree-diag { flex: none; min-width: 15px; padding: 0 3px; border-radius: 6px; font-size: 10px; font-weight: 650; text-align: center; background: color-mix(in srgb, var(--color-warn, #d9a13b) 22%, transparent); color: var(--color-warn, #d9a13b); }
 .ftree-diag.err { background: color-mix(in srgb, var(--color-danger, #d95757) 22%, transparent); color: var(--color-danger, #d95757); }
 .open-menu-icon { gap: 1px; width: auto; padding: 0 5px; }
+
+/* Owner 2026-11-05: Files padding — rows no longer touch the pane edges; rounded hover like other lists. */
+.ftree-scroll { padding: 4px 4px 12px; }
+.ftree-row { border-radius: 6px; padding-right: 8px; }
+.ftree-bar { padding: 0 8px; }
+.feditor-external-menu { min-width: 200px; }

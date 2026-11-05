@@ -126,6 +126,15 @@ export function curatedFirst(rows: readonly ModelInfo[], keys: readonly string[]
 }
 
 /**
+ * Full `provider/id` path shown under a model's display name so duplicate
+ * display names across providers or routes (`omniroute/cc/glm-5.3-flash` vs
+ * `zai/glm-5.3-flash`) are always distinguishable.
+ */
+export function modelPathLabel(m: Pick<ModelInfo, 'provider' | 'id'>): string {
+  return m.provider ? `${m.provider}/${m.id}` : m.id;
+}
+
+/**
  * Where a row runs, short: the provider plus any route in the id
  * (`gateway` + `cc/claude-opus-5-5` → "gateway · cc") — two routes to
  * the same model never read alike, and no raw id is shown on the row.

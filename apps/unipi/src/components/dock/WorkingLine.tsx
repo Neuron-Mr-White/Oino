@@ -12,7 +12,7 @@ import { ChevronRight, MessageCircleQuestion } from 'lucide-solid';
 import { useClock } from '../../lib/clock';
 import { formatDuration } from '../../lib/chat/model';
 import { createPresence } from '../../lib/motion';
-import { workingLineOf, type WorkingLineModel } from '../../lib/status/workingLine';
+import { crabWord, workingLineOf, type WorkingLineModel } from '../../lib/status/workingLine';
 import { askQuestions } from '../../lib/chat/askUser';
 import { workingMessageOf } from '../../ui/slots/effects';
 import { openSessionModal } from '../session/modalTarget';
@@ -73,6 +73,8 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
   createEffect(on(active, (on_) => (on_ ? void appearedAt() : void appearedBySession.delete(key))));
   const now = useClock(() => working() && !!model());
   const elapsed = () => formatDuration(Math.max(0, now() - (m()?.since ?? appearedAt())));
+  /** The generic "Working…" reads as rotating crab words; specific messages stay as written. */
+  const headline = (line: WorkingLineModel) => (line.kind === 'working' && line.text === 'Working…' ? crabWord(key, now()) : line.text);
   const open = () => openSessionModal({ hostId: props.session.hostId, sessionId: props.session.sessionId(), tab: 'running' });
   return (
     <Show when={presence.mounted()}>
@@ -86,7 +88,7 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
                   fallback={
                     <>
                       <span class="wl-dot" aria-hidden="true" />
-                      <span class="wl-text" classList={{ shimmer: line().kind === 'working' }} data-testid="working-line-text">{line().text}</span>
+                      <span class="wl-text" classList={{ shimmer: line().kind === 'working' }} data-testid="working-line-text" title={line().text}>{headline(line())}</span>
                       <Show when={line().kind === 'working'}>
                         <span class="wl-time" data-testid="working-line-time">{elapsed()}</span>
                       </Show>

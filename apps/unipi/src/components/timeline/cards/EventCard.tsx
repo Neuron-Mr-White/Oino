@@ -42,7 +42,7 @@ import {
   type LucideIcon,
 } from 'lucide-solid';
 import type { SessionEntry } from '../../../lib/session/types';
-import type { EventIcon, EventView } from '../../../lib/timeline/eventKinds';
+import { AUDIENCE_LABEL, AUDIENCE_TITLE, eventAudience, type EventIcon, type EventView } from '../../../lib/timeline/eventKinds';
 import { renderBlocks } from '../../../lib/chat/markdown';
 import { expansionOpen, toggleExpansion } from '../../../lib/timeline/expansion';
 import { sessionRenderCache, widthClassOf } from '../../../lib/session/renderCache';
@@ -124,14 +124,16 @@ export function EventCard(props: { entry: SessionEntry; view: EventView; ctx: Ti
     if (phone()) setSheet(true);
     else toggleExpansion(props.ctx.sessionId(), key(), false);
   };
+  const audience = () => v().audience ?? eventAudience(props.entry);
   const body = createPresence(() => open() && !phone());
-  const label = () => [v().source, v().title, v().meta].filter(Boolean).join(' · ');
+  const label = () => [v().source, v().title, v().meta, AUDIENCE_LABEL[audience()]].filter(Boolean).join(' · ');
   return (
     <div
       class="tl-event"
       data-event={v().kind}
       data-family={FAMILY[v().icon]}
       data-tone={v().tone}
+      data-audience={audience()}
       data-open={open() && !phone() ? '' : undefined}
       data-testid="tl-event"
     >
@@ -152,6 +154,9 @@ export function EventCard(props: { entry: SessionEntry; view: EventView; ctx: Ti
         <Show when={v().meta}>
           <span class="tl-event-meta">{v().meta}</span>
         </Show>
+        <span class="tl-audience" data-audience={audience()} title={AUDIENCE_TITLE[audience()]} data-testid="tl-event-audience">
+          {AUDIENCE_LABEL[audience()]}
+        </span>
         <Show when={has()}>
           <ChevronRight size={15} class="tl-event-chev" data-open={open() && !phone() ? '' : undefined} />
         </Show>

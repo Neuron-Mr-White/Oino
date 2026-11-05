@@ -50,8 +50,10 @@ export type ApplyResult = {
   nameChanged?: string;
   /** ui-protocol registry traffic for the U9 registry (`extension_ui_request`, `_dismiss`, `oino_ui_patch`). */
   ui?: Array<Record<string, unknown>>;
-  /** `woken` with a leaf past ours (the wake appended): fetch `get_entries{since}` and append. */
+  /** `woken` / `compaction_end` / `entry_appended` gap: fetch `get_entries{since}` and append. */
   catchUp?: string;
+  /** `compaction_end` / `entry_appended` with no prior confirmed anchor: reload tail page. */
+  reloadTail?: boolean;
   /** [chat-tree] `session_tree` (a tree jump, any client): the leaf the branch moved to; reload its tail page unless it is ours already. */
   branchMoved?: string | null;
 };
@@ -188,7 +190,8 @@ function mergeResult(into: ApplyResult, r: ApplyResult): void {
   if (r.nameChanged !== undefined) into.nameChanged = r.nameChanged;
   if (r.gap) into.gap = true;
   if (r.ui) (into.ui ??= []).push(...r.ui);
-  if (r.catchUp) into.catchUp = r.catchUp;
+  if (r.catchUp && !into.catchUp) into.catchUp = r.catchUp;
+  if (r.reloadTail) into.reloadTail = true;
   if (r.branchMoved !== undefined) into.branchMoved = r.branchMoved;
 }
 
@@ -455,9 +458,13 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
     case 'compaction_start':
       s.run = { ...s.run, phase: 'compacting' };
       return {};
-    case 'compaction_end':
+    case 'compaction_end': {
       s.run = { ...s.run, phase: s.run.running ? 'running' : 'idle' };
-      return {};
+      if (event.aborted === true) return {};
+      if (reconcileSince(s).needed) return { reconcile: true };
+      const since = lastConnectedConfirmedId(s);
+      return since ? { catchUp: since } : { reloadTail: true };
+    }
     case 'auto_retry_start':
       s.run = {
         ...s.run,
@@ -472,7 +479,17 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
     }
     case 'entry_appended': {
       const entry = event.entry as SessionEntry | undefined;
-      if (isObject(entry) && typeof entry.id === 'string') appendEntry(s, entry);
+      if (!isObject(entry) || typeof entry.id !== 'string') return {};
+      const missingParent =
+        typeof entry.parentId === 'string' &&
+        entry.parentId.length > 0 &&
+        !isProvisional(entry.parentId) &&
+        s.byId[entry.parentId] === undefined;
+      const anchor = missingParent && !reconcileSince(s).needed ? lastConnectedConfirmedId(s) : undefined;
+      appendEntry(s, entry);
+      if (missingParent && !reconcileSince(s).needed) {
+        return anchor ? { catchUp: anchor } : s.entries.length <= 1 ? { reloadTail: true } : {};
+      }
       return {};
     }
     case 'session_info_changed': {
@@ -481,12 +498,22 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       else s.name = name;
       return { nameChanged: name ?? '' };
     }
-    case 'thinking_level_changed':
+    case 'thinking_level_changed': {
       if (typeof event.level === 'string') s.thinkingLevel = event.level;
+      if (!s.run.running && !reconcileSince(s).needed) {
+        const since = lastConnectedConfirmedId(s);
+        if (since) return { catchUp: since };
+      }
       return {};
-    case 'model_changed':
+    }
+    case 'model_changed': {
       if (isObject(event.model)) s.model = event.model as SessionState['model'];
+      if (!s.run.running && !reconcileSince(s).needed) {
+        const since = lastConnectedConfirmedId(s);
+        if (since) return { catchUp: since };
+      }
       return {};
+    }
     case 'run_state': {
       const phase = str(event.state) as RunPhase | undefined;
       if (!phase) return {};
@@ -631,6 +658,25 @@ export function trimHistory(s: SessionState, keep: number): boolean {
   return true;
 }
 
+/** Last host-confirmed entry before any missing-parent gap in `s.entries`. */
+function lastConnectedConfirmedId(s: SessionState): string | undefined {
+  let gapAt = -1;
+  for (let i = 1; i < s.entries.length; i++) {
+    const e = s.entries[i]!;
+    if (isProvisional(e.id)) break;
+    if (typeof e.parentId === 'string' && e.parentId && s.byId[e.parentId] === undefined) {
+      gapAt = i;
+      break;
+    }
+  }
+  const end = gapAt > 0 ? gapAt : s.entries.length;
+  for (let i = end - 1; i >= 0; i--) {
+    const e = s.entries[i]!;
+    if (!isProvisional(e.id)) return e.id;
+  }
+  return undefined;
+}
+
 /** The last host-confirmed entry before the first provisional one (`get_entries{since}`); undefined = from the start. */
 export function reconcileSince(s: SessionState): { since?: string; needed: boolean } {
   const first = s.entries.findIndex((e) => isProvisional(e.id));
@@ -673,13 +719,27 @@ export function branchOf(entries: readonly SessionEntry[], leafId: string | null
   }
   if (!forked) return entries as SessionEntry[];
   const byId = new Map(entries.map((e) => [e.id, e]));
+  const indexOf = new Map(entries.map((e, i) => [e.id, i]));
   const chain: SessionEntry[] = [];
   let cur = byId.get(leafId);
   const guard = new Set<string>();
   while (cur && !guard.has(cur.id)) {
     guard.add(cur.id);
     chain.push(cur);
-    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    if (!cur.parentId) {
+      cur = undefined;
+      continue;
+    }
+    const parent = byId.get(cur.parentId);
+    if (parent) {
+      cur = parent;
+    } else {
+      // Bridge across an unannounced host entry (`model_change`, `thinking_level_change`,
+      // `compaction`) while `catchUp` is in flight so a forked chat never blanks out;
+      // stop at index 0 (whose parent lives on an older unloaded page).
+      const idx = indexOf.get(cur.id) ?? 0;
+      cur = idx > 0 ? entries[idx - 1] : undefined;
+    }
   }
   return chain.reverse();
 }

@@ -144,3 +144,19 @@ html[data-shell=phone] .cron-phone { padding-inline: var(--ph-gutter, 16px); }
 html[data-shell=phone] .cron-phone .cron-pause-row { margin: 0; }
 html[data-shell=phone] .cron-detail-page { padding: var(--ph-3, 12px) var(--ph-gutter, 16px) 0; }
 html[data-shell=phone] .cron-detail-page .cron-detail-fields dt { padding-left: 0; }
+
+/* Owner 2026-11-05: search + pagination for big job lists. */
+.cron-search-row { padding: 4px 0 8px; }
+.cron-search { width: 100%; box-sizing: border-box; height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text); font-size: 13.5px; }
+.cron-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
+html[data-shell=phone] .cron-search { height: 44px; font-size: 16px; }
+.cron-no-match { padding: 18px 4px; text-align: center; }
+.cron-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; padding: 10px 2px; font-size: 12.5px; color: var(--color-text-muted); }
+.cron-pager-count { margin-right: auto; color: var(--color-text-dim); }
+.cron-page-btn { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; background: transparent; color: var(--color-text-muted); }
+.cron-page-btn:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+.cron-page-btn[aria-current=page] { background: var(--color-surface-3); color: var(--color-text); font-weight: 600; }
+.cron-page-btn:disabled { opacity: .4; }
+.cron-page-gap { padding: 0 4px; color: var(--color-text-dim); }
+.cron-page-size { height: 30px; margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-line); font-size: 12.5px; }
+html[data-shell=phone] .cron-page-btn { min-width: 40px; height: 40px; }

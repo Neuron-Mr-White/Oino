@@ -372,6 +372,7 @@ export function EnumSelect(props: { field: Pick<Field, 'options' | 'label' | 'ke
         disabled={props.disabled}
         placeholder="Choose…"
         gutter={6}
+        flip
         sameWidth
         itemComponent={(p) => (
           <KSelect.Item item={p.item} class="ui-select-item">

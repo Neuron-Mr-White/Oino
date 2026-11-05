@@ -5,10 +5,13 @@
  * The app holds no Fusion state of its own: the extension's `Active` record
  * is the truth, the picker only shows it and asks for a change.
  */
+import { createSignal } from 'solid-js';
 import type { SessionHandle } from '../session/store';
 
 /** Extension id gating the Fusion tab. */
 export const FUSION_EXTENSION_ID = 'unipi.fusion';
+/** Sticky bus topic published by `unipi.fusion`. */
+export const FUSION_STATUS_TOPIC = 'unipi:fusion:status';
 /** Point services of `unipi.fusion` (unipi-kit `services::point`). */
 export const FUSION_STATUS = 'fusion.status';
 export const FUSION_SET_PAIR = 'fusion.set-pair';
@@ -128,13 +131,80 @@ export function parseFusionCurated(raw: unknown): FusionCurated | undefined {
 const service = <T,>(s: SessionHandle, name: string, payload?: Record<string, unknown>): Promise<T> =>
   s.cmd<T>({ type: '_oino/service_call', name, ...(payload ? { payload } : {}) });
 
+/** Reactive per-session cache updated immediately when `setFusionActive` or `fetchFusion` runs. */
+const [fusionOverrides, setFusionOverrides] = createSignal<Record<string, { active: FusionActive | null; status?: FusionStatus }>>({});
+
+export function resetFusionOverrides(): void {
+  setFusionOverrides({});
+}
+
+/** Restores active Fusion pair from persisted `unipi:fusion-sidekick` session entries (cold snapshot fallback). */
+export function fusionFromEntries(entries: ReadonlyArray<{ type?: string; customType?: string; data?: unknown }>): FusionActive | null | undefined {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!;
+    if (e.customType !== 'unipi:fusion-sidekick') continue;
+    const d = obj(e.data);
+    if (!d) return null;
+    if (d.active !== true) return null;
+    const parsed = parseFusionActive(d.selection);
+    return parsed?.kind === 'fusion' ? parsed : null;
+  }
+  return undefined;
+}
+
+/** Active Fusion pair for a session (topic, optimistic override, or persisted entry), gated on matching lead model. */
+export function activeSessionFusion(s: Pick<SessionHandle, 'key' | 'state'>): {
+  lead: string;
+  sidekick: string;
+  leadName?: string;
+  sidekickName?: string;
+  leadEffort?: string;
+  sidekickEffort?: string;
+} | undefined {
+  const model = s.state.model;
+  const curKey = model?.provider && model.id ? `${model.provider}/${model.id}` : undefined;
+  const topicRaw = s.state.topics?.[FUSION_STATUS_TOPIC];
+  const topicSt = topicRaw ? parseFusionStatus(topicRaw.data) : undefined;
+  if (topicRaw && topicRaw.data === null) return undefined;
+  if (topicSt && topicSt.leadKey && topicSt.sidekickKey) {
+    if (curKey && topicSt.leadKey !== curKey) return undefined;
+    return {
+      lead: topicSt.leadKey,
+      sidekick: topicSt.sidekickKey,
+      leadName: topicSt.leadName,
+      sidekickName: topicSt.sidekickName,
+      leadEffort: topicSt.leadEffort,
+      sidekickEffort: topicSt.sidekickEffort,
+    };
+  }
+  const entry = fusionOverrides()[s.key];
+  const over = entry?.active;
+  const st = topicSt ?? entry?.status;
+  if (over === null || over?.kind === 'single') return undefined;
+  const cand = over?.kind === 'fusion' ? over : fusionFromEntries(s.state.entries ?? []);
+  if (!cand || cand.kind !== 'fusion') return undefined;
+  if (curKey && cand.lead !== curKey) return undefined;
+  const sameCached = entry?.active?.kind === 'fusion' && entry.active.lead === cand.lead && entry.active.sidekick === cand.sidekick;
+  return {
+    lead: cand.lead,
+    sidekick: cand.sidekick,
+    ...((topicSt || sameCached) && st?.leadName ? { leadName: st.leadName } : {}),
+    ...((topicSt || sameCached) && st?.sidekickName ? { sidekickName: st.sidekickName } : {}),
+    leadEffort: cand.leadEffort ?? st?.leadEffort,
+    sidekickEffort: cand.sidekickEffort ?? st?.sidekickEffort,
+  };
+}
+
 /** The pair the extension has active + its published status; `undefined` when the service is off. */
 export async function fetchFusion(s: SessionHandle): Promise<FusionState | undefined> {
   try {
     const reply = await service<unknown>(s, FUSION_STATUS);
     const o = obj(reply) ?? {};
     const curated = parseFusionCurated(o.curated);
-    return { active: parseFusionActive(o.active), status: parseFusionStatus(o.status), ...(curated ? { curated } : {}) };
+    const active = parseFusionActive(o.active);
+    const status = parseFusionStatus(o.status);
+    setFusionOverrides((prev) => ({ ...prev, [s.key]: { active: active ?? null, ...(status ? { status } : {}) } }));
+    return { active, status, ...(curated ? { curated } : {}) };
   } catch {
     return undefined;
   }
@@ -160,4 +230,5 @@ export async function setFusionActive(s: SessionHandle, active: FusionActive): P
   const reply = await service<unknown>(s, FUSION_SET_PAIR, { active });
   const o = obj(reply);
   if (o && o.ok === false) throw new Error(str(o.message) ?? 'Fusion did not accept the pair.');
+  setFusionOverrides((prev) => ({ ...prev, [s.key]: { active } }));
 }

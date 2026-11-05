@@ -95,7 +95,7 @@ export function ListProperties(props: {
     if (p.startsWith('custom:')) return `facet:${p.slice(7) as 'created' | 'updated'}`;
     return 'root';
   };
-  const maxHeight = () => Math.max(220, Math.min(520, window.innerHeight - props.anchor.bottom - 24));
+  const maxHeight = () => Math.max(200, Math.min(520, window.innerHeight - 76));
   const icon = (el: JSX.Element) => <span class="board-menu-icon">{el}</span>;
 
   const models = createMemo(() => facetOptions(props.cards, (c) => modelKey(c, props.modelOf(c))));

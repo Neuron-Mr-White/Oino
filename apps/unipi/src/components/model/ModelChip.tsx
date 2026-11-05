@@ -19,7 +19,15 @@ import { modKey } from '../../lib/shell';
 import { RollingLabel } from '../RollingLabel';
 import { modelPickerTarget, openModelPicker } from './target';
 import { modelDisplayName, modelOrigin } from '../../lib/model/displayName';
+import { activeSessionFusion, FUSION_STATUS_TOPIC, fetchFusion, fusionAvailable } from '../../lib/model/fusion';
+import { shortModelName } from '../../lib/model/picker';
 import { ContextRing } from './ContextRing';
+
+function shortFromKey(key: string): string {
+  const slash = key.indexOf('/');
+  const id = slash >= 0 ? key.slice(slash + 1) : key;
+  return shortModelName(modelDisplayName({ id }) || id);
+}
 
 /** The chip's label: the running model's display name (never a raw `router/id` path), else a neutral word. */
 export function modelChipLabel(model: SessionHandle['state']['model']): string {
@@ -37,7 +45,32 @@ export const thinkingOn = (level: string | undefined): boolean => !!level && lev
 
 /** `icon={false}`: inside the capsule the context ring stands where the chip icon was. */
 export function ModelChip(props: { session: SessionHandle; disabled?: boolean; icon?: boolean }) {
-  const label = () => modelChipLabel(props.session.state.model);
+  const fusion = () => activeSessionFusion(props.session);
+  const label = () => {
+    const f = fusion();
+    if (f) {
+      const lead = f.leadName ? shortModelName(f.leadName) : shortFromKey(f.lead);
+      const side = f.sidekickName ? shortModelName(f.sidekickName) : shortFromKey(f.sidekick);
+      return `Fusion · ${lead} ◆ ${side}`;
+    }
+    return modelChipLabel(props.session.state.model);
+  };
+  const chipTitle = () => {
+    const f = fusion();
+    if (f) {
+      const lead = f.leadName ? shortModelName(f.leadName) : shortFromKey(f.lead);
+      const side = f.sidekickName ? shortModelName(f.sidekickName) : shortFromKey(f.sidekick);
+      return `Fusion: ${lead} (${f.lead.replace('/', ' · ')}) ◆ ${side} (${f.sidekick.replace('/', ' · ')}) — change it (${modKey()} M)`;
+    }
+    return modelChipTitle(props.session.state.model);
+  };
+  // Subscribe to Fusion status topic + seed once when live so existing Fusion sessions show the pair immediately.
+  createEffect(() => {
+    if (props.session.state.conn === 'live') {
+      props.session.subscribeTopics?.([FUSION_STATUS_TOPIC]);
+      void fusionAvailable(props.session).then((ok) => (ok ? fetchFusion(props.session) : undefined));
+    }
+  });
   // Phone: no Thinking chip fetches the levels — the chip's glyph needs them (§3.5).
   createEffect(() => {
     void props.session.state.model?.id;
@@ -49,13 +82,14 @@ export function ModelChip(props: { session: SessionHandle; disabled?: boolean; i
     <button
       type="button"
       class="tb-chip tb-chip-model"
+      data-fusion={fusion() ? '' : undefined}
       aria-label={`Model: ${label()}. Change model`}
       aria-haspopup="dialog"
       aria-expanded={(() => {
         const t = modelPickerTarget();
         return !!t && t.hostId === props.session.hostId && t.sessionId === props.session.sessionId();
       })()}
-      title={modelChipTitle(props.session.state.model)}
+      title={chipTitle()}
       disabled={props.disabled}
       onClick={open}
       data-testid="model-chip"

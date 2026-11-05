@@ -69,19 +69,30 @@ function AnchoredPopover(props: AnchoredMenuProps) {
   const dismiss = () => leave.begin();
   const width = () => props.width ?? 240;
   const GAP = 8;
-  const leftFor = () => {
+  const leftFor = (actualW = width()) => {
     const vw = window.innerWidth;
-    const raw = props.alignEnd ? props.anchor.right - width() : props.anchor.left;
-    return Math.max(GAP, Math.min(raw, vw - width() - GAP));
+    const w = Math.min(actualW, Math.max(120, vw - GAP * 2));
+    const raw = props.alignEnd ? props.anchor.right - w : props.anchor.left;
+    return Math.max(GAP, Math.min(raw, vw - w - GAP));
   };
-  const [pos, setPos] = createSignal({ left: leftFor(), top: props.anchor.bottom + GAP, origin: 'top left' });
-  onMount(() => {
-    // offsetHeight, not getBoundingClientRect: the popover-in animation is scaling the menu
-    // (0.94) right now, which under-measured it and let tall menus run off the bottom edge.
-    const height = menu?.offsetHeight ?? 0;
+  const [pos, setPos] = createSignal({
+    left: leftFor(),
+    top: props.anchor.bottom + GAP,
+    maxHeight: Math.max(160, (typeof window !== 'undefined' ? window.innerHeight : 800) - GAP * 2),
+    origin: 'top left',
+  });
+  const reposition = () => {
+    if (!menu) return;
+    // offsetHeight / scrollHeight, not getBoundingClientRect: the popover-in animation scales
+    // the menu (0.94) on mount, and dynamic sub-panels (Filter / Properties / async items) can
+    // grow taller after open — re-clamping on every size/DOM change keeps the longest state clickable.
     const vh = window.innerHeight;
+    const vw = window.innerWidth;
     const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect().height ?? 0;
     const floor = vh - nav - GAP;
+    const maxAvail = Math.max(120, floor - GAP);
+    const natural = Math.max(menu.offsetHeight || 0, menu.scrollHeight || 0);
+    const height = Math.min(natural, maxAvail);
     let top = props.anchor.bottom + GAP;
     let origin = 'top';
     if (top + height > floor) {
@@ -89,7 +100,22 @@ function AnchoredPopover(props: AnchoredMenuProps) {
       top = above >= GAP ? above : Math.max(GAP, floor - height);
       origin = above >= GAP ? 'bottom' : 'center';
     }
-    setPos({ left: leftFor(), top, origin: `${origin} ${props.alignEnd ? 'right' : 'left'}` });
+    const maxHeight = Math.max(120, floor - top);
+    const actualW = Math.min(Math.max(width(), menu.offsetWidth || 0), Math.max(120, vw - GAP * 2));
+    setPos({ left: leftFor(actualW), top, maxHeight, origin: `${origin} ${props.alignEnd ? 'right' : 'left'}` });
+  };
+  onMount(() => {
+    reposition();
+    if (typeof ResizeObserver !== 'undefined' && menu) {
+      const ro = new ResizeObserver(() => reposition());
+      ro.observe(menu);
+      onCleanup(() => ro.disconnect());
+    }
+    if (typeof MutationObserver !== 'undefined' && menu) {
+      const mo = new MutationObserver(() => reposition());
+      mo.observe(menu, { childList: true, subtree: true });
+      onCleanup(() => mo.disconnect());
+    }
     onCleanup(pushBack(() => dismiss()));
     // Keyboard: the first item takes focus (arrows / Home / End move it,
     // Escape closes via the Back stack); focus goes back where it was.
@@ -125,7 +151,13 @@ function AnchoredPopover(props: AnchoredMenuProps) {
         aria-label={props.label}
         class={`recent-popover board-menu${props.class ? ` ${props.class}` : ''}`}
         data-leaving={leave.leaving() ? '' : undefined}
-        style={{ left: `${pos().left}px`, top: `${pos().top}px`, width: `${width()}px`, 'transform-origin': pos().origin }}
+        style={{
+          left: `${pos().left}px`,
+          top: `${pos().top}px`,
+          width: `min(${width()}px, calc(100vw - 16px))`,
+          'max-height': `${pos().maxHeight}px`,
+          'transform-origin': pos().origin,
+        }}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => {
           // A menu wired with `menuKeys` already moved the focus (or closed) for this key.

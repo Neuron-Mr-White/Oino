@@ -4,9 +4,10 @@
  * so MdBlock, bubbles and tool output share one instance, mounted once in
  * ChatView.
  */
-import { createSignal, Show } from 'solid-js';
-import { AtSign, Copy, ExternalLink, FolderOpen } from 'lucide-solid';
-import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
+import { createResource, createSignal, For, Show } from 'solid-js';
+import { AppWindow, AtSign, Code2, Copy, ExternalLink, FolderOpen, FolderSearch } from 'lucide-solid';
+import { AnchoredMenu, MenuRow, MenuSeparator } from '../board/AnchoredMenu';
+import { isOwnPcFile, localEditors, localOpen, type OpenTarget } from '../../lib/openLocal';
 import { copyText } from '../../lib/board/share';
 import { closeFileRefMenu, fileRefMenu, mentionFileRef, openFileRef, openInFiles } from '../../lib/chat/fileRefOpen';
 
@@ -18,6 +19,13 @@ export function FileRefMenu() {
   };
   const m = () => fileRefMenu()!;
   const where = () => (m().ref.line ? `${m().ref.resolved}:${m().ref.line}` : m().ref.resolved);
+  const ownPc = () => !!fileRefMenu() && isOwnPcFile(m().chat.hostId);
+  const [editors] = createResource(() => (ownPc() ? true : undefined), () => localEditors().catch((): OpenTarget[] => []));
+  const openLocal = (how: string) => {
+    const path = m().ref.resolved;
+    close();
+    void localOpen(path, how);
+  };
   return (
     <Show when={fileRefMenu()}>
       <AnchoredMenu anchor={m().rect} label="File actions" onDismiss={close} width={260}>
@@ -54,6 +62,15 @@ export function FileRefMenu() {
             openInFiles(chat, ref);
           }}
         />
+        <Show when={ownPc()}>
+          <MenuSeparator />
+          <MenuRow icon={<FolderSearch size={18} />} label="Open in file explorer" testId="fileref-reveal" onSelect={() => openLocal('reveal')} />
+          <Show when={m().ref.kind !== 'dir'}>
+            <MenuRow icon={<AppWindow size={18} />} label="Open with default app" onSelect={() => openLocal('default')} />
+          </Show>
+          <For each={editors() ?? []}>{(ed) => <MenuRow icon={<Code2 size={18} />} label={`Open in ${ed.name}`} onSelect={() => openLocal(ed.id)} />}</For>
+          <MenuSeparator />
+        </Show>
         <MenuRow
           icon={<AtSign size={18} />}
           label="Add to chat"

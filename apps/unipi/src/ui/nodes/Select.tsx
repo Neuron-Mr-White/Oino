@@ -39,6 +39,7 @@ export function Select(props: NodeProps<SelectNode>) {
         disabled={props.node.disabled}
         placeholder={props.node.placeholder ?? 'Choose…'}
         gutter={6}
+        flip
         sameWidth
         itemComponent={(p) => (
           <KSelect.Item item={p.item} class="ui-select-item">

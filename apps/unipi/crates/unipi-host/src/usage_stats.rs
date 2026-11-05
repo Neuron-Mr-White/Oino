@@ -14,7 +14,8 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
 use unipi_proto::usage::{
-    UsageData, UsageDay, UsageModel, UsageProject, UsageTotals, USAGE_DAYS_MAX, USAGE_ROWS_MAX,
+    UsageData, UsageDay, UsageModel, UsageProject, UsageTotals, USAGE_DAILY_MODELS, USAGE_DAYS_MAX, USAGE_OTHER_MODEL,
+    USAGE_ROWS_MAX,
 };
 
 const DAY_MS: i64 = 86_400_000;
@@ -205,8 +206,10 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
     let mut by_project: BTreeMap<String, Bucket> = BTreeMap::new();
     let mut seen: HashSet<(i64, u64)> = HashSet::new();
     let mut active: HashSet<i64> = HashSet::new();
+    let mut day_models: Vec<BTreeMap<String, f64>> = vec![BTreeMap::new(); daily.len()];
     for (path, file) in files {
         let mut counted = 0u64;
+        let (mut first_ts, mut last_ts) = (i64::MAX, i64::MIN);
         let project = project_of(path, &file.cwd);
         for r in &file.recs {
             let day = (r.ts + off).div_euclid(DAY_MS);
@@ -218,6 +221,8 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
                 continue;
             }
             counted += 1;
+            first_ts = first_ts.min(r.ts);
+            last_ts = last_ts.max(r.ts);
             let unpriced = unpriced_of(r, tokens);
             totals.input += r.input;
             totals.output += r.output;
@@ -228,10 +233,13 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
             totals.unpriced_tokens += unpriced;
             totals.turns += 1;
             active.insert(day);
-            if let Some(d) = usize::try_from(day - first).ok().and_then(|i| daily.get_mut(i)) {
+            if let Some(i) = usize::try_from(day - first).ok().filter(|i| *i < daily.len()) {
+                let d = &mut daily[i];
                 d.tokens += tokens;
                 d.cost += r.cost;
                 d.unpriced_tokens += unpriced;
+                d.turns += 1;
+                *day_models[i].entry(r.model.clone()).or_default() += tokens;
             }
             let m = by_model.entry(r.model.clone()).or_insert_with(|| UsageModel { name: r.model.clone(), ..UsageModel::default() });
             m.tokens += tokens;
@@ -244,6 +252,7 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
             p.unpriced += unpriced;
         }
         if counted > 0 {
+            totals.longest_session_ms = totals.longest_session_ms.max(last_ts - first_ts);
             totals.sessions += 1;
             by_project.entry(project).or_default().count += 1;
         }
@@ -251,6 +260,13 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
     totals.active_days = u32::try_from(active.len()).unwrap_or(u32::MAX);
     let mut models: Vec<UsageModel> = by_model.into_values().collect();
     models.sort_by(|a, b| b.tokens.total_cmp(&a.tokens).then_with(|| a.name.cmp(&b.name)));
+    let top: HashSet<&str> = models.iter().take(USAGE_DAILY_MODELS).map(|m| m.name.as_str()).collect();
+    for (d, per) in daily.iter_mut().zip(day_models) {
+        for (name, t) in per {
+            let key = if top.contains(name.as_str()) { name } else { USAGE_OTHER_MODEL.to_owned() };
+            *d.models.entry(key).or_default() += t;
+        }
+    }
     models.truncate(USAGE_ROWS_MAX);
     let mut projects: Vec<UsageProject> = by_project
         .into_iter()
@@ -346,6 +362,11 @@ mod tests {
         assert_eq!((free.cost, free.unpriced_tokens), (0.0, 15.0));
         assert_eq!(d.by_project.len(), 1);
         assert_eq!(d.by_project[0].sessions, 2);
+        // per-day turns + model split, longest session
+        assert_eq!(d.daily[6].turns, 2);
+        assert!((d.daily[6].models["glm"] - 120.0).abs() < 1e-9);
+        assert!((d.daily[6].models["free"] - 15.0).abs() < 1e-9);
+        assert_eq!(d.totals.longest_session_ms, 1000);
     }
 
     #[test]

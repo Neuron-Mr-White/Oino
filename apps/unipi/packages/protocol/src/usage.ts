@@ -25,10 +25,21 @@ export const UsageTotalsSchema = z.object({
   turns: z.number(),
   sessions: z.number(),
   active_days: z.number(),
+  /** The longest session in the range, first to last reply (ms). */
+  longest_session_ms: z.number().default(0),
 });
 export type UsageTotals = z.infer<typeof UsageTotalsSchema>;
 
-export const UsageDaySchema = z.object({ day: z.string(), tokens: z.number(), cost: z.number(), unpriced_tokens: z.number() });
+export const UsageDaySchema = z.object({
+  day: z.string(),
+  tokens: z.number(),
+  cost: z.number(),
+  unpriced_tokens: z.number(),
+  turns: z.number().default(0),
+  /** Tokens per model that day (top models by name, the rest as `other`). */
+  models: z.record(z.string(), z.number()).default({}),
+});
+export const USAGE_OTHER_MODEL = "other";
 export type UsageDay = z.infer<typeof UsageDaySchema>;
 
 export const UsageModelSchema = z.object({ name: z.string(), tokens: z.number(), cost: z.number(), unpriced_tokens: z.number(), turns: z.number() });

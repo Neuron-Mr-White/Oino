@@ -223,6 +223,48 @@ impl Registry {
         by.into_values().collect()
     }
 
+    /// `skills.catalog` (owner 2026-11-05): the app's native Skills manager — every skill
+    /// with its source, defaults and both scopes' stored states, plus the proxy switch.
+    fn catalog(&self, cx: &Ctx) -> Value {
+        let p = places(&cx.cwd().display().to_string());
+        let mut skills: Vec<Value> = self
+            .all_skills(cx, &p)
+            .iter()
+            .map(|s| {
+                let source = skill_source(s, &p);
+                json!({
+                    "name": s.name,
+                    "description": s.description,
+                    "source": source.as_str(),
+                    "defaultEnabled": registry::default_enabled(source, s.default_enabled),
+                    "defaultMustShow": default_must_show(&s.name, source),
+                    "path": s.file_path,
+                })
+            })
+            .collect();
+        skills.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+        json!({
+            "skills": skills,
+            "global": settings::read_layer(&self.settings, Layer::Global),
+            "project": settings::read_layer(&self.settings, Layer::Project),
+            "proxy": self.resolved().proxy,
+            "cwd": cx.cwd().display().to_string(),
+        })
+    }
+
+    /// `skills.save {scope: "global"|"project", states?, proxy?}`: writes one scope's states.
+    fn save(&self, cx: &Ctx, p: &Value) -> Value {
+        let layer = if p.get("scope").and_then(Value::as_str) == Some("project") { Layer::Project } else { Layer::Global };
+        if let Some(states) = p.get("states") {
+            settings::write_layer(&self.settings, layer, &registry::normalize_states(states));
+        }
+        if let Some(on) = p.get("proxy").and_then(Value::as_bool) {
+            settings::set_proxy(&self.settings, on);
+        }
+        self.sessions.with(cx.session_id(), |s| s.judge.judged = false);
+        json!({"ok": true})
+    }
+
     fn open_editor(&self, cx: &Ctx) -> Result<()> {
         if !cx.has_ui() {
             return Ok(());
@@ -607,6 +649,8 @@ impl Extension for Registry {
             Ok(())
         });
         bus::subscribe(topics::SKILLS_REVEAL);
+        cx.service("skills.catalog", |ext, _p, _caller, cx| async move { Ok(ext.catalog(&cx)) });
+        cx.service("skills.save", |ext, p, _caller, cx| async move { Ok(ext.save(&cx, &p)) });
 
         cx.command(
             Command::<Self>::new("skills")

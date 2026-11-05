@@ -8,7 +8,8 @@
  * flood the DOM.
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
-import { Archive, Folder, MoonStar, Plus, Settings2, Ellipsis } from 'lucide-solid';
+import { Archive, Folder, MoonStar, Plus, Settings2, Ellipsis, Sparkles } from 'lucide-solid';
+import { openSkillsManager } from '../../screens/settings/SkillsPage';
 import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
 import { menuAnchor, desktopShell } from '../../lib/layout';
 import { openProjectSettings } from '../../lib/settings/open';
@@ -200,6 +201,12 @@ export function ProjectGroup(props: {
                 label="Project settings"
                 testId="sb-project-settings"
                 onSelect={() => (setMenuAt(undefined), openProjectSettings(props.hostId, props.cwd!))}
+              />
+              <MenuRow
+                icon={<Sparkles size={iconSize()} />}
+                label="Manage skills"
+                testId="sb-project-skills"
+                onSelect={() => (setMenuAt(undefined), openSkillsManager({ hostId: props.hostId, cwd: props.cwd!, name: groupName() }))}
               />
             </Show>
             <Show when={props.onArchiveAll}>

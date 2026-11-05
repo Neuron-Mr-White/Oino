@@ -11,6 +11,7 @@ import { ChevronDown, Sparkles, SquareSlash } from 'lucide-solid';
 import { injectedBody, textOf, type Part } from '../../lib/chat/model';
 import { renderBlocks } from '../../lib/chat/markdown';
 import type { Turn } from '../../lib/session/turns';
+import { AUDIENCE_LABEL, AUDIENCE_TITLE } from '../../lib/timeline/eventKinds';
 import { MdBlock } from '../chat/MdBlock';
 import type { TimelineCtx } from './context';
 
@@ -75,6 +76,9 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
           >
             <Sparkles size={12} />
             <span class="truncate">{tag()}</span>
+            <span class="tl-audience" data-audience="agent" title={AUDIENCE_TITLE.agent}>
+              {AUDIENCE_LABEL.agent}
+            </span>
             <ChevronDown size={13} class="chat-chev" data-open={open() ? '' : undefined} />
           </button>
           <Show when={open()}>

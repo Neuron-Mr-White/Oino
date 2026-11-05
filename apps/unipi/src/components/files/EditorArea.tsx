@@ -13,8 +13,8 @@
  * "open") becomes a tab; the phone `/files/edit` screen keeps its own
  * single-file editor.
  */
-import { createEffect, createSignal, For, Show } from 'solid-js';
-import { invoke } from '@tauri-apps/api/core';
+import { createEffect, createResource, createSignal, For, Show } from 'solid-js';
+import { localEditors, localOpen, type OpenTarget } from '../../lib/openLocal';
 import { ChevronDown, ExternalLink, FileText } from 'lucide-solid';
 import { clearEditorTarget, getEditorTarget } from '../../lib/editorTarget';
 import { createEditorStore, type EditorStore, type EditorTab } from '../../lib/editor/tabs';
@@ -27,12 +27,10 @@ import { EditorTabs } from './EditorTabs';
 import { LspStatus } from './LspStatus';
 import './files.css';
 
-/** `file://` editor URL schemes the split button offers (Z-102). */
-const EXTERNAL_EDITORS: { id: string; name: string; url: (path: string) => string }[] = [
-  { id: 'default', name: 'System default', url: (p) => `file://${p}` },
-  { id: 'vscode', name: 'VS Code', url: (p) => `vscode://file${p}` },
-  { id: 'zed', name: 'Zed', url: (p) => `zed://file${p}` },
-  { id: 'sublime', name: 'Sublime Text', url: (p) => `subl://open?url=file://${p}` },
+/** The split button's targets: what this PC really has (owner 2026-11-05: suggested by the PC, not guessed). */
+const BASE_TARGETS: OpenTarget[] = [
+  { id: 'default', name: 'System default' },
+  { id: 'reveal', name: 'Show in file explorer' },
 ];
 
 export function EditorArea(props: { root?: () => string | undefined; onBinary: (path: string) => void }) {
@@ -83,10 +81,12 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
     }
   }
 
-  function openExternal(url: (path: string) => string) {
+  const [detected] = createResource(() => localEditors().catch((): OpenTarget[] => []));
+  const targets = () => [...BASE_TARGETS, ...(detected() ?? [])];
+  function openExternal(how: string) {
     const tab = active();
     if (!tab || tab.hostId !== LOCAL_HOST) return;
-    void invoke('open_url', { url: url(tab.path) }).catch(() => {});
+    void localOpen(tab.path, how);
     setEditorMenu(false);
   }
 
@@ -114,7 +114,7 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
                   aria-label="Open in external editor"
                   data-tip="Open in external editor"
                   data-testid="files-editor-external"
-                  onClick={() => openExternal(EXTERNAL_EDITORS[0]!.url)}
+                  onClick={() => openExternal((detected() ?? [])[0]?.id ?? 'default')}
                 >
                   <ExternalLink size={14} />
                 </button>
@@ -132,9 +132,9 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
                 </button>
                 <Show when={editorMenu()}>
                   <div class="feditor-external-menu" role="menu">
-                    <For each={EXTERNAL_EDITORS}>
+                    <For each={targets()}>
                       {(editor) => (
-                        <button type="button" role="menuitem" class="feditor-external-item" onClick={() => openExternal(editor.url)}>
+                        <button type="button" role="menuitem" class="feditor-external-item" onClick={() => openExternal(editor.id)}>
                           {editor.name}
                         </button>
                       )}

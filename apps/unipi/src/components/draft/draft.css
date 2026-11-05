@@ -264,3 +264,14 @@ html[data-shell=phone] .ph-draft-pickers .host-chip { display: flex; align-items
 .ws-crumb[aria-current] { color: var(--color-text); font-weight: 600; }
 .ws-crumb-back { background: transparent; color: var(--color-text); }
 .ws-sheet .ws-browse-list { max-height: none; }
+
+/* Owner 2026-11-05: a compact phone New chat — smaller greeting, tighter rows, less dead space. */
+html[data-shell=phone] .draft[data-phone] .draft-center { padding-top: 10%; gap: 12px; }
+html[data-shell=phone] .draft[data-phone] .draft-mark { top: calc(10% - 40px); height: 140px; }
+html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 140px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: 17px; line-height: 22px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: 12.5px; line-height: 17px; }
+html[data-shell=phone] .ph-draft-pickers .ws-chip,
+html[data-shell=phone] .ph-draft-pickers .host-chip { min-height: 44px; font-size: 14.5px; padding: 0 10px 0 12px; }
+html[data-shell=phone] .ph-draft-pickers .ws-chip-label { font-size: 13px; }
+html[data-shell=phone] .draft[data-phone] .draft-composer { padding: 6px 6px calc(6px + var(--safe-bottom, 0px)); }

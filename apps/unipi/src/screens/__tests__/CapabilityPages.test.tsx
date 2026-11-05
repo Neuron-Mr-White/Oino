@@ -9,6 +9,7 @@
  * - with no chat the rows say nothing redundant but the R8 block offers
  *   "New chat here" (the form still works — the settings form is chat-free).
  */
+import { SkillsManagerLayer } from '../settings/SkillsPage';
 import { HostsProvider } from '../../hosts/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setPlatformOverride } from '../../lib/platform';
@@ -35,7 +36,7 @@ function renderAt(section: string) {
   return render(() => (
     <SettingsProvider adapter={createMemoryAdapter(undefined)}>
       <HashRouter>
-        <Route path="/settings/:section?" component={() => <HostsProvider><Settings /></HostsProvider>} />
+        <Route path="/settings/:section?" component={() => <HostsProvider><Settings /><SkillsManagerLayer /></HostsProvider>} />
       </HashRouter>
     </SettingsProvider>
   ));
@@ -134,7 +135,7 @@ describe('Settings › MCP (G-8)', () => {
   });
 });
 
-describe('Settings › Skills hub (owner5 #10)', () => {
+describe('Settings › Skills manager (owner 2026-11-05)', () => {
   beforeEach(() => {
     setPlatformOverride('tauri-desktop');
     setDesktopOverride(true);
@@ -150,13 +151,15 @@ describe('Settings › Skills hub (owner5 #10)', () => {
     setHostClientFactory(undefined);
   });
 
-  it('opens the hub in a Settings sheet: no navigation, no command, no flash', async () => {
+  it('opens the wide Skills manager: no hub, no editor overlay, no navigation, no command', async () => {
     const world = createMockHost(capMcpNoChat);
     setHostClientFactory(world.client);
     const r = renderAt('skills');
-    await waitFor(() => expect(r.getByTestId('manage-skills.hub')).toBeTruthy());
-    r.getByTestId('manage-skills.hub').click();
-    await waitFor(() => expect(document.querySelector('[data-testid=settings-form-sheet]')).toBeTruthy());
+    await waitFor(() => expect(r.getByTestId('manage-skills.manager')).toBeTruthy());
+    expect(r.queryByTestId('manage-skills.hub')).toBeNull();
+    expect(r.queryByTestId('manage-skills.editor')).toBeNull();
+    r.getByTestId('manage-skills.manager').click();
+    await waitFor(() => expect(document.querySelector('[data-testid=skills-manager]')).toBeTruthy());
     expect(location.hash).toBe('#/settings/skills');
     expect(world.log.some((entry) => entry.kind === 'cmd' && (entry.args as { message?: string }).message === '/skills')).toBe(false);
     expect(document.querySelector('.settings-flash-target')).toBeNull();

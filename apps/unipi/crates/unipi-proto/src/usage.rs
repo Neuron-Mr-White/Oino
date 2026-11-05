@@ -26,6 +26,9 @@ pub struct UsageTotals {
     pub sessions: u64,
     /// Days with at least one counted reply.
     pub active_days: u32,
+    /// The longest session in the range: first to last counted reply (ms).
+    #[serde(default)]
+    pub longest_session_ms: i64,
 }
 
 /// One calendar day (the client's local day), oldest first.
@@ -36,7 +39,18 @@ pub struct UsageDay {
     pub tokens: f64,
     pub cost: f64,
     pub unpriced_tokens: f64,
+    /// Replies counted that day.
+    #[serde(default)]
+    pub turns: u64,
+    /// Tokens per model that day: the range's top models by name, the rest under `other`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub models: std::collections::BTreeMap<String, f64>,
 }
+
+/// Models broken out per day (`UsageDay::models`); the rest sum into [`USAGE_OTHER_MODEL`].
+pub const USAGE_DAILY_MODELS: usize = 6;
+/// The bucket name for every model past the top [`USAGE_DAILY_MODELS`].
+pub const USAGE_OTHER_MODEL: &str = "other";
 
 /// One model's share.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

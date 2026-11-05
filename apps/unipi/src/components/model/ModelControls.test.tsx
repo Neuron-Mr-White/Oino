@@ -87,6 +87,14 @@ describe('ModelChip (Z-69/Z-70)', () => {
     fireEvent.click(screen.getByTestId('model-chip'));
     expect(modelPickerTarget()).toEqual({ hostId: HOST, sessionId: SESSION });
   });
+
+  it('shows the active Fusion pair on the composer model chip', async () => {
+    await open('model-fusion');
+    const s = sessions().ensure(HOST, SESSION);
+    render(() => <ModelChip session={s} />);
+    await waitFor(() => expect(screen.getByTestId('model-chip-label').textContent).toBe('Fusion · Claude Opus 4.1 ◆ GLM-4.6'));
+    expect(screen.getByTestId('model-chip').hasAttribute('data-fusion')).toBe(true);
+  });
 });
 
 describe('ThinkingChip (Z-71)', () => {

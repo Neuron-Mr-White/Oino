@@ -357,17 +357,18 @@ describe('Suggested (P0-10, fusion.status.curated)', () => {
     await waitFor(() => expect(screen.getByTestId('model-group-suggested')).toBeTruthy());
     const list = screen.getByTestId('model-picker-list');
     const keys = [...list.querySelectorAll<HTMLElement>('.mp-row')].map((r) => r.dataset.key);
-    expect(keys.slice(0, 4)).toEqual(['google/gemini-2.5-pro', 'openai/gpt-5', 'anthropic/claude-opus-4-1', 'zai/glm-4.6']);
-    // the rest: the running model first, no duplicate of a suggested row
-    expect(keys[4]).toBe('anthropic/claude-sonnet-4-5');
+    // Selected/running model pinned to the very top, then curated Suggested, then rest, without duplicates.
+    expect(keys[0]).toBe('anthropic/claude-sonnet-4-5');
+    expect(keys.slice(1, 5)).toEqual(['google/gemini-2.5-pro', 'openai/gpt-5', 'anthropic/claude-opus-4-1', 'zai/glm-4.6']);
     expect(new Set(keys).size).toBe(keys.length);
+    expect(screen.getByTestId('model-group-selected')).toBeTruthy();
     expect(screen.getByTestId('model-group-all')).toBeTruthy();
     const gpt = list.querySelector<HTMLElement>('[data-key="openai/gpt-5"]')!;
     expect(gpt.textContent).toContain('Lead');
     expect(gpt.textContent).toContain('High');
     expect(list.querySelector('[data-key="zai/glm-4.6"]')!.textContent).toContain('Sidekick');
-    // display names on the row, provider · id in the tooltip, no raw id on the row
-    expect(gpt.textContent).not.toContain('openai/gpt-5');
+    // Display name + full provider/id model path shown on every row to distinguish duplicate model names.
+    expect(gpt.textContent).toContain('openai/gpt-5');
     expect(gpt.title).toContain('openai · gpt-5');
   });
 

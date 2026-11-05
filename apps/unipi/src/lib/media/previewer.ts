@@ -97,3 +97,35 @@ export function isKnownBinaryExt(path: string): boolean {
   const ext = extOf(path);
   return OPEN_WITH_EXTS.has(ext) || MEDIA_EXTS.has(ext);
 }
+
+/**
+ * Byte sniff (owner 2026-11-05: `.env`, `Makefile`, `.gitignore`… read "No preview"):
+ * text = no NUL byte in the first 8 KB and the head decodes as UTF-8 (a multi-byte
+ * character cut at the 8 KB edge still counts). Mirrors the host's `looks_like_text`.
+ */
+export function looksLikeText(bytes: Uint8Array): boolean {
+  const head = bytes.subarray(0, 8192);
+  for (let i = 0; i < head.length; i++) if (head[i] === 0) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(head);
+    return true;
+  } catch {
+    if (bytes.length <= 8192) return false;
+    // Cut mid-character at the edge: retry without the last 3 bytes.
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(head.subarray(0, Math.max(0, head.length - 3)));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** `classifyMedia` refined by content: an unknown / generic `other` that sniffs as text renders as text. */
+export function classifyBytes(mime: string | undefined, path: string, bytes: Uint8Array | ArrayLike<number>): MediaKind {
+  const kind = classifyMedia(mime, path);
+  if (kind !== 'other' && kind !== 'log') return kind;
+  if (isKnownBinaryExt(path)) return kind;
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  return looksLikeText(u8) ? (kind === 'log' ? 'log' : 'text') : 'other';
+}

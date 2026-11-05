@@ -5,6 +5,7 @@
  * goes), Esc and the Stop button abort the run, and a taken-over session is
  * read-only (composer disabled) until Take back.
  */
+import { CRAB_WORDS } from '../../lib/status/workingLine';
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -220,7 +221,9 @@ describe('[working-line] the one line above the composer', () => {
     startRun(w);
     const line = await screen.findByTestId('working-line');
     expect(line.getAttribute('data-kind')).toBe('working');
-    expect(screen.getByTestId('working-line-text').textContent).toBe('Working…');
+    const wl = screen.getByTestId('working-line-text');
+    expect(wl.getAttribute('title')).toBe('Working…');
+    expect(CRAB_WORDS).toContain(wl.textContent);
     expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(true);
     const composer = screen.getByTestId('tl-composer');
     expect(line.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

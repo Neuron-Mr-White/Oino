@@ -3,6 +3,7 @@
 exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="attachments"
   data-family="harness"
   data-testid="tl-event"
@@ -11,7 +12,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Attachments · 2 files · design.pdf"
+    title="Attachments · 2 files · design.pdf · User only"
     type="button"
   >
     <span
@@ -47,6 +48,14 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
       2 files · design.pdf
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -74,6 +83,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
 exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="attachments"
   data-family="harness"
   data-open=""
@@ -83,7 +93,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Attachments · 2 files · design.pdf"
+    title="Attachments · 2 files · design.pdf · User only"
     type="button"
   >
     <span
@@ -119,6 +129,14 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
       2 files · design.pdf
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -174,6 +192,7 @@ exports[`EventCard goldens (chat event corpus) > attachments (ev26): collapsed o
 exports[`EventCard goldens (chat event corpus) > background-task (ev09): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="background-task"
   data-family="task"
   data-testid="tl-event"
@@ -183,7 +202,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · Thinking contract validation · exit 1 · 42s"
+    title="Background task · Thinking contract validation · exit 1 · 42s · User & agent"
     type="button"
   >
     <span
@@ -232,6 +251,14 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
       class="tl-event-meta"
     >
       exit 1 · 42s
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -260,6 +287,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
 exports[`EventCard goldens (chat event corpus) > background-task (ev09): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="background-task"
   data-family="task"
   data-open=""
@@ -270,7 +298,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · Thinking contract validation · exit 1 · 42s"
+    title="Background task · Thinking contract validation · exit 1 · 42s · User & agent"
     type="button"
   >
     <span
@@ -319,6 +347,14 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev09): collaps
       class="tl-event-meta"
     >
       exit 1 · 42s
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -360,6 +396,7 @@ FAILED tests/api/test_thinking_config.py::test_levels - KeyError: xhigh
 exports[`EventCard goldens (chat event corpus) > background-task (ev10): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="background-task"
   data-family="task"
   data-testid="tl-event"
@@ -369,7 +406,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · vitest run · exit 0"
+    title="Background task · vitest run · exit 0 · User & agent"
     type="button"
   >
     <span
@@ -414,6 +451,14 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
       class="tl-event-meta"
     >
       exit 0
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -442,6 +487,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
 exports[`EventCard goldens (chat event corpus) > background-task (ev10): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="background-task"
   data-family="task"
   data-open=""
@@ -452,7 +498,7 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Background task · vitest run · exit 0"
+    title="Background task · vitest run · exit 0 · User & agent"
     type="button"
   >
     <span
@@ -497,6 +543,14 @@ exports[`EventCard goldens (chat event corpus) > background-task (ev10): collaps
       class="tl-event-meta"
     >
       exit 0
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -538,6 +592,7 @@ Tests  288 passed (288)
 exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="branch-summary"
   data-family="system"
   data-testid="tl-event"
@@ -546,7 +601,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit."
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · User & agent"
     type="button"
   >
     <span
@@ -594,6 +649,14 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
       The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -621,6 +684,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
 exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="branch-summary"
   data-family="system"
   data-open=""
@@ -630,7 +694,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit."
+    title="Branch · The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit. · User & agent"
     type="button"
   >
     <span
@@ -678,6 +742,14 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
       The other branch tried a CSS-only fix for the sheet scrim; it failed on WebKit.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -743,6 +815,7 @@ exports[`EventCard goldens (chat event corpus) > branch-summary (ev30): collapse
 exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="browser-shot"
   data-family="harness"
   data-testid="tl-event"
@@ -751,7 +824,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Browser · https://oino.dev/"
+    title="Browser · https://oino.dev/ · User only"
     type="button"
   >
     <span
@@ -793,6 +866,14 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
       https://oino.dev/
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -820,6 +901,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
 exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="browser-shot"
   data-family="harness"
   data-open=""
@@ -829,7 +911,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Browser · https://oino.dev/"
+    title="Browser · https://oino.dev/ · User only"
     type="button"
   >
     <span
@@ -871,6 +953,14 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
       https://oino.dev/
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -912,6 +1002,7 @@ exports[`EventCard goldens (chat event corpus) > browser-shot (ev27): collapsed 
 exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="btw"
   data-family="harness"
   data-testid="tl-event"
@@ -920,7 +1011,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Side question · What is the overall progress right now? · glm-5.3"
+    title="Side question · What is the overall progress right now? · glm-5.3 · User only"
     type="button"
   >
     <span
@@ -967,6 +1058,14 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
       class="tl-event-meta"
     >
       glm-5.3
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -995,6 +1094,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
 exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="btw"
   data-family="harness"
   data-open=""
@@ -1004,7 +1104,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Side question · What is the overall progress right now? · glm-5.3"
+    title="Side question · What is the overall progress right now? · glm-5.3 · User only"
     type="button"
   >
     <span
@@ -1051,6 +1151,14 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
       class="tl-event-meta"
     >
       glm-5.3
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -1117,6 +1225,7 @@ exports[`EventCard goldens (chat event corpus) > btw (ev25): collapsed one-liner
 exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="compaction-card"
   data-family="compactor"
   data-testid="tl-event"
@@ -1125,7 +1234,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · 182k → 41k tokens · vcc · threshold · 82%"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · User only"
     type="button"
   >
     <span
@@ -1172,6 +1281,14 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
       class="tl-event-meta"
     >
       vcc · threshold · 82%
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -1200,6 +1317,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
 exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="compaction-card"
   data-family="compactor"
   data-open=""
@@ -1209,7 +1327,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · 182k → 41k tokens · vcc · threshold · 82%"
+    title="Compactor · 182k → 41k tokens · vcc · threshold · 82% · User only"
     type="button"
   >
     <span
@@ -1256,6 +1374,14 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
       class="tl-event-meta"
     >
       vcc · threshold · 82%
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -1326,6 +1452,7 @@ exports[`EventCard goldens (chat event corpus) > compaction-card (ev11): collaps
 exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="compactor-recall"
   data-family="compactor"
   data-testid="tl-event"
@@ -1334,7 +1461,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · Session recall: "phone sheet""
+    title="Compactor · Session recall: "phone sheet" · User & agent"
     type="button"
   >
     <span
@@ -1378,6 +1505,14 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
       Session recall: "phone sheet"
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -1405,6 +1540,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
 exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="compactor-recall"
   data-family="compactor"
   data-open=""
@@ -1414,7 +1550,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · Session recall: "phone sheet""
+    title="Compactor · Session recall: "phone sheet" · User & agent"
     type="button"
   >
     <span
@@ -1458,6 +1594,14 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
       Session recall: "phone sheet"
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -1520,6 +1664,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-recall (ev12): collap
 exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="compactor-resume"
   data-family="compactor"
   data-testid="tl-event"
@@ -1528,7 +1673,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Agent only"
     type="button"
   >
     <span
@@ -1575,6 +1720,14 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
       class="tl-event-meta"
     >
       8× compacted · 384 files
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
     </span>
     <svg
       aria-hidden="true"
@@ -1603,6 +1756,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
 exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="compactor-resume"
   data-family="compactor"
   data-open=""
@@ -1612,7 +1766,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files"
+    title="Compactor · resumed after compaction · 1000 events · 8× compacted · 384 files · Agent only"
     type="button"
   >
     <span
@@ -1659,6 +1813,14 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
       class="tl-event-meta"
     >
       8× compacted · 384 files
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
     </span>
     <svg
       aria-hidden="true"
@@ -1703,6 +1865,7 @@ exports[`EventCard goldens (chat event corpus) > compactor-resume (ev13): collap
 exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="custom"
   data-family="harness"
   data-testid="tl-event"
@@ -1711,7 +1874,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Acme · weekly report"
+    title="Acme · weekly report · User & agent"
     type="button"
   >
     <span
@@ -1761,6 +1924,14 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
       weekly report
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -1788,6 +1959,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
 exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="custom"
   data-family="harness"
   data-open=""
@@ -1797,7 +1969,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Acme · weekly report"
+    title="Acme · weekly report · User & agent"
     type="button"
   >
     <span
@@ -1847,6 +2019,14 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
       weekly report
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -1888,6 +2068,7 @@ exports[`EventCard goldens (chat event corpus) > custom (ev32): collapsed one-li
 exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="dream-report"
   data-family="dream"
   data-testid="tl-event"
@@ -1896,7 +2077,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Dream · report ready · 3 proposals pending"
+    title="Dream · report ready · 3 proposals pending · User only"
     type="button"
   >
     <span
@@ -1940,6 +2121,14 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
       report ready · 3 proposals pending
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -1967,6 +2156,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
 exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="dream-report"
   data-family="dream"
   data-open=""
@@ -1976,7 +2166,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Dream · report ready · 3 proposals pending"
+    title="Dream · report ready · 3 proposals pending · User only"
     type="button"
   >
     <span
@@ -2020,6 +2210,14 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
       report ready · 3 proposals pending
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2058,6 +2256,7 @@ exports[`EventCard goldens (chat event corpus) > dream-report (ev24): collapsed 
 exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="goal-progress"
   data-family="mode"
   data-testid="tl-event"
@@ -2066,7 +2265,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Goal · ~40% · timeline rows done, QA shots pending"
+    title="Goal · ~40% · timeline rows done, QA shots pending · User only"
     type="button"
   >
     <span
@@ -2116,6 +2315,14 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
       ~40% · timeline rows done, QA shots pending
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2143,6 +2350,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
 exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="goal-progress"
   data-family="mode"
   data-open=""
@@ -2152,7 +2360,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Goal · ~40% · timeline rows done, QA shots pending"
+    title="Goal · ~40% · timeline rows done, QA shots pending · User only"
     type="button"
   >
     <span
@@ -2202,6 +2410,14 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
       ~40% · timeline rows done, QA shots pending
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2249,6 +2465,7 @@ exports[`EventCard goldens (chat event corpus) > goal-progress (ev15): collapsed
 exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="kanboard-badge"
   data-family="board"
   data-testid="tl-event"
@@ -2257,7 +2474,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · OINO-42 · claimed"
+    title="Kanboard · OINO-42 · claimed · User only"
     type="button"
   >
     <span
@@ -2309,6 +2526,14 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
       OINO-42 · claimed
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2336,6 +2561,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
 exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="kanboard-badge"
   data-family="board"
   data-open=""
@@ -2345,7 +2571,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · OINO-42 · claimed"
+    title="Kanboard · OINO-42 · claimed · User only"
     type="button"
   >
     <span
@@ -2397,6 +2623,14 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
       OINO-42 · claimed
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2438,6 +2672,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-badge (ev23): collapse
 exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="kanboard-next"
   data-family="board"
   data-testid="tl-event"
@@ -2446,7 +2681,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · Next task: OINO-42 Chat events parity."
+    title="Kanboard · Next task: OINO-42 Chat events parity. · User & agent"
     type="button"
   >
     <span
@@ -2498,6 +2733,14 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
       Next task: OINO-42 Chat events parity.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2525,6 +2768,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
 exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="kanboard-next"
   data-family="board"
   data-open=""
@@ -2534,7 +2778,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Kanboard · Next task: OINO-42 Chat events parity."
+    title="Kanboard · Next task: OINO-42 Chat events parity. · User & agent"
     type="button"
   >
     <span
@@ -2586,6 +2830,14 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
       Next task: OINO-42 Chat events parity.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2634,6 +2886,7 @@ exports[`EventCard goldens (chat event corpus) > kanboard-next (ev22): collapsed
 exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="lh-continue"
   data-family="mode"
   data-testid="tl-event"
@@ -2642,7 +2895,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build)."
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · User & agent"
     type="button"
   >
     <span
@@ -2690,6 +2943,14 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
       continuation · Continue the graph: 2 nodes ready (chat-events, rel-build).
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2717,6 +2978,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
 exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="lh-continue"
   data-family="mode"
   data-open=""
@@ -2726,7 +2988,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build)."
+    title="Long-horizon · continuation · Continue the graph: 2 nodes ready (chat-events, rel-build). · User & agent"
     type="button"
   >
     <span
@@ -2774,6 +3036,14 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
       continuation · Continue the graph: 2 nodes ready (chat-events, rel-build).
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2818,6 +3088,7 @@ exports[`EventCard goldens (chat event corpus) > lh-continue (ev16): collapsed o
 exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="memory-nudge"
   data-family="memory"
   data-testid="tl-event"
@@ -2826,7 +3097,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · save nudge · store what this task taught"
+    title="Memory · save nudge · store what this task taught · Agent only"
     type="button"
   >
     <span
@@ -2918,6 +3189,14 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
       save nudge · store what this task taught
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -2945,6 +3224,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
 exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="memory-nudge"
   data-family="memory"
   data-open=""
@@ -2954,7 +3234,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · save nudge · store what this task taught"
+    title="Memory · save nudge · store what this task taught · Agent only"
     type="button"
   >
     <span
@@ -3046,6 +3326,14 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
       save nudge · store what this task taught
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -3097,6 +3385,7 @@ exports[`EventCard goldens (chat event corpus) > memory-nudge (ev03): collapsed 
 exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="memory-recall"
   data-family="memory"
   data-testid="tl-event"
@@ -3105,7 +3394,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · User & agent"
     type="button"
   >
     <span
@@ -3200,6 +3489,14 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
       class="tl-event-meta"
     >
       oino
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -3228,6 +3525,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
 exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="memory-recall"
   data-family="memory"
   data-open=""
@@ -3237,7 +3535,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino"
+    title="Memory · recalled 5 · oino_handoff_20261102_finalize_graph · oino · User & agent"
     type="button"
   >
     <span
@@ -3332,6 +3630,14 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
       class="tl-event-meta"
     >
       oino
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -3447,6 +3753,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev01): collapsed
 exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="memory-recall"
   data-family="memory"
   data-testid="tl-event"
@@ -3455,7 +3762,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · no memories yet for openmontage"
+    title="Memory · no memories yet for openmontage · Agent only"
     type="button"
   >
     <span
@@ -3547,6 +3854,14 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
       no memories yet for openmontage
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -3574,6 +3889,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
 exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="memory-recall"
   data-family="memory"
   data-open=""
@@ -3583,7 +3899,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · no memories yet for openmontage"
+    title="Memory · no memories yet for openmontage · Agent only"
     type="button"
   >
     <span
@@ -3675,6 +3991,14 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
       no memories yet for openmontage
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -3740,6 +4064,7 @@ exports[`EventCard goldens (chat event corpus) > memory-recall (ev02): collapsed
 exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="memory-saved"
   data-family="memory"
   data-testid="tl-event"
@@ -3749,7 +4074,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · User only"
     type="button"
   >
     <span
@@ -3807,6 +4132,14 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
       class="tl-event-meta"
     >
       side agent · 963k tokens
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -3835,6 +4168,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
 exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="memory-saved"
   data-family="memory"
   data-open=""
@@ -3845,7 +4179,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens"
+    title="Memory · saved oino_phone_sheet_scrim_above_sheet_zindex_specificity +1 · side agent · 963k tokens · User only"
     type="button"
   >
     <span
@@ -3903,6 +4237,14 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
       class="tl-event-meta"
     >
       side agent · 963k tokens
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
     </span>
     <svg
       aria-hidden="true"
@@ -3963,6 +4305,7 @@ exports[`EventCard goldens (chat event corpus) > memory-saved (ev05): collapsed 
 exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="memory-wake"
   data-family="memory"
   data-testid="tl-event"
@@ -3971,7 +4314,7 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · wake-up · 215 memories · oino"
+    title="Memory · wake-up · 215 memories · oino · User only"
     type="button"
   >
     <span
@@ -4063,6 +4406,14 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
       wake-up · 215 memories · oino
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4090,6 +4441,7 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
 exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="memory-wake"
   data-family="memory"
   data-open=""
@@ -4099,7 +4451,7 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Memory · wake-up · 215 memories · oino"
+    title="Memory · wake-up · 215 memories · oino · User only"
     type="button"
   >
     <span
@@ -4191,6 +4543,14 @@ exports[`EventCard goldens (chat event corpus) > memory-wake (ev04): collapsed o
       wake-up · 215 memories · oino
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4237,6 +4597,7 @@ Unipi app on Oino (v2 branch)
 exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed one-liner, then the expanded body > marker 1`] = `
 <div
   class="tl-event"
+  data-audience="user"
   data-event="mode-switch"
   data-family="mode"
   data-testid="tl-event"
@@ -4245,7 +4606,7 @@ exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed o
     aria-disabled="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Mode · Graph"
+    title="Mode · Graph · User only"
     type="button"
   >
     <span
@@ -4293,6 +4654,14 @@ exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed o
       Graph
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="user"
+      data-testid="tl-event-audience"
+      title="Shown to you only — not sent to the agent"
+    >
+      User only
+    </span>
     
   </button>
   
@@ -4303,6 +4672,7 @@ exports[`EventCard goldens (chat event corpus) > mode-switch (ev14): collapsed o
 exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="plan-mode"
   data-family="mode"
   data-testid="tl-event"
@@ -4311,7 +4681,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Plan mode · Plan mode on"
+    title="Plan mode · Plan mode on · User & agent"
     type="button"
   >
     <span
@@ -4372,6 +4742,14 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
       Plan mode on
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4399,6 +4777,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
 exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="plan-mode"
   data-family="mode"
   data-open=""
@@ -4408,7 +4787,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Plan mode · Plan mode on"
+    title="Plan mode · Plan mode on · User & agent"
     type="button"
   >
     <span
@@ -4469,6 +4848,14 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
       Plan mode on
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4513,6 +4900,7 @@ exports[`EventCard goldens (chat event corpus) > plan-mode (ev18): collapsed one
 exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="ralph-iteration"
   data-family="mode"
   data-testid="tl-event"
@@ -4521,7 +4909,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Ralph · iteration 18/30 · agent-only-subtraction"
+    title="Ralph · iteration 18/30 · agent-only-subtraction · Agent only"
     type="button"
   >
     <span
@@ -4569,6 +4957,14 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
       iteration 18/30 · agent-only-subtraction
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4596,6 +4992,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
 exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="ralph-iteration"
   data-family="mode"
   data-open=""
@@ -4605,7 +5002,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Ralph · iteration 18/30 · agent-only-subtraction"
+    title="Ralph · iteration 18/30 · agent-only-subtraction · Agent only"
     type="button"
   >
     <span
@@ -4653,6 +5050,14 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
       iteration 18/30 · agent-only-subtraction
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4715,6 +5120,7 @@ exports[`EventCard goldens (chat event corpus) > ralph-iteration (ev17): collaps
 exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="response"
   data-family="mode"
   data-testid="tl-event"
@@ -4723,7 +5129,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · Mode command: Graph"
+    title="Long-horizon · Mode command: Graph · User & agent"
     type="button"
   >
     <span
@@ -4771,6 +5177,14 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
       Mode command: Graph
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4798,6 +5212,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
 exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="response"
   data-family="mode"
   data-open=""
@@ -4807,7 +5222,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Long-horizon · Mode command: Graph"
+    title="Long-horizon · Mode command: Graph · User & agent"
     type="button"
   >
     <span
@@ -4855,6 +5270,14 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
       Mode command: Graph
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -4903,6 +5326,7 @@ exports[`EventCard goldens (chat event corpus) > response (ev21): collapsed one-
 exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="sidekick-done"
   data-family="agent"
   data-testid="tl-event"
@@ -4912,7 +5336,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · User & agent"
     type="button"
   >
     <span
@@ -4971,6 +5395,14 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
       class="tl-event-meta"
     >
       1m 5s · $0.081
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -4999,6 +5431,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
 exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="sidekick-done"
   data-family="agent"
   data-open=""
@@ -5009,7 +5442,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081"
+    title="Sidekick · Result: DONE — all 7 rework items implemented; 95 tests passed. · 1m 5s · $0.081 · User & agent"
     type="button"
   >
     <span
@@ -5068,6 +5501,14 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
       class="tl-event-meta"
     >
       1m 5s · $0.081
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5129,6 +5570,7 @@ exports[`EventCard goldens (chat event corpus) > sidekick-done (ev08): collapsed
 exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="skills-revealed"
   data-family="harness"
   data-testid="tl-event"
@@ -5137,7 +5579,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Skills · Skills now available: browser, image."
+    title="Skills · Skills now available: browser, image. · User & agent"
     type="button"
   >
     <span
@@ -5205,6 +5647,14 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
       Skills now available: browser, image.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -5232,6 +5682,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
 exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="skills-revealed"
   data-family="harness"
   data-open=""
@@ -5241,7 +5692,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Skills · Skills now available: browser, image."
+    title="Skills · Skills now available: browser, image. · User & agent"
     type="button"
   >
     <span
@@ -5309,6 +5760,14 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
       Skills now available: browser, image.
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -5361,6 +5820,7 @@ exports[`EventCard goldens (chat event corpus) > skills-revealed (ev20): collaps
 exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="subagent-done"
   data-family="agent"
   data-testid="tl-event"
@@ -5370,7 +5830,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Audit sidebar rows · 3m 40s · $0.42"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · User & agent"
     type="button"
   >
     <span
@@ -5433,6 +5893,14 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
       class="tl-event-meta"
     >
       3m 40s · $0.42
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5461,6 +5929,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
 exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="subagent-done"
   data-family="agent"
   data-open=""
@@ -5471,7 +5940,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Audit sidebar rows · 3m 40s · $0.42"
+    title="Subagent · Audit sidebar rows · 3m 40s · $0.42 · User & agent"
     type="button"
   >
     <span
@@ -5534,6 +6003,14 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
       class="tl-event-meta"
     >
       3m 40s · $0.42
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5608,6 +6085,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-done (ev06): collapsed
 exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="subagent-notification"
   data-family="agent"
   data-testid="tl-event"
@@ -5617,7 +6095,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · User & agent"
     type="button"
   >
     <span
@@ -5680,6 +6158,14 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
       class="tl-event-meta"
     >
       3m 40s · 489k tokens
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5708,6 +6194,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
 exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="subagent-notification"
   data-family="agent"
   data-open=""
@@ -5718,7 +6205,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens"
+    title="Subagent · Trace film sessions · done · 3m 40s · 489k tokens · User & agent"
     type="button"
   >
     <span
@@ -5781,6 +6268,14 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
       class="tl-event-meta"
     >
       3m 40s · 489k tokens
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -5868,6 +6363,7 @@ exports[`EventCard goldens (chat event corpus) > subagent-notification (ev07): c
 exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="system"
   data-family="system"
   data-testid="tl-event"
@@ -5876,7 +6372,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Agent only"
     type="button"
   >
     <span
@@ -5924,6 +6420,14 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
       Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -5951,6 +6455,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
 exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="agent"
   data-event="system"
   data-family="system"
   data-open=""
@@ -5960,7 +6465,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…"
+    title="System · Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d… · Agent only"
     type="button"
   >
     <span
@@ -6008,6 +6513,14 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
       Mode: Graph — Available long-horizon tools: update_agent_graph, read_agent_graph, graph_checkpoint, graph_wait, graph_d…
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="agent"
+      data-testid="tl-event-audience"
+      title="Sent to the agent only (background/system prompt)"
+    >
+      Agent only
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -6046,6 +6559,7 @@ exports[`EventCard goldens (chat event corpus) > system (ev31): collapsed one-li
 exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="user-bash"
   data-family="shell"
   data-testid="tl-event"
@@ -6054,7 +6568,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · git status --short · exit 0"
+    title="Shell · git status --short · exit 0 · User & agent"
     type="button"
   >
     <span
@@ -6106,6 +6620,14 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
       class="tl-event-meta"
     >
       exit 0
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6134,6 +6656,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
 exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="user-bash"
   data-family="shell"
   data-open=""
@@ -6143,7 +6666,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · git status --short · exit 0"
+    title="Shell · git status --short · exit 0 · User & agent"
     type="button"
   >
     <span
@@ -6195,6 +6718,14 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
       class="tl-event-meta"
     >
       exit 0
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6235,6 +6766,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev28): collapsed one
 exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="user-bash"
   data-family="shell"
   data-testid="tl-event"
@@ -6244,7 +6776,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · cargo test -p oino-core · exit 101"
+    title="Shell · cargo test -p oino-core · exit 101 · User & agent"
     type="button"
   >
     <span
@@ -6296,6 +6828,14 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
       class="tl-event-meta"
     >
       exit 101
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6324,6 +6864,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
 exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="user-bash"
   data-family="shell"
   data-open=""
@@ -6334,7 +6875,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Shell · cargo test -p oino-core · exit 101"
+    title="Shell · cargo test -p oino-core · exit 101 · User & agent"
     type="button"
   >
     <span
@@ -6386,6 +6927,14 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
       class="tl-event-meta"
     >
       exit 101
+    </span>
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
     </span>
     <svg
       aria-hidden="true"
@@ -6425,6 +6974,7 @@ exports[`EventCard goldens (chat event corpus) > user-bash (ev29): collapsed one
 exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-liner, then the expanded body > collapsed 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="watchdog"
   data-family="warn"
   data-testid="tl-event"
@@ -6434,7 +6984,7 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
     aria-expanded="false"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Watchdog · Tool bash has been running for 12m (limit 10m)."
+    title="Watchdog · Tool bash has been running for 12m (limit 10m). · User & agent"
     type="button"
   >
     <span
@@ -6478,6 +7028,14 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
       Tool bash has been running for 12m (limit 10m).
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"
@@ -6505,6 +7063,7 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
 exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-liner, then the expanded body > expanded 1`] = `
 <div
   class="tl-event"
+  data-audience="both"
   data-event="watchdog"
   data-family="warn"
   data-open=""
@@ -6515,7 +7074,7 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
     aria-expanded="true"
     class="tl-event-head"
     data-testid="tl-event-head"
-    title="Watchdog · Tool bash has been running for 12m (limit 10m)."
+    title="Watchdog · Tool bash has been running for 12m (limit 10m). · User & agent"
     type="button"
   >
     <span
@@ -6559,6 +7118,14 @@ exports[`EventCard goldens (chat event corpus) > watchdog (ev19): collapsed one-
       Tool bash has been running for 12m (limit 10m).
     </span>
     
+    <span
+      class="tl-audience"
+      data-audience="both"
+      data-testid="tl-event-audience"
+      title="Shown to both you and the agent"
+    >
+      User & agent
+    </span>
     <svg
       aria-hidden="true"
       class="lucide lucide-chevron-right lucide-icon tl-event-chev"

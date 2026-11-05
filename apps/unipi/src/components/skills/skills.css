@@ -1,0 +1,29 @@
+/* Skills manager (owner 2026-11-05): wide, every skill visible, no truncated columns. */
+html[data-shell=desktop] .sheet.skills-manager-sheet { width: min(1040px, 94vw); max-width: none; height: min(780px, 88vh); max-height: none; display: flex; flex-direction: column; }
+.skills-manager-sheet .board-sheet-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.skm { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1 1 auto; }
+.skm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.skm-search { flex: 1 1 220px; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-dim); }
+.skm-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--color-text); font-size: 13.5px; }
+.skm-source { height: 34px; padding: 0 8px; border-radius: 10px; background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-line); font-size: 13px; }
+.skm-head, .skm-row { display: grid; grid-template-columns: minmax(0, 1fr) 84px 84px 64px; align-items: center; gap: 12px; }
+.skm-head { padding: 0 12px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.skm-head > span:nth-child(2), .skm-head > span:nth-child(3), .skm-row > :nth-child(2), .skm-row > :nth-child(3) { justify-self: center; }
+.skm-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; min-height: 0; border-radius: 12px; background: var(--color-surface-2); }
+.skm-row { padding: 9px 12px; }
+.skm-row + .skm-row { border-top: 1px solid rgb(46 40 37 / 60%); }
+.skm-main { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.skm-name { font-size: 13.5px; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; white-space: normal; }
+.skm-src { padding: 0 6px; border-radius: 6px; background: var(--color-surface-3); font-size: 10.5px; line-height: 17px; color: var(--color-text-dim); }
+.skm-desc { flex-basis: 100%; font-size: 12px; line-height: 17px; color: var(--color-text-dim); white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.skm-inherit { justify-self: end; font-size: 11.5px; }
+.skm-from { color: var(--color-text-dim); }
+.skm-row[data-from=project] .skm-name::after { content: ' •'; color: var(--color-claw); }
+.skm-note { padding: 18px 12px; font-size: 13px; color: var(--color-text-dim); }
+.skm-skel { display: flex; flex-direction: column; gap: 6px; }
+.skm-skel > span { height: 44px; border-radius: 10px; background: var(--color-surface-2); animation: usage-pulse 1.4s ease-in-out infinite; }
+.skm-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.skm-count { font-size: 12.5px; color: var(--color-text-dim); }
+html[data-shell=phone] .skm-head { display: none; }
+html[data-shell=phone] .skm-row { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: 6px; }
+html[data-shell=phone] .skm-inherit { grid-column: 1 / -1; justify-self: start; }

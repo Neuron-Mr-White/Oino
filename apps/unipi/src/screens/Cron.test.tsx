@@ -461,3 +461,24 @@ describe('[ui-chat-bits] cron words', () => {
     expect(jobState({ enabled: true, running: false, last_run_status: 'ok' })).toBe('scheduled');
   });
 });
+
+import { filterJobs, pageButtons, pageOf } from './Cron';
+describe('cron search + pagination (200 jobs)', () => {
+  const jobs = Array.from({ length: 200 }, (_, i) => ({
+    id: `j${i}`, name: i % 10 === 0 ? `Nightly digest ${i}` : `Job ${i}`, prompt: i === 7 ? 'clean the tmp folder' : 'do it', schedule: '0 0 9 * * *', tz: 'UTC', cwd: `/p/${i}`,
+    enabled: i % 2 === 0, time_limit_s: 0, created: 0, updated: 0, running: false,
+  })) as never[];
+  it('search matches name, prompt and plain-words schedule', () => {
+    expect(filterJobs(jobs, 'nightly').length).toBe(20);
+    expect(filterJobs(jobs, 'tmp folder').map((j: { id: string }) => j.id)).toEqual(['j7']);
+    expect(filterJobs(jobs, 'every day').length).toBe(200);
+  });
+  it('pages with clamping and an ellipsis pager', () => {
+    const p = pageOf(jobs, 3, 25);
+    expect(p.rows.length).toBe(25);
+    expect(p.pages).toBe(8);
+    expect(pageOf(jobs, 99, 25).page).toBe(8);
+    expect(pageButtons(5, 8)).toEqual([1, '…', 4, 5, 6, '…', 8]);
+    expect(pageButtons(1, 3)).toEqual([1, 2, 3]);
+  });
+});

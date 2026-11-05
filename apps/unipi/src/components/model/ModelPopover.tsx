@@ -74,8 +74,8 @@ export function ModelDialog(props: {
           onClose={phoneClose}
           label={props.title}
           title={props.title}
-          detents={['full']}
-          initialDetent="full"
+          detents={['content', 'full']}
+          initialDetent="content"
           footer={props.footer}
           testId={`${props.testId}-sheet`}
           class="model-picker-sheet"

@@ -9,7 +9,7 @@
  */
 import type { RefChat } from '../chat/pathStat';
 import { blobTransport } from '../blob';
-import { classifyMedia } from './previewer';
+import { classifyBytes } from './previewer';
 import { openPreviewer, ownedObjectUrl, type PreviewItem } from './previewerState';
 
 /** Extensions worth treating as "this inline-code token is a file path".
@@ -60,7 +60,7 @@ export async function openFilePath(chat: RefChat, path: string): Promise<void> {
     await chat.shareFile(path);
     result = await fetchOnce();
   }
-  const kind = classifyMedia(result.mime, path);
+  const kind = classifyBytes(result.mime, path, result.bytes as Uint8Array);
   const blob = new Blob([result.bytes as BlobPart], { type: result.mime || 'application/octet-stream' });
   const url = ownedObjectUrl(blob);
   if (kind === 'image') {

@@ -113,18 +113,20 @@ describe('chat ⋯ sheet (phone spec §3.4)', () => {
     await waitFor(() => expect(screen.getByTestId('git-view')).toBeTruthy());
   });
 
-  it('Tree opens the session-tab sheet', async () => {
+  it('Tree opens the full-screen session-tab layer with ← Back', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
     await clickRow('Conversation tree');
-    await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('session-tab-layer')).toBeTruthy());
+    expect(screen.getByTestId('session-tab-back')).toBeTruthy();
   });
 
-  it('Side chat opens its sheet', async () => {
+  it('Side chat opens its full-screen layer with ← Back', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
     await clickRow('Side chat');
-    await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('session-tab-layer')).toBeTruthy());
+    expect(screen.getByTestId('session-tab-back')).toBeTruthy();
   });
 
   it('a draft gets the group too, without session kinds', async () => {
@@ -152,14 +154,14 @@ describe('Android Back stack (§3.9)', () => {
     expect(backDepth()).toBe(0);
   });
 
-  it('Escape pops a session-tab sheet and leaves nothing on the stack', async () => {
+  it('Escape pops a session-tab layer and leaves nothing on the stack', async () => {
     boot(`#/s/pc-coffee/${SESSION}`);
     await openMenu();
     await clickRow('Conversation tree');
-    await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('session-tab-layer')).toBeTruthy());
     await waitFor(() => expect(backDepth()).toBeGreaterThan(0));
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByTestId('session-tab-sheet')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('session-tab-layer')).toBeNull());
     expect(backDepth()).toBe(0);
   });
 });

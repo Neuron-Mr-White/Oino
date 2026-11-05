@@ -24,6 +24,7 @@ import type { SessionHandle } from '../../lib/session/store';
 import { ThinkingFooter } from '../model/ThinkingFooter';
 import { canThink, ensureThinkingLevels, thinkingLevels } from '../../lib/model/thinking';
 import { modelKey, modelName, nowLabel, pairUnchanged, parseModels, shortModelName, type ModelInfo, type Selection } from '../../lib/model/picker';
+import { modelDisplayName } from '../../lib/model/displayName';
 import { FUSION_EXTENSION_ID, fetchFusion, fusionAvailable, type FusionCurated } from '../../lib/model/fusion';
 import { openSettingsAt } from '../../lib/settings/open';
 import { toasts } from '../../lib/toasts';
@@ -114,10 +115,11 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
   const nameOf = (key: string) => {
     const m = (models() ?? []).find((x) => modelKey(x) === key);
     if (m) return shortModelName(modelName(m));
-    // Before the list loads, a pair seat still reads as a name, not a `provider/id` path.
     const cur = props.session.state.model;
-    if (cur?.id && modelKey(cur) === key) return shortModelName(cur.name ?? cur.id);
-    return key.slice(key.indexOf('/') + 1);
+    if (cur?.id && modelKey(cur) === key && cur.name) return shortModelName(cur.name);
+    const slash = key.indexOf('/');
+    const id = slash >= 0 ? key.slice(slash + 1) : key;
+    return shortModelName(modelDisplayName({ id }) || id);
   };
   // Fusion tab (unipi.fusion on this PC): the pair is a draft choice, applied after the chat starts.
   const fusionTab = () => !!data.latest?.fusionTab;
@@ -208,10 +210,11 @@ export function DraftModelChip(props: { session: DraftSession; disabled?: boolea
       <button
         type="button"
         class="tb-chip tb-chip-model"
+        data-fusion={draftPair() ? '' : undefined}
         aria-label={`Model: ${label()}. Change model`}
         aria-haspopup="dialog"
         aria-expanded={open()}
-        title={modelChipTitle(props.session.state.model)}
+        title={draftPair() ? `${label()} (${draftPair()!.lead} ◆ ${draftPair()!.sidekick})` : modelChipTitle(props.session.state.model)}
         disabled={props.disabled}
         ref={chip}
         onClick={() => {

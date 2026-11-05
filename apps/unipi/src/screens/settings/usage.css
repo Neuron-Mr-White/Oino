@@ -73,3 +73,60 @@
 @media (prefers-reduced-motion: reduce) {
   .usage-bar, .usage-sk-stats > span, .usage-sk-chart, .usage-spin { animation: none; }
 }
+
+/* ── ZCode parity (owner 2026-11-05): lifetime strip, heatmap, model trend, donut ── */
+.usage-life { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-radius: 14px; background: var(--color-surface-2); overflow: hidden; }
+.usage-life-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px; min-width: 0; text-align: center; }
+.usage-life-cell + .usage-life-cell { border-left: 1px solid var(--color-line); }
+.usage-life-value { font-size: 18px; line-height: 24px; font-weight: 660; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.usage-life-label { font-size: 11.5px; color: var(--color-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 720px) {
+  .usage-life { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .usage-life-cell + .usage-life-cell { border-left: 0; }
+  .usage-life-cell { border-top: 1px solid var(--color-line); }
+  .usage-life-cell:nth-child(-n+2) { border-top: 0; }
+  .usage-life-cell:nth-child(even) { border-left: 1px solid var(--color-line); }
+}
+
+.usage-heat { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px var(--color-line); }
+.usage-heat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.usage-heat-head .usage-h { margin: 0; }
+.usage-heat-grid { display: grid; gap: 2px; }
+.usage-heat-col { display: grid; grid-template-rows: repeat(7, 1fr); gap: 2px; }
+.usage-heat-cell { display: block; aspect-ratio: 1; min-width: 0; border-radius: 3px; background: var(--color-surface-3); transition: transform 120ms ease-out; }
+.usage-heat-cell:hover { transform: scale(1.15); }
+.usage-heat-cell[data-level='1'] { background: color-mix(in srgb, var(--color-claw) 28%, var(--color-surface-3)); }
+.usage-heat-cell[data-level='2'] { background: color-mix(in srgb, var(--color-claw) 52%, var(--color-surface-3)); }
+.usage-heat-cell[data-level='3'] { background: color-mix(in srgb, var(--color-claw) 76%, var(--color-surface-3)); }
+.usage-heat-cell[data-level='4'] { background: var(--color-claw); }
+.usage-heat-cell[data-future] { opacity: 0.25; }
+.usage-heat-months { display: grid; font-size: 11px; color: var(--color-text-dim); }
+.usage-heat-months > span { overflow: hidden; white-space: nowrap; }
+.usage-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; font-size: 11px; color: var(--color-text-dim); }
+.usage-heat-legend .usage-heat-cell { width: 10px; }
+.usage-heat-legend > span:first-child { margin-right: 3px; }
+.usage-heat-legend > span:last-child { margin-left: 3px; }
+@media (max-width: 720px) { .usage-heat-grid, .usage-heat-col { gap: 1px; } .usage-heat-cell { border-radius: 1.5px; } }
+
+.usage-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--color-text-muted); }
+.usage-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.usage-legend-item i, .usage-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 4px; }
+.usage-stack { align-items: flex-end; }
+.usage-stack-col { display: flex; flex-direction: column-reverse; width: 100%; border-radius: 3px 3px 0 0; overflow: hidden; animation: usage-grow 420ms cubic-bezier(0.16, 1, 0.3, 1) both; transform-origin: bottom; }
+.usage-stack-col > span { display: block; flex-basis: 0; min-height: 0; }
+.usage-bar-cell[data-active] .usage-stack-col { filter: brightness(1.15); }
+
+.usage-donut-wrap { min-width: 0; }
+.usage-donut { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; align-items: center; }
+.usage-donut-svg { width: 150px; height: 150px; }
+.usage-donut-num { font-size: 13px; font-weight: 660; fill: var(--color-text); }
+.usage-donut-sub { font-size: 8px; fill: var(--color-text-dim); }
+.usage-donut-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.usage-donut-list li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 0; font-size: 12.5px; }
+.usage-donut-list li + li { border-top: 1px solid rgb(46 40 37 / 60%); }
+.usage-donut-list i { width: 10px; height: 10px; border-radius: 3px; }
+.usage-donut-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.usage-donut-share { color: var(--color-text-muted); }
+.usage-donut-tok { min-width: 48px; text-align: right; color: var(--color-text-dim); }
+@media (max-width: 520px) { .usage-donut { grid-template-columns: minmax(0, 1fr); justify-items: center; } .usage-donut-list { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .usage-stack-col { animation: none; } }

@@ -14,22 +14,27 @@
 import { createEffect, createMemo, createResource, createSignal, getOwner, on, onCleanup, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import {
+  Activity,
   Archive,
   ArrowLeft,
+  ClipboardList,
   Ellipsis,
   Folder,
   GitBranch,
   GitFork,
+  Globe,
   Info,
   ListTree,
   MessageCircleQuestion,
+  Network,
   Pencil,
+  Plug,
+  Puzzle,
   Search,
   Share,
   ShieldCheck,
   SquareTerminal,
   Workflow,
-  Network,
 } from 'lucide-solid';
 import { sessions } from '../../lib/session/store';
 import { hubs } from '../../lib/session/hub';
@@ -47,6 +52,9 @@ import { openStatusSection } from '../status/StatusPane';
 import { hasGraph, openGraphView } from '../status/GraphView';
 import { openBtwTab, openTreeTab } from '../panes/tabs/sessionTabs';
 import { openPhoneTerminal } from '../panes/tabs/terminalPhone';
+import { openPhoneBrowser } from '../browser/phoneLayer';
+import { sessionUi } from '../../ui/registries';
+import { openPhonePane, phonePaneEntries } from '../../ui/slots/paneTabs';
 import { openSessionModal } from '../session/modalTarget';
 import { statusSegments } from '../shell/StatusStrip';
 import { chatActionsFor, type ChatActionCtx } from '../shell/ConversationHeader';
@@ -139,12 +147,25 @@ export function PhoneChatHeader(props: {
         },
       },
       { id: 'git', label: 'Git changes', icon: GitBranch, value: gitValue(), onSelect: () => openStatusSection({ hostId: props.hostId, sessionId: sid, path: props.cwd || '~' }) },
+      { id: 'browser', label: 'Browser', icon: Globe, onSelect: () => openPhoneBrowser(props.hostId) },
+      { id: 'ports', label: 'Local ports', icon: Plug, onSelect: () => navigate('/settings/ports') },
     ];
     if (sid) {
       open.push(
+        { id: 'plan-pane', label: 'Plan & todos', icon: ClipboardList, onSelect: () => openStatusSection({ hostId: props.hostId, sessionId: sid, path: props.cwd || '~' }, 'plan') },
+        { id: 'running-pane', label: 'Running tasks', icon: Activity, onSelect: () => openStatusSection({ hostId: props.hostId, sessionId: sid, path: props.cwd || '~' }, 'running') },
         { id: 'side-chat', label: 'Side chat', icon: MessageCircleQuestion, onSelect: () => openBtwTab({ hostId: props.hostId, sessionId: sid, cwd: props.cwd }) },
         { id: 'tree', label: 'Conversation tree', icon: ListTree, onSelect: () => openTreeTab({ hostId: props.hostId, sessionId: sid, cwd: props.cwd }) },
       );
+      const reg = sessionUi(props.hostId, sid);
+      for (const e of phonePaneEntries(reg)) {
+        open.push({
+          id: `ext-pane-${e.id}`,
+          label: e.title ?? e.extensionId,
+          icon: Puzzle,
+          onSelect: () => openPhonePane(e),
+        });
+      }
     }
     const chat: ActionItem[] = [];
     if (sid && hasPermission()) chat.push({ id: 'mode', label: 'Mode', icon: ShieldCheck, value: permissionModeLabel(session()!), onSelect: () => openModeSheet(session()!.key) });

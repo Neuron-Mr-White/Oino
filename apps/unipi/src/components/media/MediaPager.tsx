@@ -9,7 +9,7 @@
 import { createEffect, createSignal, onCleanup, Show, type JSX } from 'solid-js';
 import { ChevronLeft, ChevronRight } from 'lucide-solid';
 import { blobTransport } from '../../lib/blob';
-import { classifyMedia, type MediaKind } from '../../lib/media/previewer';
+import { classifyBytes, type MediaKind } from '../../lib/media/previewer';
 import type { PreviewRequest } from '../../lib/media/previewerState';
 
 const EDGE = 34; // px from the left/right edge where a swipe pages
@@ -52,12 +52,12 @@ export function MediaPager(props: {
         const got = await blobTransport().getBytes(props.hostId, { path });
         if (currentUrl) URL.revokeObjectURL(currentUrl);
         currentUrl = undefined;
-        const kind = classifyMedia(got.mime, path);
         const name = path.split('/').pop() ?? path;
         // IPC may hand the bytes over as a number array (see the preview tab's
         // note); a Blob would stringify that instead of reading bytes.
         const raw = got.bytes as unknown;
         const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw as ArrayLike<number>);
+        const kind = classifyBytes(got.mime, path, bytes);
         const blob = new Blob([bytes as BlobPart], { type: got.mime || 'application/octet-stream' });
         if (kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video' || kind === 'other') {
           currentUrl = URL.createObjectURL(blob);

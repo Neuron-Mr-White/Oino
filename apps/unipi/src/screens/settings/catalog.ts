@@ -215,8 +215,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ['skills', 'exposure', 'judged', 'pins', 'vault', 'editor'],
     rows: [
       { key: 'skills.form', label: 'Exposure and pins', description: 'Judged / all / off, pinned skills and the vault' },
-      { key: 'skills.hub', label: 'Skills hub', description: 'The extension’s own panel' },
-      { key: 'skills.editor', label: 'Skill editor', description: 'Enabled / Must show, per skill' },
+      { key: 'skills.manager', label: 'Manage skills', description: 'Enabled / Must show, per skill, global or project' },
     ],
   },
   {

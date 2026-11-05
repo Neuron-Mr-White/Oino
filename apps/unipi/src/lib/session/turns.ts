@@ -653,9 +653,9 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
     s.before = groupWork(s.work.slice(0, lead));
     s.work = s.work.slice(lead);
   }
-  // Extract the final answer prose even when trailing metadata cards (e.g. saved
-  // memories or wake-up cards) were appended after the assistant finished speaking;
-  // those cards render after the answer (never folded away).
+  // Extract the final answer prose even when trailing metadata cards or a compaction
+  // were appended after the assistant finished speaking; they render after the answer
+  // (never buried inside the closed "Worked for …" fold).
   for (let i = s.work.length - 1; i >= 0; i--) {
     const item = s.work[i]!;
     if (item.kind === 'prose') {
@@ -665,7 +665,19 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
       s.work = s.work.slice(0, i);
       break;
     }
-    if (item.kind !== 'card') break;
+    if (item.kind !== 'card' && item.kind !== 'compaction') break;
+  }
+  // Even if the segment ended without prose (e.g. tool-only turn followed by auto-compaction),
+  // lift trailing compaction + event cards out of the closed fold so compaction is always visible.
+  if (!s.answer && !s.after) {
+    let tailFrom = s.work.length;
+    while (tailFrom > 0 && (s.work[tailFrom - 1]!.kind === 'card' || s.work[tailFrom - 1]!.kind === 'compaction')) {
+      tailFrom--;
+    }
+    if (tailFrom < s.work.length && s.work.slice(tailFrom).some((w) => w.kind === 'compaction')) {
+      s.after = groupWork(s.work.slice(tailFrom));
+      s.work = s.work.slice(0, tailFrom);
+    }
   }
   s.nodes = groupWork(s.work);
   if (!s.work.length && !live) return;

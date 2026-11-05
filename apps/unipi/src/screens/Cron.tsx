@@ -211,6 +211,39 @@ export function lastRunChip(job: Pick<CronJob, 'last_run_status' | 'running'>): 
   return job.last_run_status ? STATUS_LABEL[job.last_run_status] ?? job.last_run_status : undefined;
 }
 
+/** Cron search (owner 2026-11-05): name, prompt, folder, schedule (raw + plain words), model. Pure. */
+export function filterJobs(jobs: readonly CronJob[], query: string): CronJob[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...jobs];
+  const words = q.split(/\s+/);
+  return jobs.filter((j) => {
+    const hay = `${j.name} ${j.prompt} ${j.cwd} ${j.schedule} ${scheduleText(j.schedule)} ${j.model ?? ''} ${j.enabled ? 'enabled' : 'disabled'} ${j.last_run_status ?? ''}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
+
+export const CRON_PAGE_SIZES = [10, 25, 50, 100] as const;
+
+/** One page of `items` (1-based `page`, clamped) + the page count. Pure. */
+export function pageOf<T>(items: readonly T[], page: number, size: number): { rows: T[]; page: number; pages: number } {
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const p = Math.min(Math.max(1, page), pages);
+  return { rows: items.slice((p - 1) * size, p * size), page: p, pages };
+}
+
+/** Page buttons with an ellipsis in the middle past a handful (1 … 4 5 6 … 20). Pure. */
+export function pageButtons(page: number, pages: number): Array<number | '…'> {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const out: Array<number | '…'> = [1];
+  const from = Math.max(2, page - 1);
+  const to = Math.min(pages - 1, page + 1);
+  if (from > 2) out.push('…');
+  for (let i = from; i <= to; i++) out.push(i);
+  if (to < pages - 1) out.push('…');
+  out.push(pages);
+  return out;
+}
+
 type View =
   | { kind: 'loading' }
   | { kind: 'disabled' }
@@ -244,6 +277,11 @@ export default function Cron() {
   const [hostSheetOpen, setHostSheetOpen] = createSignal(false);
   const [detail, setDetail] = createSignal<string | undefined>(undefined);
   const [formOpen, setFormOpen] = createSignal<CronJob | 'new' | undefined>(undefined);
+  const [schedulerOpen, setSchedulerOpen] = createSignal(false);
+  const [query, setQuery] = createSignal('');
+  const [page, setPage] = createSignal(1);
+  const [pageSize, setPageSize] = createSignal<number>(25);
+  createEffect(on([query, pageSize, () => hostId()], () => setPage(1)));
 
   // `/cron add` lands here with ?form=new: open the add form once, then clear
   // the param so Back/refresh from the form is the plain list (G-17).
@@ -340,13 +378,51 @@ export default function Cron() {
                   />
                 </div>
 
-                <Show when={v.jobs.length === 0} fallback={<div class="cron-jobs">
-                  <Show when={phone()} fallback={<For each={v.jobs}>{(job) => <JobRow job={job} hostId={hostId()!} onOpen={() => setDetail(job.id)} onChanged={() => void refresh()} />}</For>}>
-                    <ListGroup>
-                      <For each={v.jobs}>{(job) => <PhoneJobRow job={job} hostId={hostId()!} onOpen={() => navigate(`/cron/job/${encodeURIComponent(job.id)}`)} onEdit={() => setFormOpen(job)} onChanged={() => void refresh()} />}</For>
-                    </ListGroup>
-                  </Show>
-                </div>}>
+                <Show when={v.jobs.length > 0}>
+                  <div class="cron-search-row">
+                    <input
+                      type="search"
+                      class="cron-search"
+                      placeholder={`Search ${v.jobs.length} job${v.jobs.length === 1 ? '' : 's'}…`}
+                      aria-label="Search cron jobs"
+                      value={query()}
+                      onInput={(e) => setQuery(e.currentTarget.value)}
+                      data-testid="cron-search"
+                    />
+                  </div>
+                </Show>
+                <Show when={v.jobs.length === 0} fallback={(() => {
+                  const shown = () => filterJobs(v.jobs, query());
+                  const pg = () => pageOf(shown(), page(), pageSize());
+                  return (
+                    <>
+                      <div class="cron-jobs">
+                        <Show when={shown().length > 0} fallback={<p class="cron-hint cron-no-match" data-testid="cron-no-match">No job matches “{query().trim()}”.</p>}>
+                          <Show when={phone()} fallback={<For each={pg().rows}>{(job) => <JobRow job={job} hostId={hostId()!} onOpen={() => setDetail(job.id)} onChanged={() => void refresh()} />}</For>}>
+                            <ListGroup>
+                              <For each={pg().rows}>{(job) => <PhoneJobRow job={job} hostId={hostId()!} onOpen={() => navigate(`/cron/job/${encodeURIComponent(job.id)}`)} onEdit={() => setFormOpen(job)} onChanged={() => void refresh()} />}</For>
+                            </ListGroup>
+                          </Show>
+                        </Show>
+                      </div>
+                      <Show when={shown().length > CRON_PAGE_SIZES[0]}>
+                        <nav class="cron-pager" aria-label="Cron pages" data-testid="cron-pager">
+                          <span class="cron-pager-count">{(pg().page - 1) * pageSize() + 1}–{Math.min(pg().page * pageSize(), shown().length)} of {shown().length}</span>
+                          <button type="button" class="cron-page-btn" disabled={pg().page <= 1} onClick={() => setPage(pg().page - 1)} aria-label="Previous page" data-testid="cron-page-prev">‹</button>
+                          <For each={pageButtons(pg().page, pg().pages)}>
+                            {(b) => (b === '…' ? <span class="cron-page-gap">…</span> : (
+                              <button type="button" class="cron-page-btn" aria-current={b === pg().page ? 'page' : undefined} onClick={() => setPage(b)} data-testid={`cron-page-${b}`}>{b}</button>
+                            ))}
+                          </For>
+                          <button type="button" class="cron-page-btn" disabled={pg().page >= pg().pages} onClick={() => setPage(pg().page + 1)} aria-label="Next page" data-testid="cron-page-next">›</button>
+                          <select class="cron-page-size" aria-label="Jobs per page" value={pageSize()} onChange={(e) => setPageSize(Number(e.currentTarget.value))} data-testid="cron-page-size">
+                            <For each={CRON_PAGE_SIZES}>{(n) => <option value={n}>{n} / page</option>}</For>
+                          </select>
+                        </nav>
+                      </Show>
+                    </>
+                  );
+                })()}>
                   <EmptyState
                     title="No cron jobs yet"
                     body="Schedule an unattended agent run — a daily digest, a nightly cleanup, a weekly report."
@@ -357,7 +433,6 @@ export default function Cron() {
                     }
                   />
                 </Show>
-                <SchedulerSettings hostId={hostId()!} />
               </div>
             );
           })()}
@@ -367,6 +442,9 @@ export default function Cron() {
   );
   const overlays = () => (
     <>
+        <Show when={schedulerOpen() && hostId()}>
+          <SchedulerSettings hostId={hostId()!} onClose={() => setSchedulerOpen(false)} />
+        </Show>
         <HostSheetCron open={hostSheetOpen()} hostIds={hosts.hosts().map((h) => h.id)} names={hosts.hosts()} current={hostId()} onPick={(id) => (setHostId(id), setHostSheetOpen(false))} onClose={() => setHostSheetOpen(false)} />
 
         <Show when={detail()}>
@@ -408,7 +486,7 @@ export default function Cron() {
             if (id) void (paused ? cronResumeAll(id) : cronPauseAll(id)).then(() => void refresh());
           } }]
         : []),
-      { id: 'settings', label: 'Scheduler settings', icon: Settings2, onSelect: () => document.getElementById('cron-scheduler')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) },
+      { id: 'settings', label: 'Scheduler settings', icon: Settings2, onSelect: () => setSchedulerOpen(true) },
     ]];
   };
 
@@ -427,6 +505,9 @@ export default function Cron() {
           lead={desktopShell() ? undefined : <PcChip name={hosts.hosts().find((h) => h.id === hostId())?.name} state={view().kind === "error" ? "offline" : view().kind === "loading" ? "checking" : "ok"} onClick={() => setHostSheetOpen(true)} />}
           tools={
             <>
+              <button type="button" class="ghost-icon-button" aria-label="Scheduler settings" title="Scheduler settings" onClick={() => setSchedulerOpen(true)} data-testid="cron-scheduler-open">
+                <Settings2 size={18} />
+              </button>
               <button type="button" class="ghost-icon-button" aria-label="Refresh" onClick={() => void refresh()}>
                 <RefreshCw size={18} class={refreshing() ? 'refresh-spinning' : undefined} />
               </button>
@@ -452,7 +533,12 @@ export default function Cron() {
               title="Cron"
               testId="cron-screen"
               onRefresh={refresh}
-              tools={<IconButton icon={Ellipsis} label="More cron actions" onClick={() => setMenuOpen(true)} testId="cron-more" />}
+              tools={
+                <>
+                  <IconButton icon={Settings2} label="Scheduler settings" onClick={() => setSchedulerOpen(true)} testId="cron-scheduler-open" />
+                  <IconButton icon={Ellipsis} label="More cron actions" onClick={() => setMenuOpen(true)} testId="cron-more" />
+                </>
+              }
               fab={view().kind === 'ready' ? { icon: Plus, label: 'New job', onClick: () => setFormOpen('new') } : undefined}
             >
               <div class="cron-screen cron-phone">{body()}</div>
@@ -491,10 +577,9 @@ export function schedulerNamespace(ns: Namespace): Namespace {
  * limit, default notify events) — the one place for them, on this screen for
  * the PC it shows (the cron extension's own form; Settings › Extensions links here).
  */
-function SchedulerSettings(props: { hostId: string }) {
-  const [open, setOpen] = createSignal(false);
+function SchedulerSettings(props: { hostId: string; onClose: () => void }) {
   const [ns] = createResource(
-    () => (open() ? props.hostId : undefined),
+    () => props.hostId,
     async (hostId) => {
       const r = await settingsSchema(hostId);
       const found = r.ok ? r.value.find((n) => n.namespace === 'cron') : undefined;
@@ -502,21 +587,12 @@ function SchedulerSettings(props: { hostId: string }) {
     },
   );
   return (
-    <div class="cron-scheduler" id="cron-scheduler" data-testid="cron-scheduler">
-      <button type="button" class="cron-scheduler-toggle settings-row" aria-expanded={open()} onClick={() => setOpen(!open())} data-testid="cron-scheduler-toggle">
-        <span class="settings-icon"><Settings2 size={18} /></span>
-        <span class="min-w-0 flex-1 text-left">
-          <span class="block text-[15px] text-text">Scheduler settings</span>
-          <span class="block text-xs text-text-dim mt-0.5">How many run at once, missed runs, history kept, time limit, default notifications</span>
-        </span>
-        <ChevronDown size={16} class="cron-scheduler-chevron text-text-dim shrink-0" data-open={open() ? '' : undefined} />
-      </button>
-      <Show when={open()}>
-        <Show when={ns()} fallback={<p class="cron-hint px-4 pb-3">{ns.loading ? 'Loading…' : 'This PC’s cron extension reports no settings.'}</p>}>
-          {(n) => <NamespaceForm namespace={n()} hostId={props.hostId} bare flat testId="cron-scheduler-form" />}
-        </Show>
+    <BoardSheet open onClose={props.onClose} label="Scheduler settings" class="settings-cmd-sheet" testId="cron-scheduler">
+      <p class="cron-hint px-1 pb-2">How many run at once, missed runs, history kept, time limit, default notifications.</p>
+      <Show when={ns()} fallback={<p class="cron-hint px-1 pb-3">{ns.loading ? 'Loading…' : 'This PC’s cron extension reports no settings.'}</p>}>
+        {(n) => <NamespaceForm namespace={n()} hostId={props.hostId} bare flat testId="cron-scheduler-form" />}
       </Show>
-    </div>
+    </BoardSheet>
   );
 }
 

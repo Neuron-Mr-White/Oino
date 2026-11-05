@@ -12,7 +12,7 @@ import { Portal } from 'solid-js/web';
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, FileText, Share2, X } from 'lucide-solid';
 import { pushBack } from '../../lib/back';
 import { saveFile } from '../../lib/board/share';
-import { downloadToDevice, openWithExternal, progressLabel, transferMessage, type TransferProgress } from '../../lib/filesTransfer';
+import { downloadWithNotify, openWithExternal, progressLabel, transferMessage, type TransferProgress } from '../../lib/filesTransfer';
 import { setEditorTarget } from '../../lib/editorTarget';
 import { escapeHtml } from '../../lib/markdown/escape';
 import { highlightHtml } from '../../lib/markdown/highlight';
@@ -271,7 +271,7 @@ export function GenericPreview(props: { request: Exclude<PreviewRequest, { kind:
     setToast(progressLabel(verb, undefined));
     const onProgress = (p: TransferProgress) => setToast(progressLabel(verb, p));
     const result = op === 'download'
-      ? await downloadToDevice(req.source.hostId, req.source.path, onProgress)
+      ? await downloadWithNotify(req.source.hostId, req.source.path, onProgress)
       : await openWithExternal(req.source.hostId, req.source.path, onProgress);
     flash(transferMessage(result, req.name, desktopShell()));
   };
@@ -457,7 +457,7 @@ export function PreviewTab(props: PaneTabProps) {
 
   async function download() {
     setToast('Downloading…');
-    const result = await downloadToDevice(hostId(), path());
+    const result = await downloadWithNotify(hostId(), path());
     flash(transferMessage(result, name(), desktopShell()));
   }
   // "Edit as text": the editor lives in the Files tab, so open (or focus) it

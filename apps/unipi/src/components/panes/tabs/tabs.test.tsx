@@ -410,23 +410,23 @@ describe('subagent tab (Z-42)', () => {
 describe('phone surfaces (§3.9)', () => {
   beforeEach(() => setDesktopOverride(false));
 
-  it('opens the diff viewer as a full-screen layer and the rest as a sheet', async () => {
+  it('opens every session pane as a full-screen layer with a ← Back button (never a drawer)', async () => {
     await import('./DiffTab');
     await import('./TreeTab');
     await import('./BtwTab');
     await import('./SubagentTab');
     withRouter(() => <SessionTabLayer />);
-    // Diff → layer
+    // Diff → full-screen layer
     seedPhoneSessionTab({ kind: 'diff', base: { hostId: HOST, sessionId: S }, params: { hostId: HOST, sessionId: S, toolId: 'tc-edit', path: 'src/math.ts' }, title: 'Diff · math.ts' });
     await waitFor(() => expect(screen.getByTestId('session-tab-layer')).toBeTruthy());
-    expect(screen.queryByTestId('session-tab-sheet')).toBeNull();
+    expect(screen.getByTestId('session-tab-back')).toBeTruthy();
     closePhoneSessionTab();
     await waitFor(() => expect(screen.queryByTestId('session-tab-layer')).toBeNull());
-    // Tree → bottom sheet, and it closes
+    // Tree → also a full-screen layer with ← Back, and clicking Back closes it
     seedPhoneSessionTab({ kind: 'tree', base: { hostId: HOST, sessionId: S }, params: { hostId: HOST, sessionId: S }, title: 'Tree' });
-    await waitFor(() => expect(screen.getByTestId('session-tab-sheet')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('session-tab-layer')).toBeTruthy());
     expect(phoneSessionTab()?.kind).toBe('tree');
-    screen.getByTestId('session-tab-close').click();
+    screen.getByTestId('session-tab-back').click();
     await waitFor(() => expect(phoneSessionTab()).toBeUndefined());
   });
 

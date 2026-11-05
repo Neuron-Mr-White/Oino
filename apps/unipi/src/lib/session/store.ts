@@ -20,6 +20,7 @@ import { SessionStreamClient, type StreamOptions } from './stream';
 import { createTurnsIndex, type Turn } from './turns';
 import { assembleChunk, type HostPage } from './chunks';
 import { hubs, onHostBack } from './hub';
+import { resetFusionOverrides } from '../model/fusion';
 import { routeNotify, reportTextOf } from '../reports';
 import { isUnknownOpError } from '../../components/status/lhProgress';
 import type { CommandInfo, OutboxImage, OutboxItem, OutboxMode, SessionEntry, SessionState } from './types';
@@ -317,6 +318,9 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     if (r.catchUp) {
       const since = r.catchUp;
       queueMicrotask(() => catchUp(since));
+    }
+    if (r.reloadTail) {
+      queueMicrotask(() => void reloadBranch().catch(() => {}));
     }
     if (r.branchMoved !== undefined) {
       const leaf = r.branchMoved;
@@ -625,6 +629,7 @@ export function resetSessions(): void {
   shared = undefined;
   offHostBack?.();
   offHostBack = undefined;
+  resetFusionOverrides();
 }
 
 export type { SetStoreFunction };

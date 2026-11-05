@@ -9,11 +9,11 @@
  * back to the running / configured pair (`base`), then Fusion's curated
  * defaults, then the catalogue's first rows.
  */
-import { createMemo, createSignal, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from 'solid-js';
 import { Check } from 'lucide-solid';
 import type { FusionCurated } from '../../lib/model/fusion';
 import { columnModels, FUSION_EFFORTS, modelKey, modelName, shortModelName, type ModelInfo } from '../../lib/model/picker';
-import { curatedFirst, rowTitle } from './suggested';
+import { curatedFirst, modelPathLabel, rowTitle } from './suggested';
 import { LIST_CAP } from './ModelList';
 import { PickerSkeleton } from './ModelPopover';
 
@@ -71,9 +71,23 @@ export function createFusionPair(opts: FusionPairOptions) {
     const e = opts.curated()?.effort[key];
     return e && (FUSION_EFFORTS as readonly string[]).includes(e) ? e : undefined;
   };
+  const byKeyMap = createMemo(() => new Map((opts.catalogue ?? opts.models)().map((m) => [modelKey(m), m])));
   const colRows = createMemo(() => columnModels(opts.models(), opts.query()));
-  const leadRows = createMemo(() => curatedFirst(colRows(), (opts.curated()?.lead ?? []).map((e) => e.key)));
-  const sidekickRows = createMemo(() => curatedFirst(colRows(), (opts.curated()?.sidekick ?? []).map((e) => e.key)));
+  const splitColumn = (curatedKeys: readonly string[], selectedKey: string | undefined) => {
+    const base = curatedFirst(colRows(), curatedKeys);
+    const selected = selectedKey ? colRows().find((m) => modelKey(m) === selectedKey) : undefined;
+    if (!selected) return { selected: undefined as ModelInfo | undefined, curated: base.curated, rest: base.rest };
+    return {
+      selected,
+      curated: base.curated.filter((m) => modelKey(m) !== selectedKey),
+      rest: base.rest.filter((m) => modelKey(m) !== selectedKey),
+    };
+  };
+  const leadRows = createMemo(() => splitColumn((opts.curated()?.lead ?? []).map((e) => e.key), leadKey()));
+  const sidekickRows = createMemo(() => splitColumn((opts.curated()?.sidekick ?? []).map((e) => e.key), sidekickKey()));
+
+  let leadListEl: HTMLDivElement | undefined;
+  let sidekickListEl: HTMLDivElement | undefined;
 
   /** A seat pick: the key, plus its curated effort when it has one. */
   const choose = (side: FusionSide, key: string) => {
@@ -82,11 +96,26 @@ export function createFusionPair(opts: FusionPairOptions) {
     if (side === 'lead') {
       setPendingLead(key);
       if (effort) setLeadEffort(effort);
+      queueMicrotask(() => { if (leadListEl) leadListEl.scrollTop = 0; });
     } else {
       setPendingSidekick(key);
       if (effort) setSidekickEffort(effort);
+      queueMicrotask(() => { if (sidekickListEl) sidekickListEl.scrollTop = 0; });
     }
   };
+
+  // When search clears, scroll columns back to top where Selected sits.
+  createEffect(
+    on(
+      () => opts.query().trim(),
+      (q, prev) => {
+        if (!q && prev) {
+          if (leadListEl) leadListEl.scrollTop = 0;
+          if (sidekickListEl) sidekickListEl.scrollTop = 0;
+        }
+      },
+    ),
+  );
 
   /** One column row. */
   const ColRow = (p: { m: ModelInfo; side: FusionSide }) => {
@@ -100,9 +129,13 @@ export function createFusionPair(opts: FusionPairOptions) {
         class="mp-row"
         title={rowTitle(modelName(p.m), p.m)}
         aria-current={chosen() ? 'true' : undefined}
+        data-key={key}
         onClick={() => choose(p.side, key)}
       >
-        <span class="mp-row-name">{shortModelName(modelName(p.m))}</span>
+        <span class="mp-row-main">
+          <span class="mp-row-name">{shortModelName(modelName(p.m))}</span>
+          <span class="mp-row-sub">{modelPathLabel(p.m)}</span>
+        </span>
         <Show when={chosen()}>
           <Check size={16} class="mp-check" />
         </Show>
@@ -111,16 +144,54 @@ export function createFusionPair(opts: FusionPairOptions) {
   };
   const Column = (p: { side: FusionSide }) => {
     const rows = () => (p.side === 'lead' ? leadRows() : sidekickRows());
+    const chosenKey = () => (p.side === 'lead' ? leadKey() : sidekickKey());
+    const chosenLabel = () => {
+      const k = chosenKey();
+      if (!k) return undefined;
+      const m = byKeyMap().get(k);
+      return m ? shortModelName(modelName(m)) : k.slice(k.indexOf('/') + 1);
+    };
     return (
       <div class="mp-col" data-testid={`fusion-col-${p.side}`}>
-        <p class="mp-label">{p.side === 'lead' ? 'Lead' : 'Sidekick'}</p>
-        <div class="mp-list mp-col-list">
+        <p class="mp-label">
+          <span>{p.side === 'lead' ? 'Lead' : 'Sidekick'}</span>
+          <Show when={chosenLabel()}>
+            <span class="mp-col-picked" title={chosenKey()}> · {chosenLabel()}</span>
+          </Show>
+        </p>
+        <div
+          class="mp-list mp-col-list"
+          ref={(el) => {
+            if (p.side === 'lead') leadListEl = el;
+            else sidekickListEl = el;
+          }}
+        >
+          <Show when={rows().selected}>
+            {(sel) => (
+              <>
+                <p class="mp-group">Selected</p>
+                <ColRow m={sel()} side={p.side} />
+              </>
+            )}
+          </Show>
           <Show when={rows().curated.length > 0}>
             <p class="mp-group">Curated</p>
             <For each={rows().curated}>{(m) => <ColRow m={m} side={p.side} />}</For>
+            <Show when={rows().rest.length > 0}>
+              <p class="mp-group">All models</p>
+            </Show>
+          </Show>
+          <Show when={rows().curated.length === 0 && rows().selected && rows().rest.length > 0}>
             <p class="mp-group">All models</p>
           </Show>
-          <For each={rows().rest.slice(0, LIST_CAP)} fallback={<Show when={rows().curated.length === 0}><p class="mp-empty">No model matches.</p></Show>}>
+          <For
+            each={rows().rest.slice(0, LIST_CAP)}
+            fallback={
+              <Show when={!rows().selected && rows().curated.length === 0}>
+                <p class="mp-empty">No model matches.</p>
+              </Show>
+            }
+          >
             {(m) => <ColRow m={m} side={p.side} />}
           </For>
         </div>

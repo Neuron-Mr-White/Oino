@@ -12,7 +12,7 @@
 import { createEffect, createMemo, createResource, createSignal, For, Show, type Component } from 'solid-js';
 import { useLocation, useNavigate, useSearchParams } from '@solidjs/router';
 import {
-  Archive, ChevronDown, ChevronRight, Copy, Ellipsis, Eye, File, FileCode2, FileImage, FileJson, FilePlus2, FileText,
+  Archive, ChevronDown, ChevronRight, Copy, Download, Ellipsis, Eye, File, FileCode2, FileImage, FileJson, FilePlus2, FileText,
   FileVideo, Folder, FolderOpen, FolderPlus, HardDrive, House, MessageSquarePlus, PencilLine, Search, Trash2, Upload,
 } from 'lucide-solid';
 import { ActionSheet, Button, IconButton, ListGroup, ListRow, PageScaffold, RowIcon, Sheet, confirmSheet, haptic, type ActionItem } from '../phone';
@@ -21,6 +21,7 @@ import { breadcrumbs, entrySubtitle, fileFamily, folderView, placesFrom, tildify
 import { setEditorTarget } from '../../lib/editorTarget';
 import { consumeFilesTarget } from '../../lib/filesTarget';
 import { isDirectPreview } from '../../lib/media/previewer';
+import { downloadWithNotify, progressLabel, transferMessage } from '../../lib/filesTransfer';
 import { openPreviewer } from '../../lib/media/previewerState';
 import { uploadPicked } from '../../lib/blob';
 import { copyText } from '../../lib/board/share';
@@ -303,6 +304,17 @@ function FolderPage(props: { hostId: string; path: string; root?: string }) {
       { id: 'open', label: e.kind === 'dir' ? 'Open' : isDirectPreview(e.name) ? 'Preview' : 'Open', icon: e.kind === 'dir' ? FolderOpen : Eye, onSelect: () => activate(e) },
       ...(e.kind !== 'dir' && isDirectPreview(e.name)
         ? [{ id: 'text', label: 'Open as text', icon: FileText, onSelect: () => { setEditorTarget({ hostId: props.hostId, path: pathOf(e), asText: true }); navigate(`/files/edit?from=${encodeURIComponent(props.path)}`); } }]
+        : []),
+      ...(e.kind !== 'dir'
+        ? [{
+            id: 'download',
+            label: 'Download',
+            icon: Download,
+            onSelect: () => {
+              toast(progressLabel('Downloading', undefined));
+              void downloadWithNotify(props.hostId, pathOf(e), (p) => toast(progressLabel('Downloading', p))).then((r) => toast(transferMessage(r, e.name, false)));
+            },
+          }]
         : []),
       { id: 'add', label: 'Add to chat…', icon: MessageSquarePlus, onSelect: () => setAddFor(e) },
       { id: 'chat', label: 'Open in a new chat', icon: MessageSquarePlus, onSelect: () => mention(e) },

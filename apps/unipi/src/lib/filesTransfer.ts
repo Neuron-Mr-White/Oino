@@ -169,3 +169,34 @@ export async function saveBytesToDevice(name: string, mime: string, bytes: Uint8
   if (result === 'cancelled') return { outcome: 'failed', detail: 'Cancelled' };
   return { outcome: 'unsupported' };
 }
+
+type NotifyBridge = { show?: (id: number, title: string, body: string, ongoing: boolean, actionsJson: string | null) => void; cancel?: (id: number) => void };
+const notifyBridge = (): NotifyBridge | undefined => (typeof window === 'undefined' ? undefined : (window as unknown as { UniPiNotify?: NotifyBridge }).UniPiNotify);
+let nextDownloadNotify = 7100;
+
+/**
+ * Download with system-tray feedback (owner 2026-11-05): the transfer itself is chunked
+ * (`fs_download` streams parts with progress, no size cap); on the phone an ongoing
+ * notification shows the progress and a final one says it completed (or failed), so the
+ * user knows without staying in the app. `onProgress` still feeds the in-app toast.
+ */
+export async function downloadWithNotify(hostId: string, path: string, onProgress?: (p: TransferProgress) => void): Promise<TransferResult> {
+  const bridge = isTauriDesktop() ? undefined : notifyBridge();
+  const id = nextDownloadNotify++;
+  const name = baseName(path);
+  let lastPct = -1;
+  const result = await downloadToDevice(hostId, path, (p) => {
+    onProgress?.(p);
+    if (!bridge?.show || p.total <= 0) return;
+    const pct = Math.min(100, Math.floor((p.done / p.total) * 100));
+    if (pct === lastPct || (pct % 5 !== 0 && pct !== 100)) return;
+    lastPct = pct;
+    bridge.show(id, `Downloading ${name}`, progressLabel('Downloading', p).replace(/^Downloading… /, ''), true, null);
+  });
+  if (bridge?.show) {
+    bridge.cancel?.(id);
+    if (result.outcome === 'saved') bridge.show(id, 'Download complete', `${name} · ${result.detail ?? `Download/unipi/${name}`}`, false, null);
+    else if (result.outcome === 'failed') bridge.show(id, 'Download failed', `${name} · ${result.detail ?? 'That did not work'}`, false, null);
+  }
+  return result;
+}

@@ -26,7 +26,8 @@ export function buildUsage(days: number): unknown {
     const tokens = turns * 31_000;
     const priced = tokens * 0.54;
     const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return { day, tokens, cost: priced * 0.0000046, unpriced_tokens: tokens - priced, turns };
+    const models = Object.fromEntries(MODELS.map((m, k) => [m.name, Math.round(tokens * m.share * (0.6 + ((i + k) % 5) * 0.2))]));
+    return { day, tokens, cost: priced * 0.0000046, unpriced_tokens: tokens - priced, turns, models };
   });
   const tokens = daily.reduce((n, d) => n + d.tokens, 0);
   const turns = daily.reduce((n, d) => n + d.turns, 0);

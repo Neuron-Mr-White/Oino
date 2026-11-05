@@ -14,7 +14,7 @@ import type { Readiness } from '../../lib/model/readiness';
 import { splitAvailability } from '../../lib/model/availability';
 import { thinkingLabel } from '../../lib/model/thinking';
 import { ModalityIcons } from './ModalityIcons';
-import { groupedModels, routeLabel, rowTitle, type SuggestedRow } from './suggested';
+import { groupedModels, modelPathLabel, rowTitle, type SuggestedRow } from './suggested';
 
 /** Rows rendered per list: the whole catalogue (P0-10 — no 120 cap); a guard only. */
 export const LIST_CAP = 2000;
@@ -212,7 +212,7 @@ export function ModelRow(props: {
             </span>
           </Show>
         </span>
-        <span class="mp-row-sub">{routeLabel(props.m)}</span>
+        <span class="mp-row-sub">{modelPathLabel(props.m)}</span>
       </span>
       <Show when={props.lead}>
         <span class="mp-badge mp-role" title="Curated Fusion lead">Lead</span>
@@ -291,6 +291,28 @@ export function ModelList(props: {
     }
     return [...by.values()];
   });
+  const activeKey = () => props.pickedKey ?? props.currentKey;
+  const pinnedSelected = createMemo((): { model: ModelInfo; extra?: SuggestedRow } | undefined => {
+    const k = activeKey();
+    if (!k) return undefined;
+    const fromSug = props.view.suggested.find((s) => modelKey(s.model) === k);
+    if (fromSug) return { model: fromSug.model, extra: fromSug };
+    const fromRest = props.view.rest.find((m) => modelKey(m) === k);
+    if (fromRest) return { model: fromRest };
+    return undefined;
+  });
+  const suggestedWithoutPinned = createMemo(() => {
+    const p = pinnedSelected();
+    if (!p) return props.view.suggested;
+    const pk = modelKey(p.model);
+    return props.view.suggested.filter((s) => modelKey(s.model) !== pk);
+  });
+  const restWithoutPinned = createMemo(() => {
+    const p = pinnedSelected();
+    if (!p) return props.view.rest;
+    const pk = modelKey(p.model);
+    return props.view.rest.filter((m) => modelKey(m) !== pk);
+  });
   const row = (m: ModelInfo, extra?: Partial<SuggestedRow>) => {
     const key = modelKey(m);
     return (
@@ -309,17 +331,28 @@ export function ModelList(props: {
   };
   return (
     <div class="mp-list" data-testid="model-picker-list">
-      <Show when={props.view.suggested.length > 0}>
+      <Show when={pinnedSelected()}>
+        {(sel) => (
+          <>
+            <p class="mp-group" data-testid="model-group-selected">Selected</p>
+            {row(sel().model, sel().extra)}
+          </>
+        )}
+      </Show>
+      <Show when={suggestedWithoutPinned().length > 0}>
         <p class="mp-group" data-testid="model-group-suggested">Suggested</p>
-        <For each={props.view.suggested}>{(s) => row(s.model, s)}</For>
-        <Show when={props.view.rest.length > 0}>
+        <For each={suggestedWithoutPinned()}>{(s) => row(s.model, s)}</For>
+        <Show when={restWithoutPinned().length > 0}>
           <p class="mp-group" data-testid="model-group-all">All models</p>
         </Show>
       </Show>
+      <Show when={suggestedWithoutPinned().length === 0 && pinnedSelected() && restWithoutPinned().length > 0}>
+        <p class="mp-group" data-testid="model-group-all">All models</p>
+      </Show>
       <For
-        each={props.view.rest.slice(0, LIST_CAP)}
+        each={restWithoutPinned().slice(0, LIST_CAP)}
         fallback={
-          <Show when={props.view.suggested.length === 0 && props.view.usable.length > 0}>
+          <Show when={!pinnedSelected() && suggestedWithoutPinned().length === 0 && props.view.usable.length > 0}>
             <p class="mp-empty">No model matches “{props.query.trim()}”.</p>
           </Show>
         }
@@ -353,7 +386,7 @@ export function ModelList(props: {
               <button type="button" class="mp-row" disabled aria-disabled="true" title={`${modelName(u.model)}\n${u.reason}`} data-testid="model-row-unavailable">
                 <span class="mp-row-main">
                   <span class="mp-row-name">{modelName(u.model)}</span>
-                  <span class="mp-row-sub">{routeLabel(u.model)}</span>
+                  <span class="mp-row-sub">{modelPathLabel(u.model)}</span>
                 </span>
               </button>
             )}

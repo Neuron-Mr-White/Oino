@@ -178,7 +178,7 @@ describe('FileTree', () => {
     fireEvent.contextMenu(screen.getByText('README.md'));
     const menu = await screen.findByRole('menu');
     const items = Array.from(menu.querySelectorAll('[role=menuitem]'));
-    expect(items.map((i) => i.textContent)).toEqual(['Edit as text', 'Rename…', 'Copy path', 'Add to chat', 'Delete…']);
+    expect(items.map((i) => i.textContent)).toEqual(['Edit as text', 'Download', 'Rename…', 'Copy path', 'Add to chat', 'Delete…']);
     // Every item is one row: its icon sits beside the label in the same button.
     for (const item of items) expect(item.classList.contains('board-menu-row')).toBe(true);
     await waitFor(() => expect(document.activeElement).toBe(items[0]));
@@ -186,7 +186,7 @@ describe('FileTree', () => {
     expect(document.activeElement).toBe(items[1]);
     fireEvent.keyDown(menu, { key: 'ArrowUp' });
     fireEvent.keyDown(menu, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(items[4]);
+    expect(document.activeElement).toBe(items[5]);
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });

@@ -63,3 +63,36 @@ export function workingLineOf(input: {
   if (bg || input.tray) return { kind: 'background', text: bg ? `In the background: ${bg}` : (input.tray as string), openRunning: true };
   return undefined;
 }
+
+/**
+ * Owner 2026-11-05: the generic "Working…" gets crab words (Unicrab is the mascot) — one
+ * every few seconds, stable per session + time slot so remounts don't reshuffle. Pure.
+ */
+export const CRAB_WORDS: readonly string[] = [
+  'Scuttling…',
+  'Pinching bugs…',
+  'Sidestepping…',
+  'Clacking claws…',
+  'Molting the code…',
+  'Burrowing in…',
+  'Combing the tide pools…',
+  'Shell-shocking the tests…',
+  'Snipping loose ends…',
+  'Tiding things up…',
+  'Crabbing the details…',
+  'Shoring up…',
+  'Digging through sand…',
+  'Waving a claw…',
+  'Sifting the seabed…',
+  'Hardening the shell…',
+  'Reefing through files…',
+  'Clawing at it…',
+];
+export const CRAB_WORD_MS = 4000;
+
+export function crabWord(seed: string, now: number, words: readonly string[] = CRAB_WORDS): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  const slot = Math.floor(now / CRAB_WORD_MS);
+  return words[Math.abs(h + slot * 7) % words.length]!;
+}

@@ -15,7 +15,7 @@ import { can } from '../lib/platform';
 import { useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
 import { isInternalSession } from '../lib/session/internal';
-import { listView, setListView } from '../lib/session/listView';
+import { GROUP_LABEL, listView, setListView, type GroupKey } from '../lib/session/listView';
 import { archiveMany, deleteArchived, restoreSession, sessionHref } from '../lib/session/actions';
 import { sessionTitle } from '../lib/session/selectors';
 import { needsYou } from '../lib/needsYou';
@@ -99,6 +99,12 @@ export default function Chat() {
       { id: 'sort-recent', label: 'Sort: Recent', icon: Clock, checked: sort() !== 'name', onSelect: () => hostId() && setListView(hostId()!, { sort: 'updated' }) },
       { id: 'sort-name', label: 'Sort: Name', icon: ArrowDownAZ, checked: sort() === 'name', onSelect: () => hostId() && setListView(hostId()!, { sort: 'name' }) },
     ],
+    (['none', 'project', 'status', 'agent', 'automation'] as GroupKey[]).map((g) => ({
+      id: `group-${g}`,
+      label: `Group: ${GROUP_LABEL[g]}`,
+      checked: (hostId() ? listView(hostId()!).group : 'project') === g,
+      onSelect: () => hostId() && setListView(hostId()!, { group: g }),
+    })),
   ];
 
   return (

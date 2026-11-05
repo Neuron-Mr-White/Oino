@@ -12,6 +12,8 @@
 /* ── composer chips ─────────────────────────────────────────────────────── */
 .tb-chip-model .tb-label,
 .tb-chip-think .tb-label { max-width: 132px; }
+.tb-chip-model[data-fusion] .tb-label { max-width: 260px; }
+html[data-shell=phone] .tb-chip-model[data-fusion] .tb-label { max-width: 190px; }
 .tb-chip-think[data-on=''] { color: var(--color-claw); }
 
 /* The context ring: always a visible ring (QA#8 — 0 % is a ring, not a
@@ -116,7 +118,8 @@
 .mp-fusion { display: flex; gap: 12px; min-width: 0; }
 .mp-col { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mp-col-list { max-height: min(34vh, 260px); }
-.mp-label { margin: 2px 2px 0; font-size: 11px; line-height: 15px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
+.mp-label { display: flex; align-items: baseline; gap: 4px; min-width: 0; margin: 2px 2px 0; font-size: 11px; line-height: 15px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
+.mp-col-picked { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--color-claw); }
 .mp-effort { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .mp-effort .mp-label { flex: 0 0 auto; min-width: 96px; margin: 0 6px 0 2px; }
 .mp-pill {
@@ -165,13 +168,13 @@
 /* The ring + Send share one toolbar item on the right. */
 .tb-end-group { display: inline-flex; align-items: center; gap: 2px; }
 
-/* Phone: a full-screen sheet over the conversation layer (`ws-layer`, z 40),
-   its dock and any sheet a field sits in; the body scrolls. */
+/* Phone: compact sheet with a bounded short scrollable model list container (never full-screen stretched). */
 body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: 74; }
-.sheet.model-picker-sheet { z-index: 75; height: calc(var(--vvh, 100dvh) - max(env(safe-area-inset-top), var(--inset-top, 0px)) - 8px); }
-.mp-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px calc(16px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); }
-.mp-sheet-body .mp-list:not(.mp-col-list) { max-height: none; }
-.mp-sheet-body .mp-fusion { flex-direction: column; }
+.sheet.model-picker-sheet { z-index: 75; height: auto; max-height: min(74dvh, 580px); }
+.mp-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px calc(12px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); }
+.mp-sheet-body .mp-list:not(.mp-col-list) { max-height: min(34dvh, 260px); }
+.mp-sheet-body .mp-col-list { max-height: min(22dvh, 180px); }
+.mp-sheet-body .mp-fusion { flex-direction: column; gap: 10px; }
 .model-picker-sheet .mp-apply { min-height: 44px; }
 
 /* ── Cycle set (WP-A25, /scoped-models): a filter chip + a mark on member rows ── */
