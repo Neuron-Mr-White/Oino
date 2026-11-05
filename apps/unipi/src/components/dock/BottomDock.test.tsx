@@ -235,7 +235,8 @@ describe('[working-line] the one line above the composer', () => {
     const line = await screen.findByTestId('working-line');
     expect(line.getAttribute('data-kind')).toBe('background');
     expect(screen.getByTestId('work-tray-button')).toBeTruthy();
-    expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(false);
+    // Owner 2026-11-05: background work (a subagent running) animates too — spinning ring + shimmer.
+    expect(screen.getByTestId('working-line-text').classList.contains('shimmer')).toBe(true);
   });
   it('[owner-fix-2] a docked approval while the run goes reads Needs you, not Working (like the sidebar)', async () => {
     const w = world();

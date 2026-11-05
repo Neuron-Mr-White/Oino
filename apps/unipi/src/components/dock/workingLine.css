@@ -11,7 +11,8 @@
 .wl-open:hover { background: var(--color-surface-2); color: var(--color-text); }
 .wl-open:focus-visible, .wl-ask:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 1px; }
 .wl[data-kind='background'] { color: var(--color-text-dim); }
-.wl[data-kind='background'] .wl-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-text-dim); animation: none; }
+.wl[data-kind='background'] .wl-dot { width: 9px; height: 9px; background: transparent; box-shadow: none; border: 1.5px solid color-mix(in srgb, var(--color-claw) 30%, transparent); border-top-color: var(--color-claw); animation: wl-spin 900ms linear infinite; box-sizing: border-box; }
+@keyframes wl-spin { to { transform: rotate(360deg); } }
 .wl[data-kind='needs-you'] { padding: 0; }
 .wl-ask { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 4px 12px 6px; background: transparent; color: var(--color-text); font-size: 13px; text-align: left; }
 .wl-ask > svg { flex: none; color: var(--color-claw); }
@@ -25,6 +26,6 @@ html[data-shell=phone] .wl-ask { min-height: 40px; font-size: 14px; }
 @keyframes wl-pulse { 50% { opacity: .35; } }
 /* Reduced motion: no sweep, no pulse — a still accent dot + the text keep it clearly active. */
 @media (prefers-reduced-motion: reduce) {
-  .wl-dot { animation: none; }
+  .wl-dot, .wl[data-kind='background'] .wl-dot { animation: none; }
   .wl[data-kind='working'] .wl-text.shimmer { color: var(--color-text) !important; }
 }

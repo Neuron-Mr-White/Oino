@@ -88,7 +88,7 @@ export function WorkingLine(props: { session: SessionHandle; askCalls: readonly 
                   fallback={
                     <>
                       <span class="wl-dot" aria-hidden="true" />
-                      <span class="wl-text" classList={{ shimmer: line().kind === 'working' }} data-testid="working-line-text" title={line().text}>{headline(line())}</span>
+                      <span class="wl-text" classList={{ shimmer: line().kind === 'working' || line().kind === 'background' }} data-testid="working-line-text" title={line().text}>{headline(line())}</span>
                       <Show when={line().kind === 'working'}>
                         <span class="wl-time" data-testid="working-line-time">{elapsed()}</span>
                       </Show>

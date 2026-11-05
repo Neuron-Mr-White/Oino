@@ -35,3 +35,13 @@ export async function localOpen(path: string, how: string): Promise<{ ok: true }
 export async function pickFolderNative(start?: string): Promise<string | null> {
   return (await invoke('pick_folder', { start })) as string | null;
 }
+
+export type ZoxideHit = { path: string; score: number };
+/** "Quick navigate": what `z <query>` would jump to on this PC, best first. */
+export async function localZoxide(query: string): Promise<{ ok: true; hits: ZoxideHit[] } | { ok: false; message: string }> {
+  try {
+    return { ok: true, hits: await invoke<ZoxideHit[]>('local_zoxide', { query }) };
+  } catch (e) {
+    return { ok: false, message: (e as { message?: string })?.message ?? 'zoxide is not available' };
+  }
+}

@@ -58,9 +58,26 @@ export const APP_HANDLED_BUILTINS = new Set(['model', 'thinking', 'compact', 'ne
 /** pi's built-ins by name (the rows a bare `/` lists after the session's own). */
 const PI_ONLY = new Set(PI_BUILTINS.map((c) => c.name));
 
+/**
+ * Owner 2026-11-05: terminal-era commands whose job the app does with its own UI (the
+ * model dialog, the thinking chip, Settings, the session modal, the composer's plug
+ * menu). They stay out of `/` and the palette; typed, they still run.
+ */
+export const GUI_HIDDEN_COMMANDS: ReadonlySet<string> = new Set([
+  'model', 'thinking', 'agents', 'bg', 'bg-detach', 'bg-tasks', 'compact-doctor', 'compact-help', 'compact-stats',
+  'cron', 'doctor', 'fusion', 'fusion-stats', 'global-memory-list', 'global-memory-search', 'info', 'mcp-status',
+  'move', 'notify-event', 'permission', 'readme', 'skills', 'subagents', 'bug', 'visualize-progress', 'changelog',
+]);
+
+/** `/memory`, `/memory-search`, `/memory-forget`… (the Memory browser and the chat ⋯ menu cover them). */
+export function guiHiddenCommand(name: string): boolean {
+  const n = name.replace(/^\//, '');
+  return GUI_HIDDEN_COMMANDS.has(n) || n === 'memory' || n.startsWith('memory-');
+}
+
 /** Whether the app lists a command ([gui-cleanup]): rows marked for other clients (`surfaces`, e.g. `/answer` → `["tui"]`) stay out of `/` and the palette. */
 export function shownInMenu(c: CommandInfo): boolean {
-  return shownInApp(c.surfaces);
+  return shownInApp(c.surfaces) && !guiHiddenCommand(c.name);
 }
 
 /** The session's commands plus pi built-ins it doesn't carry (a same-named extension command wins), unfiltered. */

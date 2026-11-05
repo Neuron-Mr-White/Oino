@@ -10,7 +10,8 @@
  * more than one PC is paired.
  */
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js';
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Folder, FolderLock, FolderSearch, Monitor } from 'lucide-solid';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Folder, FolderLock, FolderSearch, Monitor, Zap } from 'lucide-solid';
+import { QuickNavigate } from './QuickNavigate';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { layout } from '../../lib/layout';
 import { Button, Sheet } from '../phone';
@@ -85,6 +86,8 @@ export function WorkspacePicker(props: {
   const [browse, setBrowse] = createSignal<string | undefined>();
   /** The desktop FolderBrowser pane. */
   const [pane, setPane] = createSignal(false);
+  /** Quick navigate (zoxide) — this PC only. */
+  const [quick, setQuick] = createSignal(false);
   const [filter, setFilter] = createSignal('');
   const openBrowse = (dir: string) => {
     setFilter('');
@@ -203,6 +206,15 @@ export function WorkspacePicker(props: {
                 <span class="ws-row-label">Browse folders…</span>
               </span>
             </button>
+            <Show when={isOwnPcFile(props.hostId)}>
+              <button type="button" role="menuitem" class="ws-row ws-row-open" onClick={() => (setAnchor(undefined), setQuick(true))} data-testid="workspace-quick">
+                <Zap size={15} class="ws-row-ic" />
+                <span class="ws-row-text">
+                  <span class="ws-row-label">Quick navigate…</span>
+                  <span class="ws-row-detail">Jump like z (zoxide)</span>
+                </span>
+              </button>
+            </Show>
           </>
         }
       >
@@ -317,6 +329,17 @@ export function WorkspacePicker(props: {
             {menuBody()}
           </AnchoredMenu>
         )}
+      </Show>
+      <Show when={quick()}>
+        <QuickNavigate
+          short={short}
+          onClose={() => setQuick(false)}
+          onUse={(picked) => {
+            setQuick(false);
+            rememberOpened(picked);
+            pick(picked);
+          }}
+        />
       </Show>
       {/* Desktop: the folder browser pane (the chip menu stays the quick list). */}
       <Show when={pane()}>

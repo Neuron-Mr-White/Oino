@@ -275,3 +275,26 @@ html[data-shell=phone] .ph-draft-pickers .ws-chip,
 html[data-shell=phone] .ph-draft-pickers .host-chip { min-height: 44px; font-size: 14.5px; padding: 0 10px 0 12px; }
 html[data-shell=phone] .ph-draft-pickers .ws-chip-label { font-size: 13px; }
 html[data-shell=phone] .draft[data-phone] .draft-composer { padding: 6px 6px calc(6px + var(--safe-bottom, 0px)); }
+
+/* Quick navigate (zoxide). */
+.qn-form { display: flex; gap: 8px; }
+.qn-form .settings-btn { display: inline-flex; align-items: center; gap: 6px; }
+.qn-input { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text); font: inherit; font-size: 14px; }
+.qn-input:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
+.qn-note { margin: 10px 0 0; font-size: 12.5px; color: var(--color-amber); }
+.qn-list { list-style: none; margin: 10px 0 0; padding: 4px; border-radius: 12px; background: var(--color-surface-2); }
+.qn-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--color-text); text-align: left; }
+.qn-row:hover { background: var(--color-surface-3); }
+.qn-row[aria-selected=true] { background: rgb(240 120 24 / 12%); box-shadow: inset 2px 0 0 var(--color-claw); }
+.qn-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; direction: rtl; text-align: left; }
+.qn-best { flex: none; font-size: 11px; color: var(--color-claw); }
+.qn-foot { display: flex; justify-content: flex-end; gap: 8px; width: 100%; }
+
+/* Owner 2026-11-05 (phone Browse): rows never shrink under each other — the crumbs and
+   the filter keep their height; the sheet (not the inner menu) scrolls. */
+.ws-menu > *, .ws-browse > *, .ws-browse-recent > * { flex-shrink: 0; }
+.ws-sheet .ws-menu { max-height: none; overflow: visible; padding: 0; }
+.ws-sheet .ws-browse { gap: 6px; }
+.ws-sheet .ws-label-browse { padding-top: 14px; }
+.ws-sheet .ws-crumbs { min-height: 48px; align-items: center; padding: 2px 0 6px; }
+.ws-sheet .dm-search { height: 44px; min-height: 44px; margin: 0 0 4px; font-size: 16px; }

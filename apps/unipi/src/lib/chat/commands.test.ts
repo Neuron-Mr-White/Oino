@@ -62,15 +62,16 @@ describe('@ files', () => {
 
 describe('UNI-276: every command is suggested', () => {
   it('adds pi built-ins the session list lacks; a same-named extension command wins', async () => {
-    const { allCommands, PI_BUILTINS } = await import('./commands');
+    const { allCommands, PI_BUILTINS, guiHiddenCommand } = await import('./commands');
     const session = [
       { name: 'model', source: 'builtin' as const },
       { name: 'name', description: 'mine', source: 'extension' as const },
     ];
     const all = allCommands(session);
     expect(all.filter((c) => c.name === 'name')).toEqual([{ name: 'name', description: 'mine', source: 'extension' }]);
-    const hidden = PI_BUILTINS.filter((c) => Array.isArray(c.surfaces) && !(c.surfaces as string[]).includes('gui')).length;
-    expect(all.length).toBe(session.length + PI_BUILTINS.length - 2 - hidden);
+    const hidden = PI_BUILTINS.filter((c) => (Array.isArray(c.surfaces) && !(c.surfaces as string[]).includes('gui')) || guiHiddenCommand(c.name)).length;
+    // `model` (session) is GUI-hidden too; `name` replaces the built-in.
+    expect(all.length).toBe(session.length - 1 + PI_BUILTINS.length - 2 - hidden + 1);
     expect(all.some((c) => c.name === 'settings')).toBe(true);
   });
 });
@@ -87,12 +88,14 @@ describe('[gui-cleanup] commands meant for the terminal only', () => {
     expect(names).not.toContain('answer');
     expect(names).not.toContain('trust');
     expect(names).not.toContain('share');
-    expect(names).toContain('doctor');
+    // Owner 2026-11-05: terminal-era commands the app has UI for stay out of `/` (the plug menu has them).
+    expect(names).not.toContain('doctor');
     expect(names).toContain('gui-only');
     expect(rankCommands(allCommands(session), 'ans').map((c) => c.name)).not.toContain('answer');
   });
   it('still run when typed (known, never sent as a prompt)', async () => {
     const { isKnownCommand, isAppBuiltin } = await import('./commands');
+    expect(isKnownCommand('doctor', session)).toBe(true);
     expect(isKnownCommand('answer', session)).toBe(true);
     expect(isKnownCommand('trust', session)).toBe(true);
     expect(isAppBuiltin('share', session)).toBe(true);

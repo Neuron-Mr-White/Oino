@@ -120,7 +120,8 @@ import { PlusMenu } from './PlusMenu';
 import { PastedTextChip } from './PastedTextChip';
 import { ImageEditor } from './ImageEditor';
 import { PermissionControl, PlanToggle } from './PermissionControl';
-import { Toolbar, ToolbarSlot } from './Toolbar';
+import { PlugMenu } from './PlugMenu';
+import { Toolbar, ToolbarItem, ToolbarSlot } from './Toolbar';
 import { CAPSULE_MIN, CAPSULE_MIN_PHONE, ModelCapsule } from '../model/ModelChip';
 import { ThinkingChip } from '../model/ThinkingChip';
 import { openModelPicker } from '../model/target';
@@ -1264,6 +1265,9 @@ export function Composer(props: ComposerProps) {
           <ToolbarSlot slot="model" min={props.phone ? CAPSULE_MIN_PHONE : CAPSULE_MIN}>
             {props.modelSlot ?? <ModelCapsule session={props.session} disabled={props.readOnly} />}
           </ToolbarSlot>
+          <ToolbarItem>
+            <PlugMenu session={props.session} cwd={cwd() || undefined} disabled={props.readOnly} draft={props.draft} />
+          </ToolbarItem>
         </Toolbar>
       </div>
       <Show when={props.phone}>

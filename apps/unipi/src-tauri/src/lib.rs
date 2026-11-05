@@ -215,6 +215,7 @@ pub fn run() {
             open_local::local_open_targets,
             open_local::local_open,
             open_local::pick_folder,
+            open_local::local_zoxide,
             push::push_done,
             push::push_save_as,
             push::push_open,

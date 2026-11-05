@@ -219,3 +219,72 @@ pub async fn pick_folder(
         Err(unsupported())
     }
 }
+
+/// One `zoxide` match: the folder and its frecency score.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+pub struct ZoxideHit {
+    pub path: String,
+    pub score: f64,
+}
+
+/// `zoxide query -ls` output → hits, best first (`  12.5 /home/u/proj`). Pure.
+pub fn parse_zoxide(out: &str) -> Vec<ZoxideHit> {
+    let mut hits: Vec<ZoxideHit> = out
+        .lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            let (score, path) = l.split_once(char::is_whitespace)?;
+            let score = score.trim().parse::<f64>().ok()?;
+            let path = path.trim();
+            (!path.is_empty()).then(|| ZoxideHit { path: path.to_owned(), score })
+        })
+        .collect();
+    hits.sort_by(|a, b| b.score.total_cmp(&a.score));
+    hits
+}
+
+/// "Quick navigate" (owner 2026-11-05): the folders `z <query>` would jump to on this PC,
+/// best first (what `zoxide query -ls <words>` ranks). Empty when zoxide isn't installed.
+#[tauri::command]
+pub async fn local_zoxide(query: String) -> Result<Vec<ZoxideHit>, AppErrorDto> {
+    #[cfg(all(desktop, unix))]
+    {
+        use std::process::{Command, Stdio};
+        let Some(exe) = find_in_path("zoxide") else {
+            return Err(AppErrorDto::new(AppErrorCode::E_NOT_FOUND, "zoxide isn't installed on this PC", false));
+        };
+        let words: Vec<String> = query.split_whitespace().map(str::to_owned).collect();
+        let out = tokio::task::spawn_blocking(move || {
+            Command::new(exe)
+                .env("PATH", search_path())
+                .args(["query", "-l", "-s", "--"])
+                .args(&words)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+        })
+        .await
+        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, e.to_string(), false))?
+        .map_err(|e| AppErrorDto::new(AppErrorCode::E_INTERNAL, format!("zoxide: {e}"), false))?;
+        let mut hits = parse_zoxide(&String::from_utf8_lossy(&out.stdout));
+        hits.truncate(8);
+        Ok(hits)
+    }
+    #[cfg(not(all(desktop, unix)))]
+    {
+        let _ = query;
+        Err(AppErrorDto::new(AppErrorCode::E_UNSUPPORTED, "Not available on this device", false))
+    }
+}
+
+#[cfg(test)]
+mod zoxide_tests {
+    use super::*;
+    #[test]
+    fn parses_scores_best_first() {
+        let hits = parse_zoxide("   4.0 /home/u/a\n  12.5 /home/u/my proj\njunk\n");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].path, "/home/u/my proj");
+        assert!((hits[0].score - 12.5).abs() < 1e-9);
+    }
+}
