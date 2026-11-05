@@ -20,7 +20,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { sessions } from '../../lib/session/store';
 import { composerDraft, setComposerText } from '../../lib/composer/drafts';
 import { focusComposer } from '../../lib/timeline/actions';
-import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, parseLhProgress, parseLhState } from '../../lib/status/lh';
+import { lhSummary, LH_PROGRESS_TOPIC, LH_STATE_TOPIC, lhSessionStateTopic, lhStateFor, parseLhProgress, parseLhState } from '../../lib/status/lh';
 import { STARTER_HINT, STARTER_ORDER, withStarter, type ModeStarter } from '../../lib/status/modeStarter';
 import { MODE_DESCRIPTION, type LhModeChoice } from '../status/lhMode';
 import { useLhEnabled } from '../status/LhSection';
@@ -41,14 +41,18 @@ export function ModeChip(props: { hostId: string; sessionId: string; cwd?: strin
   createEffect(
     on(s, (handle) => {
       const release = handle.acquire();
-      handle.subscribeTopics([LH_STATE_TOPIC, LH_PROGRESS_TOPIC]);
+      // [owner-fix-8] the chat's own mode topic (the global one carries the owner).
+      handle.subscribeTopics([LH_STATE_TOPIC, lhSessionStateTopic(props.sessionId), LH_PROGRESS_TOPIC]);
       onCleanup(release);
     }),
   );
   const enabled = useLhEnabled(s);
   const summary = createMemo(() =>
     enabled()
-      ? lhSummary(parseLhState(s().state.topics[LH_STATE_TOPIC]?.data), parseLhProgress(s().state.topics[LH_PROGRESS_TOPIC]?.data))
+      ? lhSummary(
+          lhStateFor(parseLhState(s().state.topics[LH_STATE_TOPIC]?.data), parseLhState(s().state.topics[lhSessionStateTopic(props.sessionId)]?.data)),
+          parseLhProgress(s().state.topics[LH_PROGRESS_TOPIC]?.data),
+        )
       : undefined,
   );
   const [open, setOpen] = createSignal(false);

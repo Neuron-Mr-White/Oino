@@ -3,7 +3,7 @@
  * commands the section sends.
  */
 import { describe, expect, it } from 'vitest';
-import { graphCountLine, graphSettled, lhModeCommand, lhSummary, parseLhProgress, parseLhState } from './lh';
+import { graphCountLine, graphSettled, lhModeCommand, lhSessionStateTopic, lhStateFor, lhSummary, parseLhProgress, parseLhState } from './lh';
 
 const state = (v: unknown) => parseLhState(v);
 const progress = (v: unknown) => parseLhProgress(v);
@@ -92,5 +92,20 @@ describe('graph counts + commands', () => {
     expect(lhModeCommand('graph', 'stop')).toBe('/graph stop');
     expect(lhModeCommand('ralph', 'resume')).toBe('/ralph resume');
     expect(lhModeCommand('swarm', 'history')).toBe('/swarm history');
+  });
+});
+
+describe('the mode is per chat (owner-fix-8)', () => {
+  it('reads the chat\'s own mode topic and keeps the app-wide owner', () => {
+    expect(lhSessionStateTopic('s1')).toBe('unipi:long-horizon:state:s1');
+    const global = parseLhState({ mode: 'graph', owner: { kind: 'graph', status: 'active' } });
+    const own = parseLhState({ mode: 'none', session: 's1' });
+    // the owner is app-wide, the mode is the chat's own
+    const merged = lhStateFor(global, own);
+    expect(merged?.mode).toBe('none');
+    expect(merged?.owner?.kind).toBe('graph');
+    // no per-chat topic (an older host): the global state is used as it was
+    expect(lhStateFor(global, undefined)).toBe(global);
+    expect(lhStateFor(undefined, own)?.mode).toBe('none');
   });
 });

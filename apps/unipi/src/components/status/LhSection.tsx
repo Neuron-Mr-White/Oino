@@ -21,6 +21,8 @@ import {
   LH_EXTENSION_ID,
   LH_PROGRESS_TOPIC,
   LH_STATE_TOPIC,
+  lhSessionStateTopic,
+  lhStateFor,
   parseLhProgress,
   parseLhState,
   type LhSummary,
@@ -53,12 +55,13 @@ export function LhSection(props: { hostId: string; sessionId: string; onToast?: 
   createEffect(
     on(s, (handle) => {
       const release = handle.acquire();
-      handle.subscribeTopics([LH_STATE_TOPIC, LH_PROGRESS_TOPIC]);
+      // [owner-fix-8] the chat's own mode topic (the global one carries the owner).
+      handle.subscribeTopics([LH_STATE_TOPIC, lhSessionStateTopic(props.sessionId), LH_PROGRESS_TOPIC]);
       onCleanup(release);
     }),
   );
   const enabled = useLhEnabled(s);
-  const state = () => parseLhState(s().state.topics[LH_STATE_TOPIC]?.data);
+  const state = () => lhStateFor(parseLhState(s().state.topics[LH_STATE_TOPIC]?.data), parseLhState(s().state.topics[lhSessionStateTopic(props.sessionId)]?.data));
   const progress = () => parseLhProgress(s().state.topics[LH_PROGRESS_TOPIC]?.data);
   const summary = createMemo(() => (enabled() ? lhSummary(state(), progress()) : undefined));
   const now = useClock();

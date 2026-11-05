@@ -12,6 +12,13 @@ export const LH_EXTENSION_ID = 'unipi.long-horizon';
 export const LH_STATE_TOPIC = 'unipi:long-horizon:state';
 export const LH_PROGRESS_TOPIC = 'unipi:long-horizon:progress';
 
+/**
+ * [owner-fix-8] The per-chat mode topic: the global `unipi:long-horizon:state`
+ * is one shared sticky value (one chat's mode overwrites the others'), so every
+ * chat reads its own mode from its own topic.
+ */
+export const lhSessionStateTopic = (sessionId: string): string => `${LH_STATE_TOPIC}:${sessionId}`;
+
 /** `LH_STATE` (sticky): the working mode and its owner, as long-horizon publishes it. */
 export type LhState = {
   mode: string;
@@ -79,6 +86,16 @@ export function parseLhProgress(v: unknown): LhProgressTopic | undefined {
     ...(graph && graphMode ? { graph: { ...(str(graph.graphId) ? { graphId: str(graph.graphId) } : {}), mode: graphMode, ...(str(graph.task) ? { task: str(graph.task) } : {}), counts: countMap } } : {}),
     ...(str(o.todos) ? { todos: str(o.todos) } : {}),
   };
+}
+
+/**
+ * [owner-fix-8] The state a chat shows: the owner (the app-wide long run) is
+ * global, the **mode is the chat's own**. Without a per-chat topic (an older
+ * host) the global state is used as it was.
+ */
+export function lhStateFor(state: LhState | undefined, own: LhState | undefined): LhState | undefined {
+  if (!own) return state;
+  return { ...state, mode: own.mode };
 }
 
 // ── View shaping ──────────────────────────────────────────────────────────

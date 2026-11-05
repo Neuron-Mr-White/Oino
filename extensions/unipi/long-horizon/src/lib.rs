@@ -80,6 +80,14 @@ const WORK_FAILED_TOPIC: &str = "unipi:long-horizon:work-failed";
 const WORK_ERRORED_TOPIC: &str = "unipi:long-horizon:work-errored";
 /// The app's graph data + Retry service (`_oino/service_call`).
 pub const GRAPH_SERVICE: &str = "long-horizon.graph";
+
+/// [owner-fix-8] The per-chat mode topic (`unipi:long-horizon:state:<session id>`).
+/// The global `unipi:long-horizon:state` is one shared sticky value (chats
+/// overwrite each other), so every chat reads its own mode from its own topic.
+#[must_use]
+pub fn session_state_topic(session_id: &str) -> String {
+    format!("{}:{session_id}", topics::LH_STATE)
+}
 /// Auto-continue timer of a goal / ralph turn that ended on an error.
 const GOAL_CONTINUE_TIMER: &str = "lh-goal-continue";
 /// Graph events in the `/visualize-progress` params.
@@ -146,6 +154,10 @@ struct State {
     /// pending/override/turn mode. Keyed by session id.
     pending_explicit: std::collections::HashMap<String, Mode>,
     session_override: std::collections::HashMap<String, Mode>,
+    /// [owner-fix-8] The mode each chat runs in, published per session: the
+    /// mode is a property of the chat, never of the workspace. Keyed by
+    /// session id (like `session_override`).
+    session_display: std::collections::HashMap<String, Mode>,
     display: Option<Mode>,
     last_badge: Option<Mode>,
     turn_modes: std::collections::HashMap<String, (Mode, String)>,
@@ -333,6 +345,15 @@ impl Lh {
             lh["lastStop"] = json!({"kind": k, "at": at});
         }
         unipi_kit::bus::emit_raw(topics::LH_STATE, &lh);
+        // [owner-fix-8] The mode belongs to the chat, not to the workspace: each
+        // chat reads its own mode from its own topic (the global one above is a
+        // shared value the TUI reads).
+        for (session_id, own) in &st.session_display {
+            unipi_kit::bus::emit_raw(
+                &session_state_topic(session_id),
+                &json!({"mode": own.as_str(), "session": session_id}),
+            );
+        }
         let ralph_progress = st.ralph.as_ref().map(|l| {
             let (c, t, _) = ralph::progress(
                 &std::fs::read_to_string(task_guest(&l.name)).unwrap_or_default(),
@@ -529,6 +550,8 @@ impl Lh {
         let show_badge = {
             let mut st = self.state.borrow_mut();
             st.display = Some(mode);
+            // [owner-fix-8] The chat's own mode (published per session).
+            st.session_display.insert(session.clone(), mode);
             st.turn_modes
                 .insert(session.clone(), (mode, source.to_owned()));
             let show = source == "explicit" || st.last_badge != Some(mode);
@@ -1564,7 +1587,22 @@ impl Lh {
             .collect()
     }
 
+    /// [owner-fix-8] The open graph belongs to another chat: at most one graph
+    /// runs at a time across the app.
+    fn graph_owned_elsewhere(&self, session_id: &str) -> bool {
+        let st = self.state.borrow();
+        st.graph.open().is_some() && !st.graph.owned_by(session_id)
+    }
+
     async fn update_graph(&'static self, args: &Value, cx: &ToolCtx) -> ToolResult {
+        // [owner-fix-8] At most ONE graph runs at a time across the app: a
+        // second chat must not take over or extend the running one.
+        if !cx.cx.is_child() && self.graph_owned_elsewhere(cx.cx.session_id()) {
+            return ToolResult::error(
+                "graph_busy: another chat is running this graph — only one graph runs at a time; stop it there first."
+                    .to_owned(),
+            );
+        }
         // The calling session owns whatever graph changes follow (tools are not
         // registered for child sessions; the check keeps a stray delivery honest).
         if !cx.cx.is_child() {
@@ -2397,6 +2435,12 @@ impl Lh {
         let notify = |t: &str| {
             let _ = ui::notify(t, "info");
         };
+        // [owner-fix-8] At most ONE graph runs at a time across the app: a
+        // second chat asking for a graph is told why it cannot start.
+        if matches!(mode, Mode::Graph | Mode::Swarm) && self.graph_owned_elsewhere(cx.session_id()) {
+            notify("Another chat is running a graph — only one graph runs at a time. Stop it there first, then start this one.");
+            return;
+        }
         if mode == Mode::Ralph && sub == "start" {
             let name = parts.get(1).copied().unwrap_or_default();
             if name.is_empty() {
@@ -2691,6 +2735,9 @@ impl Lh {
             let mut st = self.state.borrow_mut();
             st.pending_explicit.insert(cx.session_id().to_owned(), mode);
             st.session_override.insert(cx.session_id().to_owned(), mode);
+            // [owner-fix-8] The mode belongs to the chat: the switch shows up in
+            // this chat's own topic, not in every chat of the workspace.
+            st.session_display.insert(cx.session_id().to_owned(), mode);
             // [graph-mode] the status topic (the app's mode chip) shows the switch at once —
             // also while the switch waits for a running turn — instead of at the turn's start.
             st.display = Some(mode);
@@ -3278,6 +3325,20 @@ impl Lh {
                 st.pending_explicit.remove(cx.session_id());
                 st.turn_modes.remove(cx.session_id());
                 st.turns.remove(cx.session_id());
+                // [owner-fix-8] A new chat starts in the regular mode — never in
+                // the mode the last chat of this workspace used.
+                st.session_display.insert(
+                    cx.session_id().to_owned(),
+                    self.settings().default_mode,
+                );
+            } else {
+                // A chat that is already running keeps the mode it resolved.
+                let known = st
+                    .session_display
+                    .get(cx.session_id())
+                    .copied()
+                    .unwrap_or(self.settings().default_mode);
+                st.session_display.insert(cx.session_id().to_owned(), known);
             }
         }
         self.load();
@@ -3723,6 +3784,15 @@ mod tests {
         assert_eq!(&u[14..15], "4");
         assert_eq!(task_path("My Loop"), ".oino/ralph/my-loop.md");
         assert_eq!(RUNNERS.len(), 9);
+    }
+
+    #[test]
+    fn owner_fix_8_mode_is_per_chat() {
+        // [owner-fix-8] every chat reads its own mode from its own topic.
+        assert_eq!(
+            session_state_topic("s-1"),
+            "unipi:long-horizon:state:s-1"
+        );
     }
 
     #[test]
