@@ -50,7 +50,7 @@ export function QrScanner(props: { onClose: () => void; onEnterCode?: () => void
       <div class="qr-scan-top">
         <p class="qr-scan-title">Scan pairing code</p>
         <p class="qr-scan-hint">
-          Run <code>unipi-host pair</code> on your computer and fit the code inside the frame.
+          Run <code>unipi-oino-host pair</code> on your computer and fit the code inside the frame.
         </p>
       </div>
       <div class="qr-scan-window" data-testid="qr-viewfinder">

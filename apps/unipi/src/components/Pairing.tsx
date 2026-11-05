@@ -390,7 +390,7 @@ export function Pairing() {
                 <>
                   {/* No camera here (desktop app / browser): the link is the way; QR is for the phone. */}
                   <button class="option-card" onClick={() => setPaste(true)}>
-                    <span class="option-tile"><Link size={24}/></span><span class="flex-1"><span class="block font-mono text-[11px] tracking-widest text-claw mb-2">RECOMMENDED</span><strong class="block text-base font-medium">Paste pairing link</strong><span class="block text-sm text-text-muted mt-2">Run <code>unipi-host pair</code> on the PC and paste the link it prints.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
+                    <span class="option-tile"><Link size={24}/></span><span class="flex-1"><span class="block font-mono text-[11px] tracking-widest text-claw mb-2">RECOMMENDED</span><strong class="block text-base font-medium">Paste pairing link</strong><span class="block text-sm text-text-muted mt-2">Run <code>unipi-oino-host pair</code> on the PC and paste the link it prints.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
                   </button>
                   <Show when={!paste()}>
                     <button disabled class="option-card text-text-dim">
@@ -401,10 +401,10 @@ export function Pairing() {
               }
             >
               <button class="option-card" onClick={() => void startScan()}>
-                <span class="option-tile"><QrCode size={24}/></span><span class="flex-1"><span class="block font-mono text-[11px] tracking-widest text-claw mb-2">RECOMMENDED</span><strong class="block text-base font-medium">Pair with QR</strong><span class="block text-sm text-text-muted mt-2">Run <code>unipi-host pair</code> on your computer and scan the code.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
+                <span class="option-tile"><QrCode size={24}/></span><span class="flex-1"><span class="block font-mono text-[11px] tracking-widest text-claw mb-2">RECOMMENDED</span><strong class="block text-base font-medium">Pair with QR</strong><span class="block text-sm text-text-muted mt-2">Run <code>unipi-oino-host pair</code> on your computer and scan the code.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
               </button>
               <button class="option-card" onClick={() => setPaste(true)}>
-                <span class="option-tile"><Link size={24}/></span><span><strong class="block text-base font-medium">Paste pairing link</strong><span class="block text-sm text-text-muted mt-2">Copy the link printed by unipi-host pair.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
+                <span class="option-tile"><Link size={24}/></span><span><strong class="block text-base font-medium">Paste pairing link</strong><span class="block text-sm text-text-muted mt-2">Copy the link printed by unipi-oino-host pair.</span><span class="block text-xs text-text-dim mt-3">~1 min</span></span>
               </button>
             </Show>
             <Show when={!paste()}><button disabled class="option-card text-text-dim">
@@ -415,7 +415,7 @@ export function Pairing() {
                 <CameraOff size={20} class="pair-camera-off-icon" />
                 <div class="flex-1">
                   <strong class="block text-base font-medium">The camera is off for Unipi</strong>
-                  <span class="block text-sm text-text-muted mt-1">That's fine. Enter the pairing code instead: paste the link <code>unipi-host pair</code> prints, or its two codes.</span>
+                  <span class="block text-sm text-text-muted mt-1">That's fine. Enter the pairing code instead: paste the link <code>unipi-oino-host pair</code> prints, or its two codes.</span>
                   <button
                     type="button"
                     class="pair-camera-off-settings"
