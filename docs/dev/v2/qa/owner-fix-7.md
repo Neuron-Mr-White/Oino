@@ -1,8 +1,42 @@
 # Owner fix 7 (2026-11-05): the 24-item UI round — map and evidence
 
-Commits on `v2`: ea0c697e, 20f560bb, 4e920b9e, 6e584927, aea4b24c (+ this doc).
-Checks: `npx tsc --noEmit` clean; `npx vitest run` 336 files / 3261 tests pass;
-`cargo test -p unipi-host --lib usage_stats` 4 pass; `cargo test --lib zoxide` (src-tauri) 1 pass;
+Commits on `v2`: ea0c697e, 20f560bb, 4e920b9e, 6e584927, aea4b24c, 233e980c, b5e23e81.
+121 files changed, +3756 / −537 across `2ca5fbe4..b5e23e81`.
+
+## Re-verified test output (2026-11-05, this session)
+
+```
+$ cd apps/unipi && npx tsc --noEmit && echo "TSC: 0 errors"
+TSC: 0 errors
+
+$ npx vitest run
+ Test Files  336 passed (336)
+      Tests  3261 passed (3261)
+
+$ cargo test -p unipi-host --lib usage_stats        # apps/unipi workspace
+running 4 tests
+  usage_stats::tests::parses_replies_and_header ... ok
+  usage_stats::tests::unpriced_models_never_read_as_free_and_forks_dedupe ... ok
+  usage_stats::tests::range_and_timezone_bound_the_days ... ok
+  usage_stats::tests::reads_a_tree_and_reuses_the_cache ... ok
+test result: ok. 4 passed; 0 failed
+
+$ cargo test -p unipi-proto                          # proto usage.rs/.ts
+ (1+5+2+4 tests) all ok
+
+$ cd src-tauri && cargo test --lib zoxide            # standalone workspace
+  open_local::zoxide_tests::parses_scores_best_first ... ok
+test result: ok. 1 passed; 0 failed
+
+$ npx vitest run src/lib/usage.test.ts
+ Test Files  1 passed (1)   Tests  6 passed (6)
+```
+
+Headless-Chromium UI assertions (capture harness, mock host) — all pass:
+fusion_chip="Fusion · Claude Opus 4.1 ◆ GLM-4.6"; fusion_selected_groups=[Selected,All models]×2;
+first_row_sub="openai/gpt-5"; cron_search=1; cron_sched_icon=1; usage=[1,1,1,1];
+archived_btn=1; plug=1; phone_tab_layer=1.
+
 `cargo check -p unipi-mcp -p unipi-skill-registry` ok; both components rebuilt into `extensions/dist`.
 Screenshots (capture harness, mock host, headless Chromium 1440×900 and 390×844):
 `docs/dev/v2/design/shots/owner-fix-7/`.
