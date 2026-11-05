@@ -25,7 +25,9 @@ import { forkFrom, showActionNotice } from '../timeline/actions';
 import { toasts } from '../toasts';
 import { hubs } from './hub';
 import { sessions } from './store';
+import { sessionGroups } from './selectors';
 import { sessionHref } from '../../components/shell/Sidebar';
+import { currentSessionRoute } from '../../components/shell/AppShell';
 
 /** The row whose context menu is open (right-click / long-press). */
 export type RowMenuState = { hostId: string; card: SessionCard; anchor: DOMRect };
@@ -134,10 +136,39 @@ export async function emptyTrash(hostId: string): Promise<void> {
 }
 
 /**
+ * [owner-fix-8] The chat to show when the chat on screen is deleted: the next
+ * one in the sidebar order (the neighbour below, else the one above), on this
+ * PC first and then on any other PC with chats. `undefined` when no chat is
+ * left anywhere — the empty state is then the only place to go.
+ */
+export function nextChatAfter(hostId: string, sessionId: string): { hostId: string; sessionId: string } | undefined {
+  const of = (id: string): { hostId: string; sessionId: string } | undefined => {
+    const hub = hubs().peek(id);
+    if (!hub) return undefined;
+    const groups = sessionGroups(hub.state.cards, hub.state.meta);
+    const cards = [...groups.pinned, ...groups.projects.flatMap((group) => group.cards)];
+    const at = cards.findIndex((card) => card.session_id === sessionId);
+    const next = (at >= 0 ? cards[at + 1] : undefined) ?? (at > 0 ? cards[at - 1] : undefined) ?? cards.find((card) => card.session_id !== sessionId);
+    return next ? { hostId: id, sessionId: next.session_id } : undefined;
+  };
+  return of(hostId) ?? hubs().keys().filter((id) => id !== hostId).map(of).find(Boolean);
+}
+
+/**
  * Z-20: Delete from a live row. The host only unlinks trash entries, so a live
  * session is archived first — the same move Archive does — and then removed.
+ *
+ * [owner-fix-8] Deleting the chat that is on screen leaves the app on the next
+ * chat: the route still pointed at the deleted one, so the "this chat is gone"
+ * handler took over and opened a new chat. Deleting any other chat changes
+ * nothing.
  */
 export async function deleteSession(hostId: string, sessionId: string): Promise<void> {
+  const shown = currentSessionRoute();
+  const wasShown = shown?.hostId === hostId && shown.sessionId === sessionId;
+  // Leave the deleted chat before it is gone: the route must not point at it.
+  const next = wasShown ? nextChatAfter(hostId, sessionId) : undefined;
+  if (next) appNavigate(sessionHref(next.hostId, next.sessionId));
   sessions().close(hostId, sessionId);
   const hub = hubOf(hostId);
   await hub.archive(sessionId);
