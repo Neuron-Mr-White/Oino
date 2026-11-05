@@ -31,6 +31,11 @@
 /* column: the unipi 760 px chat column, centred */
 .tl-turn, .tl-tail, .tl-skeleton, .tl-empty { max-width: 760px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }
 html:not([data-shell=desktop]) :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) { padding-left: 16px; padding-right: 16px; }
+/* [owner-fix-8] The live tail IS the column: it already carries the 20 px gutter,
+   so the turn inside it must not add it a second time (the live turn was 20 px right
+   of every settled turn — its event cards, fold and bubble all sat off the column).
+   Same rule for the phone's 16 px gutter. */
+html .tl-tail > .tl-turn { padding-left: 0; padding-right: 0; }
 .tl-tail-wrap { flex: none; }
 .tl-tail { display: flex; flex-direction: column; gap: 4px; }
 .tl-turn { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; padding-bottom: 10px; }
@@ -69,6 +74,11 @@ html:not([data-shell=desktop]) :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) 
    over it never reached the chat (scroll "hijacked") and it drew its own scrollbars (O-02) */
 .tl :is(.tl-fold-body, .tl-group-body) { max-height: none; overflow: visible; overscroll-behavior: auto; }
 .tl-fold-body { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 10px; padding-left: 12px; border-left: 1px solid rgb(46 40 37 / 85%); }
+/* [owner-fix-8] The event cards share ONE left edge and ONE width — the chat
+   column's — in the session header, in a settled turn and in a live turn. The
+   work fold indents its tool rows by 23 px (12 margin + 1 border + 10 padding);
+   an event card that lands inside the fold is pulled back to the column edge. */
+.tl-fold-body > .tl-cardblock { margin-left: -23px; }
 .tl-group-head { min-height: 30px; }
 .tl-group[data-open] > .tl-group-head .proc-chev { transform: rotate(90deg); }
 .tl-group-body { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 10px; padding-left: 12px; border-left: 1px solid rgb(46 40 37 / 75%); }

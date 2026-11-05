@@ -11,6 +11,7 @@ import { shellDesktop, shellFullview, shellNarrow, shellSidepaneTabs } from './s
 import { sidebarMany, sidebarStates } from './sidebar';
 import { archived, draft, sessionMenu } from './session-actions';
 import { timelineMany } from './timeline';
+import { liveEvents } from './live-events';
 import { bubbleFold, turnActions, turnNavigator } from './turn';
 import { modalContext } from './modal-context';
 import { modalInfo } from './modal-info';
@@ -69,6 +70,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   archived,
   draft,
   'timeline-many': timelineMany,
+  'live-events': liveEvents,
   'turn-actions': turnActions,
   'turn-navigator': turnNavigator,
   'bubble-fold': bubbleFold,
