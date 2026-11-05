@@ -286,3 +286,9 @@ html[data-shell=phone] .settings-phone .settings-namespace-row.agent-row { min-h
 html[data-shell=phone] .agent-row-open { min-height: 56px; padding-block: 8px; }
 /* 44 px touch target around the 26 px switch. */
 html[data-shell=phone] .agent-row-switch > * { padding-block: 9px; }
+
+/* Owner 2026-11-05: a row with no description / meta centres its icon, label and control on one line. */
+.settings-row.settings-field[data-bare]:not([data-wide]) { align-items: center; }
+.settings-row.settings-field[data-bare]:not([data-wide]) > .settings-icon { margin-top: 0; }
+.settings-row.settings-field[data-bare]:not([data-wide]) > .min-w-0 > p:first-child { min-height: 32px; display: flex; align-items: center; }
+.settings-form-list .settings-form-head { align-items: center; }

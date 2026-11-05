@@ -391,3 +391,4 @@ html[data-shell=phone] .settings-page button.rounded-pill { min-height: 40px; }
 .settings-project-back:hover { background: rgb(40 190 240 / 14%); }
 .settings-project-back:active:not(:disabled) { transform: none; }
 .settings-project-back:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
+.sb-archived-slot { flex: none; padding: 4px 10px 0; border-top: 1px solid var(--shell-rule); }

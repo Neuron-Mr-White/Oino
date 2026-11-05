@@ -23,6 +23,7 @@ import { SessionList } from '../sidebar/SessionList';
 import '../sidebar/sidebar.css';
 import { Rail, SettingsLink } from './Rail';
 import { HostRow } from './HostSwitcher';
+import { ArchivedButton } from '../sidebar/ArchivedModal';
 
 /** `/s/:host/:session` → its parts. */
 export function routeSession(pathname: string): { hostId: string; sessionId: string } | undefined {
@@ -52,6 +53,7 @@ export function useNewChatHost(): () => string {
 export function Sidebar() {
   const navigate = useNavigate();
   const newChatHost = useNewChatHost();
+  const hosts = useHostsOptional();
   return (
     <aside class="sb" aria-label="Sidebar" data-testid="sidebar">
       <div class="sb-top">
@@ -87,6 +89,11 @@ export function Sidebar() {
       <div class="sb-scroll">
         <SessionList variant="sidebar" />
       </div>
+      <Show when={can('hosts')}>
+        <div class="sb-archived-slot">
+          <ArchivedButton hostId={hosts?.selectedId() ?? hosts?.hosts().find((h) => h.transport === 'local')?.id} />
+        </div>
+      </Show>
       <div class="sb-foot">
         <Show when={can('hosts')} fallback={<SettingsLink row />}>
           <HostRow />

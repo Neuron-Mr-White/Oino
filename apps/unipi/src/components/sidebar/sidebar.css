@@ -973,3 +973,13 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 .sb-project-head[data-folder]:hover .sb-project-tools,
 .sb-project-head[data-folder]:focus-within .sb-project-tools { opacity: 1; }
 @media (hover: none) { .sb-project-head[data-folder] .sb-project-tools { opacity: 1; } }
+
+/* Owner 2026-11-05: property visibility that never truncates the values into uselessness.
+   Normal rows: the meta line wraps (full workspace / model text); compact rows: icon chips. */
+.srow:not([data-compact]) .srow-meta { height: auto; min-height: 14px; overflow: visible; flex-wrap: wrap; row-gap: 2px; }
+.srow:not([data-compact]) .srow-meta .srow-chips { flex: 1 1 auto; flex-wrap: wrap; row-gap: 2px; min-width: 0; }
+.srow:not([data-compact]) .srow-chip { max-width: 100%; height: auto; min-height: 14px; }
+.srow:not([data-compact]) .srow-chip-text { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 14px; }
+.srow:not([data-compact]) .srow-meta .srow-time { align-self: flex-start; }
+.srow[data-compact] .srow-chip[data-icon-only] { padding: 0 3px; gap: 0; }
+.srow[data-compact] .srow-chips { flex: none; display: inline-flex; align-items: center; gap: 3px; }

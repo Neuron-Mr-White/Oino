@@ -23,7 +23,6 @@ import { cronRunLabel } from '../../lib/cronRunLabels';
 import { activeFilterCount, listView, resetListFilters, viewGroups, wantsArchived, type CardFacts, type ViewGroup } from '../../lib/session/listView';
 import { liveRowState, SessionRow, type ModeBadge } from './SessionRow';
 import { createPaging, ProjectGroup } from './ProjectGroup';
-import { ArchivedList } from './ArchivedList';
 import { SearchResults } from './SearchResults';
 import { sidebarSearch } from '../../lib/session/sidebarSearch';
 import { ArchiveAllMenu, ListProperties } from './ListProperties';
@@ -391,12 +390,8 @@ export function HostGroup(props: {
             <Show when={view().group === 'project' ? tasksGroup() : undefined} keyed>
               {(g) => renderGroup(g, true)}
             </Show>
-            {/* Z-13 (WP-A5): the host's trash — open read-only, restore or delete archived sessions. */}
-            <ArchivedList
-              hostId={props.host.id}
-              variant={props.variant}
-              activeSessionId={props.activeSession?.hostId === props.host.id ? props.activeSession.sessionId : undefined}
-            />
+            {/* Owner 2026-11-05: archived sessions live behind the fixed "Archived" button
+                (ArchivedModal) — search, filter and restore — not an endless list here. */}
           </Show>
         </div>
       </Show>

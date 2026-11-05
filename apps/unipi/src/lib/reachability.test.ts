@@ -68,7 +68,7 @@ describe('G-15: routing and the audit table cannot drift', () => {
 
 describe('G-8..G-11: the capability pages and their Manage actions', () => {
   it('each page has at least one Manage action whose command is real', () => {
-    for (const page of ['mcp', 'memory', 'skills', 'subagents'] as const) {
+    for (const page of ['mcp', 'memory', 'subagents'] as const) { // Skills: the native manager (no command)
       const actions = MANAGE_ACTIONS.filter((action) => action.page === page);
       expect(actions.length, page).toBeGreaterThan(0);
       for (const action of actions) {
@@ -81,7 +81,7 @@ describe('G-8..G-11: the capability pages and their Manage actions', () => {
 
   it('the four capability pages are Settings sections of the Agent group', async () => {
     const { SETTINGS_SECTIONS } = await import('../screens/settings/catalog');
-    for (const page of ['mcp', 'memory', 'skills', 'subagents'] as const) {
+    for (const page of ['mcp', 'memory', 'subagents'] as const) { // Skills: the native manager (no command)
       const section = SETTINGS_SECTIONS.find((s) => s.id === page);
       expect(section, page).toBeTruthy();
       expect(section!.group).toBe('agent');

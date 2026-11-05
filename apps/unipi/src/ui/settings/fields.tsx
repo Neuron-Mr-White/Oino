@@ -101,6 +101,7 @@ export function FieldRow(props: {
       data-testid={`field-${props.field.key}`}
       data-type={props.field.type}
       data-wide={props.wide ? '' : undefined}
+      data-bare={!props.field.description && !props.field.hint && !props.error && !diagnostic() && !props.below && !(storesValue(props.field) && (modified() || (props.field.type === 'secret' && !hasDefault()))) ? '' : undefined}
     >
       <span class="settings-icon">
         <Dynamic component={icon()} size={18} />

@@ -216,19 +216,25 @@ export function SessionRow(props: {
           <Clock size={12} />
         </span>
       </Show>
-      <Show when={!props.compact && folderChip()}>
+      {/* Compact rows keep every chosen property as an icon chip (full value in the tooltip);
+          normal rows show the full text and wrap to another line instead of truncating. */}
+      <Show when={folderChip()}>
         {(f) => (
-          <span class="srow-chip srow-cwd" title={props.card.cwd}>
+          <span class="srow-chip srow-cwd" data-icon-only={props.compact ? '' : undefined} title={`Workspace: ${props.card.cwd}`} aria-label={`Workspace ${f()}`}>
             <Folder size={11} />
-            <span class="srow-chip-text">{f()}</span>
+            <Show when={!props.compact}>
+              <span class="srow-chip-text">{f()}</span>
+            </Show>
           </span>
         )}
       </Show>
-      <Show when={!props.compact && model()}>
+      <Show when={model()}>
         {(m) => (
-          <span class="srow-chip srow-model" title={`Model: ${m()}`}>
+          <span class="srow-chip srow-model" data-icon-only={props.compact ? '' : undefined} title={`Model: ${m()}`} aria-label={`Model ${m()}`}>
             <Cpu size={11} />
-            <span class="srow-chip-text">{m()}</span>
+            <Show when={!props.compact}>
+              <span class="srow-chip-text">{m()}</span>
+            </Show>
           </span>
         )}
       </Show>

@@ -136,16 +136,6 @@ describe('sidebar with a big store', () => {
     expect(projectsShown(container)).toBe(PROJECTS_PAGE + 1);
   });
 
-  it('pages the Archived list', async () => {
-    setHostClientFactory(createMockHost(scenario(1, ARCHIVED_PAGE + 7)).client);
-    mount();
-    await waitFor(() => expect(screen.getByTestId('sb-rows-proj0')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('sb-archived-head-this-pc'));
-    await waitFor(() => expect(screen.getAllByTestId(/^sb-archived-row-/)).toHaveLength(ARCHIVED_PAGE));
-    fireEvent.click(screen.getByTestId('sb-archived-more-this-pc'));
-    await waitFor(() => expect(screen.getAllByTestId(/^sb-archived-row-/)).toHaveLength(ARCHIVED_PAGE + 7));
-    expect(screen.queryByTestId('sb-archived-more-this-pc')).toBeNull();
-  });
 });
 
 describe('visibleProjects', () => {

@@ -15,6 +15,7 @@
  * frame to `PhoneShell.tsx` (tab bar `TabBar.tsx`, ⋯ "Panes" group
  * `PanesMenu.tsx`).
  */
+import { ArchivedModalLayer } from '../sidebar/ArchivedModal';
 import { SkillsManagerLayer } from '../../screens/settings/SkillsPage';
 import { createEffect, createSignal, onCleanup, onMount, Show, type ParentProps } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
@@ -404,6 +405,7 @@ export function AppShell(props: ParentProps) {
         <SessionModalLayer />
         <ModelPickerLayer />
         <SkillsManagerLayer />
+        <ArchivedModalLayer />
         {/* WP-A25: the ⋯ Export/Duplicate rows, the capability palettes and the
             Import session… dialog (the harness reachability surfaces). */}
         <BuiltinActions />

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Archived list (Z-13, WP-A5): opening lazily asks `sessions_list{archived:true}`;
- * Restore round-trips the card back into the live list; Delete asks first;
- * Delete all confirms and sends `trash_empty` (the WP-A5 acceptance).
+ * Archived sessions (Z-13, WP-A5; owner 2026-11-05: the fixed "Archived" button opens a
+ * searchable modal instead of a sidebar footer list): opening lazily asks
+ * `sessions_list{archived:true}`; Restore round-trips the card back into the live list;
+ * Delete asks first; Delete all confirms and sends `trash_empty`.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -15,6 +16,7 @@ import { resetHubs } from '../../lib/session/hub';
 import { parseArchivedJsonl } from '../../lib/session/archivedSession';
 import type { SessionCard } from '../../lib/host/client';
 import { SessionList } from './SessionList';
+import { ArchivedButton, ArchivedModalLayer, archivedView } from './ArchivedModal';
 
 const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({
   session_id: id,
@@ -39,7 +41,7 @@ const boot = (cards: SessionCard[], archived: SessionCard[]) => {
     <SettingsProvider>
       <HostsProvider>
         <HashRouter>
-          <Route path="*" component={() => <SessionList variant="sidebar" />} />
+          <Route path="*" component={() => (<><SessionList variant="sidebar" /><ArchivedButton hostId="this-pc" /><ArchivedModalLayer /></>)} />
         </HashRouter>
       </HostsProvider>
     </SettingsProvider>
@@ -47,9 +49,10 @@ const boot = (cards: SessionCard[], archived: SessionCard[]) => {
 };
 
 const openArchived = async () => {
-  fireEvent.click(screen.getByTestId('sb-archived-head-this-pc'));
-  await waitFor(() => expect(screen.getByTestId('sb-archived-body-this-pc')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('sb-archived-open'));
+  await waitFor(() => expect(document.querySelector('[data-testid=archived-modal]')).toBeTruthy());
 };
+const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 
 beforeEach(() => localStorage.clear());
 afterEach(() => {
@@ -58,14 +61,14 @@ afterEach(() => {
   resetHubs();
 });
 
-describe('ArchivedList (Z-13)', () => {
+describe('Archived modal (Z-13)', () => {
   it('lazily loads the archived list on open (sessions_list{archived:true})', async () => {
     boot([card('live')], [card('gone')]);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     // Not asked before opening.
     expect(world.log.some((e) => e.kind === 'request' && e.op === 'sessions_list' && (e.args as { archived?: boolean } | undefined)?.archived === true)).toBe(false);
     await openArchived();
-    await waitFor(() => expect(screen.getByTestId('sb-archived-row-gone')).toBeTruthy());
+    await waitFor(() => expect(q('arcm-row-gone')).toBeTruthy());
     expect(world.log.some((e) => e.kind === 'request' && e.op === 'sessions_list' && (e.args as { archived?: boolean } | undefined)?.archived === true)).toBe(true);
   });
 
@@ -73,8 +76,9 @@ describe('ArchivedList (Z-13)', () => {
     boot([card('live')], [card('gone')]);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
-    fireEvent.click(screen.getByTestId('sb-archived-row-gone').querySelector('.sb-archived-restore')!);
-    await waitFor(() => expect(screen.queryByTestId('sb-archived-row-gone')).toBeNull());
+    await waitFor(() => expect(q('arcm-restore-gone')).toBeTruthy());
+    fireEvent.click(q('arcm-restore-gone')!);
+    await waitFor(() => expect(q('arcm-row-gone')).toBeNull());
     await waitFor(() => expect(screen.getByTestId('srow-gone')).toBeTruthy());
     expect(world.log.some((e) => e.kind === 'request' && e.op === 'session_restore' && (e.args as { session?: string })?.session === 'gone')).toBe(true);
   });
@@ -83,11 +87,12 @@ describe('ArchivedList (Z-13)', () => {
     boot([card('live')], [card('gone')]);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
-    fireEvent.click(screen.getByTestId('sb-archived-row-gone').querySelector('.sb-archived-del')!);
+    await waitFor(() => expect(q('arcm-row-gone')).toBeTruthy());
+    fireEvent.click(q('arcm-row-gone')!.querySelector('[aria-label="Delete for good"]')!);
     // Armed, not sent.
     expect(world.log.some((e) => e.op === 'session_delete')).toBe(false);
-    fireEvent.click(screen.getByTestId('sb-archived-row-gone').querySelector('.sb-archived-del')!);
-    await waitFor(() => expect(screen.queryByTestId('sb-archived-row-gone')).toBeNull());
+    fireEvent.click([...q('arcm-row-gone')!.querySelectorAll('button')].find((b) => b.textContent === 'Delete')!);
+    await waitFor(() => expect(q('arcm-row-gone')).toBeNull());
     expect(world.log.some((e) => e.kind === 'request' && e.op === 'session_delete' && (e.args as { session?: string })?.session === 'gone')).toBe(true);
   });
 
@@ -95,11 +100,11 @@ describe('ArchivedList (Z-13)', () => {
     boot([card('live')], [card('g1'), card('g2')]);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
-    await waitFor(() => expect(screen.getByTestId('sb-archived-row-g2')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('sb-archived-empty'));
+    await waitFor(() => expect(q('arcm-row-g2')).toBeTruthy());
+    fireEvent.click(q('arcm-empty')!);
     expect(world.log.some((e) => e.op === 'trash_empty')).toBe(false);
-    fireEvent.click(screen.getByTestId('sb-archived-empty-confirm'));
-    await waitFor(() => expect(screen.queryByTestId('sb-archived-row-g1')).toBeNull());
+    fireEvent.click(q('arcm-empty-confirm')!);
+    await waitFor(() => expect(q('arcm-row-g1')).toBeNull());
     expect(world.log.some((e) => e.kind === 'request' && e.op === 'trash_empty')).toBe(true);
   });
 
@@ -107,17 +112,19 @@ describe('ArchivedList (Z-13)', () => {
     boot([card('live')], []);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
-    await waitFor(() => expect(screen.getByText('Nothing archived')).toBeTruthy());
+    await waitFor(() => expect(document.querySelector('[data-testid=archived-modal]')!.textContent).toContain('Nothing archived.'));
   });
 
   it('archived rows render an openable link with full title tooltip, and parseArchivedJsonl extracts read-only transcript entries (D-17)', async () => {
     boot([card('live')], [card('gone', { name: 'Hello Number 2 Reply' })]);
     await waitFor(() => expect(screen.getByTestId('srow-live')).toBeTruthy());
     await openArchived();
-    const link = await screen.findByTestId('sb-archived-open-gone');
-    expect(link.tagName).toBe('A');
-    expect(link.getAttribute('href')).toBe('#/s/this-pc/gone');
-    expect(link.getAttribute('title')).toBe('Hello Number 2 Reply');
+    await waitFor(() => expect(q('arcm-row-gone')).toBeTruthy());
+    expect(q('arcm-row-gone')!.querySelector('.arcm-open')!.getAttribute('title')).toBe('Hello Number 2 Reply');
+    // search + project filter
+    const many = [card('a', { name: 'Fix login', cwd: '/p/web' }), card('b', { name: 'Docs', cwd: '/p/site' })];
+    expect(archivedView(many, 'login', 'all', 'newest').map((c) => c.session_id)).toEqual(['a']);
+    expect(archivedView(many, '', 'site', 'newest').map((c) => c.session_id)).toEqual(['b']);
 
     const parsed = parseArchivedJsonl(
       [

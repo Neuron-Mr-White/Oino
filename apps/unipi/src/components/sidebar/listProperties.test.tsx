@@ -11,7 +11,7 @@ import { HostsProvider } from '../../hosts/context';
 import { SettingsProvider } from '../../settings/context';
 import { createMockHost, type MockScenario } from '../../dev/mock/host';
 import { setHostClientFactory } from '../../lib/host/factory';
-import { resetHubs } from '../../lib/session/hub';
+import { hubs, resetHubs } from '../../lib/session/hub';
 import { listView, LIST_VIEW_KEY, resetListViews, toggleSubagentRow } from '../../lib/session/listView';
 import { createToastStack, setToasts, toasts } from '../../lib/toasts';
 import { resetHostCollapse } from './HostGroup';
@@ -167,9 +167,9 @@ describe('Archive all', () => {
   it('[ux-sessions] 2,000 sessions: one batched host op, the list empties at once, the open Archived list counts all of them without a reload', async () => {
     const many = Array.from({ length: 2000 }, (_, i) => card(`s${i}`, { cwd: `/home/you/p/proj${i % 40}`, updated_at: Date.now() - i * 60_000 }));
     boot(many);
-    await waitFor(() => expect(screen.getByTestId('sb-archived-head-this-pc')).toBeTruthy());
-    // The owner's state: an Archived list already opened (here: empty) before Archive all.
-    fireEvent.click(screen.getByTestId('sb-archived-head-this-pc'));
+    await waitFor(() => expect(screen.getByTestId('srow-s0')).toBeTruthy());
+    // The owner's state: an Archived list already loaded (here: empty) before Archive all.
+    void hubs().ensure('this-pc').loadArchived();
     await waitFor(() => expect(world.log.some((e) => e.op === 'sessions_list' && (e.args as { archived?: boolean } | undefined)?.archived)).toBe(true));
     openProps();
     fireEvent.click(screen.getByTestId('lp-archive-all'));
@@ -177,7 +177,7 @@ describe('Archive all', () => {
     fireEvent.click(screen.getByTestId('archive-all-yes'));
     await waitFor(() => expect(batchArchived()).toHaveLength(2000));
     expect(world.log.filter((e) => e.op === 'session_archive')).toHaveLength(0);
-    await waitFor(() => expect(screen.getByTestId('sb-archived-head-this-pc').textContent).toContain('2000'));
+    await waitFor(() => expect(hubs().ensure('this-pc').state.archived.length).toBe(2000));
     await waitFor(() => expect(screen.queryByTestId('srow-s0')).toBeNull());
     await waitFor(() => expect(toasts().list().find((t) => t.message.startsWith('Archived 2000'))).toBeTruthy());
   });
