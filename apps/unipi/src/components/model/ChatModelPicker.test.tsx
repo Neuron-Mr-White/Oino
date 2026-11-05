@@ -104,6 +104,31 @@ describe('the chat model dialog (Z-69)', () => {
     // the host's model_changed moved the session's selection
     await waitFor(() => expect(sessions().peek(HOST, SESSION)?.state.model?.id).toBe('gpt-5'));
   });
+
+  it('does not wait for the host: the switch lands while set_model is still unanswered (owner-fix-8)', async () => {
+    const world = await boot('model-picker');
+    // A chat opened from its file wakes behind its history: the host answers
+    // every command only once the runtime is up, which held the picker on
+    // "Switching…" for seconds.
+    const host = world.client(HOST);
+    const open = host.openSession.bind(host);
+    host.openSession = ((req: Parameters<typeof open>[0], sink: Parameters<typeof open>[1]) => {
+      const stream = open(req, sink);
+      const cmd = stream.cmd.bind(stream);
+      stream.cmd = ((command: { type: string }) => {
+        const reply = cmd(command);
+        return command.type === 'set_model' ? new Promise(() => {}) : reply;
+      }) as typeof stream.cmd;
+      return stream;
+    }) as typeof host.openSession;
+    picker();
+    await waitFor(() => expect(screen.getByTestId('model-picker-list').textContent).toContain('GPT-5'));
+    fireEvent.click(screen.getByText('GPT-5'));
+    // the command went out …
+    await waitFor(() => expect(cmds(world, 'set_model')).toHaveLength(1));
+    // … and the switch is already reported, although the host never answered.
+    await waitFor(() => expect(toasts().list().some((t) => t.message === 'Switched from Claude Sonnet 4.5 to GPT-5')).toBe(true));
+  });
 });
 
 describe('Fusion (Z-76)', () => {

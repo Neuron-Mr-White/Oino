@@ -100,7 +100,17 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   const allModels = () => data.latest?.models ?? [];
   const fusion = () => data.latest?.fusion;
   const byKey = createMemo(() => new Map(allModels().map((m) => [modelKey(m), m])));
-  const current = (): Selection | undefined => selectionOf(s().state.model, fusion()?.active);
+  /** [owner-fix-8] the model of a switch in flight (the host confirms later). */
+  const [pending, setPending] = createSignal<string | undefined>();
+  const current = (): Selection | undefined => {
+    // [owner-fix-8] A switch in flight shows its model right away: the host
+    // answers `set_model` only once the chat's runtime is up (a chat opened
+    // from its file wakes behind its history), and the picker must not sit on
+    // "Switching…" for those seconds.
+    const p = pending();
+    if (p) return { kind: 'single', key: p };
+    return selectionOf(s().state.model, fusion()?.active);
+  };
   const currentKey = () => {
     const c = current();
     return c?.kind === 'single' ? c.key : undefined;
@@ -129,6 +139,13 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
   const [pick, setPick] = createSignal<string | undefined>();
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  // The host caught up: the optimistic model is the real one now.
+  createEffect(() => {
+    const p = pending();
+    if (!p) return;
+    const live = selectionOf(s().state.model, undefined);
+    if (live?.kind === 'single' && live.key === p) setPending(undefined);
+  });
 
   // The first load opens the tab (and the effort pills) the running selection implies.
   let settled = false;
@@ -184,18 +201,33 @@ export function ChatModelPickerBody(props: { target: ModelPickerTarget }) {
     const key = pick();
     if (!key) return;
     const from = now();
-    void run(async () => {
-      if (fusionOn() && fusion()?.active) {
-        await setFusionActive(s(), { kind: 'single', model: key });
-      } else {
-        const slash = key.indexOf('/');
-        await setChatModel(s(), key.slice(0, slash), key.slice(slash + 1));
+    // [owner-fix-8] The switch is optimistic: the picker closes and the toast
+    // lands as soon as the command is on its way. The host answers `set_model`
+    // only when the chat's runtime is up — a chat opened from its file wakes
+    // behind its whole history — and waiting for that reply held the picker on
+    // "Switching…" for seconds. A failure comes back as an error toast and the
+    // chip returns to the host's model.
+    if (busy()) return;
+    setError(null);
+    setPending(key);
+    closeModelPicker();
+    toasts().push(switchToast(from, shortModelName(nameOf(key))), 'success');
+    void (async () => {
+      try {
+        if (fusionOn() && fusion()?.active) {
+          await setFusionActive(s(), { kind: 'single', model: key });
+        } else {
+          const slash = key.indexOf('/');
+          await setChatModel(s(), key.slice(0, slash), key.slice(slash + 1));
+        }
+        // The curated default effort comes with a suggested pick (the TUI picker's per-model effort).
+        const effort = curated()?.effort[key];
+        if (effort) await s().cmd({ type: 'set_thinking_level', level: effort }).catch(() => undefined);
+      } catch (e) {
+        setPending(undefined);
+        toasts().push(calmModelError(e, shortModelName(nameOf(key))), 'error');
       }
-      // The curated default effort comes with a suggested pick (the TUI picker's per-model effort).
-      const effort = curated()?.effort[key];
-      if (effort) await s().cmd({ type: 'set_thinking_level', level: effort }).catch(() => undefined);
-      toasts().push(switchToast(from, shortModelName(nameOf(key))), 'success');
-    });
+    })();
   };
   const applyPair = () => {
     const lead = leadKey();
