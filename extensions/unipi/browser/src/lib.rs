@@ -115,7 +115,7 @@ impl BrowserExt {
             .render_hints(&json!({"icon": "globe", "group": "browser"}))
             .run(
                 move |ext: &'static Self, args: Value, cx: ToolCtx| async move {
-                    let r = result::run_tool(name, args, cx.cx.has_ui()).await;
+                    let r = result::run_tool(name, args, cx.cx.has_ui(), cx.session_id()).await;
                     if !r.is_error && tools::is_page_action(name) {
                         ext.acted.borrow_mut().insert(cx.session_id().to_owned());
                     }

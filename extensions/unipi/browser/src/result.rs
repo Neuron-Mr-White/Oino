@@ -59,8 +59,38 @@ pub fn denied(message: &str, no_ui: bool) -> ToolResult {
     )
 }
 
+/// The chat's permission mode (`unipi:workflow:status:<session id>` →
+/// `permissionMode`), published by the workflow extension on every session
+/// start and on every mode change. `None` when the workflow extension is off
+/// or has not published yet.
+#[must_use]
+pub fn permission_mode(session_id: &str) -> Option<String> {
+    let topic = format!("unipi:workflow:status:{session_id}");
+    oino_extension::bus::get(&topic)?
+        .get("permissionMode")?
+        .as_str()
+        .map(ToOwned::to_owned)
+}
+
+/// Is this chat in full access ("only deny rules block")?
+#[must_use]
+pub fn full_access(session_id: &str) -> bool {
+    permission_mode(session_id).as_deref() == Some("full")
+}
+
+/// What the browser does when the host asks for approval: under full access
+/// the chat's permission mode already granted it, so the approval is used
+/// without asking the user (`Some("once")`); every other mode asks (`None`).
+#[must_use]
+pub fn approval_without_asking(mode: Option<&str>) -> Option<&'static str> {
+    match mode {
+        Some("full") => Some("once"),
+        _ => None,
+    }
+}
+
 /// Runs tool `name` with `args`, asking the user when the host requires approval.
-pub async fn run_tool(name: &str, args: Value, has_ui: bool) -> ToolResult {
+pub async fn run_tool(name: &str, args: Value, has_ui: bool, session_id: &str) -> ToolResult {
     let op = name.strip_prefix("browser_").unwrap_or(name);
     let mut command = match args {
         Value::Object(m) => Value::Object(m),
@@ -81,6 +111,13 @@ pub async fn run_tool(name: &str, args: Value, has_ui: bool) -> ToolResult {
             .as_str()
             .unwrap_or("Agent wants to act in the browser")
             .to_owned();
+        // [owner-fix-8] Full access means no prompt: the chat's permission mode
+        // already granted it, so the browser must not ask again (it used to
+        // pop a permission dialog even while the user was driving the browser).
+        if let Some(a) = approval_without_asking(permission_mode(session_id).as_deref()) {
+            command["approval"] = json!(a);
+            continue;
+        }
         if !has_ui {
             return denied(&message, true);
         }
@@ -141,5 +178,16 @@ mod tests {
         let d = denied("Agent wants to click 'Place order' on shop.example", false);
         assert!(d.is_error);
         assert_eq!(d.details.unwrap()["error"]["code"], "permission_denied");
+    }
+
+    #[test]
+    fn full_access_never_asks_the_user() {
+        // [owner-fix-8] "full access" is the chat's permission mode: the
+        // browser uses the approval instead of popping a permission dialog.
+        assert_eq!(approval_without_asking(Some("full")), Some("once"));
+        // every other mode still asks.
+        assert_eq!(approval_without_asking(Some("ask")), None);
+        assert_eq!(approval_without_asking(Some("auto")), None);
+        assert_eq!(approval_without_asking(None), None);
     }
 }
