@@ -172,7 +172,7 @@ describe('turn file summary footer (A27)', () => {
     await open();
     footer();
     await waitFor(() => expect(screen.getByTestId('turn-files')).toBeTruthy());
-    expect(screen.getByTestId('turn-files-stat').textContent).toBe('+15 −04');
+    expect(screen.getByTestId('turn-files-stat').textContent).toBe('+15 −4');
     expect(screen.getByTestId('turn-files-toggle').textContent).toContain('3 files');
     // collapsed = one row only: the file list is not mounted
     expect(screen.queryByTestId('turn-file-src/math.ts')).toBeNull();

@@ -234,7 +234,7 @@ export function TurnFilesFooter(props: ReservedBodyProps) {
         <ChevronRight size={14} class="tl-files-chev" />
         <span class="tl-files-count">{fileCountLabel(totals().count)}</span>
         <span class="tl-files-stat" data-testid="turn-files-stat">
-          <span class="add">+{String(totals().add).padStart(2, '0')}</span> <span class="del">−{String(totals().del).padStart(2, '0')}</span>
+          <span class="add">+{totals().add}</span> <span class="del">−{totals().del}</span>
         </span>
         <Show when={summary()?.undone}>
           <span class="tl-files-undone">· undone</span>

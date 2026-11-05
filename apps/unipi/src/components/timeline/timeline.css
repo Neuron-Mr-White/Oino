@@ -607,42 +607,55 @@ html:not([data-shell=desktop]) .tl .tool-body { margin-left: 8px; }
 .ui-turnfooter:has(.tl-files) { padding: 0; max-height: none; background: none; overflow: visible; box-shadow: none; }
 .ui-turnfooter:has(> .ui-entry:empty):not(:has(.tl-files)) { display: none; }
 
-/* collapsed: [▸] 3 files +12 −04 · undone */
-.tl-files { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
-.tl-files-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  align-self: flex-start; min-height: 26px; padding: 0 8px 0 4px; margin-left: -4px;
-  border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: 12px;
+/* [owner-fix-8] The file summary speaks the event-card language: the same
+   surface, radius, hairline and accent bar as the Browser / Memory rows.
+   Collapsed it is one line — "[▸] 3 files +12 −4" — expanded it lists the
+   turn's paths with their counts, a status and the per-file actions. */
+.tl-files {
+  --ev: var(--color-wm-green);
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 3px 0;
+  border-radius: 10px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), inset 2px 0 0 0 color-mix(in srgb, var(--ev) 70%, transparent);
+  min-width: 0; overflow: hidden;
 }
-.tl-files-toggle:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-files-toggle {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  min-height: 32px; padding: 5px 10px 5px 11px;
+  border-radius: 10px; background: transparent; color: var(--color-text-muted);
+  font-size: 13px; line-height: 18px; text-align: left;
+}
+.tl-files-toggle:hover { background-color: var(--color-surface-2); color: var(--color-text); }
 .tl-files-chev { flex: 0 0 auto; color: var(--color-text-dim); transition: transform 140ms ease-out; }
 .tl-files[data-expanded] .tl-files-chev { transform: rotate(90deg); }
-.tl-files-count { font-weight: 550; }
-.tl-files-stat { font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.tl-files-count { font-weight: 600; color: var(--color-text); }
+.tl-files-stat { flex: 0 0 auto; margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .tl-files-stat .add { color: var(--color-wm-green); }
 .tl-files-stat .del { color: var(--color-wm-red); }
-.tl-files-undone { color: var(--color-text-dim); font-size: 11.5px; }
+.tl-files-undone { flex: 0 0 auto; color: var(--color-text-dim); font-size: 11.5px; }
 
-/* expanded: one row per touched path */
-.tl-files-list { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; padding: 4px; border-radius: 10px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 75%); }
+/* expanded: one row per touched path (mono path, counts and status in columns) */
+.tl-files-list { display: flex; flex-direction: column; gap: 1px; padding: 0 4px 4px; border-top: 1px solid rgb(46 40 37 / 70%); }
 .tl-files-row { display: flex; align-items: center; gap: 2px; border-radius: 8px; }
 .tl-files-row:hover, .tl-files-row:focus-within { background: var(--color-surface-2); }
 .tl-files-file {
-  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
-  min-height: 28px; padding: 0 6px;
+  flex: 1 1 auto; min-width: 0;
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) 62px 58px; align-items: center; gap: 8px;
+  min-height: 30px; padding: 0 6px;
   background: transparent; color: var(--color-text-muted); font-size: 12px; text-align: left;
 }
 .tl-files-file:disabled { cursor: default; }
-.tl-files-rowchev { flex: 0 0 auto; color: var(--color-text-dim); transition: transform 140ms ease-out; }
+.tl-files-rowchev { grid-column: 1; color: var(--color-text-dim); transition: transform 140ms ease-out; }
 .tl-files-file[aria-expanded=true] .tl-files-rowchev { transform: rotate(90deg); }
-.tl-files-path { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.tl-files-path { grid-column: 2; display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
 .tl-files-leaf {
-  flex: 0 1 auto; min-width: 0; color: var(--color-text); font-family: var(--font-mono); font-size: 12px;
+  flex: 0 1 auto; min-width: 0; color: var(--color-text); font-family: var(--font-mono); font-size: 11.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tl-files-dir { min-width: 0; color: var(--color-text-dim); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tl-files-rowstat { margin-left: auto; flex: 0 0 auto; color: var(--color-text-dim); font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.tl-files-status { flex: 0 0 auto; min-width: 58px; text-align: right; color: var(--color-text-dim); font-size: 11px; }
+.tl-files-rowstat { grid-column: 3; justify-self: end; color: var(--color-text-dim); font-family: var(--font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-files-status { grid-column: 4; justify-self: end; min-width: 0; text-align: right; color: var(--color-text-dim); font-size: 11px; }
 .tl-files-row[data-status=new] .tl-files-status { color: var(--color-wm-green); }
 .tl-files-row[data-status=deleted] .tl-files-status,
 .tl-files-row[data-status=skipped] .tl-files-status { color: var(--color-wm-red); }
