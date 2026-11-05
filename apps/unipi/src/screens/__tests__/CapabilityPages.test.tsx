@@ -82,9 +82,12 @@ describe('Settings › MCP (G-8)', () => {
     await waitFor(() => expect(r.getByTestId('cap-mcp-form')).toBeTruthy());
     // U11's form engine rendered the namespace's own fields.
     await waitFor(() => expect(r.getByText('Load MCP servers')).toBeTruthy());
-    for (const id of ['mcp.status', 'mcp.servers', 'mcp.catalog', 'mcp.sync', 'mcp.reload']) {
+    for (const id of ['mcp.servers', 'mcp.catalog']) {
       expect(r.getByTestId(`manage-${id}`), id).toBeTruthy();
     }
+    // Status / Sync / Reload live in the native server table (no duplicate rows).
+    expect(r.getByTestId('mcp-servers')).toBeTruthy();
+    for (const id of ['mcp.status', 'mcp.sync', 'mcp.reload']) expect(r.queryByTestId(`manage-${id}`)).toBeNull();
   });
 
   it('owner5 #5: with no chat open, a UI action runs in Settings’ own session, in a Settings sheet', async () => {
@@ -119,19 +122,13 @@ describe('Settings › MCP (G-8)', () => {
     await waitFor(() => expect(document.querySelector('[data-testid=settings-cmd-sheet]')).toBeTruthy());
   });
 
-  it('owner5 #5: a background action (Sync the catalog) shows its progress inline on the row', async () => {
+  it('the native server table offers Sync catalog and Reload all', async () => {
     const world = createMockHost(capMcpNoChat);
     setHostClientFactory(world.client);
-    await openChat(world, 'local', 'cap001');
     const r = renderAt('mcp');
-    await waitFor(() => expect(r.getByTestId('manage-mcp.sync')).toBeTruthy());
-    r.getByTestId('manage-mcp.sync').click();
-    await waitFor(() => expect(r.getByTestId('manage-mcp.sync-result').textContent).toMatch(/Running|Started|Done|catalog/i));
-    await waitFor(() => {
-      expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-sync')).toBe(true);
-    });
+    await waitFor(() => expect(r.getByTestId('mcp-sync')).toBeTruthy());
+    expect(r.getByTestId('mcp-reload')).toBeTruthy();
     expect(location.hash).toBe('#/settings/mcp');
-    expect(document.querySelector('[data-testid=settings-cmd-sheet]')).toBeNull();
   });
 });
 

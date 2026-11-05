@@ -64,16 +64,6 @@ export const CHANGELOG_ACTION: ManageAction = {
  */
 export const MANAGE_ACTIONS: ManageAction[] = [
   {
-    id: 'mcp.status',
-    page: 'mcp',
-    label: 'Server status',
-    description: 'Every configured server, its tools and its connection',
-    command: 'mcp-status',
-    title: 'MCP: server status',
-    keywords: 'mcp status servers tools connection',
-    group: 'Agent',
-  },
-  {
     id: 'mcp.servers',
     page: 'mcp',
     label: 'Manage servers',
@@ -91,26 +81,6 @@ export const MANAGE_ACTIONS: ManageAction[] = [
     command: 'mcp-add',
     title: 'MCP: add a server from the catalog',
     keywords: 'mcp catalog add install',
-    group: 'Agent',
-  },
-  {
-    id: 'mcp.sync',
-    page: 'mcp',
-    label: 'Sync the catalog',
-    description: 'Refresh the catalog from GitHub',
-    command: 'mcp-sync',
-    title: 'MCP: sync the catalog',
-    keywords: 'mcp catalog sync refresh',
-    group: 'Agent',
-  },
-  {
-    id: 'mcp.reload',
-    page: 'mcp',
-    label: 'Reload servers',
-    description: 'Reconnect every server and re-register its tools',
-    command: 'mcp-reload',
-    title: 'MCP: reload servers',
-    keywords: 'mcp reload reconnect tools',
     group: 'Agent',
   },
   {
@@ -143,38 +113,6 @@ export const MANAGE_ACTIONS: ManageAction[] = [
     command: 'global-memory-list',
     title: 'Memory: list every project',
     keywords: 'memory global all projects list',
-    group: 'Agent',
-  },
-  // P1-07: Dream (background reflection over past sessions → memory lessons and
-  // proposals) has no idle tray tab; its actions live with Memory.
-  {
-    id: 'dream.status',
-    page: 'memory',
-    label: 'Dream status',
-    description: 'Last dream, whether one is due, proposals waiting',
-    command: 'dream status',
-    title: 'Dream: status',
-    keywords: 'dream status reflection consolidation proposals',
-    group: 'Agent',
-  },
-  {
-    id: 'dream.report',
-    page: 'memory',
-    label: 'Latest dream report',
-    description: 'What the last dream learned and proposed',
-    command: 'dream report',
-    title: 'Dream: latest report',
-    keywords: 'dream report past dreams proposals lessons',
-    group: 'Agent',
-  },
-  {
-    id: 'dream.run',
-    page: 'memory',
-    label: 'Dream now',
-    description: 'Reflect over recent sessions in the background',
-    command: 'dream run',
-    title: 'Dream: run now',
-    keywords: 'dream run now reflect consolidate background',
     group: 'Agent',
   },
   {

@@ -39,7 +39,7 @@ const nativeOverlay = (entry: UiEntry): boolean => {
   return !!row && row.container === 'overlay' && reservedGate(row);
 };
 
-export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean }) {
+export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean; /** Drop the terminal key chips (the GUI has buttons). */ hideKeys?: boolean }) {
   const top = () => (void dismissRev(), [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e)));
   let shown: { target: UiTarget; id: string } | undefined;
   createEffect(
@@ -113,7 +113,7 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
               <div class="ui-modal-body">
                 <EntryView entry={entry} target={props.target} mode="auto" />
               </div>
-              <Show when={(entry.keys ?? []).length > 0}>
+              <Show when={!props.hideKeys && (entry.keys ?? []).length > 0}>
                 <div class="ui-modal-keys" aria-label="Panel keys">
                   <For each={entry.keys}>{(k) => <kbd class="kbd ui-modal-key" title={k.key}>{k.label}</kbd>}</For>
                 </div>

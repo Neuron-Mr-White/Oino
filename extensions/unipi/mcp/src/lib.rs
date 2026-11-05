@@ -665,6 +665,32 @@ impl Mcp {
 
     // ── panels ──────────────────────────────────────────────────────────────
 
+    fn servers_json(&self) -> Value {
+        let reg = self.registry.borrow();
+        let servers: Vec<Value> = reg
+            .all()
+            .iter()
+            .map(|e| {
+                let transport = match e.resolved.def.transport {
+                    Transport::Stdio => "stdio",
+                    Transport::Http => "http",
+                };
+                json!({
+                    "name": e.resolved.name,
+                    "source": e.resolved.source.as_str(),
+                    "enabled": e.resolved.enabled,
+                    "transport": transport,
+                    "status": e.state.status.as_str(),
+                    "error": e.state.error,
+                    "toolCount": e.state.tool_count,
+                    "tools": e.tool_names,
+                    "startedAt": e.state.started_at,
+                })
+            })
+            .collect();
+        json!({"servers": servers, "errors": *self.errors.borrow(), "totalTools": reg.total_tools()})
+    }
+
     fn servers_spec(&self) -> Node {
         let reg = self.registry.borrow();
         let items: Vec<ListItem> = reg
@@ -1254,6 +1280,26 @@ impl Extension for Mcp {
                     Ok(())
                 }),
         );
+        // Owner 2026-11-05: the app's native MCP page (server table with full errors and
+        // per-server actions) instead of a terminal-style overlay list.
+        cx.service("mcp.servers", |ext, _p, _caller, _cx| async move { Ok(ext.servers_json()) });
+        cx.service("mcp.server-action", |ext, p, _caller, _cx| async move {
+            let name = p.get("name").and_then(Value::as_str).unwrap_or_default().to_owned();
+            match p.get("action").and_then(Value::as_str).unwrap_or_default() {
+                "enable" | "disable" => {
+                    let on = p.get("action").and_then(Value::as_str) == Some("enable");
+                    if let Err(e) = Self::set_enabled(&name, on) {
+                        return Ok(json!({"ok": false, "message": e.to_string()}));
+                    }
+                    ext.start_named(&name).await;
+                }
+                "reconnect" => ext.start_named(&name).await,
+                "reload" => ext.reload().await,
+                "sync" => ext.sync().await,
+                other => return Ok(json!({"ok": false, "message": format!("unknown action {other}")})),
+            }
+            Ok(json!({"ok": true, "servers": ext.servers_json()}))
+        });
         cx.service(
             unipi_kit::services::fanout::INFO_SCREEN_GROUPS,
             |ext, _p, _caller, _cx| async move { Ok(ext.info_group()) },

@@ -1,14 +1,18 @@
 /**
- * Settings › MCP (WP-A25, G-8): the `mcp` namespace's form (servers, catalog
- * source, tool filters) and the extension's own panels — status, server list
- * with the JSON editor, catalog add, sync and reload — which open in the
- * active chat through `/mcp-status`, `/mcp-settings`, `/mcp-add`, `/mcp-sync`
- * and `/mcp-reload`. No second server list lives here (§4.2.2).
+ * Settings › MCP (WP-A25, G-8; owner 2026-11-05): the native server table (status,
+ * full errors, enable / reconnect per server, reload all, sync) and the two panels that
+ * still need the extension's own UI — "Manage servers" (edit / remove JSON) and "Add from
+ * the catalog". The form's four action rows duplicated the Manage rows and are hidden.
  */
 import { Plug } from 'lucide-solid';
 import { CapabilityPage } from './CapabilityPage';
+import { McpServers } from '../../components/mcp/McpServers';
+import { useHostsOptional } from '../../hosts/context';
+import { settingsHostId } from '../../settings/target';
 
 export function McpPage() {
+  const hosts = useHostsOptional();
+  const hostId = () => hosts?.hosts().find((h) => h.transport === 'local')?.id ?? settingsHostId();
   return (
     <CapabilityPage
       page="mcp"
@@ -17,6 +21,8 @@ export function McpPage() {
       namespace="mcp"
       sectionId="sec-mcp"
       blurb="Model Context Protocol servers: what the agent can call beyond its own tools."
+      hideFields={['configure', 'add', 'sync', 'reload']}
+      beforeManage={<McpServers hostId={hostId()} />}
     />
   );
 }

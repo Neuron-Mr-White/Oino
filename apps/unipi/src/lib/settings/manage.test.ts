@@ -45,9 +45,9 @@ afterEach(() => {
 
 describe('the Manage table', () => {
   it('names the extension commands the four pages run', () => {
-    expect(manageActionsFor('mcp').map((a) => a.command)).toEqual(['mcp-status', 'mcp-settings', 'mcp-add', 'mcp-sync', 'mcp-reload']);
+    expect(manageActionsFor('mcp').map((a) => a.command)).toEqual(['mcp-settings', 'mcp-add']);
     // memory-consolidate prompts a chat: it is the chat's (⋯ menu, /memory-consolidate), not a Settings row.
-    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'global-memory-list', 'dream status', 'dream report', 'dream run']);
+    expect(manageActionsFor('memory').map((a) => a.command)).toEqual(['memory', 'global-memory-list']);
     expect(manageActionsFor('chat').map((a) => a.command)).toEqual(['memory-consolidate']);
     expect(manageActionsFor('skills').map((a) => a.command)).toEqual([]);
     expect(manageActionsFor('subagents').map((a) => a.command)).toEqual(['agents']);
@@ -72,7 +72,7 @@ describe('runManageAction', () => {
   it('runs the command in the most recently used open chat and shows it', async () => {
     const world = await openChat();
     const navigate = vi.fn();
-    expect(runManageAction(manageActionsFor('mcp')[1]!, { navigate })).toBe('sent');
+    expect(runManageAction(manageActionsFor('mcp')[0]!, { navigate })).toBe('sent');
     expect(navigate).toHaveBeenCalledWith('/s/local/cap001');
     expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true);
   });

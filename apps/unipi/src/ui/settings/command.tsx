@@ -204,6 +204,7 @@ export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; h
   const [phase, setPhase] = createSignal<'starting' | 'running' | 'no-chat' | 'off'>('starting');
   let release: (() => void) | undefined;
   let closed = false;
+  const baseline = new Set<string>();
   onMount(() => {
     void startSettingsCommand(props.spec.command, {
       hostId: hostId(),
@@ -219,6 +220,10 @@ export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; h
         return;
       }
       release = started.release;
+      // Overlays already open in Settings' shared command session (another command's panel
+      // left behind, e.g. the skills editor) must never bleed into this sheet.
+      const reg = sessionUi(started.handle.hostId, started.handle.sessionId());
+      for (const e of reg.stack('overlay')()) baseline.add(`${e.id}:${e.seq}`);
       setHandle(started.handle);
       setPhase('running');
     });
@@ -238,7 +243,7 @@ export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; h
     return h ? sessionUi(h.hostId, h.sessionId()) : undefined;
   });
   const dialogs = () => registry()?.dialogs() ?? [];
-  const overlays = () => registry()?.stack('overlay')() ?? [];
+  const overlays = () => (registry()?.stack('overlay')() ?? []).filter((e) => !baseline.has(`${e.id}:${e.seq}`));
   const answer = (id: string, value: unknown) => {
     const h = handle();
     if (!h) return;
@@ -290,7 +295,7 @@ export function CommandSheet(props: { cmd: SettingsCommand; spec: CommandSpec; h
         <For each={replies()}>{(reply) => <ReplyBody text={reply.text} />}</For>
       </div>
       <Show when={handle() && overlays().length > 0}>
-        <SlotModal stack={overlays()} target={{ scope: 'session', hostId: handle()!.hostId, sessionId: handle()!.sessionId() }} phone={!desktopShell()} />
+        <SlotModal stack={overlays()} target={{ scope: 'session', hostId: handle()!.hostId, sessionId: handle()!.sessionId() }} phone={!desktopShell()} hideKeys />
       </Show>
     </BoardSheet>
   );

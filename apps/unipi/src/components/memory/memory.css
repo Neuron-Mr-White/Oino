@@ -36,3 +36,26 @@
   .mb-search { height: 44px; }
   .mb-list { height: auto; flex: 1; max-height: none; }
 }
+
+/* Dream panel (owner 2026-11-05). */
+.dream { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--color-line); }
+.dream-intro { display: flex; gap: 10px; align-items: flex-start; }
+.dream-intro p { margin: 0; font-size: 12.5px; line-height: 18px; color: var(--color-text-muted); white-space: normal; }
+.dream-ic { flex: none; margin-top: 2px; color: #c084fc; }
+.dream-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 12.5px; }
+.dream-status .settings-btn { display: inline-flex; align-items: center; gap: 6px; }
+.dream-pill { padding: 1px 8px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text-dim); font-size: 11px; font-weight: 650; }
+.dream-pill[data-on] { background: color-mix(in srgb, #c084fc 18%, transparent); color: #c084fc; }
+.dream-dim { color: var(--color-text-dim); display: inline-flex; align-items: center; gap: 5px; white-space: normal; }
+.dream-note { margin: 0; font-size: 12.5px; color: var(--color-text-dim); white-space: normal; }
+.dream-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dream-run { padding: 8px 10px; border-radius: 10px; background: var(--color-surface-2); display: flex; flex-direction: column; gap: 6px; }
+.dream-run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12.5px; }
+.dream-run-when { font-weight: 600; }
+.dream-err { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--color-amber); font-size: 12px; white-space: normal; }
+.dream-summary { margin: 0; padding-left: 18px; font-size: 12px; line-height: 17px; color: var(--color-text-muted); white-space: normal; }
+.dream-props { display: flex; flex-direction: column; gap: 4px; }
+.dream-prop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px; }
+.dream-prop .settings-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; }
+.dream-prop-kind { padding: 0 6px; border-radius: 6px; background: var(--color-surface-3); font-size: 10.5px; line-height: 17px; color: var(--color-text-dim); }
+.dream-prop-name { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; white-space: normal; }

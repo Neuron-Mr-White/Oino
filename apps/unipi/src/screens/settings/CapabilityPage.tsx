@@ -36,6 +36,8 @@ export type CapabilityPageProps = {
   sectionId: string;
   /** Extra Manage rows a page renders itself. */
   extraManage?: JSX.Element;
+  /** A native block shown between the form and the Manage rows (MCP's server table). */
+  beforeManage?: JSX.Element;
   /** Manage rows Settings answers natively (action id → opener), e.g. Agent profiles. */
   openers?: Record<string, () => void>;
   /** Form fields the page already offers natively (one entry per destination): dropped from the form. */
@@ -71,9 +73,16 @@ export function CapabilityPage(props: CapabilityPageProps) {
   return (
     <Section title={props.title} id={props.sectionId} icon={<props.icon size={14} />} intro={props.blurb}>
       <Show when={namespace()} fallback={<Row label="Settings" description="This host does not report this extension’s settings yet." />}>
-        {(ns) => <NamespaceForm namespace={withoutFields(ns(), props.hideFields)} bare flat testId={`cap-${props.page}-form`} />}
+        {(ns) => (
+          <Show when={withoutFields(ns(), props.hideFields).sections.length > 0}>
+            <NamespaceForm namespace={withoutFields(ns(), props.hideFields)} bare flat testId={`cap-${props.page}-form`} />
+          </Show>
+        )}
       </Show>
-      <div class="settings-in-card-label">Manage</div>
+      {props.beforeManage}
+      <Show when={actions().length > 0 || props.extraManage}>
+        <div class="settings-in-card-label">Manage</div>
+      </Show>
       <For each={offOwners()}>
         {(id) => (
           <div class="settings-off-row" role="status" data-testid={`cap-${props.page}-off`}>

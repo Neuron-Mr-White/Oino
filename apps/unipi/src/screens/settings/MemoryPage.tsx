@@ -7,6 +7,8 @@
 import { Brain } from 'lucide-solid';
 import { CapabilityPage } from './CapabilityPage';
 import { openMemoryBrowserFor } from '../../components/memory/MemoryBrowser';
+import { DreamPanel } from '../../components/memory/DreamPanel';
+import '../../components/memory/memory.css';
 import { useHostsOptional } from '../../hosts/context';
 import { settingsHostId } from '../../settings/target';
 
@@ -23,6 +25,12 @@ export function MemoryPage() {
       sectionId="sec-memory"
       blurb="What the agent remembers between chats, and how it searches it."
       // Owner fix 2026-11-03: the app's own paged browser, no chat needed.
+      extraManage={
+        <>
+          <div class="settings-in-card-label">Dream</div>
+          <DreamPanel hostId={hostId()} />
+        </>
+      }
       openers={{
         'memory.browse': () => openMemoryBrowserFor('project', hostId()),
         'memory.global': () => openMemoryBrowserFor('all', hostId()),
