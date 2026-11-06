@@ -384,6 +384,11 @@ jobs:
             -output src-tauri/binaries/unipi-oino-host-universal-apple-darwin
           codesign --force -s - --identifier dev.unipi.host \
             src-tauri/binaries/unipi-oino-host-universal-apple-darwin
+          # `--target universal-apple-darwin` builds each arch first, and each of those
+          # resolves externalBin by its own triple: give them the same fat binary.
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cp src-tauri/binaries/unipi-oino-host-universal-apple-darwin "src-tauri/binaries/unipi-oino-host-$t"
+          done
       - name: Stage the extension dist + release config
         run: |
           bash scripts/release/stage-dist.sh apps/unipi/target/dist-stage
