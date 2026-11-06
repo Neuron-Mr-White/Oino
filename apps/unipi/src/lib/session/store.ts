@@ -224,7 +224,10 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
         if (reply && Array.isArray(reply.entries)) mutate((s) => reconcileEntries(s, since, reply.entries!, reply.leafId));
       })
       .catch(() => {
-        // Keep the provisional entries; the next run end or a reset fixes them.
+        // The whole tail did not come (too large for one frame — a long turn's subagent
+        // steps): reload the branch as a bounded page instead, or the chat keeps its stale
+        // provisional state (owner 2026-11-06). A failed reload keeps what we have.
+        void reloadBranch().catch(() => undefined);
       })
       .finally(() => {
         reconciling = false;

@@ -803,8 +803,9 @@ impl UiRegistry {
         if let Some(title) = &set.title {
             self.meta.title = Some(title.clone());
         }
+        // An empty message is the clear (`setWorkingMessage()` with no text → the default).
         if let Some(message) = &set.working_message {
-            self.meta.working_message = Some(message.clone());
+            self.meta.working_message = (!message.is_empty()).then(|| message.clone());
         }
         if let Some(visible) = set.working_visible {
             self.meta.working_visible = Some(visible);
@@ -1162,8 +1163,10 @@ impl UiRegistry {
                 Ok(ProduceOutcome::Effect)
             }
             "setWorkingMessage" => {
+                // No message (null / missing / "") restores the default: it must reach the
+                // meta as a clear, or the last text sticks for the rest of the session.
                 let set = oino_ui::slot::UiMetaPatch {
-                    working_message: string(params, "message"),
+                    working_message: Some(string(params, "message").unwrap_or_default()),
                     working_visible: params.get("visible").and_then(JsonValue::as_bool),
                     ..oino_ui::slot::UiMetaPatch::default()
                 };
@@ -2146,5 +2149,31 @@ mod tests {
                 .to_string()
                 .contains("already registered")
         );
+    }
+
+    #[test]
+    fn set_working_message_without_text_clears_it() {
+        // The subagents extension clears with `"message": null`; it must not stick
+        // ("Subagent running" on every later turn, owner 2026-11-06).
+        let mut registry = registry();
+        registry
+            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "Subagent running"})))
+            .unwrap();
+        assert_eq!(registry.snapshot().meta.working_message.as_deref(), Some("Subagent running"));
+        registry
+            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": null})))
+            .unwrap();
+        assert_eq!(registry.snapshot().meta.working_message, None);
+        registry
+            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "again"})))
+            .unwrap();
+        registry.produce("x", "setWorkingMessage", &params(serde_json::json!({}))).unwrap();
+        assert_eq!(registry.snapshot().meta.working_message, None);
+        // A title update leaves the working message alone.
+        registry
+            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "kept"})))
+            .unwrap();
+        registry.produce("x", "setTitle", &params(serde_json::json!({"title": "t"}))).unwrap();
+        assert_eq!(registry.snapshot().meta.working_message.as_deref(), Some("kept"));
     }
 }

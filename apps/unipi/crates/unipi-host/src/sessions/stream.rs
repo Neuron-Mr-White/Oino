@@ -1962,6 +1962,13 @@ fn dispatch(
     });
     // F-02: snapshot the readiness cache before the send (a mutex read, never a probe).
     let readiness = std::sync::Arc::new(service.hub().readiness().snapshot());
+    // Core's whole `get_entries{since?}` (the app's run-end reconcile): a long turn's
+    // subagent steps alone can pass the frame limit, and an oversize reply turns into an
+    // error the app drops — the chat then keeps stale provisional state ("Subagent
+    // running" on a finished turn, owner 2026-11-06). Bound it like a snapshot: big text
+    // is cut with `truncated: true` (the app refetches it on expand).
+    let is_entries = matches!(command, RpcCommand::Agent(AgentCommand::GetEntries { .. }));
+    let blobs_dir = is_entries.then(|| service.hub().blobs_dir());
     tokio::spawn(async move {
         // A file-opened session wakes behind its history: the command waits for it.
         let session = match session.get().await {
@@ -1983,6 +1990,14 @@ fn dispatch(
                         if let Some(data) = data.as_mut() {
                             enrich_models_reply(readiness.as_ref(), data);
                         }
+                    }
+                    if let (Some(dir), Some(entries)) = (
+                        blobs_dir.as_deref(),
+                        data.as_mut()
+                            .and_then(|data| data.get_mut("entries"))
+                            .and_then(Value::as_array_mut),
+                    ) {
+                        let _ = bound::bound_entries(entries, dir);
                     }
                     if navigate && !navigate_cancelled(data.as_ref()) {
                         publish_branch_moved(&session, &feed).await;

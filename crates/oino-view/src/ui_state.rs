@@ -1379,8 +1379,9 @@ impl RegistryMirror {
                 if let Some(title) = set.title {
                     self.meta.title = Some(title);
                 }
+                // An empty message is the clear (`setWorkingMessage()` → the default).
                 if let Some(message) = set.working_message {
-                    self.meta.working_message = Some(message);
+                    self.meta.working_message = (!message.is_empty()).then_some(message);
                 }
                 if let Some(visible) = set.working_visible {
                     self.meta.working_visible = Some(visible);

@@ -106,6 +106,31 @@ describe('session store over the mock host', () => {
     expect(turns[2]!.segments[0]!.fold?.detail).toBe('edited 1 file');
   });
 
+  it('a reconcile that fails (too large for a frame) reloads the branch as a page instead (owner 2026-11-06)', async () => {
+    const entries = structuredClone(rt.fresh.entries!) as unknown[];
+    const w = world(
+      sessionSpec({
+        cmd: {
+          get_entries: (cmd) => {
+            if ((cmd as { since?: string }).since) throw new Error('The answer was too large to send');
+            return { entries, leafId: 'a4', hasMore: false, cursor: null };
+          },
+        },
+      }),
+    );
+    const c = clock();
+    const { s, dispose } = open(w, c);
+    disposers.push(() => (s.close(), dispose()));
+    await tick();
+    c.frame();
+    await tick();
+    await tick();
+    const asks = w.log.filter((l) => l.kind === 'cmd' && l.op === 'get_entries').map((l) => l.args as { since?: string; limit?: number });
+    expect(asks.some((a) => a.since === 'a2')).toBe(true);
+    expect(asks.some((a) => typeof a.limit === 'number' && a.since === undefined)).toBe(true);
+    expect(s.turns().map((t) => t.turnId)).toEqual(['pre:m1', 'u1', 'u2']);
+  });
+
   it('a seq gap reopens with sinceSeq and the resume patch fills it', async () => {
     const w = world(sessionSpec({ events: [] }));
     const c = clock();
