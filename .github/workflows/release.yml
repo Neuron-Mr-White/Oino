@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |
           set -x
-          sh scripts/release/stage-dist.sh target/dist-stage
+          bash scripts/release/stage-dist.sh target/dist-stage
           exe=""; [[ "$TARGET" == *windows* ]] && exe=".exe"
           mkdir -p target/out/bin
           cp "target/$TARGET/release/oino$exe" target/out/bin/
@@ -169,7 +169,7 @@ jobs:
             mkdir -p target/out/share/oino
             cp -R target/dist-stage/extensions target/out/share/oino/extensions
           fi
-          ls -laR target/out | head -40
+          find target/out -maxdepth 3 | head -60 || true
           # The bare binaries `oino update` and `unipi-oino-host update` swap in
           # (release-manifest.json points at these, not at the archives).
           raw=".bin"; [[ "$TARGET" == *windows* ]] && raw=".exe"
@@ -238,7 +238,7 @@ jobs:
         run: apps/unipi/src-tauri/unipi-host-sidecar.sh x86_64-unknown-linux-gnu
       - name: Stage the extension dist + release config
         run: |
-          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          bash scripts/release/stage-dist.sh apps/unipi/target/dist-stage
           mkdir -p apps/unipi/target
           stage="$PWD/apps/unipi/target/dist-stage/extensions"
           cargo build --release -p oino-cli --bin oino
@@ -314,7 +314,7 @@ jobs:
       - name: Stage the extension dist + release config
         shell: bash
         run: |
-          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          bash scripts/release/stage-dist.sh apps/unipi/target/dist-stage
           stage="$(pwd -W 2>/dev/null || pwd)/apps/unipi/target/dist-stage/extensions"
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
@@ -386,7 +386,7 @@ jobs:
             src-tauri/binaries/unipi-oino-host-universal-apple-darwin
       - name: Stage the extension dist + release config
         run: |
-          sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+          bash scripts/release/stage-dist.sh apps/unipi/target/dist-stage
           stage="$PWD/apps/unipi/target/dist-stage/extensions"
           cat > apps/unipi/target/tauri-release.conf.json <<EOF
           {
