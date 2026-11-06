@@ -33,6 +33,14 @@ export function sizeFor(detents: readonly Detent[]): Detent {
   return 'content';
 }
 
+/** Floating layers portaled out of the drawer (Kobalte Select/Combobox/Menu/Popover, custom pickers). */
+const FLOATING_LAYER = '[data-popper-positioner],[data-kb-top-layer],[data-floating-layer],[role="listbox"],[role="menu"]';
+
+/** Pure: is this pointer/focus event target inside a portaled floating layer (not a real outside tap)? */
+export function inFloatingLayer(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(FLOATING_LAYER);
+}
+
 export type SheetFrameProps = {
   open: boolean;
   /** A request: the caller flips `open` (or refuses). */
@@ -104,6 +112,10 @@ export function SheetFrame(props: SheetFrameProps) {
       }}
       closeOnEscapeKeyDown={false}
       closeOnOutsideFocus={false}
+      onOutsidePointer={(event: PointerEvent) => {
+        // Picking an option in a portaled popover is not a scrim tap.
+        if (inFloatingLayer(event.target)) event.preventDefault();
+      }}
     >
       <Drawer.Portal>
         <Drawer.Overlay class="sheet-overlay ph-scrim" data-level={props.level === 2 ? '2' : undefined} />
