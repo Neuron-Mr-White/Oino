@@ -9,3 +9,9 @@ Rules:
 - Old sessions must still replay; keep the cached prefix byte-identical (spec §C). No features beyond the spec; if the spec is genuinely ambiguous, pick the most conservative reading and list it in your report.
 Done = every acceptance test for your package exists and passes, clippy clean on touched crates, all work committed.
 Report: commits, files touched, tests run + results, deviations from the spec, notes for downstream packages.
+
+## Ownership exceptions (supervisor, 2026-11-07)
+- File ownership in the spec is for sequencing, not a reason to stop. If your package needs a change in a file outside your owned list, make the narrowest change that does the job and list it under "Ownership exceptions" in your report. Do not return "blocked" for ownership reasons.
+- The only limit: do not edit a file that a package running at the same time as yours owns (concurrent pairs: wp-exec-bg ∥ fix-tools-acp ∥ fix-cache-legacy; wp-autonomy-ui ∥ sa-backend; wp-compaction ∥ wp-zvec ∥ sa-ui). If you must, keep it to a few lines and say so in the report.
+- Upstream packages listed as your inputs are committed before you start. If one is still missing something you need, implement the minimum yourself rather than stopping.
+- The gpt-sol audit `r-qa-backend` (P1-1 … P1-10, P2) is the bar: any finding in your package's area must be fixed with a regression test that reproduces the audit's exact input.
