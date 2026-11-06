@@ -89,3 +89,27 @@ The LLM summarizer uses the adaptive prompt in `ref-droid-prompts.md` §5.1 verb
 Post-turn threshold uses actual provider input usage including cache reads; resolution is session override → model/family → global → model default → 250k, clamped to max input. Suppress repeated threshold compaction for the same session/model/limit until usage falls below the limit; failed threshold compaction is nonfatal. On in-turn overflow compact with `requireProgress` and retry the same turn; if no messages are removed, return the original failure. `/compact` accepts custom instructions; PreCompact may block only manual compaction. Reset the cache snapshot after success, then re-announce retained skills and loaded deferred tools without altering slots 1–2.
 
 **Settings:** preserve existing vcc/llm toggle; add `compactionTokenLimit`, `compactionTokenLimitPerModel`, `compactionModel`, `compactionThresholdCheckEnabled` and session override. **Tests:** legacy and epoch reload, branch anchor validation, crash before commit, no data loss, retained images/skills, iterative delta/TODO replacement, all trigger and failure paths, provider usage accounting, cache-prefix byte identity.
+
+## G. Loop guards
+
+**Current:** `crates/oino-agent/src/agent_loop.rs:128` polls steering and :213 executes tool batches; it has no v3 todo/empty-response guard at those points.
+
+**Target:** every normal session counts completed tool calls since a list was created or updated. Suggest TodoWrite after five calls without a list; remind after 20 calls without an update; once per ending attempt, if open items remain, append the settle nag from `ref-droid-prompts.md` §4.3 and continue. A new follow-up user message during execution gets the §4.4 steering note, not cancellation. Stop after three consecutive responses with neither text nor tool calls, and surface a notice. Detect repeated identical tool calls and stop; resample degenerate/looping output at most three times. A length-truncated empty response gets `Continue.` before retry. Reset counters at appropriate turn/list progress boundaries and ensure resampling never executes the same side effect twice.
+
+**Migration/settings/tests:** existing sessions start counters at zero; no new settings. Simulate thresholds, progress resets, open-todo settlement, user steering, empty/length responses, repeated calls and side-effect deduplication.
+
+## H. Codemode and deferred tools
+
+**Current:** dynamic system/tool changes pass through `crates/oino-core/src/session/tools.rs:371`; the agent handles tool declarations at `crates/oino-agent/src/agent_loop.rs:337`. Consult the installed pi `docs/codemode.md` for current parity, including QuickJS sandbox, `tools`, discovery, storage, options and output limits.
+
+**Target:** enable existing codemode execution and exposure modes with pi parity; every invoked tool still traverses the E permission gate. Slot 2 includes a stable `Deferred tools:` list. B's `tool_search` selects exact comma-separated names after `select:` or matches keywords against tool names; keyword limit defaults to five, exact selection ignores the limit. Add selected schemas to the live declarations and retain loaded names through compaction. On new or removed tools append a C catalog-update reminder, never mutate slot 2. Enforce unknown/unavailable names as errors without fabricating tools.
+
+**Migration/settings/tests:** retain existing codemode configuration and old tool entries; preserve `find` replay alias. Test scripts, isolation, partial failures, permission bypass attempts, deferred exact/keyword search, MCP updates and retained tools after reload/compaction.
+
+## I. Semantic grep
+
+**Current:** grep registration is `crates/oino-tools/src/info.rs:360`.
+
+**Target:** semantic search setting defaults off; normal grep uses in-process ripgrep. When enabled use CPU-only zvec-grep direct mode or in-process engine, never a daemon; exact searches need no index. Semantic/hybrid search uses `<project>/.zvec-grep/` and a small local model such as `local/potion-code-16m-v2`. Index creation requires explicit user consent; without it return an actionable refusal, never build silently. Unload the model when idle. Keep normal grep contract and permission boundaries; preserve project isolation.
+
+**Migration/settings/tests:** persist an opt-in semantic toggle; existing sessions remain on exact ripgrep. Test off-by-default, exact without index, consent denial/approval, index path isolation, model unload and CPU-only build.
