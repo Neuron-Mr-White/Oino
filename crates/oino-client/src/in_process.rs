@@ -82,7 +82,7 @@ const PAGE_MAX_BYTES: u64 = 24 << 20;
 /// for the page — never the whole history (see `oino_session::manager::page_start`).
 fn entries_page(
     manager: &oino_session::manager::SessionManager,
-    before: Option<String>,
+    before: Option<&str>,
     limit: Option<usize>,
     ids: Option<Vec<String>>,
 ) -> Result<JsonValue, ClientError> {
@@ -96,7 +96,7 @@ fn entries_page(
         return Ok(json!({ "entries": entries, "leafId": leaf }));
     }
     let branch = manager.branch(None);
-    let end = match before.as_deref() {
+    let end = match before {
         None => branch.len(),
         Some(before) => branch
             .iter()
@@ -632,7 +632,8 @@ impl Shared {
             }
             OinoCommand::GetContextUsage => data(session.context_usage()),
             OinoCommand::EntriesPage { before, limit, ids } => {
-                let page = session.with_manager(|m| entries_page(m, before, limit, ids))?;
+                let page =
+                    session.with_manager(|m| entries_page(m, before.as_deref(), limit, ids))?;
                 data(page)
             }
             command @ (OinoCommand::Topics { .. }
@@ -1133,12 +1134,12 @@ mod entries_page_tests {
         assert_eq!(page["hasMore"], true);
         assert_eq!(page["cursor"], "u8");
         assert_eq!(page["leafId"], "a9");
-        let older = entries_page(&manager, Some("u8".into()), Some(100), None).unwrap();
+        let older = entries_page(&manager, Some("u8"), Some(100), None).unwrap();
         assert_eq!(ids(&older).len(), 16);
         assert_eq!(older["hasMore"], false);
         let by_id =
             entries_page(&manager, None, None, Some(vec!["a3".into(), "nope".into()])).unwrap();
         assert_eq!(ids(&by_id), ["a3"]);
-        assert!(entries_page(&manager, Some("nope".into()), None, None).is_err());
+        assert!(entries_page(&manager, Some("nope"), None, None).is_err());
     }
 }

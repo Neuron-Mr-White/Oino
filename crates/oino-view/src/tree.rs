@@ -341,8 +341,7 @@ impl TreeModel {
         let roots = build_roots(
             data.get("tree")
                 .and_then(JsonValue::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or(&NO_ROOTS),
+                .map_or(NO_ROOTS.as_slice(), Vec::as_slice),
         );
         let leaf = data
             .get("leafId")

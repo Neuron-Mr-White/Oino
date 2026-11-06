@@ -616,9 +616,8 @@ impl SessionHub {
     /// A session created by [`SessionHub::create_session`] is live before its first
     /// conversation entry writes the file — it has no record yet, so id-based lookups
     /// that go through [`SessionHub::list`] miss it (E-03).
-    #[must_use]
-    pub async fn is_live(&self, session_id: &str) -> bool {
-        lock(&self.inner.live_ids).contains(session_id)
+    pub fn is_live(&self, session_id: &str) -> impl Future<Output = bool> {
+        std::future::ready(lock(&self.inner.live_ids).contains(session_id))
     }
 
     /// Is a wake/close/eviction holding the hub lock right now? (A caller that must not
