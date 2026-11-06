@@ -1,0 +1,39 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "oino.azure",
+  "name": "Azure OpenAI",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Azure OpenAI Responses wire: resource / base URL / deployment configuration from AZURE_OPENAI_* or request options.",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "azure-openai-responses"
+    ],
+    "providers": [
+      "azure"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "*.openai.azure.com",
+        "*.cognitiveservices.azure.com",
+        "*.ai.azure.com"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION",
+      "AZURE_OPENAI_BASE_URL",
+      "AZURE_OPENAI_RESOURCE_NAME",
+      "AZURE_OPENAI_API_VERSION",
+      "AZURE_OPENAI_DEPLOYMENT_NAME_MAP"
+    ]
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:bf01c0bb75161abb55c46c466dcdfe7cfec31e5cd17fc56dd1fa54a6624bc725"
+  }
+}

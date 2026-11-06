@@ -1,0 +1,47 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "oino.openai-responses",
+  "name": "OpenAI Responses",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "OpenAI Responses wire for OpenAI (API key or Sign in with ChatGPT), xAI and Meta, and for openai-responses models of GitHub Copilot and Cloudflare AI Gateway.",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "openai-responses"
+    ],
+    "providers": [
+      "meta",
+      "openai",
+      "xai"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "api.meta.ai",
+        "api.openai.com",
+        "api.x.ai",
+        "auth.openai.com",
+        "api.individual.githubcopilot.com",
+        "api.business.githubcopilot.com",
+        "api.enterprise.githubcopilot.com",
+        "gateway.ai.cloudflare.com",
+        "api.cloudflare.com"
+      ],
+      "listenLoopback": true
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_GATEWAY_ID"
+    ],
+    "openUrl": true
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:800b0e8731cbdb5ea997b6811ac252bf8e118c75fbab0df5f691cfdb6866c990"
+  }
+}
