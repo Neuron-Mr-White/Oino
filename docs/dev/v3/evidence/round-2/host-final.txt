@@ -1,0 +1,318 @@
+ase ... ok
+test new_label_opts_in_to_creating_an_unknown_one ... ok
+test duplicate_unknown_labels_in_one_call_report_the_first_offender ... ok
+test matching_is_case_insensitive_and_trimmed_and_keeps_the_stored_spelling ... ok
+test an_unknown_label_is_refused_with_the_sorted_existing_list ... ok
+test edit_labels_follow_the_same_rule ... ok
+test the_existing_label_set_includes_archived_tasks ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/sessions.rs (apps/unipi/target/debug/deps/sessions-67ee7bb14bac41db)
+
+running 10 tests
+test activity_entries_carry_the_session_tag ... ok
+test add_attach_embeds_markdown_for_bare_and_wrapped_paths ... ok
+test agents_edit_only_their_own_drafts ... ok
+test an_agent_blocks_only_the_task_its_session_runs ... ok
+test start_reaps_dead_sessions_and_leaves_foreign_hosts_alone ... ok
+test the_session_cap_is_per_project ... ok
+test next_chain_and_search_are_read_only ... ok
+test max_sessions_env_limits_other_sessions ... ok
+test project_archive_and_unarchive ... ok
+test in_review_to_archived_is_user_only_and_bulk_lane_works ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/start_finish.rs (apps/unipi/target/debug/deps/start_finish-13c8a70cf0892671)
+
+running 11 tests
+test agent_move_points_at_start_and_finish ... ok
+test start_claims_the_task_for_the_session_as_the_agent ... ok
+test finish_moves_the_own_claim_to_review_with_the_summary ... ok
+test finish_refuses_another_sessions_claim ... ok
+test a_dead_agent_claim_is_reaped_back_to_todo ... ok
+test a_session_may_start_several_tasks_but_the_session_cap_holds ... ok
+test start_refuses_non_todo_claimed_and_unready_tasks ... ok
+test task_json_carries_the_full_status_report_for_review_and_blocked ... ok
+test start_resumes_a_blocked_task_with_the_same_claim_and_cap_rules ... ok
+test cli_start_and_finish_round_trip ... ok
+test finish_and_block_can_attach_evidence_files ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/title_optional.rs (apps/unipi/target/debug/deps/title_optional-02c9a255bc6efa1f)
+
+running 9 tests
+test display_title_truncates_by_characters_not_bytes ... ok
+test display_title_strips_markdown_markers_and_skips_embeds ... ok
+test add_with_neither_title_nor_body_is_a_usage_error ... ok
+test format_round_trips_an_empty_and_a_missing_title ... ok
+test add_with_a_title_only_still_works ... ok
+test add_with_a_body_only_stores_an_empty_title_and_derives_the_display ... ok
+test edit_refuses_to_leave_neither_title_nor_body ... ok
+test edit_may_clear_the_body_while_the_title_remains ... ok
+test edit_may_clear_the_title_while_the_body_remains ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/transitions.rs (apps/unipi/target/debug/deps/transitions-137801b888ae280d)
+
+running 21 tests
+test rule_for_unknown_pairs_is_none ... ok
+test allowed_targets_are_listed_per_actor ... ok
+test rework_note_is_optional ... ok
+test backlog_and_todo_shift_freely_for_user_and_agent ... ok
+test blocked_to_done_is_user_only ... ok
+test unblocking_is_free_of_a_comment_and_open_to_agents ... ok
+test agents_cannot_finish_or_cancel ... ok
+test the_table_has_no_duplicate_rows ... ok
+test cancelling_is_user_only_and_only_from_the_open_lanes ... ok
+test undo_worthy_matches_the_hard_to_reverse_moves ... ok
+test archiving_is_the_only_exit_from_done_and_cancelled ... ok
+test start_and_finish_are_agent_and_system_only ... ok
+test final_states_are_final ... ok
+test every_table_row_is_reachable_and_gated ... ok
+test blocked_requires_a_comment_from_agent_and_system ... ok
+test a_running_task_cannot_be_moved_by_a_user ... ok
+test same_status_is_refused ... ok
+test duplicate_resets_lifecycle_fields ... ok
+test agent_blocks_declares_a_comment_and_the_row_becomes_readable ... ok
+test an_agent_unblocks_without_a_comment_and_the_text_carries_no_colon ... ok
+test the_user_answers_a_blocked_task_and_the_note_survives ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v3_kanboard.rs (apps/unipi/target/debug/deps/v3_kanboard-731a491bfe0f0032)
+
+running 4 tests
+test same_session_claim_is_idempotent ... ok
+test dispatcher_reaper_does_not_requeue ... ok
+test ticket_defaults_and_relay ... ok
+test autonomy_cli_create_edit_show_and_wrong_session_finish ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (apps/unipi/target/debug/deps/unipi_proto-5b72d1a621621b93)
+
+running 72 tests
+test blob::tests::sha256_hex_validates ... ok
+test error::tests::internal_and_schema_are_not_retryable_by_default ... ok
+test error::tests::transport_and_timeout_are_retryable_by_default ... ok
+test error::tests::new_falls_back_to_placeholder_for_empty_message ... ok
+test error::tests::schema_error_maps_to_e_schema_with_path ... ok
+test blob::tests::blob_size_bounds ... ok
+test cron::tests::runs_limit_bounds ... ok
+test blob::tests::blob_name_rejects_separators ... ok
+test blob::tests::blob_mime_validates ... ok
+test cron::tests::ids_bounds ... ok
+test board::tests::argv_and_slug_validation ... ok
+test cron::tests::name_prompt_bounds ... ok
+test frame::tests::decoder_errors_on_oversized_length_before_body_arrives ... ok
+test frame::tests::decoder_decodes_multiple_concatenated_frames ... ok
+test frame::tests::decoder_decodes_frame_split_byte_by_byte ... ok
+test error::tests::serializes_with_optional_fields_omitted ... ok
+test error::tests::host_version_is_additive_on_the_wire ... ok
+test frame::tests::round_trips_a_control_frame ... ok
+test frame::tests::decoder_returns_none_while_waiting_for_more_bytes ... ok
+test cron::tests::settings_round_trip_and_defaults ... ok
+test forward::tests::port_bounds ... ok
+test board::tests::cli_data_round_trips_both_outcomes ... ok
+test frame::tests::decoder_errors_on_unknown_kind_as_soon_as_seen ... ok
+test fs::tests::fs_path_validates ... ok
+test frame::tests::decoder_decodes_single_frame_pushed_whole ... ok
+test fs::tests::search_query_bounds ... ok
+test git::tests::git_paths ... ok
+test git::tests::ref_names ... ok
+test lsp::tests::language_validates ... ok
+test lsp::tests::attach_data_shape ... ok
+test memory::tests::project_names_match_the_memory_extension ... ok
+test paths::tests::no_home_at_all_is_relative ... ok
+test lsp::tests::servers_data_shape ... ok
+test paths::tests::windows_prefers_home_then_profile_no_legacy ... ok
+test push::tests::id_and_wait_bounds ... ok
+test paths::tests::unix_home_and_override ... ok
+test push::tests::outcome_is_snake_case ... ok
+test session_bulk::tests::filters_and_ranges_round_trip ... ok
+test sharing::tests::kinds_and_notes ... ok
+test term::tests::term_id_validates_and_round_trips ... ok
+test sharing::tests::scope_bounds ... ok
+test version::tests::accepts_prerelease_and_build ... ok
+test error::tests::deserializing_an_empty_message_fails ... ok
+test term::tests::term_info_shape ... ok
+test cron::tests::job_round_trips ... ok
+test memory::tests::page_round_trips ... ok
+test settings::tests::relay_is_n0_or_https ... ok
+test settings::tests::keys_are_closed_but_open_blocks_take_leaves ... ok
+test session::tests::meta_patch_wire_shape ... ok
+test settings::tests::unknown_key_is_a_schema_error ... ok
+test session::tests::session_target_and_name_validate ... ok
+test session_bulk::tests::words_are_bounded_and_lowercase ... ok
+test session::tests::event_dto_kind_and_events_batch ... ok
+test frame::tests::encode_rejects_oversized_payload ... ok
+test git::tests::messages_and_checks ... ok
+test session::tests::snapshot_snapshot_and_resume_shapes ... ok
+test term::tests::attach_data_shape ... ok
+test sharing::tests::leave_scope_and_data_round_trip ... ok
+test term::tests::term_info_accepts_rows_without_the_foreground_field ... ok
+test version::tests::accepts_basic_semver ... ok
+test version::tests::rejects_malformed ... ok
+test version::tests::deserializes_valid_and_rejects_invalid ... ok
+test control::tests::title_rejects_over_512_chars ... ok
+test term::tests::term_shell_validates ... ok
+test control::tests::exit_accepts_null_code ... ok
+test settings::tests::host_cmd_wire_names_match_the_oino_commands ... ok
+test frame::tests::encode_accepts_exactly_max_frame ... ok
+test session_bulk::tests::batch_limits ... ok
+test session::tests::replies_and_hub_events_round_trip ... ok
+test session::tests::session_search_pages_and_matches_every_word ... ok
+test control::tests::unknown_extra_fields_are_ignored ... ok
+test control::tests::hello_pair_round_trips ... ok
+
+test result: ok. 72 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/admin_fixtures.rs (apps/unipi/target/debug/deps/admin_fixtures-4b76cfaebf041bbc)
+
+running 1 test
+test shared_admin_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/blob_fixtures.rs (apps/unipi/target/debug/deps/blob_fixtures-65db9d5d453b8192)
+
+running 1 test
+test shared_blob_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/browser_fixtures.rs (apps/unipi/target/debug/deps/browser_fixtures-ebf7769673d96c86)
+
+running 2 tests
+test browser_cmd_round_trips_with_defaults ... ok
+test shared_browser_fixtures_agree ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cron_fixtures.rs (apps/unipi/target/debug/deps/cron_fixtures-4f0fb123db1d304e)
+
+running 1 test
+test shared_cron_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/data_fixtures.rs (apps/unipi/target/debug/deps/data_fixtures-a51048b8bf2cf4e4)
+
+running 4 tests
+test has_at_least_2_valid_fixtures_per_schema ... ok
+test has_at_least_2_invalid_fixtures_per_schema ... ok
+test accepts_every_valid_fixture ... ok
+test rejects_every_invalid_fixture ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fixtures.rs (apps/unipi/target/debug/deps/fixtures-e8713b644d3ceec7)
+
+running 4 tests
+test has_at_least_12_valid_fixtures ... ok
+test has_at_least_15_invalid_fixtures ... ok
+test rejects_every_invalid_fixture ... ok
+test accepts_every_valid_fixture ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/forward_fixtures.rs (apps/unipi/target/debug/deps/forward_fixtures-3d63b023665136cc)
+
+running 1 test
+test shared_forward_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fs_fixtures.rs (apps/unipi/target/debug/deps/fs_fixtures-286e893c876854ea)
+
+running 1 test
+test shared_fs_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/git_fixtures.rs (apps/unipi/target/debug/deps/git_fixtures-28c1a319716e516b)
+
+running 1 test
+test shared_git_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/notify_fixtures.rs (apps/unipi/target/debug/deps/notify_fixtures-885707501c500f7e)
+
+running 1 test
+test shared_notify_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/push_fixtures.rs (apps/unipi/target/debug/deps/push_fixtures-5b59d75d346202c7)
+
+running 1 test
+test shared_push_fixtures_agree ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/session_bulk_fixtures.rs (apps/unipi/target/debug/deps/session_bulk_fixtures-82358425ec67582a)
+
+running 1 test
+test session_bulk_fixtures_match ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/session_fixtures.rs (apps/unipi/target/debug/deps/session_fixtures-060dfb3c5d6ed363)
+
+running 5 tests
+test proto_is_v2_minor_friendly ... ok
+test meta_fields_round_trip_the_shared_card_fixture ... ok
+test session_cmd_is_any_rpc_command_verbatim ... ok
+test events_carry_numbered_events ... ok
+test shared_session_fixtures_agree ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/settings_fixtures.rs (apps/unipi/target/debug/deps/settings_fixtures-570569018dfcbad3)
+
+running 2 tests
+test every_advertised_key_is_accepted ... ok
+test shared_settings_fixtures_agree ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/sharing_fixtures.rs (apps/unipi/target/debug/deps/sharing_fixtures-576607bb95af69c2)
+
+running 4 tests
+test leave_data_mirrors_the_host_answer ... ok
+test older_host_rejection_is_representable ... ok
+test feature_leave_round_trips ... ok
+test shared_sharing_fixtures_agree ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_host
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_kanboard
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_proto
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 6 targets failed:
+    `-p unipi-host --test instance`
+    `-p unipi-host --test session_stream`
+    `-p unipi-host --test sessions_hub`
+    `-p unipi-host --test snapshot_bound`
+    `-p unipi-host --test unipi_agents`
+    `-p unipi-host --test unipi_settings`

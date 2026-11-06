@@ -1,0 +1,20 @@
+{
+  "v3-final": "0",
+  "clippy-final": "101",
+  "release": "0",
+  "vitest-final": "1",
+  "host-final": "101",
+  "root-test-final": "101",
+  "root-test-2": "101",
+  "vitest": "1",
+  "host": "101",
+  "tauri": "0",
+  "wasm": "0",
+  "extensions": "101",
+  "tsc": "0",
+  "root-build-2": "0",
+  "root-test": "101",
+  "root-clippy": "101",
+  "root-build": "101",
+  "deb_sha256": "67cb74a40cc5aa2e99f523e208d5b5634eb98807b0d830588cb9edd99bbbd077"
+}

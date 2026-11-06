@@ -692,6 +692,77 @@ pub async fn session_new(
     .await
 }
 
+/// Authenticated Superagent dispatcher operation.
+#[tauri::command]
+pub async fn superagent_status(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentStatus, REPLY_TIMEOUT).await
+}
+
+/// Authenticated Superagent dispatcher operation.
+#[tauri::command]
+pub async fn superagent_configure(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    enabled: bool,
+    concurrency_cap: usize,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentConfigure { enabled, concurrency_cap }, REPLY_TIMEOUT).await
+}
+
+/// Authenticated Superagent dispatcher operation.
+#[tauri::command]
+pub async fn superagent_start(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    project_id: String,
+    task_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentStart { project_id, task_id }, REPLY_TIMEOUT).await
+}
+
+/// Authenticated Superagent dispatcher operation.
+#[tauri::command]
+pub async fn superagent_stop(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    project_id: String,
+    task_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentStop { project_id, task_id }, REPLY_TIMEOUT).await
+}
+
+/// Authenticated Superagent dispatcher operation.
+#[tauri::command]
+pub async fn superagent_relay(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    project_id: String,
+    task_id: String,
+    text: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentRelay { project_id, task_id, text }, REPLY_TIMEOUT).await
+}
+
+/// Opens the restricted Superagent through the existing authenticated session stream.
+#[tauri::command]
+pub async fn superagent_session(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    streams: State<'_, SessionStreams>,
+    host_id: String,
+    on_event: Channel<SessionMsg>,
+) -> Result<String, AppErrorDto> {
+    open_session(app, state, streams, host_id, Request::SuperagentSession, on_event).await
+}
+
 /// `session_fork` (host.md §4.2): fork a session and keep the fork as the stream.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -1155,6 +1226,28 @@ mod tests {
 
     fn frame(control: &Control) -> Vec<u8> {
         encode(FrameKind::Control, &serde_json::to_vec(control).unwrap())
+    }
+
+    #[test]
+    fn superagent_requests_use_authenticated_hello_framing() {
+        let requests = [
+            (Request::SuperagentStatus, "superagent.status"),
+            (Request::SuperagentSession, "superagent.session"),
+            (Request::SuperagentConfigure { enabled: false, concurrency_cap: 2 }, "superagent.configure"),
+            (Request::SuperagentStart { project_id: "p".into(), task_id: "t".into() }, "superagent.start"),
+            (Request::SuperagentStop { project_id: "p".into(), task_id: "t".into() }, "superagent.stop"),
+            (Request::SuperagentRelay { project_id: "p".into(), task_id: "t".into(), text: "hello".into() }, "superagent.relay"),
+        ];
+        for (request, op) in requests {
+            let bytes = hello_frame(request).unwrap();
+            let hello: serde_json::Value = serde_json::from_slice(&bytes[5..]).unwrap();
+            assert_eq!(hello["type"], "hello");
+            assert_eq!(hello["req"]["op"], op);
+        }
+        let registration = include_str!("lib.rs");
+        for name in ["status", "session", "configure", "start", "stop", "relay"] {
+            assert!(registration.contains(&format!("chat::superagent_{name},")));
+        }
     }
 
     #[tokio::test]

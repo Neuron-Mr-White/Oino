@@ -1,0 +1,349 @@
+ answer::extract::tests::last_assistant_text_skips_empty_and_non_assistant ... ok
+test answer::tests::completions_and_methods ... ok
+test answer::extract::tests::reads_assistant_content_arrays ... ok
+test answer::tests::questions_dialog_prefills_the_template ... ok
+test answer::web::tests::ssh_detection_and_ports ... ok
+test attach::tests::attachment_json ... ok
+test answer::tests::web_panel_shape ... ok
+test commands::tests::cleanup_texts ... ok
+test commands::tests::summarize_prompts ... ok
+test hostfs::tests::maps_both_ways ... ok
+test answer::tests::reply_dialog_shape_and_outcomes ... ok
+test hostfs::tests::absolute_and_short_paths ... ok
+test image::models::tests::custom_endpoint_uses_the_model_id_as_typed ... ok
+test image::models::tests::routes_by_provider_with_the_right_key_source ... ok
+test attach::tests::chip_view_and_line ... ok
+test image::models::tests::says_exactly_what_to_set ... ok
+test image::models::tests::keeps_image_output_models_with_modalities ... ok
+test image::recognize::tests::completion_shapes ... ok
+test image::recognize::tests::returns_the_models_answer_and_joins_arrays ... ok
+test image::recognize::tests::sends_a_data_url_without_streaming_and_no_double_slash ... ok
+test image::models::tests::resolves_vision_models_and_rejects_blind_ones ... ok
+test image::source::tests::data_urls_and_base64_detection ... ok
+test image::recognize::tests::surfaces_errors ... ok
+test image::recognize::tests::streams_are_tolerated ... ok
+test image::source::tests::files ... ok
+test image::source::tests::data_urls_base64_and_rejections ... ok
+test image::source::tests::extensions ... ok
+test image::transports::tests::host_credential_headers_pass_through ... ok
+test image::transports::tests::openai_images_b64_and_revised_prompts ... ok
+test image::transports::tests::openrouter_edit_sends_the_source_as_image_url ... ok
+test image::transports::tests::openrouter_chat_completions_with_modalities ... ok
+test relink::git::tests::porcelain_parsing ... ok
+test maintenance::doctor::tests::overall_reflects_the_worst_status ... ok
+test image::models::tests::helpers ... ok
+test image::models::tests::recognize_gating ... ok
+test image::tests::output_folder_falls_back_to_the_state_folder ... ok
+test image::tests::slugs_and_file_names ... ok
+test image::tests::tool_definitions ... ok
+test relink::tests::candidates_prefer_the_cwd_name ... ok
+test relink::tests::parses_arguments ... ok
+test relink::tests::plan_groups_by_area ... ok
+test relink::tests::validates_old_roots ... ok
+test rename::gate::tests::last_reply_and_tool_calls ... ok
+test rename::gate::tests::sanitizes_model_titles ... ok
+test rename::gate::tests::topic_question_only_when_named ... ok
+test rename::session::tests::prompt_uses_current_name_and_recent_requests ... ok
+test relink::sessions::tests::same_name_conflict_is_skipped_without_overwriting ... ok
+test rename::session::tests::names_from_messages_and_events ... ok
+test relink::sessions::tests::move_preserves_body_bytes_logs_header_removes_old_dir_and_is_idempotent ... ok
+test rename::tests::input_tracking ... ok
+test maintenance::doctor::tests::individual_checks ... ok
+test image::source::tests::magic_numbers ... ok
+test image::transports::tests::fal_key_auth_sync_mode_and_image_urls ... ok
+test relink::sessions::tests::encodes_like_oino_session ... ok
+test image::transports::tests::errors ... ok
+test rename::session::tests::model_candidates ... ok
+test answer::extract::tests::template_round_trip_keeps_multi_line_answers ... ok
+test render::harness::tests::fallback_meta_is_stable_per_type ... ok
+test rename::tests::restores_last_auto_name ... ok
+test render::harness::tests::meta_from_details ... ok
+test rename::session::tests::spec_and_request_shapes ... ok
+test relink::sessions::tests::lineage_notice_and_foreign_cwd_headers ... ok
+test render::harness::tests::renders_messages ... ok
+test attach::tests::trailing_token_backspace ... ok
+test render::tools::tests::verbs_and_titles ... ok
+test render::tools::tests::target_args ... ok
+test settings::tests::rename_model_inherit_is_default ... ok
+test settings::tests::defaults_normalise ... ok
+test render::tests::dispatch ... ok
+test settings::tests::image_config_merges_and_validates ... ok
+test render::tools::tests::simple_rows ... ok
+test render::tools::tests::style_dispatch_and_annotations ... ok
+test rename::gate::tests::first_request_then_only_confident_topic_change ... ok
+test rename::gate::tests::vague_opener_with_real_work_can_name ... ok
+test rename::tests::agent_end_gating ... ok
+test answer::extract::tests::long_wrapped_questions_stay_whole_and_sentences_split ... ok
+test settings::tests::schemas_cover_the_unipi_keys ... ok
+test render::harness::tests::densities ... ok
+test answer::extract::tests::question_lines_outside_code_with_markers_stripped_and_urls_ignored ... ok
+test settings::tests::answer_and_render_values ... ok
+test answer::extract::tests::inner_dots_and_urls_inside_questions ... ok
+test chatter::tests::greetings_acks_and_commands_are_chatter ... ok
+test maintenance::cleanup::tests::removes_the_previewed_items_and_nothing_else ... ok
+test rename::tests::auto_names_are_renamed_again_but_not_twice_in_a_round ... ok
+test maintenance::cleanup::tests::bytes_and_targets ... ok
+test rename::gate::tests::never_renames_on_greetings_acks_or_commands ... ok
+test render::tools::tests::advanced_files ... ok
+test rename::gate::tests::falls_back_without_jev ... ok
+test render::parse::tests::display_diff_and_status ... ok
+test answer::web::tests::renders_markdown_tables ... ok
+test answer::web::tests::escapes_html_and_renders_inline ... ok
+test answer::web::tests::page_and_routing ... ok
+test maintenance::cleanup::tests::previews_only_allowlisted_old_enough_entries ... ok
+test render::tests::delegated_panel ... ok
+test render::parse::tests::test_summaries_and_json ... ok
+test render::parse::tests::python_heredoc_and_inline_code ... ok
+test render::parse::tests::redirect_target_extension_and_plain_commands ... ok
+test render::tools::tests::advanced_bash ... ok
+
+test result: ok. 100 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (extensions/target/debug/deps/unipi_watchdog-9ad6f858822659ca)
+
+running 4 tests
+test caps::tests::pins_win_over_flags_and_settings ... ok
+test caps::tests::resolves_settings_and_flags ... ok
+test caps::tests::wire_shape_round_trips_and_sanitizes ... ok
+test caps::tests::caps_trigger_and_summary_turn ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (extensions/target/debug/deps/unipi_web_api-f88d2150c82510a4)
+
+running 23 tests
+test cache::tests::keys ... ok
+test format::tests::single_and_batch_formats ... ok
+test settings::tests::profiles ... ok
+test extract::tests::meta_refresh_targets ... ok
+test tests::sync_adds_only_missing_web_tools ... ok
+test tests::sync_removes_unavailable_but_keeps_others ... ok
+test tests::sync_noop_when_unchanged ... ok
+test format::tests::truncation_like_unipi ... ok
+test providers::tests::fallthrough_messages ... ok
+test providers::tests::chain_selection ... ok
+test providers::tests::request_shapes ... ok
+test settings::tests::smart_fetch_settings ... ok
+test providers::tests::rankings_like_unipi ... ok
+test extract::tests::content_types_and_urls ... ok
+test providers::tests::response_parsing ... ok
+test tests::schemas_match_unipi ... ok
+test cache::tests::get_set_expire_clear ... ok
+test providers::tests::duckduckgo_like_unipi ... ok
+test settings::tests::defaults_and_schema ... ok
+test extract::tests::fallback_and_replies ... ok
+test extract::tests::readability_to_markdown ... ok
+test extract::tests::remove_images_option ... ok
+test format::tests::strips_markdown ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (extensions/target/debug/deps/unipi_workflow-3044dba2fee952e7)
+
+running 28 tests
+test bash::tests::classify ... ok
+test bash::tests::dangerous_patterns ... ok
+test decide::tests::audit_unattended_and_saved_allow_never_bypass_floor ... ok
+test bash::tests::read_only_allowlist ... ok
+test bash::tests::kanboard_allowance ... ok
+test plan::tests::naming ... ok
+test plan::tests::pending_delivery_off_note_after_delivery ... ok
+test plan::tests::pending_delivery_on_off_prompt_is_no_op ... ok
+test bash::tests::splits_and_quotes ... ok
+test decide::tests::jev_state ... ok
+test rules::tests::globs ... ok
+test rules::tests::matching ... ok
+test plan::tests::submit_gates ... ok
+test rules::tests::suggestions ... ok
+test pathx::tests::resolving ... ok
+test decide::tests::read_only_tools_always_allowed ... ok
+test plan::tests::pending_delivery_on_then_prompt ... ok
+test rules::tests::normalize ... ok
+test tests::describe ... ok
+test plan::tests::persistence ... ok
+test settings::tests::layering ... ok
+test tests::plan_toggle_restores_interaction_tools ... ok
+test plan::tests::enforcement ... ok
+test tests::approval_shape ... ok
+test tests::permission_mode_restores_from_entries ... ok
+test settings::tests::the_schema_never_offers_a_project_mode ... ok
+test settings::tests::schema ... ok
+test plan::tests::messages_and_split ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests oino_extension
+
+running 5 tests
+test sdk/oino-extension/src/lib.rs - (line 27) ... ignored
+test sdk/oino-extension/src/lib.rs - export_extension (line 157) ... ignored
+test sdk/oino-extension/src/ui.rs - ui::Panel (line 255) - compile ... ok
+test sdk/oino-extension/src/lib.rs - bindings::__export_provider_extension_impl (line 85) ... ok
+test sdk/oino-extension/src/ui.rs - ui (line 9) ... ok
+
+test result: ok. 3 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.14s; merged doctests compilation took 0.14s
+   Doc-tests oino_extension_macros
+
+running 1 test
+test sdk/oino-extension-macros/src/lib.rs - (line 7) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.08s; merged doctests compilation took 0.08s
+   Doc-tests oino_provider_kit
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_ask_user
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_background_tasks
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_browser_ext
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_btw
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_compactor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_cron
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_dream
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_file_summary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_fusion
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_info_screen
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_kanboard
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_kit
+
+running 2 tests
+test sdk/unipi-kit/src/settings/mod.rs - settings (line 4) ... ignored
+test sdk/unipi-kit/src/settings/oss2.rs - settings::oss2 (line 8) ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.08s; merged doctests compilation took 0.08s
+   Doc-tests unipi_long_horizon
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_mcp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_memory
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_notify
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_skill_registry
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_subagents
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_updater
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_utility
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_watchdog
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_web_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests unipi_workflow
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `-p oino-provider-kit --test pi_fixtures`

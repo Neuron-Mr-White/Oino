@@ -1057,6 +1057,11 @@ impl TreeModel {
                 "",
                 format!("[compaction: {}k tokens]", (c.tokens_before + 500) / 1000),
             ),
+            EntryKind::CompactionState(c) => text(
+                DisplayKind::Compaction,
+                "",
+                format!("[compaction: {}k tokens]", (c.summary_tokens + 500) / 1000),
+            ),
             EntryKind::BranchSummary(b) => text(
                 DisplayKind::BranchSummary,
                 "[branch summary]: ",
@@ -1134,6 +1139,7 @@ impl TreeModel {
             },
             EntryKind::CustomMessage { content, .. } => text_of(content),
             EntryKind::Compaction(c) => c.summary.clone(),
+            EntryKind::CompactionState(c) => c.summary_text.clone(),
             EntryKind::BranchSummary(b) => b.summary.clone(),
             _ => String::new(),
         };
@@ -1160,6 +1166,19 @@ mod tests {
         let model = TreeModel::from_json(&data, None);
         assert_eq!(model.rows(0, model.len())[0].text.body, "");
         assert!(model.selected_copy_text().is_none());
+    }
+
+    #[test]
+    fn compaction_state_renders_and_copies_summary() {
+        let data = json!({"leafId":"c","tree":[{"entry":{
+            "type":"compaction_state","id":"c","parentId":null,
+            "timestamp":"2026-01-01T00:00:00.000Z","summaryText":"retained context",
+            "summaryTokens":1200,"summaryKind":"llm_summary",
+            "anchorMessage":{"id":"u","index":0},"removedCount":2
+        }}]});
+        let model = TreeModel::from_json(&data, None);
+        assert_eq!(model.rows(0, model.len())[0].text.body, "[compaction: 1k tokens]");
+        assert_eq!(model.selected_copy_text().as_deref(), Some("retained context"));
     }
 
     fn tree() -> JsonValue {

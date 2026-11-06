@@ -502,3 +502,81 @@ async fn image_setting_preserves_tool_result_bytes() {
     assert_eq!(find(&requests[1]), find(&requests[2]));
     assert!(find(&requests[2]).to_string().contains("tool-image"));
 }
+
+/// Integration gate: actual tool_search, forced compaction, and a denied unattended
+/// shell request all preserve the immutable slots and original declaration bytes.
+#[tokio::test]
+async fn integration_discovery_compaction_autonomy_prefix() {
+    use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
+    use oino_core::extensions::api::Registration;
+    use std::sync::Arc;
+    let dir = tempfile::tempdir().unwrap();
+    let settings = json!({"compaction":{"keepRecentTokens":1}});
+    let snapshot = oino_settings::Settings::from_layers(
+        settings.as_object().unwrap().clone(), Default::default(), Default::default(), None,
+    );
+    let context = Arc::new(SessionToolContext::default());
+    let tools = builtin_tool_entries(dir.path(), &dir.path().join("agent"), &snapshot, context.clone());
+    let extension = Arc::new(oino_core::testing::FakeExtension::new("mcp", Registration {
+        tools: vec![spec("mcp_integration_probe")], ..Default::default()
+    }).on_tool(|_, _| Ok(oino_agent::AgentToolResult::text("loaded probe executed"))));
+    let provider = FauxProvider::new(vec![]);
+    provider.route(|request| {
+        if request["context"]["messages"][0].to_string().contains("Summarize this conversation or agent trajectory") {
+            Some(FauxResponse::Text("<summary>Integration history preserved.</summary>".into()))
+        } else { None }
+    });
+    let session = TestSession {
+        tools, cwd: dir.path().to_path_buf(), extensions: vec![extension],
+        settings: settings.as_object().unwrap().clone(), ..Default::default()
+    }.build(provider.clone()).await;
+    context.bind(&session);
+    session.set_unattended();
+    let call = |id: &str, name: &str, args: Value| FauxResponse::ToolCalls(vec![(id.into(), name.into(), args.as_object().unwrap().clone())]);
+    provider.push(FauxResponse::Text("first".into()));
+    turn(&session).await;
+    let original = provider.requests()[0].clone();
+    provider.push(call("discover", "tool_search", json!({"query":"select:mcp_integration_probe"})));
+    provider.push(call("probe", "mcp_integration_probe", json!({})));
+    provider.push(FauxResponse::Text("loaded".into()));
+    turn(&session).await;
+    assert!(session.loaded_deferred_tool_names().contains(&"mcp_integration_probe".into()));
+    session.compact(Some("Preserve test evidence".into())).await.unwrap();
+    assert!(session.entries().iter().any(|e| matches!(e.kind, oino_session::EntryKind::CompactionState(_))));
+    provider.push(call("blocked", "bash", json!({"command":"sudo true","summary":"must not execute","riskLevel":"high"})));
+    provider.push(FauxResponse::Text("blocked safely".into()));
+    turn(&session).await;
+    let results = session.messages();
+    assert!(results.iter().any(|m| matches!(m, oino_ai::AgentMessage::ToolResult(r) if r.tool_call_id == "blocked" && r.is_error && r.content.iter().any(|c| matches!(c, oino_ai::UserContent::Text(t) if t.text.contains("needs Autonomy High"))))));
+    let requests = provider.requests();
+    let mut captures = Vec::new();
+    for request in &requests {
+        if request["context"]["messages"][0].to_string().contains("Summarize this conversation or agent trajectory") { continue; }
+        for (before, after) in payloads(&original).into_iter().zip(payloads(request)) {
+            assert_eq!(before.get("system"), after.get("system"));
+            // Anthropic has system outside messages; completions includes it.
+            let slot = if before.get("system").is_some() { 0 } else { 1 };
+            let text = |body: &Value| {
+                let content = &body["messages"][slot]["content"];
+                if let Some(blocks) = content.as_array() {
+                    blocks.iter().filter_map(|b| b["text"].as_str()).collect::<String>()
+                } else { content.as_str().unwrap().to_owned() }
+            };
+            assert_eq!(text(&before).as_bytes(), text(&after).as_bytes());
+            let initial = before["tools"].as_array().unwrap();
+            let current = after["tools"].as_array().unwrap();
+            assert!(current.len() >= initial.len());
+            for (a, b) in initial.iter().zip(current) {
+                let mut a = a.clone();
+                let mut b = b.clone();
+                a.as_object_mut().unwrap().remove("cache_control");
+                b.as_object_mut().unwrap().remove("cache_control");
+                assert_eq!(serde_json::to_vec(&a).unwrap(), serde_json::to_vec(&b).unwrap());
+            }
+            captures.push(after);
+        }
+    }
+    if let Ok(path) = std::env::var("OINO_INTEGRATION_CAPTURE") {
+        std::fs::write(path, serde_json::to_vec_pretty(&captures).unwrap()).unwrap();
+    }
+}

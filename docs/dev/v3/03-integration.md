@@ -1,105 +1,102 @@
-# v3 integration gate (OIN-15)
+# v3 integration gate — Round 2 (OIN-15)
 
-## Verdict: FAIL / do not approve v3
+## Verdict: FAIL
 
-Run on Linux x86_64, branch `v2`, 2026-11-06 UTC, starting at `7d30a3f8`.
-Read OIN-15 using the prescribed CLI. No board writes, installs, stash, reset, or clean operations were performed. Existing unrelated untracked files were untouched.
+Linux x86_64, branch `v2`, starting at `dc5d3305`. All twelve implementation packages and the targeted audit fixes are now committed, verified with `git log --oneline --grep='\[v3/'`. Round 1 is retained in `03-integration-round-1.md`. No installation, board writes, stash, reset, or clean was performed. Existing unrelated files and the pre-existing dirty distribution checksum manifest were not staged.
 
-The premise that all twelve implementation packages are committed is false at this revision. Git history and targeted artifact checks agree with the upstream handoffs: only wp-cache, wp-tools-fs, wp-ext-reminders and wp-loop-guards landed. The eight remaining packages are blocked/unimplemented. Missing whole features were not implemented as speculative integration fixes.
+## Integration changes
 
-## Changes
+- Handle new `CompactionState` in the Rust tree renderer and copy-summary path, restoring workspace compilation.
+- Add/register all six native Superagent commands. Five use existing authenticated `one_shot`; restricted session creation uses existing `open_session`, channel, stream registry and session command flow. No unrestricted session fallback. Native framing/registration regression passes. Live GUI-to-authenticated-host operation is still unverified.
+- Supply missing epoch field in host synthetic session fixture; update sidebar navigation assertion for the Superagent entry.
+- Give detach regression a canonical Medium shell call and a bounded wait. The old test waited indefinitely because legacy missing risk normalizes to High and is blocked. The corrected detach case passes; another checkpoint case in the same target still fails.
+- Add recorded-provider integration acceptance to `v3_prefix.rs`, exercising actual tool_search, subsequent deferred execution, forced host compaction and unattended denial in one session. Original declarations and immutable slots remain unchanged; loaded schemas append as suffixes.
 
-- Handle `EntryKind::SystemSnapshot` in `oino-view` tree display, fixing the workspace compile error. Regression test verifies empty display/copy text.
-- Replace the obsolete Anthropic first-party inline-tool assertion with request-level declaration and no-inline-beta assertions, as required by decision C.
-- Rebuilt all 37 WASM components. Only tracked `extensions/dist/checksums.json` changed; tracked component bytes were unchanged. All 100 checksum entries were independently verified against disk. Toolchain metadata now records rustc 1.99.0 rather than the upstream build's 1.99.1.
-- Updated changelog with the failed integration gate. No release version bump or publication.
+## Full gates
 
-## A–L coverage
+All Cargo builds use `CARGO_BUILD_JOBS=8`. Root target grew from 8.8 to 19 GB, below the requested 30 GB trigger. No target GC was needed. Separate app/extension caches also consume disk. Available disk initially 636 GB and available RAM 38 GiB.
 
-Statuses distinguish scoped evidence from full acceptance. PASS (scoped) does not imply the integration gate passed.
+| Gate | Result | Evidence under `evidence/round-2/` |
+|---|---|---|
+| `cargo build --workspace` | PASS after compaction renderer fix | `root-build-2.txt` |
+| `cargo clippy --workspace -- -D warnings` | FAIL: three client diagnostics | `clippy-final.txt` |
+| `cargo test --workspace --no-fail-fast` | FAIL: 20 targets, completed without hang after test fix | `root-test-final.txt` |
+| extensions workspace tests, `--no-fail-fast` | FAIL: provider `pi_fixtures` target, six API fixture cases | `extensions.txt` |
+| `cargo xtask wasm` | PASS: 37 components; all 100 distribution checksum entries verified | `wasm.txt` |
+| src-tauri `cargo check` | PASS | `tauri.txt` |
+| host/kanboard/proto tests, `--no-fail-fast` | FAIL: six existing host targets; dispatcher 9 and kanboard v3 4 pass | `host-final.txt` |
+| `npx tsc --noEmit` | PASS | `tsc.txt` |
+| `npx vitest run --pool threads --maxWorkers 4` | FAIL collection of one external QA fixture; 351 files / 3339 tests pass | `vitest-final.txt` |
+| core v3 acceptance after integration | PASS: 92 tests (12 autonomy, 4 codemode, 18 compaction, 6 replay, 48 prefix, 2 reminders, 2 search snapshot) | `v3-final.txt` |
+| tools v3 acceptance in workspace run | PASS: 4 execution, 7 filesystem, 4 default-feature zvec | full raw root log |
+| native Superagent framing/registration regression | PASS: 1 | `native-bridge.txt` |
+| Release script / deb build | PASS, NOT installed | `release.txt` |
 
-| Decision | Implemented where / upstream commit | Test / evidence | Status |
+The requested plain workspace test was attempted first and hit compilation failure. The final no-fail-fast command runs the same workspace tests and inventories all failures. One earlier run was terminated at the hung detach test binary; the final run completed normally with failure exit 101.
+
+### Remaining failures
+
+- **P1 release blockers:** strict clippy, workspace/extension/host test suites and complete end-to-end proof remain red or incomplete. Do not approve v3 from a successfully built bundle alone.
+- **P1 semantic packaging:** default release script builds without optional `zvec`; this deb is exact-search-only. Feature-enabled CPU engine runtime staging/attribution and clean-machine load checks are still required to ship decision I. See `wp-zvec-handoff.md`.
+- **P2 clippy:** `crates/oino-client/src/hub.rs:620` emits unused_async and unused_async_trait_impl; `in_process.rs:85` emits needless_pass_by_value. No suppressions or API refactor were added.
+- **P2 root failing targets:** agent `agent_loop_golden`; CLI `contract`, `dist`, `frontend`, `rpc`; client `hub`, `in_process_gui`; core `cwd_change`, `durability`, `gui_feeds`, `mode_tools_next_turn`, `runtime_flow`, `session_flow`, `session_golden`; resources `golden`, `loader`; tools `behaviour`, `golden_tools`; WASM host `bin_resolve`, `echo`.
+- **P2 host failing targets:** `instance`, `session_stream`, `sessions_hub`, `snapshot_bound`, `unipi_agents`, `unipi_settings`. Examples include fork message counts, renamed-card event, snapshot behavior, permission-gated memory process work and settings migration. Root causes were not all established.
+- **P2 legacy assertions:** several pi/provider fixtures still expect mutable system sections, old tool schemas, old event counts and unrestricted process imports. WASM `echo` now reports `needs Autonomy High`; do not restore manifest-as-consent behavior merely to pass those fixtures. Review and adapt expectations individually, preserving security assertions.
+- **P2 frontend external fixture:** `src/lib/zz-qa-update-android.test.tsx:13` reads absent `/tmp/qaupd/local/feeds/app/android/latest.json`; untouched. All collectable tests pass after navigation assertion fix.
+
+## A–L coverage table
+
+PASS here means scoped Linux acceptance, not full release closure.
+
+| Decision | Implemented where / commit | Test | Status |
 |---|---|---|---|
-| A frozen Oino system prompt | `oino-resources/src/system_prompt.rs`, core session prompt/tools; `9c5b1f3e` | `v3_prefix::prompt_excludes_factory_content` and persisted-prefix tests | PASS (scoped); legacy format-v2 append-only gap remains |
-| B file tools and execution | `oino-tools/src/{read,write,grep,legacy,apply_patch}.rs`, edit; `8b46ab8a`, `f36aff30` | `v3_fs`: 5 Linux tests pass; real model read/grep/edit/bash succeeds | PARTIAL: new shell schema, task_output/stop, shared registry and Windows jobs absent; ACP mutation regression |
-| C append-only context | core session prompt/tools/host, session entry, AI transcript, provider serializers; `9c5b1f3e`, `f85ba69a` | `v3_prefix`: 45 tests; `v3_reminders`: 2; Anthropic tool changes: 3 | PARTIAL: byte comparisons pass in test serializers; live wire prefix recording unsuccessful; discovery API absent |
-| D skill reminders | `extensions/unipi/skill-registry`, reminder-migrated extensions; `322cfc01` | extension workspace skill tests and core reminder tests pass | PARTIAL: workflow/watchdog Decision judging removal awaits missing execution/autonomy work |
-| E autonomy | required `crates/oino-core/src/session/permission.rs` absent | required `v3_autonomy.rs` and `AutonomyControl.test.tsx` absent | FAIL: no v3 gate, approval protocol or UI acceptance |
-| F compaction | legacy `session/compaction_flow.rs` remains | required `v3_compaction.rs` absent; prefix test manually appends legacy compaction | FAIL: no v3 state/epoch/delta/trigger acceptance |
-| G loop guards | `oino-agent/src/agent_loop.rs`; `bf1a3d2d` | `v3_guards`: 4 pass; old pi event golden fails on new reminder events | PASS (scoped), full suite fails |
-| H codemode/deferred discovery | declaration persistence exists in core; codemode registration absent | required `v3_codemode.rs` absent; prefix loading test uses direct host registration, not tool_search | FAIL: no end-to-end tool_search/codemode |
-| I semantic grep | exact in-process grep exists; required `oino-tools/src/zvec/` absent | `v3_fs` confirms default schema omits semantic mode; `v3_zvec.rs` absent | FAIL: consent/settings/engine/Windows acceptance absent |
-| J memory/dream | existing dream UI/backend plus memory usage metadata `322cfc01` | extension workspace `usage::tests::memory_usage_and_prune`, schedule tests pass | PARTIAL: no live dream execution; Rust-only MemPalace metadata limitation remains |
-| K sheet select | existing `8abc78b3`, `SheetSelect.test.tsx` | included in frontend's 346 passing test files | PASS (existing shared regression); named downstream Subagents acceptance not established |
-| L Superagent | required host `superagent.rs` and frontend component directory absent | required dispatcher/kanboard/SuperagentPage v3 acceptance files absent | FAIL: dispatcher/protocol/worker policy/page absent |
+| A frozen prompt | resource system prompt, core prompt/tools, `9c5b1f3e`; legacy fix `465a6475` | 48 prefix cases incl forbidden content, resume and captured serializers | PASS scoped |
+| B tools/execution | tools FS `8b46ab8a`, atomic capabilities `eaa92525`, shared background `68ae3e5b` | 7 FS + 4 execution; ACP target passes; real model background smoke | PASS Linux scoped; Windows open |
+| C append-only context | core/session/provider kit `9c5b1f3e`, reminder bindings `f85ba69a`, image policies `465a6475` | real wire hash and combined prefix test; image-policy/reload tests | PASS scoped; complete byte-for-byte HTTP stream proof caveat below |
+| D skills | skill registry and reminder extensions `322cfc01` | reminder/retention and extension unit tests | PASS scoped; broad suite still red |
+| E autonomy | settings policy/core permission `2d3835a8`, UI `e73039cd` | 12 autonomy + combined denial test; AutonomyControl in passing frontend suite | PASS scoped; Windows/live disconnect gaps remain |
+| F compaction | session state/frontier, core compaction `c53b60e3` | 18 tests + forced compact in combined prefix test | PASS scoped; live-model/VCC roundtrip and model-catalog limitations open |
+| G loop guards | agent loop `bf1a3d2d` | v3 guards pass in workspace; old event golden fails | PASS scoped |
+| H codemode/deferred | tools JS/core declaration path `54b8025b` | 4 codemode + combined actual tool_search load/execute | PASS scoped; documented pi parity deviations remain |
+| I semantic grep | embedded optional CPU engine/settings `20114e99` | default-feature v3_zvec 4 + snapshot 2; feature-enabled prior worker evidence | PARTIAL: release lacks feature/runtime staging, no new feature-enabled test here |
+| J memory/dream | existing dream + usage metadata `322cfc01` | usage/prune/schedule extension tests pass | PASS unit scope; no live scheduled dream launched |
+| K sheet select | `8abc78b3`, shared regression tests | full collectable frontend suite | PASS scoped; actual Windows/UI QA not repeated |
+| L Superagent | dispatcher `1fe3aa36`, UI `dc5d3305`, native bridge in this integration | dispatcher 9 + board 4 + frontend tests + native bridge framing | PARTIAL: native bridge compiled/tested, live GUI/authenticated-host/Windows verification open |
 
-Paths abbreviated to crate-local source above. Binding requirements remain `00-owner-decisions.md` and `01-spec.md`.
+## End-to-end and prefix evidence
 
-## Full checks
+### Real-model CLI run: PASS
 
-All Cargo commands used `CARGO_BUILD_JOBS=8`. Root target started at 15 GB and remained below 30 GB (23 GB at final check), so the requested root-target GC condition was not reached. Separate app/extension caches also exist; aggregate caches exceed 30 GB and need a coordinated later GC when builds are idle. No cache cleanup was run while another workspace was compiling.
+Used OpenRouter `openai/gpt-4.1-mini` through a local HTTP recording proxy which forwards with the environment API key. Isolated HOME, agent and project directories under `/tmp/oino-v3-integrate-r2/recorded-background`; no owner session data opened. Headers/keys are not captured. Only explicitly selected provider/background packages were loaded, with distribution discovery disabled.
 
-| Command | Result |
-|---|---|
-| `cargo build --workspace` | Initially failed exhaustive snapshot match; passes after fix |
-| `cargo clippy --workspace -- -D warnings` | FAIL: 7 session-manager warnings; no blanket suppression added |
-| `cargo test --workspace` | Compiles after fix; first runtime failure ACP filesystem |
-| `cargo test --workspace --no-fail-fast` | FAIL: 17 targets (listed below) |
-| `cargo test --manifest-path extensions/Cargo.toml --workspace --no-fail-fast` | FAIL: one target, provider pi fixtures, six cases; obsolete first-party inline test fixed |
-| `cargo xtask wasm` | PASS: 37 components |
-| `cargo check --manifest-path apps/unipi/src-tauri/Cargo.toml` | PASS |
-| `cargo test --manifest-path apps/unipi/Cargo.toml -p unipi-host -p unipi-kanboard -p unipi-proto --no-fail-fast` | FAIL: four host targets; kanboard/proto pass |
-| `cd apps/unipi && npx tsc --noEmit` | PASS |
-| `cd apps/unipi && npx vitest run --pool threads --maxWorkers 4` | 346 files / 3322 tests pass; one additional suite cannot load missing temporary feed |
-| core `v3_prefix`, `v3_legacy_replay`, `v3_reminders` | 45 + 4 + 2 pass |
-| tools `v3_fs`; agent `v3_guards`; `cargo test -p oino-view` | 5 + 4 + 44 pass |
-| provider `anthropic_tool_changes` after assertion update | 3 pass |
-| `git diff --check` | PASS |
+The model successfully executed read, grep, edit, foreground bash, bash `echo background-ok` with `fireAndForget:true`, then `task_output` with the returned task id and `block:true`. Every tool result was non-error, process exit 0, file content became `gamma\nbeta\n`.
 
-### Unfixed failure inventory
+Six actual provider request bodies had an identical canonical immutable-prefix byte vector of **11,479 bytes**, SHA-256 **`e2b1d2c7261f0ac834166e44e44b80df25f37b353759f59a56da1547503b9ffb`**. Compared fields are ordered tools plus the first two serialized messages (system and initial context). JSON field serialization is canonicalized by the recorder; this is equality of serialized prefix values, not a claim about arbitrary whitespace in raw HTTP bodies. Summary: `recorded-background-summary.json`. A separate four-tool real run also passed with four matching request prefixes (`recorded-real-summary.json`). An initial background experiment incorrectly used `-ne`, excluding the extension; corrected setup passed and replaced that experiment's result.
 
-Root targets: ACP `acp`; agent `agent_loop_golden`; CLI `contract`, `dist`, `rpc`; client `hub`, `in_process_gui`; core `cwd_change`, `gui_feeds`, `mode_tools_next_turn`, `runtime_flow`, `session_flow`, `session_golden`; resources `golden`, `loader`; tools `behaviour`, `golden_tools`.
+### Recorded-provider combined flow: PASS
 
-Several assertions intentionally encode v2 behavior (pi prompt sections, default tool set, reminder-free event order, trailing newline in short reads). Others expose actual integration defects, so expectations must not be blindly regenerated:
+`crates/oino-core/tests/v3_prefix.rs::integration_discovery_compaction_autonomy_prefix` runs real host session machinery with a scripted provider. It calls tool_search to load deferred `mcp_integration_probe`, executes it, calls forced host compaction, then attempts unattended High `sudo true`. Policy rejects the call before execution with `needs Autonomy High`. Captured Anthropic and completions payloads (`integration-wire.json`, 12 payloads) preserve exact immutable slot text and original declaration bytes, allowing suffix declarations and excluding movable Anthropic cache-control hints. Summarizer requests correctly use a different prompt and are not compared to the main session prefix.
 
-- **P1 ACP writes bypass the client filesystem:** `crates/oino-tools/src/edit/storage.rs:167–179` treats `env.is_local()` as authorization for direct OS atomic replacement. ACP's environment reports local while routing writes through `fs/write_text_file`. New write/edit no longer call that environment method. `crates/oino-acp/tests/acp.rs:205` observes zero client writes instead of one. Fix requires a capability-aware atomic mutation boundary, preserving ACP client routing and local atomic guarantees.
-- **P1 actual format-v2 open rewrites history:** `crates/oino-session/src/manager/mod.rs:502–506` still atomically serializes migrated records. Passing fixture tests cover v2-era entries in format-v3 JSONL, not the real older file format.
-- **P1 missing autonomy/discovery/execution/compaction packages:** cannot safely certify unattended behavior or the requested background flows.
-- **P2 strict lint:** session manager list/offsets contain too-many-lines, collapsible-if and items-after-statements diagnostics. These pre-existing style issues were left unchanged.
-- **P2 frontend QA fixture:** `apps/unipi/src/lib/zz-qa-update-android.test.tsx:13` reads `/tmp/qaupd/local/feeds/app/android/latest.json`. Missing external fixture prevents collection; no fabricated feed was supplied to claim a full pass.
-- **P2 host tests:** `instance::a_host_terminated_while_starting_is_not_a_failed_start` repeatedly times out waiting for a lock; `sessions_hub::fork_keeps_the_original_wired_to_its_own_runtime` expects 4 messages, receives 3; `snapshot_bound::a_huge_session_opens_with_a_bounded_snapshot` expects an error, receives a bounded success; `unipi_agents::memory_side_save_runs_after_a_writing_task` does not find expected context. Root cause of each remains unverified.
-- **P2 provider pi fixtures:** six API cases expect mid-conversation system mutation, changed inline declarations or unescaped source bytes; review individually against v3 before updating expected wire fixtures.
+### Real format-v2 replay: PASS
 
-## End-to-end results
+`v3_legacy_replay::actual_format_v2_preserves_source_bytes_on_open_append_and_reopen` opens the actual format-v2 fixture, asserts original bytes identical after open, appends v3 snapshot/reminder, checks original prefix unchanged and reopens without a second snapshot or any rewrite. All six replay tests pass. This closes the Round 1 inspected migration defect. ACP test target also passes, closing Round 1's client-write routing regression.
 
-A real model key worked. CLI release binary, explicitly loaded `oino.openai-compat`, OpenRouter `openai/gpt-4.1-mini`, no context/skills/templates, isolated HOME/agent/cwd under `/tmp/oino-v3-integrate/real`. An initial attempt without explicit runtime key returned 401; retry with the environment key passed. No credentials were written to the report or captured event files.
+### Explicitly not proved
 
-The successful run performed all four requested tools: read, grep, edit and bash. Every tool result was non-error, process exit was zero, and notes changed from `alpha\nbeta\n` to `gamma\nbeta\n`. Evidence: `real-model-key.jsonl`, `real-model-key.stderr`, `real-model-key.exit` under the evidence directory below.
+Discovery/compaction/autonomy used a recorded fake provider rather than the working real provider. Their real host paths and serializers execute, but there is no single real-model session containing every requested scenario. VCC and LLM both have state/trigger tests; a full live VCC extension roundtrip was not run. Original format-v2 byte preservation is tested independently, not as part of the shared captured network session. Do not claim literal cached-prefix identity across independent sessions, whose initial context intentionally differs.
 
-| Scenario | Result |
-|---|---|
-| Real model read/grep/edit/bash | PASS |
-| fireAndForget + task_output/task_stop | BLOCKED: required interfaces not implemented |
-| tool_search loads deferred tool | BLOCKED: tool not registered; existing prefix test uses direct host registration |
-| Forced v3 compaction, vcc and llm | BLOCKED: v3 implementation/acceptance absent; legacy test setup is not this check |
-| Old v2 session replay | Fixture replay PASS (4 tests); actual format-v2 append-only FAIL by inspected migration path. Owner sessions were never opened or modified |
-| Unattended autonomy block | BLOCKED: v3 policy absent; no risky command was run to manufacture evidence |
-| Cached prefix bytes identical across all scenarios | NOT VERIFIED: scenarios missing. Existing production-serializer tests pass with movable cache-control hints excluded. Attempt to record real requests through a loopback proxy failed with connection error before any request arrived; zero-body capture is not treated as evidence |
-| Skill reminders / loop guards / dream schedule | Scoped acceptance/unit tests pass; no live dream job launched |
+## Release artifact — do NOT install automatically
 
-## Release bundle (built, NOT installed)
+Built with `CARGO_BUILD_JOBS=8 UNIPI_RELEASE_IDENTITY=1 bash scripts/unipi-build.sh`, following repository release staging/sidecar/Tauri steps. The script produced deb and AppImage, verified 30 extensions, and did not install or restart the supervisor.
 
-Followed `scripts/unipi-build.sh` with `UNIPI_RELEASE_IDENTITY=1 CARGO_BUILD_JOBS=8`. First build failed because the musl Rust target was absent. `rustup target add x86_64-unknown-linux-musl` succeeded, then the same script completed, including zigbuild sidecar, staged dist, frontend and Tauri bundling. No installer or supervisor restart ran.
+- Deb: `apps/unipi/src-tauri/target/release/bundle/deb/UniPi Oino_1.0.1_amd64.deb`
+- SHA-256: **`67cb74a40cc5aa2e99f523e208d5b5634eb98807b0d830588cb9edd99bbbd077`**
+- Size reported by bundler: 82.88 MiB. Existing version preserved; no publication/version bump.
+- Includes native Superagent bridge and compaction renderer fix. Later edits affect regression tests/report only.
+- Exact-only build: semantic CPU feature/runtime delivery remains an explicit packaging gap.
 
-Deb: `apps/unipi/src-tauri/target/release/bundle/deb/UniPi Oino_1.0.1_amd64.deb`
+## Evidence retention and next step
 
-- Package `uni-pi-oino`, version `1.0.1`, architecture `amd64`, 80.44 MiB.
-- SHA-256: `abf7f2a8f4bfcdac0b86fe4e7866cd4e60d6469bd77bd51fbb1070a98fa4b5ba`.
-- Script verified 30 bundled extensions. AppImage was also produced.
-- This is an integration artifact from an incomplete v3 tree, not release approval. Existing version was deliberately preserved.
+Committed log tails, gate exit summary, real-run prefix summaries and combined serializer captures are in `evidence/round-2/`. Full logs, real request bodies/events and recorder scripts remain in `/tmp/oino-v3-integrate-r2/`; preserve before cleanup if needed. The pre-existing dirty checksum manifest was saved there before rebuilding, verified after rebuilding, and left unstaged.
 
-## Evidence and continuation
-
-Raw logs, exit files, isolated sessions, real-model events and the failed recording experiment remain at `/tmp/oino-v3-integrate/`. This directory is local and temporary; the verdict, failure names, checks, bundle hash and coverage table above are durable in git. Preserve the raw directory before machine cleanup if detailed traces are needed.
-
-Next: resolve and finish the eight blocked implementation packages in dependency order, fix the ACP atomic-operation boundary and actual format-v2 append-only migration, then reconcile v2 golden assertions with independently reviewed v3 expectations. Rerun every failing target and all end-to-end scenarios with request-body recording. Actual Windows/MSVC file replacement, PowerShell, process-tree and tray dispatcher gates remain mandatory and unrun. Supervisor owns any installation decision. Board remains unchanged.
+Resolve the 20 root and six host failing targets and strict lint without weakening permission/data-safety checks. Complete live native bridge and all-real-model/VCC scenarios, feature-enabled semantic packaging, and actual Windows/MSVC/PowerShell/process-tree/tray gates. Supervisor owns any installation decision. Overall release gate remains FAIL.

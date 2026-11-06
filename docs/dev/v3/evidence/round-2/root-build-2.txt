@@ -1,0 +1,16 @@
+   Compiling wasmtime-internal-unwinder v48.0.2
+   Compiling cranelift-native v0.135.2
+   Compiling cranelift-frontend v0.135.2
+   Compiling oino-view v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-view)
+   Compiling oino-acp v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-acp)
+   Compiling oino-rpc v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-rpc)
+   Compiling oino-bench v1.0.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-bench)
+   Compiling wasmtime-internal-cranelift v48.0.2
+   Compiling oino-tui v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tui)
+   Compiling wasmtime v48.0.2
+   Compiling wasmtime-wasi-io v48.0.2
+   Compiling wiggle v48.0.2
+   Compiling wasmtime-wasi v48.0.2
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling oino-cli v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 17.28s

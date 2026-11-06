@@ -1,0 +1,67 @@
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking cranelift-native v0.135.2
+    Checking cranelift-frontend v0.135.2
+    Checking oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+    Checking oino-view v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-view)
+    Checking wasmtime-internal-cranelift v48.0.2
+error: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+   --> crates/oino-view/src/tree.rs:342:13
+    |
+342 | /             data.get("tree")
+343 | |                 .and_then(JsonValue::as_array)
+344 | |                 .map(Vec::as_slice)
+345 | |                 .unwrap_or(&NO_ROOTS),
+    | |_____________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#map_unwrap_or
+    = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+
+error: could not compile `oino-view` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: unused `async` for async trait impl function with no `.await` statements
+   --> crates/oino-client/src/hub.rs:620:5
+    |
+620 | /     pub async fn is_live(&self, session_id: &str) -> bool {
+621 | |         lock(&self.inner.live_ids).contains(session_id)
+622 | |     }
+    | |_____^
+    |
+    = note: `std::future::ready` creates a `Future` which returns the value immediately when `poll`ed
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unused_async_trait_impl
+    = note: `-D clippy::unused-async-trait-impl` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unused_async_trait_impl)]`
+help: consider removing the `async` from this function and returning `impl Future<Output = bool>` instead
+    |
+620 ~     pub fn is_live(&self, session_id: &str) -> impl Future<Output = bool> {
+621 ~         std::future::ready(lock(&self.inner.live_ids).contains(session_id))
+    |
+
+error: this argument is passed by value, but not consumed in the function body
+  --> crates/oino-client/src/in_process.rs:85:13
+   |
+85 |     before: Option<String>,
+   |             ^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_pass_by_value
+   = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+   |
+85 |     before: Option<&String>,
+   |                    +
+
+error: unused `async` for function with no await statements
+   --> crates/oino-client/src/hub.rs:620:5
+    |
+620 | /     pub async fn is_live(&self, session_id: &str) -> bool {
+621 | |         lock(&self.inner.live_ids).contains(session_id)
+622 | |     }
+    | |_____^
+    |
+    = help: consider removing the `async` from this function
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unused_async
+    = note: `-D clippy::unused-async` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unused_async)]`
+
+error: could not compile `oino-client` (lib) due to 3 previous errors

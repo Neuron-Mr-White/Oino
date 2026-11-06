@@ -410,7 +410,7 @@ async fn running_bash_calls_can_be_detached() {
         FauxResponse::ToolCalls(vec![(
             "b1".into(),
             "bash".into(),
-            args(json!({"command": "echo early; sleep 20; echo late"})),
+            args(json!({"command": "echo early; sleep 20; echo late", "summary": "detach regression", "riskLevel": "medium"})),
         )]),
         FauxResponse::Text("ok".into()),
     ]);
@@ -421,13 +421,17 @@ async fn running_bash_calls_can_be_detached() {
         .prompt("run".into(), oino_core::session::PromptOptions::default())
         .await
         .unwrap();
-    let running = loop {
-        let list = session.running_bash().await;
-        if !list.is_empty() {
-            break list;
+    let running = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let list = session.running_bash().await;
+            if !list.is_empty() {
+                break list;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    };
+    })
+    .await
+    .expect("shell starts before detach");
     assert_eq!(running[0].tool_call_id, "b1");
     assert!(running[0].command.contains("sleep 20"));
     assert!(running[0].pid.is_some());

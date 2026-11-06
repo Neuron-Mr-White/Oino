@@ -64,7 +64,7 @@ describe('global host selector ([ui-shell] #1)', () => {
     const row = await screen.findByTestId('host-row');
     const nav = screen.getByRole('navigation', { name: 'Pages' });
     const order = [...nav.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid'));
-    expect(order.slice(0, 4)).toEqual(['sb-new-chat', 'sb-search', 'rail-board', 'rail-cron']);
+    expect(order.slice(0, 5)).toEqual(['sb-new-chat', 'sb-search', 'rail-superagent', 'rail-board', 'rail-cron']);
     const gear = screen.getByTestId('rail-settings');
     expect(gear.getAttribute('aria-label')).toBe('Settings');
     expect(gear.parentElement).toBe(row.parentElement);

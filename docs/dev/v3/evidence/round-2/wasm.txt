@@ -1,0 +1,77 @@
+building provider-anthropic
+    Finished `release` profile [optimized] target(s) in 0.05s
+building provider-azure
+    Finished `release` profile [optimized] target(s) in 0.04s
+building provider-bedrock
+    Finished `release` profile [optimized] target(s) in 0.04s
+building provider-google
+    Finished `release` profile [optimized] target(s) in 1.14s
+building provider-openai-codex
+    Finished `release` profile [optimized] target(s) in 0.03s
+building provider-openai-compat
+    Finished `release` profile [optimized] target(s) in 0.03s
+building provider-openai-responses
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-ask-user
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-background-tasks
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-browser-ext
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-btw
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-compactor
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-core
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-cron
+    Finished `release` profile [optimized] target(s) in 0.04s
+building unipi-dream
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-file-summary
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-fusion
+    Finished `release` profile [optimized] target(s) in 0.04s
+building unipi-info-screen
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-kanboard
+    Finished `release` profile [optimized] target(s) in 0.02s
+building native binaries unipi-kanboard for x86_64-unknown-linux-gnu (workspace /home/oi/Projects/Personal/llm/oino/apps/unipi)
+    Finished `release` profile [optimized] target(s) in 0.59s
+building unipi-long-horizon
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-mcp
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-memory
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-notify
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-skill-registry
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-subagents
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-updater
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-utility
+    Finished `release` profile [optimized] target(s) in 0.03s
+building unipi-watchdog
+    Finished `release` profile [optimized] target(s) in 0.02s
+building unipi-web-api
+    Finished `release` profile [optimized] target(s) in 0.08s
+building unipi-workflow
+    Finished `release` profile [optimized] target(s) in 0.04s
+building fixture-agent-probe
+    Finished `release` profile [optimized] target(s) in 0.03s
+building fixture-async-probe
+    Finished `release` profile [optimized] target(s) in 0.02s
+building fixture-echo
+    Finished `release` profile [optimized] target(s) in 0.03s
+building fixture-hibernate-probe
+    Finished `release` profile [optimized] target(s) in 0.02s
+building fixture-panic-probe
+    Finished `release` profile [optimized] target(s) in 0.03s
+building fixture-provider-faux
+    Finished `release` profile [optimized] target(s) in 0.03s
+building fixture-ui-probe
+    Finished `release` profile [optimized] target(s) in 0.03s
+wrote 37 component(s) to /home/oi/Projects/Personal/llm/oino/extensions/dist

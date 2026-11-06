@@ -310,6 +310,7 @@ fn synthetic_session(sessions_root: &Path, cwd: &Path, count: usize) -> String {
         let entry = SessionEntry {
             id: EntryId::new(format!("e{index:04}")),
             parent_id: parent.clone(),
+            compaction_summary_id: None,
             timestamp: oino_session::IsoTimestamp::from_ms(
                 1_799_200_000_000 + (index as i64) * 1000,
             ),
