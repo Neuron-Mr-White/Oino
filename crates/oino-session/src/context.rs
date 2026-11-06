@@ -128,6 +128,9 @@ pub struct ProjectedEntry {
 pub struct SessionProjection {
     /// Selected entries with provenance.
     pub entries: Vec<ProjectedEntry>,
+    /// Recoverable invalid compaction records ignored while preserving the prior view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<String>,
     /// Flattened messages.
     pub messages: Vec<AgentMessage>,
     /// Thinking level string (default `"off"`).
@@ -265,29 +268,105 @@ pub fn build_context_entries(entries: &EntryIndex, leaf: Option<&EntryId>) -> Ve
         .collect()
 }
 
-fn select_context<'a>(path: &[&'a SessionEntry]) -> Vec<&'a SessionEntry> {
-    let Some(compaction_index) = path
-        .iter()
-        .rposition(|entry| matches!(entry.kind, EntryKind::Compaction(_)))
-    else {
-        return path.to_vec();
+/// Validate an inclusive anchor against the branch *before* the state record.
+/// User turns are the only safe boundary: an assistant call and all its results stay together.
+///
+/// # Errors
+/// Missing/off-branch anchors, stale indexes, and mid-turn anchors.
+pub fn validate_compaction_anchor(
+    path: &[&SessionEntry],
+    anchor: &crate::entry::CompactionAnchor,
+) -> Result<(), &'static str> {
+    let Some(entry) = path.get(anchor.index).filter(|entry| entry.id == anchor.id) else {
+        return Err("compaction anchor is missing, off branch, or has an invalid index");
     };
-    let compaction = path[compaction_index];
-    let EntryKind::Compaction(data) = &compaction.kind else {
-        return path.to_vec();
-    };
-    let mut selected = vec![compaction];
-    let mut found_first_kept = false;
-    for entry in &path[..compaction_index] {
-        if entry.id == data.first_kept_entry_id {
-            found_first_kept = true;
-        }
-        if found_first_kept && !entry.is_system_message() {
-            selected.push(entry);
+    if !matches!(entry.message(), Some(AgentMessage::User(_))) {
+        return Err("compaction anchor must start a user turn, never split tool calls and results");
+    }
+    // A malformed transcript may place a user message before pending results.
+    let mut pending = HashSet::new();
+    for earlier in &path[..anchor.index] {
+        match earlier.message() {
+            Some(AgentMessage::Assistant(assistant)) => {
+                for block in &assistant.content {
+                    if let AssistantContent::ToolCall(call) = block {
+                        pending.insert(call.id.as_str());
+                    }
+                }
+            }
+            Some(AgentMessage::ToolResult(result)) => {
+                pending.remove(result.tool_call_id.as_str());
+            }
+            _ => {}
         }
     }
-    selected.extend_from_slice(&path[compaction_index + 1..]);
-    selected
+    if !pending.is_empty() {
+        return Err("compaction anchor splits pending tool calls and results");
+    }
+    Ok(())
+}
+
+fn select_context_with_errors<'a>(
+    path: &[&'a SessionEntry],
+) -> (Vec<&'a SessionEntry>, Vec<String>) {
+    let mut selected = path.to_vec();
+    let mut errors = Vec::new();
+    // Process in order: a corrupt later record must never replace an earlier valid view.
+    for (position, entry) in path.iter().enumerate() {
+        let anchor_index = match &entry.kind {
+            EntryKind::CompactionState(state) => {
+                if let Err(error) =
+                    validate_compaction_anchor(&path[..position], &state.anchor_message)
+                {
+                    errors.push(format!("Ignored invalid compaction {}: {error}", entry.id));
+                    continue;
+                }
+                state.anchor_message.index
+            }
+            EntryKind::Compaction(legacy) => {
+                // Old writers used their own record id for an empty retained range.
+                if legacy.first_kept_entry_id == entry.id
+                    || legacy.first_kept_entry_id.as_str().is_empty()
+                {
+                    position
+                } else {
+                    let Some(index) = path[..position]
+                        .iter()
+                        .position(|e| e.id == legacy.first_kept_entry_id)
+                    else {
+                        errors.push(format!(
+                            "Ignored invalid legacy compaction {}: missing anchor",
+                            entry.id
+                        ));
+                        continue;
+                    };
+                    index
+                }
+            }
+            _ => continue,
+        };
+        selected = vec![*entry];
+        selected.extend(
+            path[anchor_index..position]
+                .iter()
+                .copied()
+                .filter(|e| !e.is_system_message()),
+        );
+        selected.extend_from_slice(&path[position + 1..]);
+    }
+    // Invalid records are diagnostics, not selected context entries. Avoid
+    // identifying records by substring when ids can be arbitrary strings.
+    selected.retain(|entry| {
+        !errors.iter().any(|error| {
+            error.starts_with(&format!("Ignored invalid compaction {}:", entry.id))
+                || error.starts_with(&format!("Ignored invalid legacy compaction {}:", entry.id))
+        })
+    });
+    (selected, errors)
+}
+
+fn select_context<'a>(path: &[&'a SessionEntry]) -> Vec<&'a SessionEntry> {
+    select_context_with_errors(path).0
 }
 
 /// Converts entries to context messages. `compaction_system` is the checkpoint used when a
@@ -319,6 +398,10 @@ pub fn entry_to_context_messages(
                 timestamp,
             )]
         }
+        EntryKind::CompactionState(state) => vec![AgentMessage::User(oino_ai::UserMessage {
+            content: UserContentField::Text(state.injected_text()),
+            timestamp,
+        })],
         EntryKind::Compaction(compaction) => {
             let system = compaction.system_message.as_ref().or(compaction_system);
             system
@@ -420,7 +503,7 @@ fn project_entry(
 pub fn build_session_projection(entries: &EntryIndex, leaf: Option<&EntryId>) -> SessionProjection {
     let path = path_to(entries, leaf);
     let (thinking_level, model) = context_settings(&path);
-    let selected = select_context(&path);
+    let (selected, errors) = select_context_with_errors(&path);
     let mut edits: HashMap<&EntryId, &Option<ContextReplacement>> = HashMap::new();
     for entry in &selected {
         if let EntryKind::ContextEdit {
@@ -436,7 +519,11 @@ pub fn build_session_projection(entries: &EntryIndex, leaf: Option<&EntryId>) ->
         .enumerate()
         .map(|(index, entry)| ProjectedEntry {
             source_entry: (*entry).clone(),
-            messages: if index > 0 && matches!(entry.kind, EntryKind::Compaction(_)) {
+            messages: if matches!(
+                entry.kind,
+                EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+            ) && index > 0
+            {
                 Vec::new()
             } else {
                 project_entry(entry, edits.get(&entry.id).copied())
@@ -448,6 +535,7 @@ pub fn build_session_projection(entries: &EntryIndex, leaf: Option<&EntryId>) ->
         .flat_map(|entry| entry.messages.iter().cloned())
         .collect();
     SessionProjection {
+        errors,
         entries: projected,
         messages,
         thinking_level,

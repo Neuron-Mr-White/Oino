@@ -289,9 +289,10 @@ impl AgentSession {
                 self.publish_entry(&id);
                 Ok(json!(id.as_str()))
             }
-            HostOp::AppendReminder { key, text } => {
-                to_json(self.append_reminder(extension, &key, &text).map_err(failed)?)
-            }
+            HostOp::AppendReminder { key, text } => to_json(
+                self.append_reminder(extension, &key, &text)
+                    .map_err(failed)?,
+            ),
             HostOp::SendMessage {
                 message,
                 trigger_turn,
@@ -455,14 +456,28 @@ impl AgentSession {
                     )
                     .await
                     .map_err(HostError::Failed)?;
-                let output = crate::compaction::summarize_default(
+                let output = if let Ok(output) = crate::compaction::summarize_default(
                     &messages,
                     custom_instructions.as_deref(),
                     previous_summary.as_deref(),
                     &summarizer,
                 )
                 .await
-                .map_err(failed)?;
+                {
+                    output
+                } else {
+                    let mut main = summarizer;
+                    main.retry = None;
+                    main.single_attempt = true;
+                    crate::compaction::summarize_default(
+                        &messages,
+                        custom_instructions.as_deref(),
+                        previous_summary.as_deref(),
+                        &main,
+                    )
+                    .await
+                    .map_err(failed)?
+                };
                 to_json(output)
             }
             HostOp::IsProjectTrusted => Ok(json!(

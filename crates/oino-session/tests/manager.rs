@@ -213,47 +213,28 @@ fn branched_tree_serializes_on_a_small_stack() {
 }
 
 #[test]
-fn compaction_stores_system_checkpoint() {
+fn compaction_stores_validated_state_without_system_checkpoint() {
     let mut sm = SessionManager::in_memory(Path::new(CWD), CreateOptions::default(), Vec::new());
     sm.append_message(system("base")).unwrap();
     sm.append_message(user("a")).unwrap();
-    let keep = sm.append_message(assistant("A")).unwrap();
-    sm.append_message(system("patch")).unwrap();
+    sm.append_message(assistant("A")).unwrap();
+    let keep = sm.append_message(user("next")).unwrap();
     let id = sm
         .append_compaction(CompactionDraft {
             summary: "sum".into(),
-            first_kept_entry_id: Some(keep),
+            first_kept_entry_id: Some(keep.clone()),
             tokens_before: 9,
-            ..CompactionDraft::default()
+            ..Default::default()
         })
         .unwrap();
-    let EntryKind::Compaction(compaction) = &sm.entry(&id).unwrap().kind else {
-        panic!("not a compaction")
+    let EntryKind::CompactionState(state) = &sm.entry(&id).unwrap().kind else {
+        panic!("not v3 state")
     };
-    let checkpoint = compaction.system_message.as_ref().unwrap();
-    assert_eq!(
-        checkpoint.content,
-        UserTextField::Text("base\n\npatch".into())
-    );
-    assert_eq!(
-        Some(checkpoint.timestamp),
-        sm.entry(&id).unwrap().timestamp.to_ms()
-    );
+    assert_eq!(state.anchor_message.id, keep);
     let wire = serde_json::to_value(sm.entry(&id).unwrap()).unwrap();
-    assert_eq!(wire["systemMessage"]["role"], "system");
-    let roles: Vec<&str> = sm
-        .build_session_context()
-        .messages
-        .iter()
-        .map(AgentMessage::role)
-        .collect();
-    assert_eq!(roles, ["system", "compactionSummary", "assistant"]);
-
-    let none = sm.append_compaction(CompactionDraft::default()).unwrap();
-    let EntryKind::Compaction(retain_none) = &sm.entry(&none).unwrap().kind else {
-        panic!("not a compaction")
-    };
-    assert_eq!(retain_none.first_kept_entry_id, none);
+    assert_eq!(wire["type"], "compaction_state");
+    assert!(wire.get("systemMessage").is_none());
+    assert!(sm.append_compaction(CompactionDraft::default()).is_err());
 }
 
 #[test]

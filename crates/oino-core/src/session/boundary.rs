@@ -66,6 +66,9 @@ pub(crate) fn apply_drafts(
             Some("context_edit") => {
                 let target =
                     EntryId::new(text("targetId").ok_or("context_edit draft without targetId")?);
+                if !manager.is_unsent(&target) {
+                    return Err("context_edit may only target the unsent tail".into());
+                }
                 let replacement = match draft.get("replacement") {
                     None | Some(JsonValue::Null) => None,
                     Some(value) => Some(

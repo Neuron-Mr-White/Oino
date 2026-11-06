@@ -64,7 +64,12 @@ pub struct CompactionPreparation {
 fn summary_messages(entries: &[ProjectedEntry]) -> Vec<AgentMessage> {
     entries
         .iter()
-        .filter(|entry| !matches!(entry.source_entry.kind, EntryKind::Compaction(_)))
+        .filter(|entry| {
+            !matches!(
+                entry.source_entry.kind,
+                EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+            )
+        })
         .flat_map(|entry| entry.messages.iter())
         .filter(|message| !matches!(message, AgentMessage::System(_)))
         .cloned()
@@ -78,22 +83,31 @@ pub fn prepare_compaction(
     path: &[&SessionEntry],
     settings: &CompactionSettings,
 ) -> Option<CompactionPreparation> {
-    if path
-        .last()
-        .is_some_and(|entry| matches!(entry.kind, EntryKind::Compaction(_)))
-    {
+    if path.last().is_some_and(|entry| {
+        matches!(
+            entry.kind,
+            EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+        )
+    }) {
         return None;
     }
     let index: EntryIndex = path.iter().map(|entry| (*entry).clone()).collect();
     let projection = build_session_projection(&index, index.last_id());
     let projected = &projection.entries;
+    if projected.is_empty() {
+        return None;
+    }
     // The newest compaction is projected first; older ones inside its kept range are empty.
     let previous_compaction = projected.iter().position(|entry| {
-        matches!(entry.source_entry.kind, EntryKind::Compaction(_)) && !entry.messages.is_empty()
+        matches!(
+            entry.source_entry.kind,
+            EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+        ) && !entry.messages.is_empty()
     });
     let (previous_summary, boundary_start) = match previous_compaction {
         Some(position) => match &projected[position].source_entry.kind {
             EntryKind::Compaction(compaction) => (Some(compaction.summary.clone()), position + 1),
+            EntryKind::CompactionState(state) => (Some(state.summary_text.clone()), position + 1),
             _ => (None, 0),
         },
         None => (None, 0),
@@ -105,21 +119,39 @@ pub fn prepare_compaction(
         projected.len(),
         settings.keep_recent_tokens,
     );
-    let first_kept = &projected.get(cut.first_kept_entry_index)?.source_entry;
+    // Metadata adjacent to a cut must not become an anchor. Snap backwards to
+    // a real user turn and validate against the raw branch before any summary call.
+    let kept_index = (boundary_start
+        ..=cut
+            .first_kept_entry_index
+            .min(projected.len().saturating_sub(1)))
+        .rev()
+        .find(|&i| {
+            matches!(
+                projected[i].source_entry.message(),
+                Some(AgentMessage::User(_))
+            )
+        })?;
+    let first_kept = &projected.get(kept_index)?.source_entry;
+    let raw_index = path.iter().position(|entry| entry.id == first_kept.id)?;
+    oino_session::context::validate_compaction_anchor(
+        path,
+        &oino_session::CompactionAnchor {
+            id: first_kept.id.clone(),
+            index: raw_index,
+        },
+    )
+    .ok()?;
     if first_kept.id.as_str().is_empty() {
         return None;
     }
-    let turn_start = cut.turn_start_index.filter(|_| cut.is_split_turn);
-    let history_end = turn_start.unwrap_or(cut.first_kept_entry_index);
     let messages_to_summarize = summary_messages(
         projected
-            .get(boundary_start..history_end)
+            .get(boundary_start..kept_index)
             .unwrap_or_default(),
     );
-    let turn_prefix_messages = turn_start.map_or_else(Vec::new, |turn_start| {
-        summary_messages(&projected[turn_start..cut.first_kept_entry_index])
-    });
-    if messages_to_summarize.is_empty() && turn_prefix_messages.is_empty() {
+    let turn_prefix_messages = Vec::new();
+    if messages_to_summarize.is_empty() {
         return None;
     }
     let mut file_ops = FileOperations::new();
@@ -137,7 +169,7 @@ pub fn prepare_compaction(
         first_kept_entry_id: first_kept.id.clone(),
         messages_to_summarize,
         turn_prefix_messages,
-        is_split_turn: cut.is_split_turn,
+        is_split_turn: false,
         tokens_before,
         previous_summary,
         file_ops,

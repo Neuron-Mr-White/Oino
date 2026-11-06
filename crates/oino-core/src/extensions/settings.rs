@@ -1171,12 +1171,7 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                     "Compaction",
                     vec![
                         core_boolean("enabled", "Auto-compact", defaults::COMPACTION_ENABLED),
-                        core_number(
-                            "reserveTokens",
-                            "Reserved tokens",
-                            defaults::COMPACTION_RESERVE_TOKENS,
-                            Some("tokens"),
-                        ),
+                        core_number("tokenLimit", "Input token limit", 250_000, Some("tokens")),
                         core_number(
                             "keepRecentTokens",
                             "Recent tokens kept verbatim",
@@ -1863,7 +1858,7 @@ mod tests {
         // Defaults come from `oino_settings::types::defaults`.
         assert_eq!(
             reg.values("oino.compaction", SettingsLayer::Effective),
-            json!({"enabled": true, "reserveTokens": 16_384, "keepRecentTokens": 20_000})
+            json!({"enabled": true, "tokenLimit": 250_000, "keepRecentTokens": 20_000})
         );
         // The global file is the top-level object, not `extensionSettings`.
         write_layer(
@@ -1950,7 +1945,7 @@ mod tests {
         assert!(matches!(
             reg.set(
                 "oino.compaction",
-                "reserveTokens",
+                "tokenLimit",
                 Some(json!("lots")),
                 SettingsScope::Global
             ),

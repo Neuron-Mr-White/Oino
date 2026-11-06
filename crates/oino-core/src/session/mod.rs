@@ -193,6 +193,8 @@ pub(crate) struct RunBook {
     pub(crate) run_active: bool,
     pub(crate) abort_requested: bool,
     pub(crate) overflow_recovery_attempted: bool,
+    pub(crate) compaction_token_limit: Option<u64>,
+    pub(crate) threshold_suppression: Option<(String, u64)>,
     pub(crate) retry_attempt: u32,
     pub(crate) failed_response: Option<AssistantMessage>,
     pub(crate) last_assistant: Option<AssistantMessage>,
@@ -971,10 +973,14 @@ impl AgentSession {
     /// Rebuilds the finalized transcript from the session projection (the
     /// `_refreshFinalizedContext`).
     pub fn refresh_context(&self) {
-        let messages = lock(&self.inner.manager)
-            .build_session_projection()
-            .messages;
-        self.inner.agent.set_messages(self.prefix_view(messages));
+        let projection = lock(&self.inner.manager).build_session_projection();
+        for error in &projection.errors {
+            self.runner()
+                .emit_error("<runtime>", "compaction_state", error);
+        }
+        self.inner
+            .agent
+            .set_messages(self.prefix_view(projection.messages));
     }
 
     /// Copy of the session entries (`get_entries`).

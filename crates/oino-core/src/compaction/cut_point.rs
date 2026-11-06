@@ -19,24 +19,14 @@ pub struct CutPointResult {
     pub is_split_turn: bool,
 }
 
-/// Roles at which a cut may happen (never a tool result).
+/// Only real user input can anchor a new retained turn.
 const fn is_cut_point_message(message: &AgentMessage) -> bool {
-    !matches!(
-        message,
-        AgentMessage::ToolResult(_) | AgentMessage::System(_)
-    )
+    matches!(message, AgentMessage::User(_))
 }
 
 /// Roles that start a turn (user-like input).
 const fn is_turn_start_message(message: &AgentMessage) -> bool {
-    matches!(
-        message,
-        AgentMessage::User(_)
-            | AgentMessage::BashExecution(_)
-            | AgentMessage::Custom(_)
-            | AgentMessage::BranchSummary(_)
-            | AgentMessage::CompactionSummary(_)
-    )
+    matches!(message, AgentMessage::User(_))
 }
 
 const fn is_compaction(entry: &SessionEntry) -> bool {
@@ -108,7 +98,7 @@ fn walk_budget<E: CutEntry>(
             !is_compaction(entry.source()) && entry.messages().iter().any(is_cut_point_message)
         })
         .collect();
-    let (&first, &last) = (cut_points.first()?, cut_points.last()?);
+    let &first = cut_points.first()?;
     let mut accumulated = 0;
     for index in (start..end).rev() {
         let tokens = estimate_all(&entries[index].messages());
@@ -120,8 +110,9 @@ fn walk_budget<E: CutEntry>(
             let cut_index = cut_points
                 .iter()
                 .copied()
-                .find(|&candidate| candidate >= index)
-                .unwrap_or(last);
+                .rev()
+                .find(|&candidate| candidate <= index)
+                .unwrap_or(first);
             return Some(Walk {
                 cut_index,
                 exceeded_budget: true,
@@ -175,8 +166,8 @@ const fn no_cut(start: usize) -> CutPointResult {
 }
 
 /// Walk back from the newest entry in `start..end` accumulating estimated
-/// tokens until `keep_recent_tokens`, then cut at the nearest valid cut point at or after
-/// that entry (user, assistant, bash, custom or summary message; never a tool result).
+/// tokens until `keep_recent_tokens`, then snap backwards to the user turn start.
+/// An assistant tool call and its results always stay in the same retained range.
 #[must_use]
 pub fn find_cut_point(
     entries: &[&SessionEntry],

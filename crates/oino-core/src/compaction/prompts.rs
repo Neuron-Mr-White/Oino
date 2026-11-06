@@ -1,84 +1,34 @@
 //! Summary prompts (`compaction`, `branch-summarization`,
 //! `utils.js`).
 
-/// The summarization system prompt constant.
-pub const SUMMARIZATION_SYSTEM_PROMPT: &str = "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
+/// Branch navigation retains the legacy structured checkpoint instruction.
+pub const BRANCH_SYSTEM_PROMPT: &str = "You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.\n\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.";
 
-Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.";
+/// Recovered adaptive §5.1 body. The identity prefix was not recovered and is omitted.
+pub const SUMMARIZATION_SYSTEM_PROMPT: &str = r"Summarize this conversation or agent trajectory so the assistant can continue effectively after compaction.
 
-/// The summarization prompt (first compaction).
-pub const SUMMARIZATION_PROMPT: &str = r#"The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+{continuation}
 
-Use this EXACT format:
+Choose the sections and level of detail that fit this session. Organize around what matters for continuation, not a chronological account of tool calls.
 
-## Goal
-[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+Favor a thorough, complete summary. Use your judgment to prioritize the material and allocate detail where it helps most. Do not omit useful context merely to keep the summary short.
 
-## Constraints & Preferences
-- [Any constraints, preferences, or requirements mentioned by user]
-- [Or "(none)" if none were mentioned]
+Always preserve relevant user context: the primary request and intent, the latest request, consequential requirements, clarifications, preferences, approvals and their limits, corrections, and unanswered questions. Distinguish user decisions from assistant proposals or assumptions.
 
-## Progress
-### Done
-- [x] [Completed tasks/changes]
+Preserve other context according to its value for continuing the work. This may include current line of investigation, important discoveries and reasoning, decisions, outstanding delegated work, unresolved findings, and immediate next actions. Keep identifiers and locations needed to act on that context.
 
-### In Progress
-- [ ] [Current work]
+Project files, recorded evidence, and other relevant artifacts may already be durable sources of truth. Prefer referencing these sources while preserving important context that exists only in the conversation.
 
-### Blocked
-- [Issues preventing progress, if any]
+When updating a previous summary, integrate new information, replace superseded state, and remove details that no longer help continuation. Do not turn proposals into commitments, reports into verified results, partial checks into verified correctness, or historical evidence into current proof.
 
-## Key Decisions
-- **[Decision]**: [Brief rationale]
+Return the summary inside <summary> tags.";
 
-## Next Steps
-1. [Ordered list of what should happen next]
-
-## Critical Context
-- [Any data, examples, or references needed to continue]
-- [Or "(none)" if not applicable]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."#;
-
-/// The update summarization prompt (iterative update with `<previous-summary>`).
-pub const UPDATE_SUMMARIZATION_PROMPT: &str = r#"The messages above are NEW conversation messages to incorporate into the existing summary provided in <previous-summary> tags.
-
-Update the existing structured summary with new information. RULES:
-- PRESERVE all existing information from the previous summary
-- ADD new progress, decisions, and context from the new messages
-- UPDATE the Progress section: move items from "In Progress" to "Done" when completed
-- UPDATE "Next Steps" based on what was accomplished
-- PRESERVE exact file paths, function names, and error messages
-- If something is no longer relevant, you may remove it
-
-Use this EXACT format:
-
-## Goal
-[Preserve existing goals, add new ones if the task expanded]
-
-## Constraints & Preferences
-- [Preserve existing, add new ones discovered]
-
-## Progress
-### Done
-- [x] [Include previously done items AND newly completed items]
-
-### In Progress
-- [ ] [Current work - update based on progress]
-
-### Blocked
-- [Current blockers - remove if resolved]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale] (preserve all previous, add new)
-
-## Next Steps
-1. [Update based on current state]
-
-## Critical Context
-- [Preserve important context, add new if needed]
-
-Keep each section concise. Preserve exact file paths, function names, and error messages."#;
+/// Conditional adaptive paragraph, first summary.
+pub const SUMMARIZATION_PROMPT: &str = "You are to read the full conversation and produce a summary based on guidelines provided below.";
+/// Conditional adaptive paragraph, subsequent summaries.
+pub const UPDATE_SUMMARIZATION_PROMPT: &str = "You've previously produced a summary of the session up to a certain point. There have been new messages since then. You must update the summary to cover these messages, adhering to the guidelines provided below.";
+/// §5.4 soft length cap instruction.
+pub const SOFT_CAP_INSTRUCTION: &str = "IMPORTANT: Please keep your new <summary> around a similar length by trimming or condensing the least important information while preserving key facts.";
 
 /// The turn-prefix summarization prompt (prefix of a split turn).
 pub const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = "The messages above are earlier context from an ongoing conversation. Later messages are stored separately and do not need to be reconstructed.

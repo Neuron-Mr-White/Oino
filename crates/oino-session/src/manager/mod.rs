@@ -42,11 +42,11 @@ pub use tree::{SessionTreeFlatNode, SessionTreeNode};
 
 use crate::context::{
     EntryIndex, SessionContext, SessionProjection, build_context_entries, build_session_context,
-    build_session_projection, current_system_message, walk_up,
+    build_session_projection, walk_up,
 };
 use crate::entry::{
-    BranchSummaryEntry, CURRENT_SESSION_VERSION, CompactionEntry, ContextReplacement,
-    EditableContent, EntryId, EntryKind, IsoTimestamp, SessionEntry, SessionHeader,
+    BranchSummaryEntry, CURRENT_SESSION_VERSION, ContextReplacement, EditableContent, EntryId,
+    EntryKind, IsoTimestamp, SessionEntry, SessionHeader,
 };
 use crate::error::SessionError;
 use crate::migrate::parse_session_text;
@@ -602,6 +602,15 @@ impl SessionManager {
     ) -> Result<EntryId, SessionError> {
         let id = id.unwrap_or_else(|| self.generate_id());
         let entry = SessionEntry {
+            compaction_summary_id: parent.as_ref().and_then(|id| self.index.get(id)).and_then(
+                |entry| {
+                    if matches!(entry.kind, EntryKind::CompactionState(_)) {
+                        Some(entry.id.clone())
+                    } else {
+                        entry.compaction_summary_id.clone()
+                    }
+                },
+            ),
             id: id.clone(),
             parent_id: parent,
             timestamp: timestamp.unwrap_or_else(IsoTimestamp::now),
@@ -737,9 +746,33 @@ impl SessionManager {
     /// Generic append at the leaf (used by boundary drafts).
     ///
     /// # Errors
-    ///
     /// I/O when persisting.
     pub fn append_entry(&mut self, kind: EntryKind) -> Result<EntryId, SessionError> {
+        match &kind {
+            EntryKind::CompactionState(state) => {
+                crate::context::validate_compaction_anchor(
+                    &self.branch(None),
+                    &state.anchor_message,
+                )
+                .map_err(SessionError::InvalidAppend)?;
+                if state.summary_text.trim().is_empty() {
+                    return Err(SessionError::InvalidAppend(
+                        "compaction summary must not be empty",
+                    ));
+                }
+            }
+            EntryKind::Compaction(_) => {
+                return Err(SessionError::InvalidAppend(
+                    "legacy compaction records are read-only",
+                ));
+            }
+            EntryKind::ContextEdit { target_id, .. } if !self.is_unsent(target_id) => {
+                return Err(SessionError::InvalidAppend(
+                    "context edit target has already been sent to the provider",
+                ));
+            }
+            _ => {}
+        }
         let parent = self.leaf.clone();
         self.push(kind, None, parent, None)
     }
@@ -816,26 +849,263 @@ impl SessionManager {
     /// # Errors
     ///
     /// I/O.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "assemble one complete validated compaction transaction"
+    )]
+    pub fn prepare_compaction_state(
+        &self,
+        draft: CompactionDraft,
+    ) -> Result<crate::entry::CompactionState, SessionError> {
+        let anchor_id = draft
+            .first_kept_entry_id
+            .ok_or(SessionError::InvalidAppend(
+                "compaction requires an existing anchor",
+            ))?;
+        let branch = self.branch(None);
+        let anchor_index = branch
+            .iter()
+            .position(|entry| entry.id == anchor_id)
+            .ok_or(SessionError::InvalidAppend(
+                "compaction anchor is missing or off branch",
+            ))?;
+        let removed_count = self
+            .build_session_projection()
+            .entries
+            .iter()
+            .take_while(|e| e.source_entry.id != anchor_id)
+            .map(|e| e.messages.len())
+            .sum();
+        let summary_kind = if draft
+            .details
+            .as_ref()
+            .and_then(|v| v.get("method"))
+            .and_then(serde_json::Value::as_str)
+            == Some("vcc")
+        {
+            crate::entry::SummaryKind::VccSummary
+        } else {
+            crate::entry::SummaryKind::LlmSummary
+        };
+        let previous = branch.iter().rev().find_map(|entry| match &entry.kind {
+            EntryKind::CompactionState(state) => Some(state),
+            _ => None,
+        });
+        let mut retained_skills = previous
+            .map(|s| s.retained_skills.clone())
+            .unwrap_or_default();
+        let mut loaded_deferred_tool_names = previous
+            .map(|s| s.loaded_deferred_tool_names.clone())
+            .unwrap_or_default();
+        for entry in &branch {
+            if let EntryKind::Custom {
+                custom_type,
+                data: Some(data),
+            } = &entry.kind
+            {
+                if custom_type.contains("skills")
+                    && let Some(names) = data.get("names").and_then(serde_json::Value::as_array)
+                {
+                    retained_skills.extend(
+                        names
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(str::to_owned),
+                    );
+                }
+                if custom_type == "oino.deferred-tools"
+                    && let Some(names) = data
+                        .as_array()
+                        .or_else(|| data.get("names").and_then(serde_json::Value::as_array))
+                {
+                    loaded_deferred_tool_names.extend(
+                        names
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(str::to_owned),
+                    );
+                }
+            }
+        }
+        retained_skills.sort();
+        retained_skills.dedup();
+        loaded_deferred_tool_names.sort();
+        loaded_deferred_tool_names.dedup();
+        let mut retained_images = previous
+            .map(|s| s.retained_images.clone())
+            .unwrap_or_default();
+        let mut read_paths = HashMap::new();
+        for entry in &branch {
+            match entry.message() {
+                Some(AgentMessage::Assistant(assistant)) => {
+                    for block in &assistant.content {
+                        if let oino_ai::AssistantContent::ToolCall(call) = block
+                            && call.name == "read"
+                            && let Some(path) = call
+                                .arguments
+                                .get("file_path")
+                                .or_else(|| call.arguments.get("path"))
+                                .and_then(serde_json::Value::as_str)
+                        {
+                            read_paths.insert(call.id.clone(), path.to_owned());
+                        }
+                    }
+                }
+                Some(AgentMessage::ToolResult(result)) => {
+                    let count = result
+                        .content
+                        .iter()
+                        .filter(|part| matches!(part, UserContent::Image(_)))
+                        .count();
+                    if let Some(path) = read_paths.get(&result.tool_call_id) {
+                        let excerpt = result
+                            .content
+                            .iter()
+                            .filter_map(|part| match part {
+                                UserContent::Text(t) => Some(t.text.as_str()),
+                                UserContent::Image(_) => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        for image_index in 0..count {
+                            let image = crate::entry::RetainedImage {
+                                path: path.clone(),
+                                excerpt: excerpt.clone(),
+                                image_index,
+                                image_count: count,
+                            };
+                            if !retained_images.contains(&image) {
+                                retained_images.push(image);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut summary = draft.summary;
+        // Current list replaces the previous summary's stale appended snapshot.
+        if let Some(todos) = branch.iter().rev().find_map(|entry| match entry.message() {
+            Some(AgentMessage::ToolResult(result))
+                if matches!(result.tool_name.as_str(), "todowrite" | "todo_write") =>
+            {
+                Some(
+                    result
+                        .content
+                        .iter()
+                        .filter_map(|part| match part {
+                            UserContent::Text(t) => Some(t.text.as_str()),
+                            UserContent::Image(_) => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+            }
+            _ => None,
+        }) {
+            if let Some(position) = summary.find("\nCurrent TODO List:") {
+                summary.truncate(position);
+            }
+            summary.push_str("\nCurrent TODO List:\n");
+            summary.push_str(&todos);
+        }
+        let state = crate::entry::CompactionState {
+            summary_tokens: u64::try_from(summary.chars().count().div_ceil(4)).unwrap_or(u64::MAX),
+            summary_text: summary,
+            summary_kind,
+            anchor_message: crate::entry::CompactionAnchor {
+                id: anchor_id,
+                index: anchor_index,
+            },
+            removed_count,
+            retained_skills,
+            retained_images,
+            loaded_deferred_tool_names,
+        };
+        crate::context::validate_compaction_anchor(&branch, &state.anchor_message)
+            .map_err(SessionError::InvalidAppend)?;
+        Ok(state)
+    }
+
+    /// Compatibility draft API. New writes always use the v3 state format.
+    ///
+    /// # Errors
+    /// Invalid anchor, empty summary or I/O.
     pub fn append_compaction(&mut self, draft: CompactionDraft) -> Result<EntryId, SessionError> {
-        let id = self.generate_id();
-        let now = IsoTimestamp::now();
-        let system_message = draft.system_message.or_else(|| {
-            current_system_message(&self.build_session_projection().messages).map(|mut system| {
-                system.timestamp = now.to_ms().unwrap_or(0);
-                system
+        let state = self.prepare_compaction_state(draft)?;
+        self.append_compaction_state(state)
+    }
+
+    /// Validate and append one complete state under this session's single-writer lease.
+    ///
+    /// # Errors
+    /// Invalid anchor/empty summary or I/O failure. Validation writes nothing.
+    pub fn append_compaction_state(
+        &mut self,
+        state: crate::entry::CompactionState,
+    ) -> Result<EntryId, SessionError> {
+        crate::context::validate_compaction_anchor(&self.branch(None), &state.anchor_message)
+            .map_err(SessionError::InvalidAppend)?;
+        if state.summary_text.trim().is_empty() {
+            return Err(SessionError::InvalidAppend(
+                "compaction summary must not be empty",
+            ));
+        }
+        let old_index = self.index.clone();
+        let old_leaf = self.leaf.clone();
+        let result = self.append_entry(EntryKind::CompactionState(state));
+        if result.is_err() {
+            self.index = old_index;
+            self.leaf = old_leaf;
+        }
+        result
+    }
+
+    /// Persist the last model-visible entry before dispatch. This also survives reload.
+    ///
+    /// # Errors
+    /// I/O.
+    pub fn mark_sent(&mut self, messages: &[AgentMessage]) -> Result<(), SessionError> {
+        let projection = self.build_session_projection();
+        let last = projection
+            .entries
+            .iter()
+            .rev()
+            .find(|entry| entry.messages.iter().any(|m| messages.contains(m)))
+            .map(|entry| entry.source_entry.id.clone());
+        if let Some(id) = last {
+            self.append_custom_entry(
+                "oino.sent-frontier",
+                Some(serde_json::json!({"entryId":id})),
+            )?;
+            self.sync()?;
+        }
+        Ok(())
+    }
+
+    /// Whether this source entry is in the unsent tail. All branch ancestors through
+    /// every recorded frontier are protected, including after fork/reload.
+    #[must_use]
+    pub fn is_unsent(&self, target: &EntryId) -> bool {
+        let branch = self.branch(None);
+        let Some(index) = branch.iter().position(|entry| &entry.id == target) else {
+            return false;
+        };
+        !branch
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                EntryKind::Custom {
+                    custom_type,
+                    data: Some(data),
+                } if custom_type == "oino.sent-frontier" => data["entryId"].as_str(),
+                _ => None,
             })
-        });
-        let kind = EntryKind::Compaction(CompactionEntry {
-            summary: draft.summary,
-            first_kept_entry_id: draft.first_kept_entry_id.unwrap_or_else(|| id.clone()),
-            tokens_before: draft.tokens_before,
-            details: draft.details,
-            usage: draft.usage,
-            from_hook: draft.from_hook,
-            system_message,
-        });
-        let parent = self.leaf.clone();
-        self.push(kind, Some(id), parent, Some(now))
+            .any(|id| {
+                branch
+                    .iter()
+                    .position(|e| e.id.as_str() == id)
+                    .is_some_and(|frontier| index <= frontier)
+            })
     }
 
     /// Appends a `custom` entry (extension state).
@@ -900,6 +1170,11 @@ impl SessionManager {
             .index
             .get(target)
             .ok_or_else(|| SessionError::UnknownEntry(target.clone()))?;
+        if !self.is_unsent(target) {
+            return Err(SessionError::InvalidAppend(
+                "context edit target has already been sent to the provider or is off branch",
+            ));
+        }
         if !self.branch(None).iter().any(|e| e.id == *target) {
             return Err(SessionError::InvalidAppend(
                 "context edit target is not on the active branch",
@@ -1175,6 +1450,7 @@ impl SessionManager {
             let id = EntryId::generate(|candidate| taken.contains(candidate));
             taken.insert(id.to_string());
             kept.push(SessionEntry {
+                compaction_summary_id: None,
                 id: id.clone(),
                 parent_id: previous.replace(id),
                 timestamp: timestamp.clone(),

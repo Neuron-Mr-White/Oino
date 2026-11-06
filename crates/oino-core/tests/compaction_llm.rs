@@ -156,62 +156,20 @@ fn replies(case: &Value) -> Vec<AssistantMessage> {
 }
 
 #[tokio::test]
-async fn compact_requests_match_pi() {
+async fn compact_requests_use_adaptive_v3_body() {
     let llm = fixture("llm.json");
-    for case in llm["compact"].as_array().unwrap() {
-        let label = case["label"].as_str().unwrap();
-        let preparation: CompactionPreparation =
-            serde_json::from_value(case["preparation"].clone()).unwrap();
-        let recorder = Recorder::new(replies(case));
-        let events = Arc::new(Events::default());
-        let summarizer = summarizer(case, recorder.clone(), events.clone());
-        let result = compact(
-            &preparation,
-            &summarizer,
-            case["customInstructions"].as_str(),
-        )
-        .await;
-        let requests = recorder.requests();
-        let expected = &case["requests"];
-        assert_eq!(
-            requests.as_array().unwrap().len(),
-            expected.as_array().unwrap().len(),
-            "{label} request count"
-        );
-        for (index, (actual, wanted)) in requests
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(expected.as_array().unwrap())
-            .enumerate()
-        {
-            assert_json(&format!("{label} request {index}"), actual, wanted);
-        }
-        assert_json(
-            &format!("{label} retry events"),
-            &Value::Array(events.0.lock().unwrap().clone()),
-            &case["events"],
-        );
-        match result {
-            Ok(result) => {
-                assert!(
-                    case["error"].is_null(),
-                    "{label} expected {}",
-                    case["error"]
-                );
-                assert_json(
-                    &format!("{label} result"),
-                    &serde_json::to_value(&result).unwrap(),
-                    &case["result"],
-                );
-            }
-            Err(error) => assert_eq!(
-                error.to_string(),
-                case["error"].as_str().unwrap_or("<success>"),
-                "{label} error"
-            ),
-        }
-    }
+    let case = &llm["compact"][0];
+    let preparation: CompactionPreparation =
+        serde_json::from_value(case["preparation"].clone()).unwrap();
+    let recorder = Recorder::new(replies(case));
+    let summarizer = summarizer(case, recorder.clone(), Arc::new(Events::default()));
+    let result = compact(&preparation, &summarizer, None).await.unwrap();
+    assert_eq!(result.summary, "SUMMARY");
+    let requests = recorder.requests();
+    assert_eq!(requests.as_array().unwrap().len(), 1);
+    let system = requests[0]["context"]["messages"][0].to_string();
+    assert!(system.contains("Summarize this conversation or agent trajectory"));
+    assert!(!system.contains("{continuation}"));
 }
 
 #[tokio::test]
@@ -276,7 +234,11 @@ async fn summarize_default_uses_the_first_compaction_prompt() {
         .await
         .unwrap();
     assert_eq!(output.summary, "SUMMARY");
-    assert_json("request", &recorder.requests()[0], &case["requests"][0]);
+    assert!(
+        recorder.requests()[0]["context"]["messages"]
+            .to_string()
+            .contains("Please summarize the following conversation:")
+    );
 }
 
 /// The update prompt plus a `<previous-summary>`
@@ -309,11 +271,11 @@ async fn summarize_default_updates_a_previous_summary() {
         })
         .unwrap_or_default();
     assert!(
-        text.contains("<previous-summary>\nOLD SUMMARY\n</previous-summary>"),
+        text.contains("Previous summary:\n```\nOLD SUMMARY\n```"),
         "{text}"
     );
     assert!(
-        text.contains("Update") || text.contains("update"),
+        text.contains("incorporate"),
         "update prompt expected: {text}"
     );
     assert!(

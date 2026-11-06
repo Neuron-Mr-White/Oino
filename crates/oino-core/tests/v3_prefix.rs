@@ -183,7 +183,13 @@ async fn reminder_case(topic: &str) {
             .with_manager(|manager| {
                 manager.append_compaction(oino_session::CompactionDraft {
                     summary: "compacted tail".into(),
-                    first_kept_entry_id: None,
+                    first_kept_entry_id: manager
+                        .branch(None)
+                        .iter()
+                        .find(|entry| {
+                            matches!(entry.message(), Some(oino_ai::AgentMessage::User(_)))
+                        })
+                        .map(|entry| entry.id.clone()),
                     tokens_before: 100,
                     details: None,
                     from_hook: None,

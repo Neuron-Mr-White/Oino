@@ -37,6 +37,40 @@ fn check_snapshot(file: &Path) -> Result<(), String> {
     fs::copy(file, &copy).unwrap();
     let mut manager = SessionManager::open(&copy, temp.path(), None).map_err(|e| e.to_string())?;
     let mut actual = common::snapshot(&mut manager);
+    if file
+        .file_stem()
+        .is_some_and(|name| name == "compaction-first-kept-off-path")
+    {
+        // v3 rejects this fixture's intentionally off-branch anchor. Its prior view
+        // remains available; the old oracle expected silent context loss.
+        let invalid_leaves = actual["leaves"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, leaf)| {
+                let id = serde_json::from_value(leaf["leaf"].clone()).unwrap();
+                manager.set_leaf(&id).unwrap();
+                let projection = manager.build_session_projection();
+                if projection.errors.is_empty() {
+                    None
+                } else {
+                    assert!(
+                        projection
+                            .messages
+                            .iter()
+                            .any(|message| matches!(message, oino_ai::AgentMessage::User(_)))
+                    );
+                    Some(i)
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(!invalid_leaves.is_empty());
+        for i in invalid_leaves.into_iter().rev() {
+            actual["leaves"].as_array_mut().unwrap().remove(i);
+            expected["leaves"].as_array_mut().unwrap().remove(i);
+        }
+    }
     common::normalize_ids(&mut expected);
     common::normalize_ids(&mut actual);
     match common::first_diff(&actual, &expected, "") {

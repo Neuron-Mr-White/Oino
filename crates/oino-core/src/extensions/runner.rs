@@ -710,7 +710,9 @@ impl ExtensionRunner {
         }
     }
 
-    /// `context` then `context_with_system`.
+    /// `context` then `context_with_system`, on the unsent tail supplied by the
+    /// session. The session protects the sent prefix and persists accepted edits
+    /// before advancing its durable sent frontier.
     pub async fn emit_context(&self, messages: Vec<AgentMessage>) -> Vec<AgentMessage> {
         let mut current = messages;
         for extension in self.handlers("context") {

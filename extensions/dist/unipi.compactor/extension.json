@@ -1,0 +1,32 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.compactor",
+  "name": "Compactor",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Lossless compaction that does not drift, a percentage trigger at turn boundaries, and session_recall over the full history.",
+  "license": "MIT",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "sessions": {
+      "readAll": true
+    },
+    "models": {
+      "complete": true
+    },
+    "sessionControl": true,
+    "services": {
+      "call": [
+        "*/compaction-context.provide"
+      ]
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:dfabaa5fa59b08594516f48830756fb987b7c348fb79d4d4b631fc27bc37028a"
+  }
+}

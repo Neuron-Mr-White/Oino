@@ -22,8 +22,7 @@ use tokio_util::sync::CancellationToken;
 use super::error::CompactionError;
 use super::prepare::{CompactionPreparation, CompactionResult};
 use super::prompts::{
-    SUMMARIZATION_PROMPT, SUMMARIZATION_SYSTEM_PROMPT, TURN_PREFIX_SUMMARIZATION_PROMPT,
-    UPDATE_SUMMARIZATION_PROMPT,
+    SUMMARIZATION_PROMPT, SUMMARIZATION_SYSTEM_PROMPT, UPDATE_SUMMARIZATION_PROMPT,
 };
 use super::retry::{RetryPolicy, SummarizationRetryObserver, retry_assistant_call};
 use super::utils::{format_file_operations, serialize_conversation};
@@ -56,6 +55,8 @@ pub struct Summarizer {
     pub observer: Option<Arc<dyn SummarizationRetryObserver>>,
     /// Abort signal.
     pub cancel: CancellationToken,
+    /// Final escalation sends one model request, without shrink/resample retries.
+    pub single_attempt: bool,
 }
 
 /// Text and usage of one generated summary (`{text, usage}`; also the `summarize-default`
@@ -82,6 +83,7 @@ impl Summarizer {
             retry: None,
             observer: None,
             cancel: CancellationToken::new(),
+            single_attempt: false,
         }
     }
 
@@ -178,7 +180,8 @@ async fn final_message(
 /// The summarisation system prompt and one user message.
 #[must_use]
 pub fn summarization_context(prompt_text: &str) -> Context {
-    let system = initial_system_message(SUMMARIZATION_SYSTEM_PROMPT, &[]).map(Message::System);
+    let system =
+        initial_system_message(super::prompts::BRANCH_SYSTEM_PROMPT, &[]).map(Message::System);
     let user = Message::User(UserMessage {
         content: UserContentField::Blocks(vec![UserContent::text(prompt_text)]),
         timestamp: now_ms(),
@@ -232,30 +235,6 @@ fn non_empty(text: Option<&str>) -> Option<&str> {
     text.filter(|text| !text.is_empty())
 }
 
-/// Runs one summary request and validates the response.
-async fn summarize_prompt(
-    summarizer: &Summarizer,
-    prompt_text: &str,
-    label: &'static str,
-) -> Result<SummaryOutput, CompactionError> {
-    let response = summarizer
-        .complete(
-            summarization_context(prompt_text),
-            summarizer.summarization_options(),
-        )
-        .await;
-    if let Some(failure) = summarization_failure(&response, label) {
-        return Err(CompactionError::Summarization(failure));
-    }
-    if has_tool_call(&response) {
-        return Err(CompactionError::ToolCall(label));
-    }
-    Ok(SummaryOutput {
-        summary: response_text(&response),
-        usage: response.usage,
-    })
-}
-
 /// Summarises `messages` (or updates `previous_summary`) with
 /// the structured checkpoint prompt.
 ///
@@ -269,41 +248,147 @@ pub async fn generate_summary(
     custom_instructions: Option<&str>,
     previous_summary: Option<&str>,
 ) -> Result<SummaryOutput, CompactionError> {
-    let previous_summary = non_empty(previous_summary);
-    let mut base_prompt = if previous_summary.is_some() {
-        UPDATE_SUMMARIZATION_PROMPT.to_owned()
-    } else {
-        SUMMARIZATION_PROMPT.to_owned()
-    };
-    if let Some(instructions) = non_empty(custom_instructions) {
-        base_prompt = format!("{base_prompt}\n\nAdditional focus: {instructions}");
+    let previous = non_empty(previous_summary).map(strip_todos);
+    let context_window = summarizer.model.context_window.max(4096);
+    let instructions = custom_instructions.map(|text| truncate_tokens(text, context_window / 4));
+    let mut last = "Summarizer produced an empty response".to_owned();
+    // Context failures shrink the transcript. Empty/degenerate output is resampled once.
+    for percent in [90, 75, 50]
+        .into_iter()
+        .take(if summarizer.single_attempt { 1 } else { 3 })
+    {
+        let window = context_window.saturating_mul(percent) / 100;
+        let reserved = 4000
+            + previous.as_ref().map_or(0, |s| text_tokens(s))
+            + instructions.as_ref().map_or(0, |s| text_tokens(s))
+            + text_tokens(SUMMARIZATION_SYSTEM_PROMPT);
+        let transcript = fit_transcript(messages, window.saturating_sub(reserved));
+        let mut prompt = match &previous {
+            Some(previous) => format!(
+                "Previous summary:\n```\n{previous}\n```\n{}\nThese messages were sent since the previous summary:\n```\n{transcript}\n```\n",
+                if text_tokens(previous) > 6000 {
+                    super::prompts::SOFT_CAP_INSTRUCTION
+                } else {
+                    ""
+                }
+            ),
+            None => {
+                format!("Please summarize the following conversation:\n```\n{transcript}\n```\n")
+            }
+        };
+        if let Some(instructions) = &instructions {
+            let _ = write!(
+                prompt,
+                "The user has provided the following instructions for this summary:\n{instructions}\n\nIf necessary, you may add new sections or modify existing ones to align with the user's intent.\n\n"
+            );
+        }
+        prompt.push_str(if previous.is_some() {
+            "Please incorporate the new messages into the existing summary, preserving important details from both. Remember to wrap your final summary in <summary> tags."
+        } else { "Remember to wrap your final summary in <summary> tags." });
+        let paragraph = if previous.is_some() {
+            UPDATE_SUMMARIZATION_PROMPT
+        } else {
+            SUMMARIZATION_PROMPT
+        };
+        let system = SUMMARIZATION_SYSTEM_PROMPT.replace("{continuation}", paragraph);
+        for _ in 0..if summarizer.single_attempt { 1 } else { 2 } {
+            let mut context = summarization_context(&prompt);
+            context.messages[0] =
+                Message::System(initial_system_message(&system, &[]).ok_or_else(|| {
+                    CompactionError::Summarization("Missing summarizer prompt".into())
+                })?);
+            let response = summarizer
+                .complete(context, summarizer.summarization_options())
+                .await;
+            if summarizer.cancel.is_cancelled() {
+                return Err(CompactionError::Summarization(
+                    "Compaction cancelled".into(),
+                ));
+            }
+            if response.stop_reason == StopReason::Error {
+                last = response
+                    .error_message
+                    .clone()
+                    .unwrap_or_else(|| "Summary request failed".into());
+                if super::errors::is_context_overflow(&response, context_window) {
+                    break;
+                }
+                return Err(CompactionError::Summarization(last));
+            }
+            let text = response_text(&response);
+            let summary = text
+                .split_once("<summary>")
+                .map_or(text.as_str(), |(_, rest)| rest)
+                .split("</summary>")
+                .next()
+                .unwrap_or_default()
+                .trim();
+            if !has_tool_call(&response)
+                && !summary.is_empty()
+                && summary.chars().any(char::is_alphanumeric)
+            {
+                return Ok(SummaryOutput {
+                    summary: summary.to_owned(),
+                    usage: response.usage,
+                });
+            }
+            "Summarizer produced empty or degenerate output".clone_into(&mut last);
+        }
     }
-    let conversation = serialize_conversation(&convert_to_llm(messages));
-    let mut prompt = format!("<conversation>\n{conversation}\n</conversation>\n\n");
-    if let Some(previous) = previous_summary {
-        let _ = write!(
-            prompt,
-            "<previous-summary>\n{previous}\n</previous-summary>\n\n"
-        );
-    }
-    prompt.push_str(&base_prompt);
-    summarize_prompt(summarizer, &prompt, "Summarization").await
+    Err(CompactionError::Summarization(last))
 }
 
-/// Checkpoint of the prefix of a split turn.
-async fn generate_turn_prefix_summary(
-    messages: &[AgentMessage],
-    summarizer: &Summarizer,
-    custom_instructions: Option<&str>,
-) -> Result<SummaryOutput, CompactionError> {
-    let conversation = serialize_conversation(&convert_to_llm(messages));
-    let mut prompt = format!(
-        "# Conversation\n{conversation}\n\n# Instructions\n{TURN_PREFIX_SUMMARIZATION_PROMPT}"
-    );
-    if let Some(instructions) = non_empty(custom_instructions) {
-        prompt = format!("{prompt}\n\nAdditional focus: {instructions}");
+/// Remove the appended TODO snapshot before integrating a delta.
+#[must_use]
+pub fn strip_todos(text: &str) -> String {
+    text.split("\nCurrent TODO List:")
+        .next()
+        .unwrap_or(text)
+        .trim_end()
+        .to_owned()
+}
+
+fn text_tokens(text: &str) -> u64 {
+    u64::try_from(text.chars().count().div_ceil(4)).unwrap_or(u64::MAX)
+}
+fn truncate_tokens(text: &str, budget: u64) -> String {
+    text.chars()
+        .take(usize::try_from(budget.saturating_mul(4)).unwrap_or(usize::MAX))
+        .collect()
+}
+fn fit_transcript(messages: &[AgentMessage], budget: u64) -> String {
+    let serialized = messages
+        .iter()
+        .map(|m| serialize_conversation(&convert_to_llm(std::slice::from_ref(m))))
+        .collect::<Vec<_>>();
+    let mut remaining = budget.saturating_sub(32);
+    let mut first = serialized.len();
+    for (index, text) in serialized.iter().enumerate().rev() {
+        let cost = text_tokens(text);
+        if cost > remaining {
+            break;
+        }
+        remaining -= cost;
+        first = index;
     }
-    summarize_prompt(summarizer, &prompt, "Turn prefix summarization").await
+    let mut result = if first > 0 {
+        format!(
+            "[{first} earlier messages omitted because they did not fit the summarizer's context window]\n"
+        )
+    } else {
+        String::new()
+    };
+    if first == serialized.len() && !serialized.is_empty() {
+        // Pin the newest message's suffix even when a single tool result exceeds the window.
+        let tail = serialized.last().map(String::as_str).unwrap_or_default();
+        let chars = usize::try_from(remaining.saturating_mul(4)).unwrap_or(usize::MAX);
+        let mut suffix = tail.chars().rev().take(chars).collect::<Vec<_>>();
+        suffix.reverse();
+        result.extend(suffix);
+    } else {
+        result.push_str(&serialized[first..].join("\n"));
+    }
+    result
 }
 
 /// Core's default summariser exposed to extensions (`models.summarize-default`, C9): a
@@ -338,56 +423,17 @@ pub async fn compact(
     summarizer: &Summarizer,
     custom_instructions: Option<&str>,
 ) -> Result<CompactionResult, CompactionError> {
-    let previous = preparation.previous_summary.as_deref();
-    let (mut summary, usage) =
-        if preparation.is_split_turn && !preparation.turn_prefix_messages.is_empty() {
-            let history = if preparation.messages_to_summarize.is_empty() {
-                None
-            } else {
-                Some(
-                    generate_summary(
-                        &preparation.messages_to_summarize,
-                        summarizer,
-                        custom_instructions,
-                        previous,
-                    )
-                    .await?,
-                )
-            };
-            let prefix = generate_turn_prefix_summary(
-                &preparation.turn_prefix_messages,
-                summarizer,
-                custom_instructions,
-            )
-            .await?;
-            let (history_text, usage) = match history {
-                Some(history) => {
-                    let mut usage = history.usage;
-                    usage.accumulate(&prefix.usage);
-                    (history.summary, usage)
-                }
-                None => (
-                    previous.unwrap_or("No prior history.").to_owned(),
-                    prefix.usage,
-                ),
-            };
-            (
-                format!(
-                    "{history_text}\n\n---\n\n**Turn Context (split turn):**\n\n{}",
-                    prefix.summary
-                ),
-                usage,
-            )
-        } else {
-            let output = generate_summary(
-                &preparation.messages_to_summarize,
-                summarizer,
-                custom_instructions,
-                previous,
-            )
-            .await?;
-            (output.summary, output.usage)
-        };
+    let mut messages = preparation.messages_to_summarize.clone();
+    messages.extend(preparation.turn_prefix_messages.iter().cloned());
+    let output = generate_summary(
+        &messages,
+        summarizer,
+        custom_instructions,
+        preparation.previous_summary.as_deref(),
+    )
+    .await?;
+    let mut summary = output.summary;
+    let usage = output.usage;
     let lists = preparation.file_ops.file_lists();
     summary.push_str(&format_file_operations(
         &lists.read_files,

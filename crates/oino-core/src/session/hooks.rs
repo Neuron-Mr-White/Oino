@@ -181,7 +181,11 @@ impl TransformContext for SessionHooks {
             session
                 .snapshot_image_policy(&messages)
                 .map_err(|e| HookError::new(e.to_string()))?;
-            Ok(session.transform_context(messages).await)
+            let messages = session.transform_context(messages).await;
+            lock(&session.inner.manager)
+                .mark_sent(&messages)
+                .map_err(|e| HookError::new(e.to_string()))?;
+            Ok(messages)
         })
     }
 }
@@ -364,6 +368,10 @@ impl AgentSession {
     ) -> Result<AgentRequestUpdate, HookError> {
         let failed = lock(&self.inner.book).failed_response.take();
         let projection = lock(&self.inner.manager).build_session_projection();
+        for error in &projection.errors {
+            self.runner()
+                .emit_error("<runtime>", "compaction_state", error);
+        }
         let mut next = AgentContext {
             messages: projection.messages.clone(),
             tools: self.inner.agent.with_state(|state| state.tools.clone()),
@@ -437,17 +445,104 @@ impl AgentSession {
     }
 
     /// Agent `transformContext`: `context` handlers, hidden declarations, forced prompt.
+    #[allow(
+        clippy::if_not_else,
+        reason = "reject structural changes before applying content edits"
+    )]
     async fn transform_context(&self, messages: Vec<AgentMessage>) -> Vec<AgentMessage> {
         let runner = self.runner();
+        let protected = {
+            let manager = lock(&self.inner.manager);
+            let projection = manager.build_session_projection();
+            messages
+                .iter()
+                .enumerate()
+                .filter(|(_, message)| {
+                    matches!(message, AgentMessage::System(_))
+                        || matches!(message, AgentMessage::Custom(custom) if matches!(custom.custom_type.as_str(), "oino.session-start" | "oino.system-reminder"))
+                        || projection.entries.iter().any(|entry| {
+                            entry.messages.contains(message)
+                                && !manager.is_unsent(&entry.source_entry.id)
+                        })
+                })
+                .map(|(index, _)| index + 1)
+                .max()
+                .unwrap_or(0)
+        };
+        let original = messages.clone();
         let mut messages =
             if runner.has_handlers("context") || runner.has_handlers("context_with_system") {
-                runner.emit_context(messages).await
+                let mut prefix = messages[..protected].to_vec();
+                prefix.extend(runner.emit_context(messages[protected..].to_vec()).await);
+                prefix
             } else {
                 messages
             };
-        messages = self.prefix_view(messages);
-
-        messages
+        // Persist accepted tail replacements so a later request/reload cannot silently
+        // revert bytes that a transform sent. Structural transforms fail closed.
+        if messages != original {
+            let mut manager = lock(&self.inner.manager);
+            if messages.len() != original.len() {
+                runner.emit_error(
+                    "<runtime>",
+                    "context",
+                    "Context transforms cannot insert or remove persisted history",
+                );
+                messages.clone_from(&original);
+            } else {
+                let projection = manager.build_session_projection();
+                let mut edits = Vec::new();
+                let mut valid = true;
+                for (old, new) in original.iter().zip(&messages) {
+                    if old == new {
+                        continue;
+                    }
+                    let entry = projection
+                        .entries
+                        .iter()
+                        .find(|entry| entry.messages == vec![old.clone()]);
+                    let content = match new {
+                        AgentMessage::User(user) => serde_json::to_value(&user.content),
+                        AgentMessage::Custom(custom) => serde_json::to_value(&custom.content),
+                        AgentMessage::Assistant(assistant) => {
+                            serde_json::to_value(&assistant.content)
+                        }
+                        AgentMessage::ToolResult(result) => serde_json::to_value(&result.content),
+                        _ => {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    .ok()
+                    .and_then(|v| serde_json::from_value::<oino_session::EditableContent>(v).ok());
+                    if let (Some(entry), Some(content)) = (entry, content) {
+                        if old.role() != new.role() || !manager.is_unsent(&entry.source_entry.id) {
+                            valid = false;
+                            break;
+                        }
+                        edits.push((entry.source_entry.id.clone(), content));
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+                if valid {
+                    for (id, content) in edits {
+                        if let Err(error) = manager.append_context_edit(&id, Some(content)) {
+                            runner.emit_error("<runtime>", "context", error.to_string());
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                messages = if valid {
+                    manager.build_session_projection().messages
+                } else {
+                    original.clone()
+                };
+            }
+        }
+        self.prefix_view(messages)
     }
 }
 

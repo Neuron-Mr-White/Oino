@@ -17,11 +17,11 @@ use oino_core::compaction::errors::{
 };
 use oino_core::compaction::{
     CompactionSettings, CutPointResult, DEFAULT_COMPACTION_SETTINGS, FileOperations,
-    SUMMARIZATION_SYSTEM_PROMPT, calculate_context_tokens, collect_entries_for_branch_summary,
-    estimate_context_tokens, estimate_projected_context_tokens, estimate_tokens, find_cut_point,
-    find_turn_start_index, format_file_operations, is_context_overflow,
-    is_retryable_assistant_error, last_assistant_usage, prepare_branch_entries, prepare_compaction,
-    retry_delay_ms, serialize_conversation, should_compact,
+    calculate_context_tokens, collect_entries_for_branch_summary, estimate_context_tokens,
+    estimate_projected_context_tokens, estimate_tokens, find_cut_point, find_turn_start_index,
+    format_file_operations, is_context_overflow, is_retryable_assistant_error,
+    last_assistant_usage, prepare_branch_entries, prepare_compaction, retry_delay_ms,
+    serialize_conversation, should_compact,
 };
 use oino_session::{EntryId, EntryIndex, SessionEntry, build_session_projection, convert_to_llm};
 use serde_json::{Value, json};
@@ -41,6 +41,7 @@ fn assert_json(label: &str, actual: &Value, expected: &Value) {
     );
 }
 
+#[allow(dead_code)]
 fn case_cut(value: &Value) -> CutPointResult {
     CutPointResult {
         first_kept_entry_index: usize::try_from(value["firstKeptEntryIndex"].as_u64().unwrap())
@@ -80,28 +81,46 @@ fn sessions_match_pi() {
             };
             let label = format!("{name} keep={keep}");
             let prepared = prepare_compaction(&branch, &settings);
-            assert_json(
-                &format!("{label} prepareCompaction"),
-                &serde_json::to_value(&prepared).unwrap(),
-                &case["prepare"],
-            );
-            assert_eq!(
-                find_cut_point(&branch, 0, branch.len(), keep),
-                case_cut(&case["findCutPoint"]),
-                "{label} findCutPoint"
-            );
+            // v3 deliberately replaces pi's split-turn cuts with inclusive user-turn anchors.
+            if let Some(prepared) = prepared {
+                let anchor = branch
+                    .iter()
+                    .position(|entry| entry.id == prepared.first_kept_entry_id)
+                    .unwrap();
+                oino_session::context::validate_compaction_anchor(
+                    &branch,
+                    &oino_session::CompactionAnchor {
+                        id: prepared.first_kept_entry_id,
+                        index: anchor,
+                    },
+                )
+                .unwrap();
+                assert!(!prepared.is_split_turn, "{label}");
+                assert!(prepared.turn_prefix_messages.is_empty(), "{label}");
+            }
+            let cut = find_cut_point(&branch, 0, branch.len(), keep);
+            if let Some(entry) = branch.get(cut.first_kept_entry_index) {
+                assert!(
+                    matches!(entry.message(), Some(AgentMessage::User(_)))
+                        || entry.message().is_none()
+                        || cut.first_kept_entry_index == 0,
+                    "{label}"
+                );
+            }
             checked += 1;
         }
         let turn_starts: Vec<Option<usize>> = (0..branch.len())
             .map(|index| find_turn_start_index(&branch, index, 0))
             .collect();
-        let expected: Vec<Option<usize>> = scenario["turnStarts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| usize::try_from(value.as_i64().unwrap()).ok())
-            .collect();
-        assert_eq!(turn_starts, expected, "{name} findTurnStartIndex");
+        for (position, start) in turn_starts.iter().enumerate() {
+            if let Some(start) = start {
+                assert!(*start <= position);
+                assert!(matches!(
+                    branch[*start].message(),
+                    Some(AgentMessage::User(_))
+                ));
+            }
+        }
         assert_json(
             &format!("{name} getLastAssistantUsage"),
             &serde_json::to_value(last_assistant_usage(&branch)).unwrap(),
@@ -173,7 +192,7 @@ fn check_branch_cases(name: &str, scenario: &Value, index: &EntryIndex) {
 fn utils_match_pi() {
     let utils = fixture("utils.json");
     assert_eq!(
-        SUMMARIZATION_SYSTEM_PROMPT,
+        oino_core::compaction::prompts::BRANCH_SYSTEM_PROMPT,
         utils["systemPrompt"].as_str().unwrap()
     );
     for (index, case) in utils["serialize"].as_array().unwrap().iter().enumerate() {

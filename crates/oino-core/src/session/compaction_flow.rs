@@ -11,9 +11,8 @@ use tokio_util::sync::CancellationToken;
 use super::{AgentSession, Inner, SessionOpError, lock};
 use crate::compaction::{
     self, CompactionPreparation, CompactionResult, CompactionSettings, RetryPolicy,
-    SummarizationRetryObserver, Summarizer, calculate_context_tokens, estimate_context_tokens,
-    estimate_projected_context_tokens, estimate_tokens, is_context_overflow, is_recoverable_length,
-    prepare_compaction, should_compact,
+    SummarizationRetryObserver, Summarizer, estimate_tokens, is_context_overflow,
+    is_recoverable_length, prepare_compaction,
 };
 use crate::events::{AgentSessionEvent, CompactionReason, SummarizationSource};
 
@@ -65,22 +64,50 @@ fn messages_tokens(messages: &[AgentMessage]) -> u64 {
 }
 
 impl AgentSession {
+    /// Set a positive session-only threshold override; `None` restores layered settings.
+    pub fn set_compaction_token_limit(&self, limit: Option<u64>) {
+        lock(&self.inner.book).compaction_token_limit = limit.filter(|n| *n > 0);
+    }
+
+    fn compaction_limit(&self, model: &Model) -> u64 {
+        let session = lock(&self.inner.book).compaction_token_limit;
+        oino_settings::v3_compaction::token_limit(
+            lock(&self.inner.settings).settings(),
+            &model.id,
+            session,
+            None,
+            model.context_window.saturating_sub(model.max_tokens),
+        )
+    }
+
+    fn threshold_due(&self, model: &Model, input: u64) -> bool {
+        let limit = self.compaction_limit(model);
+        let key = (format!("{}/{}", model.provider, model.id), limit);
+        let mut book = lock(&self.inner.book);
+        if input <= limit {
+            book.threshold_suppression = None;
+            return false;
+        }
+        if book.threshold_suppression.as_ref() == Some(&key) {
+            return false;
+        }
+        book.threshold_suppression = Some(key);
+        true
+    }
+
     pub(crate) fn compaction_settings(&self, model: Option<&Model>) -> CompactionSettings {
-        let settings = lock(&self.inner.settings)
-            .settings()
-            .compaction_settings(model.map(|m| (m.provider.as_str(), m.id.as_str())))
-            .unwrap_or_else(|error| {
-                tracing::warn!("invalid compaction settings: {error}");
-                oino_settings::CompactionSettings {
-                    enabled: true,
-                    reserve_tokens: compaction::DEFAULT_COMPACTION_SETTINGS.reserve_tokens,
-                    keep_recent_tokens: compaction::DEFAULT_COMPACTION_SETTINGS.keep_recent_tokens,
-                }
-            });
+        let settings = lock(&self.inner.settings);
+        let snapshot = settings.settings();
         CompactionSettings {
-            enabled: settings.enabled,
-            reserve_tokens: settings.reserve_tokens,
-            keep_recent_tokens: settings.keep_recent_tokens,
+            enabled: snapshot.compaction_enabled(),
+            // Compatibility-only field for old hook payloads; no longer a trigger input.
+            reserve_tokens: 0,
+            keep_recent_tokens: snapshot
+                .compaction_token(
+                    oino_settings::CompactionTokenField::KeepRecentTokens,
+                    model.map(|m| (m.provider.as_str(), m.id.as_str())),
+                )
+                .unwrap_or(compaction::DEFAULT_COMPACTION_SETTINGS.keep_recent_tokens),
         }
     }
 
@@ -139,6 +166,7 @@ impl AgentSession {
                 source,
             })),
             cancel,
+            single_attempt: false,
         })
     }
 
@@ -157,9 +185,26 @@ impl AgentSession {
                 SummarizationSource::Compaction { reason },
             )
             .await?;
-        compaction::compact(preparation, &summarizer, custom_instructions)
-            .await
-            .map_err(|e| e.to_string())
+        match compaction::compact(preparation, &summarizer, custom_instructions).await {
+            Ok(result) => Ok(result),
+            Err(error) if !cancel.is_cancelled() => {
+                tracing::warn!(%error, "summary failed; escalating once to session main model");
+                // One final main-model attempt. Disable transport retries for this escalation.
+                let mut main = self
+                    .summarizer(
+                        model,
+                        cancel.clone(),
+                        SummarizationSource::Compaction { reason },
+                    )
+                    .await?;
+                main.retry = None;
+                main.single_attempt = true;
+                compaction::compact(preparation, &main, custom_instructions)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            Err(error) => Err(error.to_string()),
+        }
     }
 
     async fn emit_session_compact_failed(
@@ -180,7 +225,7 @@ impl AgentSession {
         }
     }
 
-    /// Runs `session_before_compact`; `Err(true)` = cancelled.
+    /// Runs `session_before_compact`; only manual cancellation is binding.
     async fn before_compact(
         &self,
         preparation: &CompactionPreparation,
@@ -188,7 +233,7 @@ impl AgentSession {
         custom_instructions: Option<&str>,
         reason: CompactionReason,
         will_retry: bool,
-    ) -> Result<Option<CompactionResult>, ()> {
+    ) -> Result<Option<CompactionResult>, String> {
         let runner = self.runner();
         if !runner.has_handlers("session_before_compact") {
             return Ok(None);
@@ -221,8 +266,16 @@ impl AgentSession {
         let Some(result) = runner.emit(payload).await else {
             return Ok(None);
         };
-        if result.get("cancel") == Some(&serde_json::Value::Bool(true)) {
-            return Err(());
+        if reason == CompactionReason::Manual
+            && result.get("cancel") == Some(&serde_json::Value::Bool(true))
+        {
+            return Err("Compaction cancelled".into());
+        }
+        if let Some(error) = result
+            .get("errorMessage")
+            .and_then(serde_json::Value::as_str)
+        {
+            return Err(error.to_owned());
         }
         Ok(result
             .get("compaction")
@@ -237,17 +290,64 @@ impl AgentSession {
         reason: CompactionReason,
         will_retry: bool,
     ) -> Result<CompactionResult, String> {
-        let entry_id = lock(&self.inner.manager)
-            .append_compaction(CompactionDraft {
-                summary: result.summary.clone(),
-                first_kept_entry_id: Some(result.first_kept_entry_id.clone()),
-                tokens_before: result.tokens_before,
-                details: result.details.clone(),
-                from_hook: Some(from_extension),
-                usage: result.usage,
-                system_message: None,
-            })
+        if reason == CompactionReason::Overflow {
+            let manager = lock(&self.inner.manager);
+            let projection = manager.build_session_projection();
+            let removed = projection
+                .entries
+                .iter()
+                .take_while(|entry| entry.source_entry.id != result.first_kept_entry_id)
+                .filter(|entry| {
+                    !matches!(
+                        entry.source_entry.kind,
+                        EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+                    )
+                })
+                .map(|entry| entry.messages.len())
+                .sum::<usize>();
+            if removed == 0 {
+                return Err("Compaction made no progress; preserving original failure".into());
+            }
+        }
+        let loaded = self.loaded_deferred_tool_names();
+        let entry_id = {
+            let mut manager = lock(&self.inner.manager);
+            let mut state = manager
+                .prepare_compaction_state(CompactionDraft {
+                    summary: result.summary.clone(),
+                    first_kept_entry_id: Some(result.first_kept_entry_id.clone()),
+                    tokens_before: result.tokens_before,
+                    details: result.details.clone(),
+                    from_hook: Some(from_extension),
+                    usage: result.usage,
+                    system_message: None,
+                })
+                .map_err(|e| e.to_string())?;
+            state.loaded_deferred_tool_names.clone_from(&loaded);
+            manager
+                .append_compaction_state(state)
+                .map_err(|e| e.to_string())?
+        };
+        lock(&self.inner.manager)
+            .sync()
             .map_err(|e| e.to_string())?;
+        // A fresh provider cache namespace invalidates the snapshot without changing
+        // either immutable slot or any message bytes.
+        self.inner.agent.update_stream_options(|options| {
+            options.session_id = Some(format!("{}-{}", self.session_id(), entry_id));
+        });
+        self.rebuild_declarations_after_compaction();
+        if !loaded.is_empty() {
+            self.append_reminder(
+                "oino",
+                "oino/deferred-tools",
+                &format!(
+                    "Loaded deferred tools after compaction: {}",
+                    loaded.join(", ")
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        }
         self.refresh_context();
         let after = messages_tokens(
             &lock(&self.inner.manager)
@@ -273,6 +373,10 @@ impl AgentSession {
     ///
     /// `Already compacted`, `Nothing to compact (session too small)`, `Compaction cancelled`,
     /// or the summariser failure.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "manual compaction transaction with paired lifecycle events"
+    )]
     pub async fn compact(
         &self,
         custom_instructions: Option<String>,
@@ -300,15 +404,17 @@ impl AgentSession {
                 .collect();
             let refs: Vec<&SessionEntry> = branch.iter().collect();
             let Some(preparation) = prepare_compaction(&refs, &settings) else {
-                if branch
-                    .last()
-                    .is_some_and(|e| matches!(e.kind, EntryKind::Compaction(_)))
-                {
+                if branch.last().is_some_and(|e| {
+                    matches!(
+                        e.kind,
+                        EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+                    )
+                }) {
                     return Err("Already compacted".to_owned());
                 }
                 return Err("Nothing to compact (session too small)".to_owned());
             };
-            let Ok(supplied) = self
+            let supplied = match self
                 .before_compact(
                     &preparation,
                     &branch,
@@ -317,9 +423,12 @@ impl AgentSession {
                     false,
                 )
                 .await
-            else {
-                cancelled_by_extension = true;
-                return Err("Compaction cancelled".to_owned());
+            {
+                Ok(supplied) => supplied,
+                Err(error) => {
+                    cancelled_by_extension = error == "Compaction cancelled";
+                    return Err(error);
+                }
             };
             let result = if let Some(result) = supplied {
                 from_extension = true;
@@ -393,15 +502,20 @@ impl AgentSession {
         if model.context_window == 0 {
             return false;
         }
-        let tokens = {
-            let manager = lock(&self.inner.manager);
-            estimate_projected_context_tokens(projection, &manager.branch(None)).tokens
-        };
-        should_compact(
-            tokens,
-            model.context_window,
-            &self.compaction_settings(self.model().as_ref()),
-        )
+        let tokens = projection
+            .messages
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                AgentMessage::Assistant(assistant) => Some(
+                    assistant.usage.input
+                        + assistant.usage.cache_read
+                        + assistant.usage.cache_write,
+                ),
+                _ => None,
+            })
+            .unwrap_or(0);
+        self.compaction_settings(Some(model)).enabled && self.threshold_due(model, tokens)
     }
 
     /// `_compactBeforeNextAssistantResponse`; returns the projected messages.
@@ -468,10 +582,12 @@ impl AgentSession {
                 manager.build_session_projection(),
             )
         };
-        let latest_compaction = branch
-            .iter()
-            .rev()
-            .find(|e| matches!(e.kind, EntryKind::Compaction(_)));
+        let latest_compaction = branch.iter().rev().find(|e| {
+            matches!(
+                e.kind,
+                EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+            )
+        });
         if let Some(compaction) = latest_compaction
             && compaction
                 .timestamp
@@ -504,10 +620,12 @@ impl AgentSession {
             _ => None,
         });
         let retained = entry_id.is_none()
-            || (!after
-                .iter()
-                .any(|e| matches!(e.kind, EntryKind::Compaction(_)))
-                && latest_edit.is_none_or(Option::is_some));
+            || (!after.iter().any(|e| {
+                matches!(
+                    e.kind,
+                    EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+                )
+            }) && latest_edit.is_none_or(Option::is_some));
         let usage_matches = projected && !post_edit;
         let explicit =
             assistant.stop_reason == StopReason::Error && is_context_overflow(assistant, 0);
@@ -550,41 +668,21 @@ impl AgentSession {
                 return false;
             }
             lock(&self.inner.book).overflow_recovery_attempted = true;
-            self.omit_recovery_attempt(assistant);
             let retry = self
                 .run_auto_compaction(CompactionReason::Overflow, will_retry)
                 .await;
             if retry {
+                self.omit_recovery_attempt(assistant);
                 lock(&self.inner.book).failed_response = Some(assistant.clone());
             }
             return retry;
         }
-        let has_edits = projection
-            .entries
-            .iter()
-            .any(|e| matches!(e.source_entry.kind, EntryKind::ContextEdit { .. }));
-        let direct = calculate_context_tokens(&assistant.usage);
-        let context_tokens = if has_edits {
-            let refs: Vec<&SessionEntry> = branch.iter().collect();
-            estimate_projected_context_tokens(&projection, &refs).tokens
-        } else if assistant.stop_reason == StopReason::Error || direct == 0 {
-            let messages = self.messages();
-            let estimate = estimate_context_tokens(&messages);
-            if let (Some(usage_index), Some(compaction)) =
-                (estimate.last_usage_index, latest_compaction)
-                && let Some(AgentMessage::Assistant(usage_message)) = messages.get(usage_index)
-                && compaction
-                    .timestamp
-                    .to_ms()
-                    .is_some_and(|ms| usage_message.timestamp <= ms)
-            {
-                return false;
-            }
-            estimate.tokens
-        } else {
-            direct
-        };
-        if should_compact(context_tokens, context_window, &settings) {
+        let context_tokens =
+            assistant.usage.input + assistant.usage.cache_read + assistant.usage.cache_write;
+        if model
+            .as_ref()
+            .is_some_and(|m| self.threshold_due(m, context_tokens))
+        {
             return self
                 .run_auto_compaction(CompactionReason::Threshold, false)
                 .await;
@@ -684,12 +782,15 @@ impl AgentSession {
             if cancel.is_cancelled() {
                 return Err("aborted".to_owned());
             }
-            let Ok(supplied) = self
+            let supplied = match self
                 .before_compact(&preparation, &branch, None, reason, will_retry)
                 .await
-            else {
-                cancelled_by_extension = true;
-                return Err("Compaction cancelled".to_owned());
+            {
+                Ok(supplied) => supplied,
+                Err(error) => {
+                    cancelled_by_extension = error == "Compaction cancelled";
+                    return Err(error);
+                }
             };
             if cancel.is_cancelled() {
                 return Err("aborted".to_owned());

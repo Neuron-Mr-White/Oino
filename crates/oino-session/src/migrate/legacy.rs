@@ -538,6 +538,7 @@ pub fn migrate_oino_legacy_text(text: &str, base_ms: i64) -> Result<LegacyMigrat
             _ => {}
         }
         index.push(SessionEntry {
+            compaction_summary_id: None,
             id,
             parent_id,
             timestamp: IsoTimestamp::from_ms(timestamp_of(position)),
@@ -558,6 +559,7 @@ pub fn migrate_oino_legacy_text(text: &str, base_ms: i64) -> Result<LegacyMigrat
     let info_id = EntryId::generate(|candidate| taken.contains(candidate));
     let name = legacy.name.trim();
     entries_out.push(SessionEntry {
+        compaction_summary_id: None,
         id: info_id,
         parent_id: leaf,
         timestamp: IsoTimestamp::from_ms(base_ms),

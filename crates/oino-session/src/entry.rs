@@ -151,6 +151,9 @@ pub struct SessionEntry {
     /// Creation time.
     #[serde(default)]
     pub timestamp: IsoTimestamp,
+    /// Active compaction generation when this record was appended.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_summary_id: Option<EntryId>,
     /// Type-specific payload (`type` tag).
     #[serde(flatten)]
     pub kind: EntryKind,
@@ -227,8 +230,10 @@ pub enum EntryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         note: Option<String>,
     },
-    /// Compaction.
+    /// Legacy compaction (read compatibility).
     Compaction(CompactionEntry),
+    /// Anchored append-only v3 compaction.
+    CompactionState(CompactionState),
     /// Append-only context edit of an earlier entry.
     ContextEdit {
         /// Edited entry.
@@ -324,6 +329,7 @@ impl EntryKind {
             Self::ModelChange { .. } => "model_change",
             Self::Usage { .. } => "usage",
             Self::Compaction(_) => "compaction",
+            Self::CompactionState(_) => "compaction_state",
             Self::ContextEdit { .. } => "context_edit",
             Self::BranchSummary(_) => "branch_summary",
             Self::Custom { .. } => "custom",
@@ -331,6 +337,92 @@ impl EntryKind {
             Self::Label { .. } => "label",
             Self::SessionInfo { .. } => "session_info",
         }
+    }
+}
+
+/// Inclusive anchor in the active branch (index counts raw branch entries).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionAnchor {
+    /// Persisted message identity.
+    pub id: EntryId,
+    /// Raw branch position, checked together with the identity.
+    pub index: usize,
+}
+
+/// Retained image reference, never an invented image payload.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetainedImage {
+    /// Source file.
+    pub path: String,
+    /// Text description.
+    pub excerpt: String,
+    /// Zero-based image position.
+    pub image_index: usize,
+    /// Number of images in the source.
+    pub image_count: usize,
+}
+
+/// How the summary was produced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SummaryKind {
+    /// Iterative model summary.
+    LlmSummary,
+    /// VCC extraction, without a model delta step.
+    VccSummary,
+}
+
+/// One complete compaction transaction. A failed summary never appends this record.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionState {
+    /// Unwrapped summary including the current TODO list.
+    pub summary_text: String,
+    /// Estimated summary size.
+    pub summary_tokens: u64,
+    /// Compactor implementation.
+    pub summary_kind: SummaryKind,
+    /// First kept message, inclusive.
+    pub anchor_message: CompactionAnchor,
+    /// Number of model messages removed from the preceding view.
+    pub removed_count: usize,
+    /// Announced/loaded skill names.
+    #[serde(default)]
+    pub retained_skills: Vec<String>,
+    /// Retained image references.
+    #[serde(default)]
+    pub retained_images: Vec<RetainedImage>,
+    /// Loaded deferred schemas to restore.
+    #[serde(default)]
+    pub loaded_deferred_tool_names: Vec<String>,
+}
+
+impl CompactionState {
+    /// Exact §5.5 envelope. Depends only on persisted data, never the clock or cwd.
+    #[must_use]
+    pub fn injected_text(&self) -> String {
+        use std::fmt::Write as _;
+        let mut retained = String::new();
+        if !self.retained_skills.is_empty() {
+            let _ = writeln!(
+                retained,
+                "Retained skills: {}",
+                self.retained_skills.join(", ")
+            );
+        }
+        for image in &self.retained_images {
+            let _ = writeln!(
+                retained,
+                "{} [{}/{}]: {}",
+                image.path, image.image_index, image.image_count, image.excerpt
+            );
+        }
+        format!(
+            "A previous instance of Oino has summarized the conversation thus far as follows:\n\n<summary>\n{}\n</summary>\n\n{retained}IMPORTANT: This summary was created by a previous instance of Oino. Files referenced in the summary may not be available until you explicitly view them again.",
+            self.summary_text
+        )
     }
 }
 
@@ -510,6 +602,7 @@ mod tests {
     #[test]
     fn null_fields_are_always_present() {
         let entry = SessionEntry {
+            compaction_summary_id: None,
             id: "a".into(),
             parent_id: None,
             timestamp: IsoTimestamp::from_ms(0),

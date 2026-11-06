@@ -128,10 +128,13 @@ fn to_live(e: &Value) -> Option<Value> {
 /// Live messages after the last compaction's kept entry (orphan recovery on `""`/missing).
 #[must_use]
 pub fn collect_live(branch: &[Value]) -> Vec<Live> {
-    let last = branch.iter().rposition(|e| ty(e) == "compaction");
+    let last = branch
+        .iter()
+        .rposition(|e| matches!(ty(e), "compaction" | "compaction_state"));
     let kept = last.and_then(|i| {
         branch[i]
             .get("firstKeptEntryId")
+            .or_else(|| branch[i].pointer("/anchorMessage/id"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
     });

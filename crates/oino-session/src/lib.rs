@@ -50,9 +50,9 @@ pub use context::{
     entry_to_context_messages, latest_compaction, path_to,
 };
 pub use entry::{
-    BranchSummaryEntry, CURRENT_SESSION_VERSION, CWD_CHANGE_CUSTOM_TYPE, CompactionEntry,
-    ContextReplacement, EditableContent, EntryId, EntryKind, FileLine, IsoTimestamp, SessionEntry,
-    SessionHeader,
+    BranchSummaryEntry, CURRENT_SESSION_VERSION, CWD_CHANGE_CUSTOM_TYPE, CompactionAnchor,
+    CompactionEntry, CompactionState, ContextReplacement, EditableContent, EntryId, EntryKind,
+    FileLine, IsoTimestamp, RetainedImage, SessionEntry, SessionHeader, SummaryKind,
 };
 pub use error::SessionError;
 #[cfg(feature = "manager")]

@@ -86,6 +86,7 @@ fn stats_branch() -> Vec<Value> {
     .unwrap_or_default()
 }
 
+/// Restore an interrupted command selection from append-only session metadata.
 pub fn restore_pending(entries: &[Value]) -> Option<PendingCompaction> {
     let mut restored: Option<PendingCompaction> = None;
     for e in entries {
@@ -428,8 +429,8 @@ impl Compactor {
                     Some(json!({"compaction": c}))
                 }
                 Err(e) => {
-                    self.debug(&json!({"method": "llm", "fallback": true, "error": e.to_string()}));
-                    None
+                    self.debug(&json!({"method": "llm", "error": e.to_string()}));
+                    Some(json!({"errorMessage": e.to_string()}))
                 }
             };
         }
@@ -460,7 +461,9 @@ impl Compactor {
             Ok(p) => p,
             Err(refusal) => {
                 if reason.as_deref() == Some("overflow") {
-                    return None;
+                    return Some(
+                        json!({"errorMessage": "VCC could not compact this history without losing context"}),
+                    );
                 }
                 if (reason.as_deref() == Some("manual") || from_command) && cx.has_ui() {
                     let _ = ui::notify(
@@ -484,11 +487,34 @@ impl Compactor {
             }
         });
         self.debug(&json!({"method": "vcc", "reason": reason, "details": plan.details, "summaryPreview": plan.summary.chars().take(800).collect::<String>()}));
+        // Keep the earlier of VCC's cut and the host's pinned tail. Advancing a
+        // VCC anchor would discard material its extraction did not summarize.
+        let host_anchor = prep
+            .and_then(|p| p.get("firstKeptEntryId"))
+            .and_then(Value::as_str);
+        let position = |id: &str| {
+            branch
+                .iter()
+                .position(|entry| entry["id"].as_str() == Some(id))
+        };
+        let bound = position(&plan.first_kept)
+            .into_iter()
+            .chain(host_anchor.and_then(position))
+            .min();
+        let anchor = bound
+            .and_then(|end| {
+                branch[..=end]
+                    .iter()
+                    .rev()
+                    .find(|entry| entry["message"]["role"] == "user")
+            })
+            .and_then(|entry| entry["id"].as_str())
+            .unwrap_or_default();
         Some(json!({"compaction": {
             "summary": plan.summary,
             "details": plan.details,
             "tokensBefore": tokens_before.unwrap_or(0),
-            "firstKeptEntryId": plan.first_kept,
+            "firstKeptEntryId": anchor,
         }}))
     }
 
@@ -500,11 +526,12 @@ impl Compactor {
             .and_then(|d| d.get("compactor"))
             .and_then(Value::as_str)
             == Some(COMPACTOR_ID);
-        let method = if ours
-            && details
-                .and_then(|d| d.get("method"))
-                .and_then(Value::as_str)
-                != Some("llm")
+        let method = if entry.get("summaryKind").and_then(Value::as_str) == Some("vcc_summary")
+            || (ours
+                && details
+                    .and_then(|d| d.get("method"))
+                    .and_then(Value::as_str)
+                    != Some("llm"))
         {
             Method::Vcc
         } else {
@@ -699,7 +726,9 @@ impl Compactor {
     /// `turn_end`: compact-then (steer) first, then the percentage trigger.
     #[allow(clippy::too_many_lines, reason = "two boundary paths of one hook")]
     async fn on_turn_end(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
-        let cfg = self.cfg();
+        let mut cfg = self.cfg();
+        // v3 threshold/overflow triggers belong to the host and share its suppression.
+        cfg.percent = false;
         let cwd = cx.cwd().display().to_string();
         let sid = cx.session_id().to_owned();
         let original: Vec<Value> = ev
