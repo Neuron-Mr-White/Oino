@@ -340,6 +340,10 @@ impl Mcp {
     }
 
     /// unipi `startServers`: parallel connect + discovery, then one sorted registration.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "transactional registration and catalog announcement"
+    )]
     async fn start_servers(
         &'static self,
         servers: Vec<Resolved>,
@@ -441,6 +445,12 @@ impl Mcp {
                 });
             }
         }
+        if !registered.is_empty() {
+            session::append_reminder("unipi.mcp/catalog", &format!(
+                "MCP catalog update. Newly available deferred tools: {}. Discover tools before calling them.",
+                registered.join(", ")
+            )).map_err(|error| error.to_string())?;
+        }
         Ok(())
     }
 
@@ -448,6 +458,17 @@ impl Mcp {
     async fn stop_server(&self, name: &str) {
         let names = self.registry.borrow_mut().stop(name);
         Self::unregister(&names);
+        if !names.is_empty()
+            && let Err(error) = session::append_reminder(
+                "unipi.mcp/catalog",
+                &format!(
+                    "MCP catalog update. Unavailable tools: {}.",
+                    names.join(", ")
+                ),
+            )
+        {
+            host::info_log(&format!("MCP catalog reminder failed: {error}"));
+        }
         let client = self.clients.borrow_mut().remove(name);
         if let Some(c) = client {
             c.disconnect().await;

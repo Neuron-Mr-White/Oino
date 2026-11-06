@@ -482,7 +482,7 @@ impl Lh {
         Some((mode, conf))
     }
 
-    async fn gate(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+    async fn gate(&self, ev: &Event, cx: &Ctx) -> Result<Option<Value>> {
         self.load();
         let prompt = ev
             .get("prompt")
@@ -572,15 +572,8 @@ impl Lh {
             let st = self.state.borrow();
             modes::mode_fragment(mode, st.owners.active.as_ref(), st.owners.parked.as_ref())
         };
-        let mut opts = ev
-            .get("systemPromptOptions")
-            .cloned()
-            .filter(Value::is_object)?;
-        if !opts.get("sections").is_some_and(Value::is_object) {
-            opts["sections"] = json!({});
-        }
-        opts["sections"]["long-horizon"] = json!(fragment);
-        Some(json!({"systemPromptOptions": opts}))
+        session::append_reminder("unipi.long-horizon/mode", &fragment)?;
+        Ok(None)
     }
 
     fn tool_call(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
@@ -3618,7 +3611,7 @@ impl Extension for Lh {
             Ok(serde_json::to_value(CompactionContext { id: "long-horizon".into(), text })?)
         });
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
-            Ok(ext.gate(&ev, &cx).await)
+            ext.gate(&ev, &cx).await
         });
         cx.on(EventKind::ToolCall, |ext, ev, cx| async move {
             Ok(ext.tool_call(&ev, &cx))

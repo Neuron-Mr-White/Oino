@@ -4,7 +4,7 @@
 //! The host service does the work: `host-service.call("browser", op, BrowserRequest
 //! JSON)` on an embedding host (unipi-host). This component registers the 19 `browser_*`
 //! tools (only when the service is available), turns `approval_required` answers into
-//! user dialogs, adds the static `oino-browser` system prompt section, appends the
+//! user dialogs, appends the `oino-browser` availability reminder, appends the
 //! turn-tail screenshot entry, renders it, and provides `/browser`.
 //!
 //! | Module | Contents |
@@ -137,28 +137,18 @@ impl BrowserExt {
         *self.registered.borrow_mut() = true;
     }
 
-    async fn prompt_section(ev: &Event) -> Option<Value> {
+    async fn prompt_section() -> Result<()> {
         let (available, st) = Self::available().await;
-        let mut opts = ev
-            .get("systemPromptOptions")
-            .cloned()
-            .filter(Value::is_object)?;
-        if !opts.get("sections").is_some_and(Value::is_object) {
-            opts["sections"] = json!({});
-        }
-        let sections = opts.get_mut("sections").and_then(Value::as_object_mut)?;
-        if available {
-            sections.insert(
-                "oino-browser".into(),
-                json!(prompt_line(
-                    st["product"].as_str().unwrap_or("Chrome"),
-                    st["sessionProfile"].as_str().unwrap_or("default"),
-                )),
-            );
+        let text = if available {
+            prompt_line(
+                st["product"].as_str().unwrap_or("Chrome"),
+                st["sessionProfile"].as_str().unwrap_or("default"),
+            )
         } else {
-            sections.remove("oino-browser");
-        }
-        Some(json!({"systemPromptOptions": opts}))
+            "The in-app browser is unavailable.".to_owned()
+        };
+        session::append_reminder("unipi.browser/availability", &text)?;
+        Ok(())
     }
 
     async fn turn_shot(&self, ev: &Event, cx: &Ctx) {
@@ -245,8 +235,8 @@ impl Extension for BrowserExt {
             }
             Ok(())
         });
-        cx.on(EventKind::BeforeAgentStart, |_ext, ev, _cx| async move {
-            Ok(Self::prompt_section(&ev).await)
+        cx.on(EventKind::BeforeAgentStart, |_ext, _ev, _cx| async move {
+            Self::prompt_section().await
         });
         cx.on(EventKind::AgentEnd, |ext, ev, cx| async move {
             ext.turn_shot(&ev, &cx).await;

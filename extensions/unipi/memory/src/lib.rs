@@ -1742,8 +1742,69 @@ async fn usage_update(f: impl FnOnce(&mut usage::UsageFile)) {
             .ok();
     let p = dir.join(usage::FILE);
     let mut u = usage::UsageFile::read(&p);
+    // Import legacy sidecar values before applying the new event. A failed
+    // palace write leaves the sidecar intact so the next event retries safely.
+    sync_usage_metadata(&mut u).await;
     f(&mut u);
     let _ = u.write(&p);
+    sync_usage_metadata(&mut u).await;
+    let _ = u.write(&p);
+}
+
+/// Uses `MemPalace`'s backend adapter and writer lease in its installed environment.
+async fn sync_usage_metadata(usage: &mut usage::UsageFile) {
+    if usage.memories.is_empty() {
+        return;
+    }
+    let p = places();
+    let Some(memory_root) = p.memory_root else {
+        return;
+    };
+    let payload = json!({"root": memory_root, "palace": p.palace, "memories": usage.memories});
+    let options = || oino_extension::wit::process::ExecOptions {
+        cwd: None,
+        timeout_ms: Some(15_000),
+        env: vec![("MALLOC_ARENA_MAX".into(), "2".into())],
+    };
+    // Resolve the existing tool environment, never install a second copy or
+    // silently download a package just to update bookkeeping.
+    let Ok(tool_dir) = oino_extension::wit::process::exec(
+        "uv".into(),
+        vec!["tool".into(), "dir".into()],
+        options(),
+    )
+    .await
+    else {
+        return;
+    };
+    if tool_dir.code != Some(0) {
+        return;
+    }
+    let python = PathBuf::from(tool_dir.stdout.trim())
+        .join("mempalace")
+        .join(if host::info().platform == "windows" {
+            "Scripts/python.exe"
+        } else {
+            "bin/python"
+        });
+    let result = oino_extension::wit::process::exec(
+        python.display().to_string(),
+        vec![
+            "-c".into(),
+            include_str!("usage_metadata.py").into(),
+            payload.to_string(),
+        ],
+        options(),
+    )
+    .await;
+    match result {
+        Ok(reply) if reply.code == Some(0) => {
+            if let Ok(memories) = serde_json::from_str(&reply.stdout) {
+                usage.import_metadata(memories);
+            }
+        }
+        _ => host::info_log("memory usage metadata sync deferred; sidecar retained for retry"),
+    }
 }
 
 /// The memory bucket a tool call targets: its `project` argument, else the session's.

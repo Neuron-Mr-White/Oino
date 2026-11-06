@@ -453,12 +453,14 @@ async fn subagents_tools_and_prompt() {
     );
     let read = env.tool(&sa, "read_subagent", json!({})).await;
     assert_eq!(text_of(&read), "No subagent has run yet.");
-    let out = env.event(&sa, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "hi", "systemPrompt": "", "systemPromptOptions": {"sections": {}}})).await.unwrap();
+    let out = env.event(&sa, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "hi", "systemPrompt": "", "systemPromptOptions": {"sections": {}}})).await;
+    assert!(out.is_none());
+    let out = env.host.entries().into_iter().rev().find(|entry| entry["details"]["key"] == "unipi.subagents/catalog").unwrap();
     assert!(
-        out["systemPromptOptions"]["sections"]["subagents"]
+        out["content"]
             .as_str()
             .unwrap()
-            .starts_with("You can delegate self-contained subtasks")
+            .contains("You can delegate self-contained subtasks")
     );
     let profiles = sa
         .handle_service(
@@ -586,11 +588,14 @@ async fn long_horizon_ralph_loop() {
     );
     assert!(kickoff.contains("- [ ] one\n- [ ] two"));
 
-    let gate = env.event(&lh, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "go", "systemPrompt": "", "systemPromptOptions": {"sections": {}}})).await.unwrap();
-    let section = gate["systemPromptOptions"]["sections"]["long-horizon"]
+    let gate = env.event(&lh, EventKind::BeforeAgentStart, json!({"type": "before_agent_start", "prompt": "go", "systemPrompt": "", "systemPromptOptions": {"sections": {}}})).await;
+    assert!(gate.is_none());
+    let entries = env.host.entries();
+    let gate = entries.iter().rev().find(|entry| entry["details"]["key"] == "unipi.long-horizon/mode").unwrap();
+    let section = gate["content"]
         .as_str()
         .unwrap();
-    assert!(section.starts_with("Mode: Ralph — Work through a task file / checklist over many iterations.\nAvailable long-horizon tools: ralph_done, loop_status, todowrite."), "{section}");
+    assert!(section.contains("Mode: Ralph — Work through a task file / checklist over many iterations.\nAvailable long-horizon tools: ralph_done, loop_status, todowrite."), "{section}");
     let blocked = env
         .event(
             &lh,
@@ -787,8 +792,10 @@ async fn lead_keeps_graph_mode_while_a_child_turn_runs() {
         )
         .await
         .unwrap_or_else(|e| panic!("lead turn start: {e}"));
-    let resolved = resolved.map(|r| r.to_value()).unwrap_or_default();
-    let fragment = resolved["systemPromptOptions"]["sections"]["long-horizon"]
+    assert!(resolved.is_none());
+    let entries = env.host.entries();
+    let resolved = entries.iter().rev().find(|entry| entry["details"]["key"] == "unipi.long-horizon/mode").unwrap();
+    let fragment = resolved["content"]
         .as_str()
         .unwrap_or_default();
     assert!(
@@ -823,10 +830,10 @@ async fn lead_keeps_graph_mode_while_a_child_turn_runs() {
         )
         .await
         .unwrap_or_else(|e| panic!("child turn start: {e}"));
-    let child_value = child_resolved
-        .map(|r| r.to_value())
-        .unwrap_or_default();
-    let child_fragment = child_value["systemPromptOptions"]["sections"]["long-horizon"]
+    assert!(child_resolved.is_none());
+    let entries = env.host.entries();
+    let child_value = entries.iter().rev().find(|entry| entry["details"]["key"] == "unipi.long-horizon/mode").unwrap();
+    let child_fragment = child_value["content"]
         .as_str()
         .unwrap_or_default();
     assert!(

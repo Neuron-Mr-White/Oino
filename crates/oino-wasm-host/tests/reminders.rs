@@ -80,3 +80,120 @@ async fn wasm_reminders_append_without_prompt_mutation() {
     drop(extension);
     drop(runtime);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn skills_dedupe_reload_and_compaction_retention() {
+    use oino_extension_api::ops::SettingsScope;
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let package_root = root.join("extensions/dist/unipi.skill-registry");
+    let manifest =
+        Manifest::parse(&std::fs::read_to_string(package_root.join("extension.json")).unwrap())
+            .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let runtime = WasmRuntime::new(WasmRuntimeOptions::new(HostConfig::new(
+        dir.path(),
+        dir.path(),
+    )))
+    .unwrap();
+    let host = RecordingHostServices::new();
+    host.preset_extension_setting(
+        SettingsScope::Global,
+        "skills",
+        "exposure",
+        json!({"mode":"all"}),
+    );
+    let extension = runtime
+        .load(
+            LoadedPackage {
+                manifest,
+                component: ComponentSource::Path(package_root.join("component.wasm")),
+                root: Some(package_root),
+                bundled: true,
+            },
+            host.clone(),
+        )
+        .await
+        .unwrap();
+    let mut cx = CallContext {
+        session_id: "skills".into(),
+        cwd: dir.path().into(),
+        kind: CallKind::Init,
+        ..Default::default()
+    };
+    extension
+        .init(
+            InitInput {
+                settings: RawJson::from(json!({"skills":{"exposure":{"mode":"all"}}})),
+                ..Default::default()
+            },
+            cx.clone(),
+        )
+        .await
+        .unwrap();
+    cx.kind = CallKind::Event;
+    let input = json!({"type":"before_agent_start", "prompt":"use example",
+    "systemPrompt":"immutable", "systemPromptOptions":{"skills":[{
+        "name":"example", "description":"Example skill", "baseDir":"/example",
+        "filePath":"/example/SKILL.md", "enabled":true
+    }]}});
+    for _ in 0..2 {
+        assert!(
+            extension
+                .on_event(
+                    EventKind::BeforeAgentStart,
+                    RawJson::from(input.clone()),
+                    cx.clone()
+                )
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    let count = || {
+        host.entries()
+            .iter()
+            .filter(|entry| entry["customType"] == "oino.system-reminder")
+            .count()
+    };
+    assert_eq!(count(), 1);
+    // SessionStart restores the durable reveal entries, including legacy ones.
+    extension
+        .on_event(
+            EventKind::SessionStart,
+            RawJson::from(json!({"reason":"resume"})),
+            cx.clone(),
+        )
+        .await
+        .unwrap();
+    extension
+        .on_event(
+            EventKind::BeforeAgentStart,
+            RawJson::from(input),
+            cx.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(count(), 1);
+    extension
+        .on_event(
+            EventKind::SessionCompact,
+            RawJson::from(json!({})),
+            cx.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(count(), 2);
+    assert!(
+        host.entries()
+            .iter()
+            .any(|entry| entry["details"]["key"] == "unipi.skill-registry/retained")
+    );
+    extension.on_event(EventKind::ToolResult, RawJson::from(json!({
+        "toolName":"read", "input":{"file_path":"/example/SKILL.md"}, "result":{"isError":false}
+    })), cx).await.unwrap();
+    assert!(
+        host.entries()
+            .iter()
+            .any(|entry| entry["customType"] == "unipi:skills-loaded")
+    );
+}

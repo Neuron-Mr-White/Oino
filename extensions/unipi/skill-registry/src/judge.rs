@@ -370,7 +370,7 @@ pub fn restore_state(entries: &[Value]) -> SessionState {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .clone_into(&mut s.index);
-                s.revealed.clear();
+                // Announcement history survives newer decisions and compaction.
             }
             Some(SKILLS_REVEALED_ENTRY) => {
                 for n in data
@@ -568,7 +568,7 @@ pub fn reveal_message(reveal: &[Entry], home: Option<&str>) -> String {
         })
         .collect();
     format!(
-        "Relevant skills for this request (not in your skills list):\n{}\nRead a skill's SKILL.md before using it.",
+        "Relevant skills for this request:\n{}\nRead a skill's SKILL.md before using it.",
         lines.join("\n")
     )
 }

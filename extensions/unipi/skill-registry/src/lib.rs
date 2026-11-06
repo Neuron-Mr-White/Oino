@@ -3,7 +3,7 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | `before_agent_start`: registry (proxy) + exposure `judged\|all\|off`, hidden-skills section | [`Registry::before_agent_start`] → modified `systemPromptOptions` (`skills`, `sections`) |
+//! | `before_agent_start`: registry (proxy) + exposure `judged\|all\|off`, hidden-skills section | [`Registry::before_agent_start`] → append-only skill reminders |
 //! | judged exposure: pins, jev, freeze, later reveals | [`judge`] |
 //! | vault `~/.unipi/skill-vault` via `resources_discover` | `~/.oino/skill-vault` (`fs.paths` alias `skill-vault`) → `skillPaths` |
 //! | `/skill:name` blocked when off or its condition fails | `input` → `{action: "handled"}` |
@@ -26,7 +26,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use futures::future::join_all;
 use oino_extension::prelude::*;
-use oino_extension::session::{CustomMessage, Provenance, SendOptions};
 use oino_extension::sync::SessionMap;
 use unipi_kit::bus::Delivery;
 use unipi_kit::services::fanout as fan;
@@ -35,10 +34,7 @@ use unipi_kit::topics::{self, ModuleReady};
 use unipi_kit::{fanout, jev};
 
 use crate::editor::{Editor, EditorSkill, Outcome, Scope};
-use crate::judge::{
-    Entry, HIDDEN_SECTION, REVEALED_MESSAGE, SKILLS_JUDGED_ENTRY, SKILLS_REVEALED_ENTRY,
-    SessionState, TurnInput,
-};
+use crate::judge::{Entry, SKILLS_JUDGED_ENTRY, SKILLS_REVEALED_ENTRY, SessionState, TurnInput};
 use crate::registry::{
     CatalogSkill, Places, apply_registry, default_must_show, is_bundled_skill_location,
     is_under_dir, skill_command_name, skill_dir, skill_source,
@@ -53,6 +49,7 @@ struct Session {
     judge: SessionState,
     catalog: Vec<CatalogSkill>,
     disabled: BTreeSet<String>,
+    loaded: BTreeSet<String>,
     editor: Option<OpenEditor>,
 }
 
@@ -117,15 +114,6 @@ fn to_entry(s: &CatalogSkill) -> Entry {
         name: s.name.clone(),
         description: s.description.clone(),
         location: skill_dir(s),
-    }
-}
-
-fn provenance(title: &str, synopsis: &str) -> Provenance {
-    Provenance {
-        source: "Skills".into(),
-        title: Some(title.into()),
-        synopsis: Some(synopsis.into()),
-        severity: None,
     }
 }
 
@@ -395,58 +383,58 @@ impl Registry {
         Some(json!({"action": "handled"}))
     }
 
-    async fn on_reveal(&self, d: &Delivery, cx: &Ctx) {
+    fn announce(&self, entries: &[Entry], cx: &Ctx, home: Option<&str>) -> Result<()> {
+        let fresh: Vec<Entry> = self.sessions.with(cx.session_id(), |s| {
+            entries
+                .iter()
+                .filter(|e| !s.judge.revealed.contains(&e.name))
+                .cloned()
+                .collect()
+        });
+        if fresh.is_empty() {
+            return Ok(());
+        }
+        session::append_reminder(
+            "unipi.skill-registry/skills",
+            &judge::reveal_message(&fresh, home),
+        )?;
+        let names: Vec<String> = fresh.iter().map(|e| e.name.clone()).collect();
+        session::append_entry(SKILLS_REVEALED_ENTRY, Some(&json!({"names": names})))?;
+        self.sessions.with(cx.session_id(), |s| {
+            s.judge.revealed.extend(names);
+        });
+        Ok(())
+    }
+
+    fn on_reveal(&self, d: &Delivery, cx: &Ctx) -> Result<()> {
         let names: Vec<String> = d
             .data
             .get("names")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .map(|n| n.as_str().map_or_else(|| n.to_string(), ToOwned::to_owned))
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
             .collect();
         let entries: Vec<Entry> = self.sessions.with(cx.session_id(), |s| {
-            let fresh: Vec<Entry> = s
-                .judge
-                .hidden
+            s.catalog
                 .iter()
-                .filter(|h| names.contains(&h.name) && !s.judge.revealed.contains(&h.name))
-                .cloned()
-                .collect();
-            for e in &fresh {
-                s.judge.revealed.insert(e.name.clone());
-            }
-            fresh
+                .filter(|e| names.contains(&e.name))
+                .map(to_entry)
+                .collect()
         });
-        if entries.is_empty() {
-            return;
-        }
-        let revealed: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
         let home = places(&cx.cwd().display().to_string()).home;
-        let _ = session::append_entry(SKILLS_REVEALED_ENTRY, Some(&json!({"names": revealed})));
-        let _ = session::send_message(
-            &CustomMessage {
-                custom_type: REVEALED_MESSAGE.into(),
-                content: json!(judge::reveal_message(&entries, home.as_deref())),
-                display: true,
-                details: Some(json!({"names": revealed, "lines": entries.iter().map(|e| format!("{} — {}", e.name, e.description)).collect::<Vec<_>>()})),
-            },
-            SendOptions {
-                trigger_turn: false,
-                deliver_as: None,
-                provenance: Some(provenance("Skill reveal", &revealed.join(", "))),
-            },
-        )
-        .await;
+        self.announce(&entries, cx, home.as_deref())
     }
 
     #[allow(
         clippy::too_many_lines,
         reason = "registry, exposure and judging of one hook"
     )]
-    async fn before_agent_start(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+    async fn before_agent_start(&self, ev: &Event, cx: &Ctx) -> Result<()> {
         let cwd = cx.cwd().display().to_string();
         let p = places(&cwd);
-        let mut options = ev.get("systemPromptOptions").cloned()?;
+        let options = ev.get("systemPromptOptions").cloned().unwrap_or_default();
         let raw_skills: Vec<Value> = options
             .get("skills")
             .and_then(Value::as_array)
@@ -491,40 +479,17 @@ impl Registry {
         };
         self.sessions
             .with(cx.session_id(), |s| s.disabled.clone_from(&disabled));
-        let set_skills = |options: &mut Value, keep: &dyn Fn(usize) -> bool| {
-            let list: Vec<Value> = pool
-                .iter()
-                .filter(|i| keep(**i))
-                .map(|i| raw_skills[*i].clone())
-                .collect();
-            options["skills"] = Value::Array(list);
-        };
-        let sections = |options: &mut Value, index: Option<&str>| {
-            if !options.get("sections").is_some_and(Value::is_object) {
-                options["sections"] = json!({});
-            }
-            if let Some(map) = options["sections"].as_object_mut() {
-                match index {
-                    Some(t) if !t.is_empty() => {
-                        map.insert(HIDDEN_SECTION.into(), json!(t));
-                    }
-                    _ => {
-                        map.remove(HIDDEN_SECTION);
-                    }
-                }
-            }
-        };
         if cfg.exposure.mode != ExposureMode::Judged {
-            if cfg.exposure.mode == ExposureMode::Off {
-                set_skills(&mut options, &|i| {
-                    must_show.contains(&full[i].name)
-                        || !is_bundled_skill_location(&skill_dir(&full[i]))
-                });
-            } else {
-                set_skills(&mut options, &|_| true);
-            }
-            sections(&mut options, None);
-            return Some(json!({"systemPromptOptions": options}));
+            let entries: Vec<Entry> = pool
+                .iter()
+                .filter(|i| {
+                    cfg.exposure.mode != ExposureMode::Off
+                        || must_show.contains(&full[**i].name)
+                        || !is_bundled_skill_location(&skill_dir(&full[**i]))
+                })
+                .map(|i| to_entry(&full[*i]))
+                .collect();
+            return self.announce(&entries, cx, p.home.as_deref());
         }
         let entries: Vec<Entry> = pool.iter().map(|i| to_entry(&full[*i])).collect();
         let prompt = ev
@@ -537,6 +502,7 @@ impl Registry {
             .sessions
             .with(cx.session_id(), |s| std::mem::take(&mut s.judge));
         let js = Self::jev_settings();
+        let announced = state.revealed.clone();
         let out = judge::decide_turn(
             &TurnInput {
                 prompt: &prompt,
@@ -553,9 +519,9 @@ impl Registry {
             },
         )
         .await;
+        state.revealed = announced;
         self.sessions.with(cx.session_id(), |s| s.judge = state);
-        set_skills(&mut options, &|i| out.listed.contains(&full[i].name));
-        sections(&mut options, Some(&out.index));
+
         if let Some(freeze) = &out.freeze {
             let _ = session::append_entry(SKILLS_JUDGED_ENTRY, Some(freeze));
         }
@@ -564,22 +530,21 @@ impl Registry {
         {
             let _ = ui::status("skills", Some(st));
         }
-        let mut result = json!({"systemPromptOptions": options});
-        if !out.reveal.is_empty() {
-            let names: Vec<String> = out.reveal.iter().map(|r| r.name.clone()).collect();
-            let _ = session::append_entry(SKILLS_REVEALED_ENTRY, Some(&json!({"names": names})));
-            result["message"] = json!({
-                "customType": REVEALED_MESSAGE,
-                "content": judge::reveal_message(&out.reveal, p.home.as_deref()),
-                "display": true,
-                "details": {"names": names, "oinoProvenance": {"source": "Skills", "title": "Skill reveal", "synopsis": names.join(", ")}},
-            });
-        }
-        Some(result)
+        let selected: Vec<Entry> = entries
+            .into_iter()
+            .filter(|entry| {
+                out.listed.contains(&entry.name) || out.reveal.iter().any(|r| r.name == entry.name)
+            })
+            .collect();
+        self.announce(&selected, cx, p.home.as_deref())
     }
 }
 
 impl Extension for Registry {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "registers registry hooks and commands"
+    )]
     async fn init(&'static self, cx: &mut Init<Self>) -> Result<()> {
         self.settings.declare(NAMESPACE, settings::defaults());
         self.settings.load(cx.settings());
@@ -597,11 +562,18 @@ impl Extension for Registry {
             let entries = session::query(&session::EntryQuery::custom(&[
                 judge::SKILLS_JUDGED_ENTRY,
                 judge::SKILLS_REVEALED_ENTRY,
+                "unipi:skills-loaded",
             ]))
             .unwrap_or_default();
             ext.sessions.with(cx.session_id(), |s| {
                 *s = Session {
                     judge: judge::restore_state(&entries),
+                    loaded: entries
+                        .iter()
+                        .filter(|entry| entry["customType"] == "unipi:skills-loaded")
+                        .filter_map(|entry| entry.pointer("/data/path").and_then(Value::as_str))
+                        .map(ToOwned::to_owned)
+                        .collect(),
                     ..Session::default()
                 };
             });
@@ -622,13 +594,56 @@ impl Extension for Registry {
             Ok(ext.on_input(&ev, &cx).await)
         });
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
-            Ok(ext.before_agent_start(&ev, &cx).await)
+            ext.before_agent_start(&ev, &cx).await
+        });
+        cx.on(EventKind::ToolResult, |ext, ev, cx| async move {
+            if ev.get("toolName").and_then(Value::as_str) == Some("read")
+                && !ev
+                    .payload
+                    .pointer("/result/isError")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                && let Some(path) = ev
+                    .payload
+                    .pointer("/input/file_path")
+                    .or_else(|| ev.payload.pointer("/input/path"))
+                    .and_then(Value::as_str)
+                && path.ends_with("/SKILL.md")
+            {
+                let fresh = ext
+                    .sessions
+                    .with(cx.session_id(), |s| !s.loaded.contains(path));
+                if fresh {
+                    session::append_entry("unipi:skills-loaded", Some(&json!({"path": path})))?;
+                    ext.sessions.with(cx.session_id(), |s| {
+                        s.loaded.insert(path.to_owned());
+                    });
+                }
+            }
+            Ok(())
+        });
+        cx.on(EventKind::SessionCompact, |ext, _ev, cx| async move {
+            let retained: Vec<Entry> = ext.sessions.with(cx.session_id(), |s| {
+                s.catalog
+                    .iter()
+                    .filter(|entry| s.judge.revealed.contains(&entry.name))
+                    .map(to_entry)
+                    .collect()
+            });
+            if !retained.is_empty() {
+                let home = places(&cx.cwd().display().to_string()).home;
+                session::append_reminder(
+                    "unipi.skill-registry/retained",
+                    &judge::reveal_message(&retained, home.as_deref()),
+                )?;
+            }
+            Ok(())
         });
         cx.on(EventKind::OinoBus, |ext, ev, cx| async move {
             if let Some(d) = Delivery::from_event(&ev)
                 && d.topic == topics::SKILLS_REVEAL
             {
-                ext.on_reveal(&d, &cx).await;
+                ext.on_reveal(&d, &cx)?;
             }
             Ok(())
         });

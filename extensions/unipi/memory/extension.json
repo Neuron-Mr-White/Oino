@@ -8,7 +8,7 @@
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {
-    "process": { "spawn": true, "allow": ["mempalace", "mempalace-mcp", "uv"], "detached": true },
+    "process": { "spawn": true, "allow": ["mempalace", "mempalace-mcp", "uv", "python", "python.exe"], "detached": true },
     "fs": {
       "paths": [
         { "path": "~/.mempalace", "access": "write", "alias": "mempalace" },

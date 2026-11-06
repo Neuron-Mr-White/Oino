@@ -161,15 +161,14 @@ async fn disabled_profiles_leave_the_prompt_schema_and_graph_and_are_refused() {
         }
     };
     let section = || async {
-        event(
+        let result = event(
             EventKind::BeforeAgentStart,
             json!({"type": "before_agent_start", "prompt": "hi", "systemPrompt": "", "systemPromptOptions": {"sections": {}}}),
-        )
-        .await
-        .unwrap()["systemPromptOptions"]["sections"]["subagents"]
-            .as_str()
-            .unwrap()
-            .to_owned()
+        ).await;
+        assert!(result.is_none());
+        host.entries().into_iter().rev()
+            .find(|entry| entry["details"]["key"] == "unipi.subagents/catalog")
+            .unwrap()["content"].as_str().unwrap().to_owned()
     };
     let profiles = || async {
         sa.handle_service(

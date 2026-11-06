@@ -1111,26 +1111,16 @@ impl Fusion {
 
     // ── lead policy and nudges ─────────────────────────────────────────────
 
-    fn before_agent_start(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+    fn before_agent_start(&self, _ev: &Event, cx: &Ctx) -> Result<()> {
         self.sessions.with(cx.session_id(), |s| s.bash_streak = 0);
         self.sync_tools(cx);
-        let mut opts = ev
-            .get("systemPromptOptions")
-            .cloned()
-            .filter(Value::is_object)?;
-        if !opts.get("sections").is_some_and(Value::is_object) {
-            opts["sections"] = json!({});
-        }
-        let sections = opts.get_mut("sections").and_then(Value::as_object_mut)?;
-        if self.fusion_on(cx.session_id()) {
-            sections.insert(
-                "fusion-lead-policy".into(),
-                json!(policy::lead_policy(&self.identity(cx.session_id()))),
-            );
+        let text = if self.fusion_on(cx.session_id()) {
+            policy::lead_policy(&self.identity(cx.session_id()))
         } else {
-            sections.remove("fusion-lead-policy");
-        }
-        Some(json!({"systemPromptOptions": opts}))
+            "Fusion is disabled in this session.".to_owned()
+        };
+        session::append_reminder("unipi.fusion/policy", &text)?;
+        Ok(())
     }
 
     fn tool_result(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
@@ -2052,7 +2042,7 @@ impl Extension for Fusion {
             .then(|| "sidekick working".to_owned())
         });
         cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
-            Ok(ext.before_agent_start(&ev, &cx))
+            ext.before_agent_start(&ev, &cx)
         });
         cx.on(EventKind::TurnStart, |ext, _ev, cx| async move {
             ext.sessions

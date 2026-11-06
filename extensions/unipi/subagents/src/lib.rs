@@ -8,7 +8,7 @@
 //! | `/subagents` (tray tab), `/agents` (profile manager) | commands; tray tab via `work-tray.tab` ([`view`]) |
 //! | `Ctrl+B` (all foreground runs → background) | shortcut `unipi.subagents.foreground` |
 //! | `subagent-step` entries, `subagent-completion` messages, cards | entries/messages + renderers |
-//! | prompt section `subagents` | `before_agent_start` `systemPromptOptions.sections.subagents` |
+//! | prompt section `subagents` | `before_agent_start` append-only reminder |
 //! | wait source `subagent working` | `wait-source` |
 //! | `index.json` per lead session | `/ext-workspace/<wsid>/sessions/<sid>/index.json` |
 //! | graph-run port, shared list/manager/transcript | services `subagents.graph-run`, `subagents.profiles`, `subagents.list`, `subagents.transcript`, `subagents.cancel`, `subagents.foreground`, `subagents.background`; sticky `unipi:subagents:list`; bus `unipi:subagents:run-done` |
@@ -1858,28 +1858,18 @@ impl Subagents {
         }
     }
 
-    fn before_agent_start(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+    fn before_agent_start(&self, _ev: &Event, cx: &Ctx) -> Result<()> {
         self.refresh(cx);
-        let mut opts = ev
-            .get("systemPromptOptions")
-            .cloned()
-            .filter(Value::is_object)?;
-        if !opts.get("sections").is_some_and(Value::is_object) {
-            opts["sections"] = json!({});
-        }
-        let sections = opts.get_mut("sections").and_then(Value::as_object_mut)?;
-        if self.config().enabled {
+        let text = if self.config().enabled {
             let (_, profiles) = self.offered(cx.session_id());
             let fusion =
                 unipi_kit::bus::get_raw(topics::FUSION_STATUS).is_some_and(|v| !v.is_null());
-            sections.insert(
-                "subagents".into(),
-                json!(record::prompt_section(&profiles, fusion)),
-            );
+            record::prompt_section(&profiles, fusion)
         } else {
-            sections.remove("subagents");
-        }
-        Some(json!({"systemPromptOptions": opts}))
+            "Subagents are disabled in this session.".to_owned()
+        };
+        session::append_reminder("unipi.subagents/catalog", &text)?;
+        Ok(())
     }
 
     async fn graph_run(&'static self, payload: &Value, cx: &Ctx) -> Value {
@@ -2175,7 +2165,7 @@ impl Extension for Subagents {
             // In the session's context, so the host refreshes the session's tool list
             // before this turn's request is built.
             ext.sync_schema(&cx);
-            Ok(ext.before_agent_start(&ev, &cx))
+            ext.before_agent_start(&ev, &cx)
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.restore(cx.session_id());

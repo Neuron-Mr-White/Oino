@@ -16,9 +16,8 @@
 //! Uses by the dream agent and the end-of-task save pass are not counted: they read
 //! memories to maintain them, not to work with them.
 //!
-//! Staleness ([`is_stale`]): a non-preference memory unused for `stale_days`, where the
-//! clock starts at `max(updated, trackingSince, lastUsed)` — memories written before
-//! tracking began are never stale on day one.
+//! Staleness requires positive per-memory usage history and at least 30 idle days.
+//! Missing usage history and preferences never qualify for usage pruning.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -173,6 +172,24 @@ impl UsageFile {
         std::fs::rename(&tmp, path)
     }
 
+    /// Imports authoritative palace metadata without losing retained source history.
+    pub fn import_metadata(&mut self, memories: BTreeMap<String, Usage>) {
+        for (key, incoming) in memories {
+            let current = self.memories.entry(key).or_default();
+            current.last_used = current.last_used.max(incoming.last_used);
+            current.use_count = current.use_count.max(incoming.use_count);
+            for source in incoming.sources {
+                push_capped(&mut current.sources, &source, MAX_SOURCES);
+            }
+            for session in incoming.sessions {
+                push_capped(&mut current.sessions, &session, MAX_SESSIONS);
+            }
+            for merged in incoming.merged_from {
+                push_capped(&mut current.merged_from, &merged, 64);
+            }
+        }
+    }
+
     /// Starts the tracking clock once.
     pub fn ensure_since(&mut self, now: i64) {
         self.v = 1;
@@ -275,8 +292,8 @@ pub fn ms_from_iso(iso: &str) -> Option<i64> {
     Some(((days * 24 + h) * 60 + mi) * 60_000 + sec * 1000 + ms)
 }
 
-/// A memory is stale when it is not a preference and nothing used it for `stale_days`,
-/// counted from the newest of its update, its last use and the start of tracking.
+/// A previously used non-preference memory is stale after at least 30 idle days.
+/// A newer content update extends the grace period. Missing usage never qualifies.
 #[must_use]
 pub fn is_stale(
     kind: &str,
@@ -286,16 +303,17 @@ pub fn is_stale(
     now: i64,
     stale_days: f64,
 ) -> bool {
-    if kind == "preference" || tracking_since <= 0 || stale_days <= 0.0 {
+    let Some(usage) = usage.filter(|u| u.use_count > 0 && u.last_used > 0) else {
+        return false;
+    };
+    if kind == "preference" || tracking_since <= 0 || !stale_days.is_finite() || stale_days <= 0.0 {
         return false;
     }
-    let anchor = updated_ms
-        .unwrap_or(0)
-        .max(tracking_since)
-        .max(usage.map_or(0, |u| u.last_used));
+    let anchor = updated_ms.unwrap_or(0).max(usage.last_used);
+
     #[allow(clippy::cast_precision_loss, reason = "ms spans fit f64")]
     let idle_days = (now - anchor) as f64 / DAY_MS;
-    idle_days >= stale_days
+    idle_days >= stale_days.max(DEFAULT_STALE_DAYS)
 }
 
 /// One `memory.inventory` row.
@@ -342,6 +360,42 @@ mod tests {
     use super::*;
 
     const DAY: i64 = 86_400_000;
+
+    #[test]
+    fn memory_usage_and_prune() {
+        let now = 100 * DAY;
+        let mut usage = UsageFile::default();
+        for kind in ["search", "wake-up", "read"] {
+            usage.record_use("p/a", "session", now - 30 * DAY, kind);
+        }
+        usage.record_source("p/a", "source", now);
+        let imported = usage.memories.clone();
+        usage.import_metadata(imported.clone());
+        usage.import_metadata(imported);
+        let memory = &usage.memories["p/a"];
+        assert_eq!(memory.use_count, 3);
+        assert_eq!(memory.sources, ["source"]);
+        assert!(is_stale("decision", None, Some(memory), 1, now, 1.0));
+        assert!(!is_stale("decision", None, Some(memory), 1, now - 1, 1.0));
+        assert!(!is_stale("decision", None, Some(memory), 1, now, 31.0));
+        assert!(!is_stale("preference", None, Some(memory), 1, now, 30.0));
+        assert!(!is_stale("decision", None, None, 1, now, 30.0));
+        assert!(!is_stale(
+            "decision",
+            None,
+            Some(&Usage::default()),
+            1,
+            now,
+            30.0
+        ));
+        let dir = std::env::temp_dir().join(format!("memory-usage-migrate-{}", std::process::id()));
+        let path = dir.join(FILE);
+        usage.write(&path).unwrap();
+        let mut reloaded = UsageFile::read(&path);
+        reloaded.import_metadata(usage.memories.clone());
+        assert_eq!(usage, reloaded);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn keys_from_paths() {
@@ -422,8 +476,8 @@ mod tests {
         };
         // Tracking just began: nothing is stale, however old.
         assert!(!is_stale("decision", Some(0), None, now - DAY, now, 30.0));
-        // Tracking for 40 days, never used, updated long ago: stale.
-        assert!(is_stale(
+        // Missing usage history is never evidence for pruning.
+        assert!(!is_stale(
             "decision",
             Some(0),
             None,
