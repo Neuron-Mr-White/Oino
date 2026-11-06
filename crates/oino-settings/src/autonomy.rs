@@ -490,8 +490,11 @@ fn simple_bash(w: &[String], depth: usize) -> Level {
     if (bin == "rg" && w.iter().any(|a| a == "--pre" || a.starts_with("--pre=")))
         || (bin == "fd"
             && w.iter().any(|a| {
-                matches!(a.as_str(), "-x" | "-X" | "--exec" | "--exec-batch")
+                matches!(a.as_str(), "--exec" | "--exec-batch")
                     || a.starts_with("--exec=")
+                    || a.starts_with("--exec-batch=")
+                    // Short flags may be bundled and their command argument attached.
+                    || (a.starts_with('-') && !a.starts_with("--") && a.contains(['x', 'X']))
             }))
         || (bin == "git"
             && w.iter().any(|a| {
@@ -513,10 +516,8 @@ fn simple_bash(w: &[String], depth: usize) -> Level {
             if !w.iter().any(|a| {
                 a.starts_with("-exec")
                     || a.starts_with("-ok")
-                    || matches!(
-                        a.as_str(),
-                        "-delete" | "-fprint" | "-fprint0" | "-fprintf" | "-fls"
-                    )
+                    || a.starts_with("-delete")
+                    || matches!(a.as_str(), "-fprint" | "-fprint0" | "-fprintf" | "-fls")
             }) =>
         {
             Level::Low
