@@ -158,6 +158,7 @@ export type SessionState = {
   thinkingLevel?: string;
   /** Open extension dialogs (needs-you), by request id. */
   dialogs: string[];
+  approvals?: import('./autonomy').ApprovalRequest[];
   conn: ConnState;
   connError?: AppError;
   outbox: OutboxItem[];

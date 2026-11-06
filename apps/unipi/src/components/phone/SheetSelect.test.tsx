@@ -30,7 +30,7 @@ const pointer = (el: Element) => {
 };
 
 describe('SheetFrame + portaled Select', () => {
-  it('picking an option keeps the sheet open and shows the value', async () => {
+  it('subagents_thinking_select_keeps_sheet_open', async () => {
     render(() => <Harness />);
     const trigger = await screen.findByTestId('set-thinking');
     fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0 });

@@ -398,6 +398,7 @@ pub struct App {
     pub(crate) overlay: Option<Overlay>,
     pub(crate) completion: Option<Completion>,
     pub(crate) dialog_ui: Option<DialogUi>,
+    pub(crate) approvals: HashSet<String>,
     pub(crate) panel_focus: usize,
     pub(crate) panel_choice: usize,
     pub(crate) panel_input: Option<Composer>,
@@ -512,6 +513,7 @@ impl App {
             overlay: None,
             completion: None,
             dialog_ui: None,
+            approvals: HashSet::new(),
             panel_focus: 0,
             panel_choice: 0,
             panel_input: None,
@@ -601,6 +603,7 @@ impl App {
                 },
                 ui: Some(json!({
                     "protocol": 2,
+                    "approvals": true,
                     "dialogs": ["select","confirm","input","editor","multiSelect","form","approval","custom","clipboardReadImage","editExternally"],
                     "slots": ["overlay","sidePane","bottomPane","editorReplace","fullscreen","widget",
                               "widgetBelow","status","turnFooter","header","footer","settings"],
@@ -714,6 +717,27 @@ impl App {
                 );
             }
             ClientEvent::Oino(event) => match event {
+                OinoEvent::ApprovalRequest { request } => {
+                    use oino_view::ui_state::{Dialog, DialogKind, ApprovalOption};
+                    if !self.approvals.insert(request.request_id.clone()) { return; }
+                    self.ui.dialogs.push_back(Dialog {
+                        id: request.request_id,
+                        extension_id: None,
+                        kind: DialogKind::Approval {
+                            title: format!("Approval needed · {}", request.tool),
+                            tool_name: Some(request.tool),
+                            summary: format!("{}\n{}\nRisk: {:?} · Autonomy: {:?}\n{}",
+                                request.arguments.get("summary").and_then(JsonValue::as_str).unwrap_or(""),
+                                request.arguments.get("command").map_or_else(|| serde_json::to_string(&request.arguments).unwrap_or_default(), |v| v.as_str().unwrap_or("").to_owned()),
+                                request.risk_level, request.ceiling, request.reason),
+                            detail: None,
+                            options: [("allow_once", "Allow once"), ("always", "Always allow"), ("deny", "Deny")].into_iter().map(|(id, label)| ApprovalOption { option_id: id.into(), label: label.into(), kind: id.into() }).collect(),
+                            feedback: None,
+                        },
+                        timeout_ms: None,
+                    });
+                    self.sync_dialog();
+                }
                 OinoEvent::SessionReplaced {
                     session_id,
                     session_file,
@@ -731,6 +755,7 @@ impl App {
                     self.focused_entry = None;
                     self.footer_cache.clear();
                     self.dialog_ui = None;
+                    self.approvals.clear();
                     self.queue = (Vec::new(), Vec::new());
                     self.scroll = 0;
                     self.refresh_session();
@@ -1460,10 +1485,31 @@ impl App {
 
     /// Answers a dialog and removes it locally (core broadcasts the dismissal too).
     pub(crate) fn answer(&mut self, id: &str, answer: oino_core::ui::UiAnswer) {
-        self.effects.push(Effect::Respond(UiResponse {
-            id: id.to_owned(),
-            answer,
-        }));
+        if self.approvals.remove(id) {
+            use oino_core::session::permission::ApprovalDecision;
+            let decision = match &answer {
+                oino_core::ui::UiAnswer::Value(value) => {
+                    match value.get("optionId").and_then(JsonValue::as_str) {
+                        Some("allow_once") => ApprovalDecision::AllowOnce,
+                        Some("always") => ApprovalDecision::Always,
+                        _ => ApprovalDecision::Deny,
+                    }
+                }
+                _ => ApprovalDecision::Deny,
+            };
+            self.send_concurrent(
+                Tag::Ignore,
+                AgentCommand::ApprovalResponse {
+                    request_id: id.to_owned(),
+                    decision,
+                },
+            );
+        } else {
+            self.effects.push(Effect::Respond(UiResponse {
+                id: id.to_owned(),
+                answer,
+            }));
+        }
         self.ui.dismiss(id);
         self.registry.dismiss_dialog(id);
         self.sync_dialog();

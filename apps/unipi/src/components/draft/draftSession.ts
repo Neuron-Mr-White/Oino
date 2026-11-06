@@ -40,6 +40,7 @@ export type DraftChoices = {
   fusion?: DraftFusion;
   thinking?: string;
   permission?: string;
+  autonomy?: import('../../lib/session/autonomy').AutonomyLevel;
   plan?: boolean;
 };
 
@@ -127,6 +128,8 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
       const s = res.value.settings ?? {};
       const extPerm = ((s.extensionSettings as Record<string, unknown> | undefined)?.permission ?? {}) as Record<string, unknown>;
       const permDefault = str(extPerm.defaultMode) ?? str(extPerm.mode);
+      const autonomy = (s.autonomy as { defaultLevel?: unknown } | undefined)?.defaultLevel;
+      if (['low', 'medium', 'high'].includes(String(autonomy)) && !choices().autonomy) setState('info', 'autonomy', autonomy);
       const provider = str(s.defaultProvider);
       const id = str(s.defaultModel);
       defaultLevel = str(s.defaultThinkingLevel) ?? 'medium';
@@ -231,6 +234,11 @@ export function createDraftSession(hostId: string, onSubmit: (text: string, imag
     dismiss() {},
     abort: async () => {},
     async cmd<T = unknown>(cmd: RpcCommand): Promise<T> {
+      if (cmd.type === 'set_autonomy' && ['low', 'medium', 'high'].includes(String(cmd.level))) {
+        setChoices((c) => ({ ...c, autonomy: cmd.level as 'low' | 'medium' | 'high' }));
+        setState('info', 'autonomy', cmd.level);
+        return undefined as T;
+      }
       if (cmd.type === 'get_available_thinking_levels') {
         const fromCatalogue = knownLevels();
         if (fromCatalogue) return { levels: fromCatalogue } as T;

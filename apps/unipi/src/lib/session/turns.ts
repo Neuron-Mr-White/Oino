@@ -127,6 +127,8 @@ export type Turn = {
   user?: SessionEntry;
   /** The compaction entry (kind `compaction`). */
   compaction?: SessionEntry;
+  /** Active model-view anchor; older turns remain scrollable. */
+  renderCutoff?: SessionEntry;
   /** Every entry of the turn on the branch, in order (stable refs). */
   entries: SessionEntry[];
   segments: Segment[];
@@ -158,6 +160,8 @@ const ECHO_TYPES = new Set(['oino.command-echo', 'unipi-command-echo']);
 /** State-only `custom` entries that never produce transcript cards (`oino-view` `CustomEntry` rule). */
 const INTERNAL_CUSTOM_TYPES = new Set([
   'oino.tool-dispatch',
+  'oino:autonomy',
+  'oino:unattended',
   'oino.command-echo',
   'unipi-command-echo',
   'unipi:auto-name',
@@ -345,7 +349,7 @@ function scanStarts(branch: readonly SessionEntry[], from: number, firstKind?: T
   for (let i = from; i < branch.length; i++) {
     const e = branch[i]!;
     if (i === from) {
-      const kind = firstKind ?? (isUser(e) ? 'turn' : e.type === 'compaction' ? 'compaction' : 'preamble');
+      const kind = firstKind ?? (isUser(e) ? 'turn' : (e.type === 'compaction' || e.type === 'compaction_state') ? 'compaction' : 'preamble');
       starts.push({ at: i, kind });
       if (e.type === 'message' && e.message) prev = e.message;
       continue;
@@ -353,7 +357,7 @@ function scanStarts(branch: readonly SessionEntry[], from: number, firstKind?: T
     if (e.type === 'message' && e.message) {
       if (e.message.role === 'user' && !isSteer(prev)) starts.push({ at: i, kind: 'turn' });
       prev = e.message;
-    } else if (e.type === 'compaction' && isMarkerCompaction(prev)) {
+    } else if ((e.type === 'compaction' || e.type === 'compaction_state') && isMarkerCompaction(prev)) {
       starts.push({ at: i, kind: 'compaction' });
     }
   }
@@ -577,7 +581,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       // chips show them), not changes — no "Model → … / Thinking → …" rows atop a new chat.
       if (start.kind === 'preamble' && e.type !== 'branch_summary') continue;
       cur().work.push({ kind: 'card', key: e.id, entry: e });
-    } else if (e.type === 'compaction') {
+    } else if ((e.type === 'compaction' || e.type === 'compaction_state')) {
       cur().work.push({ kind: 'compaction', key: e.id, entry: e });
     }
   }
@@ -700,7 +704,19 @@ const liveOf = (input: TurnsInput): Live => ({ streaming: input.streaming, liveT
 export function buildTurns(input: TurnsInput): Turn[] {
   const branch = branchOf(input.entries, input.leafId);
   const starts = scanStarts(branch, 0);
-  return starts.map((s, i) => buildTurn(branch, s, starts[i + 1]?.at ?? branch.length, i === starts.length - 1 ? liveOf(input) : undefined));
+  return withRenderCutoff(starts.map((s, i) => buildTurn(branch, s, starts[i + 1]?.at ?? branch.length, i === starts.length - 1 ? liveOf(input) : undefined)), branch);
+}
+
+/** Select only a branch-local, existing inclusive anchor. Never slice human history. */
+function withRenderCutoff(turns: Turn[], branch: readonly SessionEntry[]): Turn[] {
+  const anchorOf = (e: SessionEntry) => e.type === 'compaction_state' ? (e.anchorMessage as { id?: string } | undefined)?.id : typeof e.firstKeptEntryId === 'string' ? e.firstKeptEntryId : undefined;
+  const state = [...branch].reverse().find((e) => (e.type === 'compaction_state' || e.type === 'compaction') && branch.some((m) => m.id === anchorOf(e)));
+  const anchor = state && anchorOf(state);
+  return turns.map((turn) => {
+    const cutoff = state && turn.entries.some((e) => e.id === anchor) ? state : undefined;
+    if (turn.renderCutoff === cutoff) return turn;
+    return { ...turn, renderCutoff: cutoff };
+  });
 }
 
 function turnIdOf(branch: readonly SessionEntry[], s: Start): string {
@@ -781,6 +797,7 @@ export function createTurnsIndex(): TurnsIndex {
       source = input.entries;
       sourceLen = input.entries.length;
       leaf = input.leafId;
+      turns = withRenderCutoff(turns, branch);
       return turns;
     },
     get lastMode() {

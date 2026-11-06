@@ -1,4 +1,5 @@
 /** Capture/test scenarios by name (`?scenario=<name>`). Later WPs append theirs. */
+import { autonomy } from './autonomy';
 import type { MockScenario } from '../host';
 import { empty } from './empty';
 import { noHost } from './no-host';
@@ -43,6 +44,7 @@ import {
 } from './capabilities';
 
 export const SCENARIOS: Record<string, MockScenario> = {
+  autonomy,
   empty,
   'turn-files': turnFiles,
   'turn-files-undo': turnFilesUndo,

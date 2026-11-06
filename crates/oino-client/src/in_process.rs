@@ -279,6 +279,22 @@ impl Shared {
     ) -> Result<RpcResponseData, ClientError> {
         let session = self.session();
         match command {
+            AgentCommand::SetAutonomy { level } => {
+                session.set_autonomy(level);
+                Ok(None)
+            }
+            AgentCommand::ApprovalResponse {
+                request_id,
+                decision,
+            } => {
+                session
+                    .approval_response(oino_core::session::permission::ApprovalResponse {
+                        request_id,
+                        decision,
+                    })
+                    .map_err(ClientError::Command)?;
+                Ok(None)
+            }
             AgentCommand::Prompt {
                 message,
                 images,
@@ -326,7 +342,13 @@ impl Shared {
                 self.rebind(ReplaceReason::New, result.cancelled);
                 data(json!({ "cancelled": result.cancelled }))
             }
-            AgentCommand::GetState => data(self.state()),
+            AgentCommand::GetState => {
+                let mut state = serde_json::to_value(self.state())
+                    .map_err(|e| ClientError::Protocol(e.to_string()))?;
+                state["autonomy"] = serde_json::to_value(session.autonomy())
+                    .map_err(|e| ClientError::Protocol(e.to_string()))?;
+                data(state)
+            }
             AgentCommand::SetModel {
                 provider,
                 model_id,
@@ -532,7 +554,13 @@ impl Shared {
     async fn oino(&self, command: OinoCommand) -> Result<RpcResponseData, ClientError> {
         let session = self.session();
         match command {
-            OinoCommand::Hello { client, .. } => {
+            OinoCommand::Hello { client, ui, .. } => {
+                session.set_approval_ui(
+                    ui.as_ref()
+                        .and_then(|value| value.get("approvals"))
+                        .and_then(JsonValue::as_bool)
+                        .unwrap_or(false),
+                );
                 session.register_frontend(&client.name);
                 data(json!({
                     "server": {"name": self.server.name, "version": self.server.version},

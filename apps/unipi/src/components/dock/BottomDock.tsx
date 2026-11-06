@@ -18,7 +18,7 @@
  * elsewhere is read-only here — the composer is disabled and the
  * `ReadOnlyBanner` offers Take back.
  */
-import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from 'solid-js';
 import type { SessionHandle } from '../../lib/session/store';
 import type { UiRequest } from '../../ui/types';
 import { sendModeForEnter, followUpMode } from '../../lib/composer/sendMode';
@@ -30,6 +30,7 @@ import { dialogShownInApp } from '../../lib/surfaces';
 import { QueuePanel } from './QueuePanel';
 import { SendButton } from '../composer/SendButton';
 import './dock.css';
+import { ApprovalCard } from '../composer/ApprovalCard';
 
 export function BottomDock(props: {
   session: SessionHandle;
@@ -52,6 +53,15 @@ export function BottomDock(props: {
   /** The Running tab's live summary ("Subagents 1 running"); feeds the working line. */
   trayLabel?: string;
 }) {
+  // Only a mounted, interactive approval surface opts in. Unmount/reconnect fails closed.
+  createEffect(() => {
+    const session = props.session;
+    if (props.readOnly || session.state.conn !== 'live') return;
+    const hello = (approvals: boolean) => session.cmd({ type: '_oino/hello', client: { name: 'unipi-app', version: '1.0.1' }, protocol: 2,
+      ui: { protocol: 2, approvals, dialogs: ['select', 'confirm', 'input', 'editor', 'multiSelect', 'form', 'approval', 'custom'], slots: ['overlay', 'sidePane', 'bottomPane', 'editorReplace', 'fullscreen', 'widget', 'widgetBelow', 'status', 'turnFooter', 'header', 'footer', 'settings'], reserved: [], nodes: 'all', images: false, osNotify: true, clipboard: true } }).catch(() => {});
+    void hello(true);
+    onCleanup(() => { void hello(false); });
+  });
   // Esc stops the run from any focus in the conversation (Z-55): the dock
   // itself is inside `.conv-tl`, so keydowns from anywhere above it bubble
   // here — unless a dialog or popup consumed them first.
@@ -89,6 +99,9 @@ export function BottomDock(props: {
           {props.widgets}
         </div>
       </Show>
+      <For each={props.session.state.approvals ?? []}>{(request) =>
+        <div class="dock-region dock-region-dialog"><ApprovalCard request={request} session={props.session} disabled={props.readOnly} /></div>
+      }</For>
       <Show when={docked().length}>
         <div class="dock-region dock-region-dialog" data-region="dialog">
           <DialogPanel

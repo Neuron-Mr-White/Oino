@@ -1,0 +1,10 @@
+/* Reuse toolbar/dock tokens and shared button feedback; no new travel motion. */
+.tb-chip-autonomy { flex: 0 0 auto; gap: 6px; }
+.autonomy-meter { color: var(--color-claw); letter-spacing: 1px; white-space: nowrap; }
+.autonomy-approval { padding: 12px; background: var(--color-surface-1); border: 1px solid var(--color-line); border-radius: 12px; min-width: 0; }
+.autonomy-approval p { margin: 6px 0; white-space: normal; overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 12px; }
+.autonomy-approval pre { max-height: 24vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: var(--color-surface-2); border-radius: 6px; font-size: 12px; }
+.autonomy-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.autonomy-approval-actions button { min-height: 40px; min-width: 40px; }
+/* Toolbar compression must keep all three bars and the explicit label. */
+html[data-shell=phone] .tl-composer .comp-bar .tb-slot[data-slot=permission] .tb-chip-autonomy { min-height: 40px; height: 40px; width: auto; }

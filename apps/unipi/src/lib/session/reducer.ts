@@ -167,6 +167,7 @@ export function applySnapshot(s: SessionState, snap: SessionSnapshot, now = Date
   s.topics = topicsOf(snap.topics as unknown[] | undefined);
   s.commands = (Array.isArray(snap.commands) ? snap.commands : []).filter(isObject) as CommandInfo[];
   s.dialogs = [];
+  s.approvals = [];
   s.run = { phase: 'idle', running: false };
   applyInfo(s, isObject(snap.state) ? snap.state : {});
   delete s.banner;
@@ -345,6 +346,7 @@ function setBanner(s: SessionState, kind: BannerKind, event: Record<string, unkn
 
 function endRun(s: SessionState, phase: RunPhase = 'idle'): void {
   s.run = { phase, running: false };
+  s.approvals = [];
   delete s.streaming;
   s.liveTools = {};
 }
@@ -542,6 +544,14 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
     case 'topic': {
       const topic = str(event.topic);
       if (topic) s.topics[topic] = { data: event.data, sticky: event.sticky !== false, publisher: str(event.publisher) ?? '' };
+      return {};
+    }
+    case 'approval_request': {
+      if (dto.session !== s.sessionId || typeof event.sessionId !== 'string' || typeof event.requestId !== 'string' || typeof event.tool !== 'string'
+        || !isObject(event.arguments) || typeof event.reason !== 'string'
+        || !['low', 'medium', 'high'].includes(String(event.ceiling))) return {};
+      const requests = s.approvals ??= [];
+      if (!requests.some((r) => r.requestId === event.requestId)) requests.push(event as unknown as import('./autonomy').ApprovalRequest);
       return {};
     }
     case 'extension_ui_request': {

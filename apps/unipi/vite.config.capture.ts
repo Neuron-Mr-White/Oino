@@ -28,5 +28,5 @@ const mockHost = {
 export default defineConfig({
   plugins: [solid(), tailwind(), mockHost],
   clearScreen: false,
-  server: { port: 1450, strictPort: true, host: '127.0.0.1' },
+  server: { port: 1450, strictPort: true, host: '127.0.0.1', watch: { ignored: ['**/target/**', '**/dist/**'] } },
 });

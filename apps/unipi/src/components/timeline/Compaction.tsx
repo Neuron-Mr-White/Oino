@@ -17,7 +17,7 @@ export function Compaction(props: { entry: SessionEntry; sessionId: () => string
   // Shown open by default so the compaction summary shared with both user and agent is immediately readable.
   const open = () => expansionOpen(props.sessionId(), key(), true);
   const toggle = () => setExpansion(props.sessionId(), key(), !open());
-  const e = () => props.entry as { summary?: string; tokensBefore?: number };
+  const e = () => ({ summary: String(props.entry.summaryText ?? props.entry.summary ?? ''), tokensBefore: props.entry.tokensBefore as number | undefined });
   return (
     <div class="compaction tl-compaction" data-audience="both" data-testid="tl-compaction">
       <button type="button" class="compaction-head" aria-expanded={open()} onClick={toggle}>

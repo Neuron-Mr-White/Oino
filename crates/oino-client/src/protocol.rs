@@ -19,7 +19,9 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 
 /// Core command types, in protocol order.
-pub const AGENT_COMMAND_TYPES: [&str; 33] = [
+pub const AGENT_COMMAND_TYPES: [&str; 35] = [
+    "set_autonomy",
+    "approval_response",
     "prompt",
     "steer",
     "follow_up",
@@ -86,6 +88,19 @@ mod wire_images {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentCommand {
+    /// Set the host-owned shell ceiling for this session.
+    SetAutonomy {
+        /// Requested ceiling.
+        level: oino_core::session::permission::Level,
+    },
+    /// Answer one pending, session-bound host approval.
+    #[serde(rename_all = "camelCase")]
+    ApprovalResponse {
+        /// Single-use request identity.
+        request_id: String,
+        /// Explicit user decision.
+        decision: oino_core::session::permission::ApprovalDecision,
+    },
     /// Send a prompt; replies once it was handled, queued or started.
     #[serde(rename_all = "camelCase")]
     Prompt {
@@ -668,6 +683,8 @@ impl AgentCommand {
     #[must_use]
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::SetAutonomy { .. } => "set_autonomy",
+            Self::ApprovalResponse { .. } => "approval_response",
             Self::Prompt { .. } => "prompt",
             Self::Steer { .. } => "steer",
             Self::FollowUp { .. } => "follow_up",

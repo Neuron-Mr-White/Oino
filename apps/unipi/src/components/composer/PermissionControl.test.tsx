@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Permission & plan control (WP-A13 acceptance, G-6): the chip shows the
- * workflow extension's live `WORKFLOW_STATUS` (`permissionMode`) and its menu
- * sends `/permission <mode>`; the Plan toggle reflects `planMode` and sends
- * `/plan on|off`. Commands go to the session stream (the MockHost log), never
- * into the draft. Without the extension's commands the control is absent.
+ * host autonomy independently of legacy workflow modes. Plan still follows
+ * the workflow topic and sends `/plan on|off`.
  */
 import { cleanup, fireEvent, render, waitFor } from '@solidjs/testing-library';
 import { createRoot, createSignal } from 'solid-js';
@@ -14,7 +12,6 @@ import { genSession } from '../../dev/mock/gen';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { createSession, resetSessions, sessions, type SessionHandle } from '../../lib/session/store';
 import { createDraftSession } from '../draft/draftSession';
-import { toasts } from '../../lib/toasts';
 import { PermissionControl, PlanToggle } from './PermissionControl';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
@@ -69,48 +66,16 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('permission chip (G-6)', () => {
-  it('shows the mode from the workflow topic', async () => {
+describe('host autonomy replaces legacy permission mode', () => {
+  it('ignores old Full entries and defaults to Medium', async () => {
     const s = await open({ status: { planMode: false, permissionMode: 'full' } });
     const view = render(() => <PermissionControl session={s} onCommand={() => {}} />);
-    await waitFor(() => expect(view.getByTestId('permission-label').textContent).toBe('Full'));
-    expect(view.getByTestId('permission-chip').getAttribute('data-mode')).toBe('full');
+    expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯');
   });
-
-  it('falls back to the extension default (Auto) before the topic arrives', async () => {
-    const s = await open();
-    const view = render(() => <PermissionControl session={s} onCommand={() => {}} />);
-    await waitFor(() => expect(view.queryByTestId('permission-label')).not.toBeNull());
-    expect(view.getByTestId('permission-label').textContent).toBe('Auto');
-  });
-
-  it('the menu always sends /permission <mode> for any picked mode (G-01)', async () => {
-    const s = await open({ status: { planMode: false, permissionMode: 'auto' } });
-    const view = render(() => <PermissionControl session={s} onCommand={(cmd) => s.send(cmd, { mode: 'prompt' })} />);
-    fireEvent.click(view.getByTestId('permission-chip'));
-    const rows = [...document.querySelectorAll('.perm-menu-row')] as HTMLElement[];
-    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Ask'), expect.stringContaining('Auto'), expect.stringContaining('Full'), expect.stringContaining('Make default for new chats')]);
-    expect(document.querySelector('[data-testid=permission-scope]')?.textContent).toBe('Applies to this chat only.');
-    // G-01: picking Auto explicitly still sends `/permission auto` so a desynced chat can always switch.
-    fireEvent.click(rows[1]!);
-    await waitFor(() => expect(prompts()).toEqual(['/permission auto']));
-    fireEvent.click(view.getByTestId('permission-chip'));
-    fireEvent.click([...document.querySelectorAll('.perm-menu-row')][2] as HTMLElement);
-    await waitFor(() => expect(prompts()).toEqual(['/permission auto', '/permission full']));
-    // F-07: the chip follows the pick at once, before the topic confirms.
-    expect(view.getByTestId('permission-label').textContent).toBe('Full');
-  });
-
-  it('a session without the extension offers no control', async () => {
-    const s = await open({ commands: [{ name: 'compact', description: 'Compact', source: 'builtin' }] });
-    const view = render(() => (
-      <>
-        <PermissionControl session={s} onCommand={() => {}} />
-        <PlanToggle session={s} onCommand={() => {}} />
-      </>
-    ));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(view.queryByTestId('permission-chip')).toBeNull();
+  it('is available without the workflow extension, while Plan is separate', async () => {
+    const s = await open({ commands: [] });
+    const view = render(() => <><PermissionControl session={s} onCommand={() => {}} /><PlanToggle session={s} onCommand={() => {}} /></>);
+    expect(view.queryByTestId('permission-chip')).not.toBeNull();
     expect(view.queryByTestId('plan-toggle')).toBeNull();
   });
 });
@@ -169,30 +134,24 @@ describe('plan toggle (G-6)', () => {
         <PlanToggle session={cur()} onCommand={(c) => sent.push(`${cur().key}:${c}`)} />
       </>
     ));
-    // Pick Full in B, then immediately switch to A -> chip must show A's real Ask, never B's Full.
-    fireEvent.click(view.getByTestId('permission-chip'));
-    fireEvent.click(document.querySelector('[data-testid=permission-option-full]')!);
-    expect(view.getByTestId('permission-label').textContent).toBe('Full');
+    await b.cmd({ type: 'set_autonomy', level: 'high' });
+    expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▮');
     setCur(a);
-    await waitFor(() => expect(view.getByTestId('permission-label').textContent).toBe('Ask'));
+    await waitFor(() => expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯'));
 
     // Click Plan twice on A: sends /plan on then /plan off.
     fireEvent.click(view.getByTestId('plan-toggle'));
     expect(view.getByTestId('plan-toggle').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(view.getByTestId('plan-toggle'));
     expect(view.getByTestId('plan-toggle').getAttribute('aria-pressed')).toBe('false');
-    expect(sent).toEqual(['pc-one/s-b:/permission full', 'pc-one/s-a:/plan on', 'pc-one/s-a:/plan off']);
+    expect(sent).toEqual(['pc-one/s-a:/plan on', 'pc-one/s-a:/plan off']);
 
-    // G-09: Make default for new chats works on the New-chat DraftSession too.
-    toasts().clear();
+    // Draft autonomy persists as a host ceiling choice before the first prompt.
     const draft = createRoot((d) => (disposers.push(d), createDraftSession(HOST, () => {})));
-    await waitFor(() => expect(draft.state.commands.length).toBeGreaterThan(0));
-    draft.send('/permission full', { mode: 'prompt' });
+    await draft.cmd({ type: 'set_autonomy', level: 'low' });
+    expect(draft.choices().autonomy).toBe('low');
     setCur(draft);
-    await waitFor(() => expect(view.getByTestId('permission-label').textContent).toBe('Full'));
-    fireEvent.click(view.getByTestId('permission-chip'));
-    fireEvent.click(document.querySelector('[data-testid=permission-make-default]')!);
-    await waitFor(() => expect(toasts().list().some((t) => t.message === 'New chats start in Full')).toBe(true));
+    await waitFor(() => expect(view.getByTestId('permission-chip').textContent).toContain('▮▯▯'));
 
     // 7f8a79a6: per-session `unipi:workflow:status:<sessionId>` beats a polluted global `unipi:workflow:status`.
     world.push(HOST, 's-a', [
@@ -202,7 +161,7 @@ describe('plan toggle (G-6)', () => {
     setCur(a);
     await waitFor(() => {
       expect(view.getByTestId('plan-toggle').getAttribute('aria-pressed')).toBe('true');
-      expect(view.getByTestId('permission-label').textContent).toBe('Ask');
+      expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯');
     });
   });
 });

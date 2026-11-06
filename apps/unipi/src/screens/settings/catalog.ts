@@ -7,6 +7,7 @@
  * Groups (ZCode settings-sidebar-layout, in the unipi look):
  * Basics / Agent capabilities / Hosts & devices / Data / About.
  */
+import { hasFeatureSettings } from './featureSections';
 import type { Component } from 'solid-js';
 import {
   BarChart3, Blocks, Bell, Bot, Brain, Cpu, FolderKanban, Globe, Info, KanbanSquare, Keyboard, MonitorSmartphone,
@@ -17,6 +18,7 @@ import { can, type Capability } from '../../lib/platform';
 export type SettingsGroupId = 'basics' | 'agent' | 'hosts' | 'data' | 'about';
 
 export type SettingsSectionId =
+  | 'autonomy' | 'compaction' | 'search'
   | 'general' | 'appearance' | 'input' | 'shortcuts' | 'terminal' | 'editor' | 'board'
   | 'extensions' | 'agent' | 'mcp' | 'memory' | 'skills' | 'subagents' | 'providers'
   | 'hosts' | 'connection' | 'sharing' | 'notifications' | 'unicrab'
@@ -58,6 +60,9 @@ export const SETTINGS_GROUPS: Array<{ id: SettingsGroupId; title: string }> = [
 ];
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
+  { id: 'autonomy', title: 'Autonomy', group: 'agent', icon: Waypoints, phone: { group: 'pc' }, keywords: ['permission', 'risk', 'commands'], rows: [{ key: 'autonomy.defaultLevel', label: 'Default autonomy' }] },
+  { id: 'compaction', title: 'Compaction', group: 'agent', icon: Brain, phone: { group: 'pc' }, show: () => hasFeatureSettings('compaction'), keywords: ['context', 'tokens', 'summary'], rows: [] },
+  { id: 'search', title: 'Search', group: 'agent', icon: Globe, phone: { group: 'pc' }, show: () => hasFeatureSettings('search'), keywords: ['semantic', 'index', 'grep'], rows: [] },
   {
     id: 'general',
     title: 'General',

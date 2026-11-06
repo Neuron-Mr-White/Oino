@@ -6,6 +6,9 @@
  * labels. Secondary pages (an extension's settings namespace) use the
  * standard Back (Z-113).
  */
+import { Dynamic } from 'solid-js/web';
+import { featureSettings } from './settings/featureSections';
+import { AutonomySettings } from './settings/AutonomySettings';
 import { Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { useNavigate, useParams } from '@solidjs/router';
 import { FolderKanban, Keyboard as KeyboardIcon, Server, TerminalSquare, Unplug, MonitorSmartphone } from 'lucide-solid';
@@ -276,6 +279,9 @@ export default function Settings() {
   /** One section's body by id (the desktop column and the phone page share it). */
   const body = (id: string) => {
     switch (id) {
+      case 'autonomy': return <AutonomySettings />;
+      case 'compaction': return <Dynamic component={featureSettings('compaction')} />;
+      case 'search': return <Dynamic component={featureSettings('search')} />;
       case 'general': return <LifetimeSection />;
       case 'appearance': return <AppearanceSection />;
       case 'input': return <InputSection />;

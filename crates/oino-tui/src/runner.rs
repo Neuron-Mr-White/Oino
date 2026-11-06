@@ -130,6 +130,7 @@ pub async fn run(
         let _ = terminal.clear();
     }
     drop(guard);
+    backend.set_approval_ui(false);
     backend.shutdown().await;
     result
 }

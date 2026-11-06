@@ -379,6 +379,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       conn: (conn, error?: AppError) => {
         batch(() => {
           setState('conn', conn);
+          if (conn !== 'live') setState('approvals', []);
           if (error) setState('connError', error);
           else if (conn === 'live') setState('connError', undefined);
         });
@@ -425,7 +426,12 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       persist();
     },
     abort: () => stream.cmd({ type: 'abort' }).then(() => undefined),
-    cmd: (cmd) => stream.cmd(cmd),
+    cmd: async <T = unknown>(cmd: RpcCommand): Promise<T> => {
+      const reply = await stream.cmd<T>(cmd);
+      if (cmd.type === 'set_autonomy') setState('info', 'autonomy', cmd.level);
+      if (cmd.type === 'approval_response') setState('approvals', (list) => list?.filter((r) => r.requestId !== cmd.requestId));
+      return reply;
+    },
     subscribeTopics(patterns) {
       const fresh: string[] = [];
       for (const p of patterns) {

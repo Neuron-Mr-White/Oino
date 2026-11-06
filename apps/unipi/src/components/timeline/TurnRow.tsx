@@ -27,6 +27,7 @@ import { HarnessRow } from './HarnessRow';
 import { UserBubble } from './UserBubble';
 import { Prose } from './Prose';
 import { ByKey } from './ByKey';
+import { RenderCutoff } from '../chat/RenderCutoff';
 import { Compaction } from './Compaction';
 import { AskUserCard } from './cards/AskUserCard';
 import { TurnActions, UserMessageActions, requestEdit } from './TurnActions';
@@ -60,6 +61,7 @@ export function TurnRow(props: { turn: Turn; ctx: TimelineCtx; last?: boolean })
     entry && !t().live && !props.ctx.readOnly ? (anchor: DOMRect) => void requestEdit(props.ctx, t(), entry, anchor) : undefined;
   return (
     <div class="tl-turn" data-kind={t().kind} data-live={t().live ? '' : undefined} data-testid={`tl-turn-${t().turnId}`}>
+      <Show when={t().renderCutoff}><RenderCutoff /></Show>
       <Show
         when={t().kind !== 'compaction'}
         fallback={<Compaction entry={t().compaction!} sessionId={props.ctx.sessionId} />}

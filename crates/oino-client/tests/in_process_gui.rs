@@ -336,3 +336,72 @@ async fn reload_rereads_models_json_without_a_restart() {
         vec!["llama"]
     );
 }
+
+/// The app host parses typed commands, not RpcServer's JSON-only fast paths.
+#[tokio::test]
+async fn typed_autonomy_and_approval_bridge() {
+    use oino_client::protocol::{ClientInfo, OinoCommand, RpcRequest};
+    let f = fixture(Vec::new(), vec![]).await;
+    let set = RpcRequest::from_value(json!({"type":"set_autonomy","level":"low"})).unwrap();
+    f.backend.send(set.command).await.unwrap();
+    let state = f
+        .backend
+        .send(AgentCommand::GetState.into())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(state["autonomy"], "low");
+    let hello = |approvals| OinoCommand::Hello {
+        client: ClientInfo {
+            name: "unipi-app".into(),
+            version: "test".into(),
+        },
+        ui: Some(json!({"approvals":approvals})),
+        protocol: 2,
+    };
+    f.backend.send(hello(true).into()).await.unwrap();
+    let mut events = f.backend.events();
+    // Deny before execution: the shell command must never run.
+    f.backend
+        .send(
+            OinoCommand::SetSetting {
+                key: "permissions".into(),
+                value: Some(json!({"version":1,"rules":[],"legacyDeny":[],"default":"ask"})),
+                scope: oino_settings::SettingsScope::Global,
+            }
+            .into(),
+        )
+        .await
+        .unwrap();
+    let write = f.backend.clone();
+    let prompt = tokio::spawn(async move {
+        write
+            .send(
+                AgentCommand::Bash {
+                    command: "git push".into(),
+                    exclude_from_context: Some(false),
+                }
+                .into(),
+            )
+            .await
+    });
+    let approval = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(ClientEvent::Oino(OinoEvent::ApprovalRequest { request })) =
+                events.next().await
+            {
+                break request;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let response = RpcRequest::from_value(
+        json!({"type":"approval_response","requestId":approval.request_id,"decision":"deny"}),
+    )
+    .unwrap();
+    f.backend.send(response.command.clone()).await.unwrap();
+    assert!(prompt.await.unwrap().is_err());
+    assert!(f.backend.send(response.command).await.is_err());
+    f.backend.send(hello(false).into()).await.unwrap();
+}
