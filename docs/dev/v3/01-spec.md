@@ -103,7 +103,7 @@ Legacy aliases are not advertised to new sessions. Replaying results never re-ex
 
 Each subsequent `SessionEntry` carries `compactionSummaryId` equal to the active record id; do not change provider message bytes. Anchor at a turn boundary, never between an assistant tool call and its results. Construct the injected summary deterministically from the state so reload is byte-identical. v3 writes only `compaction_state`, not legacy `CompactionEntry`, but reads the latter. A committed state and its anchor must refer to existing messages on the same branch. Reload selects the newest valid state on that branch, forms the model view as immutable slots 1–2, injected summary, then messages after the anchor; preserve the entire raw transcript for human scrolling. If the anchor is missing, reject the state and surface a recoverable error rather than discard history. Import legacy compaction entries as legacy records; do not rewrite them. Never append a partial compaction state on failure.
 
-The LLM summarizer uses `ref-droid-prompts.md` §5.1, §5.3, §5.4 and §5.5 verbatim, with Droid → Oino only and conditional interpolation; omit the unrecovered `{ur}` identity prefix and do not use §5.2. At a 6000-token previous-summary soft cap use the §5.4 IMPORTANT length instruction. Summarize the previous summary plus messages after its anchor, stripping the previous TODO block and appending current todos. Keep vcc/llm selection, both using the same persistence, trigger and recovery machinery; vcc writes `vcc_summary` without the LLM delta step. Clamp custom instructions to 25% of summarizer context; reserve 4k tokens, pin the recent tail and insert the omitted-message marker. Retry context failures on the 0.9 → 0.75 → 0.5 shrink ladder; resample empty/degenerate responses then escalate once to the session main model; final failure preserves history, and threshold failure is nonfatal. Preserve original data if every attempt fails.
+The LLM summarizer preserves `ref-droid-prompts.md` §5.1 and §5.2 as alternative verbatim bodies, and §5.3, §5.4 and §5.5 verbatim, with Droid → Oino only and conditional interpolation; omit the unrecovered `{ur}` identity prefix. The default body is §5.1; retain §5.2 pending the owner clarification below. At a 6000-token previous-summary soft cap use the §5.4 IMPORTANT length instruction. Summarize the previous summary plus messages after its anchor, stripping the previous TODO block and appending current todos. Keep vcc/llm selection, both using the same persistence, trigger and recovery machinery; vcc writes `vcc_summary` without the LLM delta step. Clamp custom instructions to 25% of summarizer context; reserve 4k tokens, pin the recent tail and insert the omitted-message marker. Retry context failures on the 0.9 → 0.75 → 0.5 shrink ladder; resample empty/degenerate responses then escalate once to the session main model; final failure preserves history, and threshold failure is nonfatal. Preserve original data if every attempt fails.
 
 Post-turn threshold uses actual provider input usage including cache reads; resolution is session override → model/family → global → model default → 250k, clamped to max input. Suppress repeated threshold compaction for the same session/model/limit until usage falls below the limit; failed threshold compaction is nonfatal. On in-turn overflow compact with `requireProgress` and retry only the failed model request, never completed tools; if no messages are removed, return the original failure. `/compact` accepts custom instructions; PreCompact may block only manual compaction. Reset the cache snapshot after success, then re-announce retained skills and loaded deferred tools without altering slots 1–2.
 
@@ -168,24 +168,74 @@ A single dispatcher per machine holds a host-wide lock; a second host cannot dis
 
 ## Work packages
 
-**Planning draft only:** ownership and tests below are starting boundaries, not approved execution contracts. Before dispatch, enumerate all shared integration files, verify commands and legacy mappings, and resolve the questions below. Dependencies do not authorize parallel edits of an unlisted shared file. Shared integration edits must be serialized in this order: wp-cache → wp-tools-fs → wp-exec-bg → wp-ext-reminders → wp-loop-guards → wp-compaction → wp-codemode → wp-autonomy → wp-autonomy-ui → wp-zvec → sa-backend → sa-ui. This order applies only when packages actually touch the same file; independent owned files can proceed in parallel after dependencies.
+The table assigns one owner per listed file or directory. A directory ownership excludes the explicitly owned files beneath it. New shared integration files must be assigned one owner before editing. Cross-package changes to an owned file are declared below and applied only after its owner and the relevant prerequisite packages finish; dependency edges do not transfer ownership. Workers coordinate these ordered edits, not parallel edits to the same file. Tests and fixtures follow the ownership of the feature they exercise unless explicitly assigned below.
 
-| Package | Initial owned files | Depends on | Candidate acceptance commands (not yet verified) |
-|---|---|---|---|
-| wp-cache | `crates/oino-ai/src/transcript.rs`, `crates/oino-core/src/session/{prompt,tools}.rs`, `crates/oino-resources/src/system_prompt.rs`, `extensions/sdk/oino-provider-kit/src/{anthropic,completions}.rs` | none | `CARGO_BUILD_JOBS=8 cargo test -p oino-ai`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
-| wp-tools-fs | `crates/oino-tools/src/{read,write,find,grep,ls,info}.rs`, `crates/oino-tools/src/edit/` | wp-cache | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
-| wp-exec-bg | `crates/oino-tools/src/bash/`, `extensions/unipi/background-tasks/`, `extensions/unipi/watchdog/` | wp-tools-fs | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools`; `cargo xtask wasm` |
-| wp-ext-reminders | `extensions/unipi/{skill-registry,long-horizon,subagents,fusion,browser}/` | wp-cache | `cargo xtask wasm`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
-| wp-loop-guards | `crates/oino-agent/src/agent_loop.rs` | wp-cache | `CARGO_BUILD_JOBS=8 cargo test -p oino-agent` |
-| wp-compaction | `crates/oino-core/src/compaction/`, `crates/oino-core/src/session/compaction_flow.rs`, `extensions/unipi/compactor/` | wp-cache, wp-ext-reminders | `CARGO_BUILD_JOBS=8 cargo test -p oino-core`; `cargo xtask wasm` |
-| wp-codemode | `crates/oino-tools/src/js.rs` | wp-cache, wp-tools-fs, wp-ext-reminders | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
-| wp-autonomy | `extensions/unipi/workflow/` | wp-exec-bg, wp-codemode | `cargo xtask wasm`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
-| wp-autonomy-ui | `apps/unipi/src/components/composer/PermissionControl.tsx`, `apps/unipi/src/components/phone/Sheet.tsx`, `apps/unipi/src/components/board/BoardSheet.tsx` | wp-autonomy | `cd apps/unipi && npx tsc --noEmit && npx vitest run src/components/composer/PermissionControl.test.tsx src/components/phone/SheetSelect.test.tsx` |
-| wp-zvec | new zvec integration under `crates/oino-tools/src/` | wp-tools-fs | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
-| sa-backend | `apps/unipi/crates/unipi-kanboard/`, new dispatcher under `apps/unipi/crates/unipi-host/src/`, `extensions/unipi/kanboard/` | wp-autonomy | `CARGO_BUILD_JOBS=8 cargo test -p unipi-kanboard`; `CARGO_BUILD_JOBS=8 cargo test -p unipi-host` |
-| sa-ui | `apps/unipi/src/components/shell/`, `apps/unipi/src/lib/session/turns.ts`, `apps/unipi/src/components/memory/DreamPanel.tsx`, `extensions/unipi/{dream,memory}/` | sa-backend, wp-autonomy-ui | `cd apps/unipi && npx tsc --noEmit && npx vitest run src/components/memory/DreamPanel.test.tsx` |
+| Package | Owned paths and responsibilities | Depends on |
+|---|---|---|
+| wp-cache | `crates/oino-session/src/entry.rs`, `crates/oino-ai/src/transcript.rs`, `crates/oino-core/src/session/{prompt,tools}.rs`, `crates/oino-resources/src/system_prompt.rs`, `extensions/sdk/oino-provider-kit/src/{anthropic,completions,codex,google,azure,bedrock,responses}.rs`; prefix and legacy snapshots | none |
+| wp-tools-fs | `crates/oino-tools/src/{read,write,find,grep,ls,info,apply_patch}.rs`, `crates/oino-tools/src/edit/`; file tools and patch | none |
+| wp-exec-bg | `crates/oino-tools/src/bash/`, `extensions/unipi/{background-tasks,watchdog}/`; task output/stop and shared task id registry | wp-tools-fs |
+| wp-ext-reminders | `extensions/unipi/{skill-registry,long-horizon,subagents,fusion,browser,mcp,memory,dream}/`, `wit/oino-extension/*.wit`; reminder API and R15 usage gap only | wp-cache |
+| wp-loop-guards | `crates/oino-agent/src/agent_loop.rs`; guards | wp-cache |
+| wp-compaction | `crates/oino-core/src/compaction/`, `crates/oino-core/src/session/compaction_flow.rs`, `extensions/unipi/compactor/`; compaction | wp-cache, wp-ext-reminders |
+| wp-codemode | `crates/oino-tools/src/js.rs`; codemode, tool_search and deferred list | wp-tools-fs, wp-ext-reminders, wp-loop-guards |
+| wp-autonomy | `extensions/unipi/workflow/`, `crates/oino-core/src/session/permission.rs`, `crates/oino-settings/`, `crates/oino-rpc/`; risk gate, rules and approval wire | wp-exec-bg, wp-codemode |
+| wp-autonomy-ui | `apps/unipi/src/components/composer/PermissionControl.tsx`, `apps/unipi/src/components/settings/`, TUI approval handling and transcript cutoff; approval surfaces and shared Settings UI | wp-autonomy |
+| wp-zvec | new zvec integration under `crates/oino-tools/src/` except files owned above; semantic search | wp-tools-fs |
+| sa-backend | `apps/unipi/crates/unipi-kanboard/`, dispatcher under `apps/unipi/crates/unipi-host/src/`, `extensions/unipi/kanboard/`; dispatch and host protocol | wp-autonomy |
+| sa-ui | `apps/unipi/src/components/shell/`, `apps/unipi/src/lib/session/turns.ts`, new Superagent page components; page and author rendering | sa-backend, wp-autonomy-ui |
+
+**Declared ordered edits:** (1) `entry.rs`: wp-cache → wp-compaction for epochs and compaction state. (2) `info.rs`: wp-tools-fs → wp-exec-bg for task/shell schemas → wp-codemode for discovery; wp-zvec adds conditional grep schema after wp-tools-fs and must coordinate its edit with those writers without adding a DAG edge. (3) `agent_loop.rs`: wp-loop-guards → wp-codemode. (4) `extensions/unipi/subagents/`: wp-ext-reminders owns reminder changes; wp-exec-bg supplies shared-id integration as a coordinated edit after wp-ext-reminders, without a DAG edge. (5) `crates/oino-settings/`: wp-autonomy owns; wp-compaction, wp-zvec and sa-backend supply their respective compaction, search and watcher settings as coordinated edits; existing dream settings remain owned by wp-autonomy when touched. (6) `apps/unipi/src/components/settings/`: wp-autonomy-ui owns; wp-compaction, wp-zvec and sa-ui supply compaction, search and watcher controls as coordinated edits; retain existing dream settings. These cross-edits wait for the owning package and applicable DAG prerequisites; if independent packages finish concurrently, serialize the edits by explicit coordination, not by imposing a global package order. (7) `wit/oino-extension/*.wit`: wp-ext-reminders owns append_reminder; any other package requests a coordinated subsequent edit. (8) `crates/oino-core/src/session/{prompt,tools}.rs`: wp-cache owns; wp-ext-reminders, wp-compaction, wp-codemode and wp-autonomy request coordinated edits after wp-cache and their own prerequisites. (9) `crates/oino-tools/src/grep.rs`: wp-tools-fs owns; wp-zvec edits subsequently. (10) `apps/unipi/src/lib/session/turns.ts`: sa-ui owns; wp-autonomy-ui requests any cutoff integration as a coordinated edit.
+
+## Acceptance tests
+
+The following are implementation targets, not claims that these new tests already exist. Every named test must be implemented and pass; commands run from repository root unless a working directory is stated. Paths for new test files are relative to existing crates or the existing app. For Rust, `--test` selects an integration test target; case filters select named tests. Fixtures must be checked in alongside their tests.
+
+| Package | Named cases and exact commands |
+|---|---|
+| wp-cache | `crates/oino-core/tests/v3_prefix.rs::prefix_stable_across_{tool_search_load,model_switch,mcp_connect,skill_announce,compaction,reload}` records provider requests for anthropic and completions serializers, compares slot/message bytes and permits declaration suffixes only. `v3_prefix.rs::prompt_excludes_factory_content` checks forbidden names and `::untrusted_reminder_tags_are_escaped` checks user/tool spoofing. Run `cargo test -p oino-core --test v3_prefix`. |
+| wp-tools-fs | `crates/oino-tools/tests/v3_fs.rs::{schema_and_paging,atomic_write_and_edit,patch_model_gate,windows_atomic_replace}` covers schemas, read limits, CRLF/BOM, stale edits and patch operations; run `cargo test -p oino-tools --test v3_fs`. `windows_atomic_replace` is `cfg(windows)`. |
+| wp-exec-bg | `crates/oino-tools/tests/v3_exec.rs::{background_registry_and_stop,timeout_and_detach,windows_job_tree}` covers shell and subagent ids, output and process tree; run `cargo test -p oino-tools --test v3_exec`. `windows_job_tree` is `cfg(windows)`. |
+| wp-ext-reminders | `crates/oino-core/tests/v3_reminders.rs::{append_order_and_reload,skill_mcp_catalog_updates,memory_usage_and_prune}` covers WIT/native/WASM reminders, search/injection/read use, sidecar import, 30-day boundary and never-used/preferences. Run `cargo test -p oino-core --test v3_reminders` and `cargo xtask wasm`. |
+| wp-loop-guards | `crates/oino-agent/tests/v3_guards.rs::{todo_thresholds,empty_and_identical_calls,resample_before_tools}` covers exact recovered reminders, steering and no repeated side effects; run `cargo test -p oino-agent --test v3_guards`. |
+| wp-compaction | `crates/oino-core/tests/v3_compaction.rs::{crash_before_append,anchor_keeps_tool_pair,overflow_retry_does_not_rerun_tools,epoch_reload_and_legacy,vcc_and_llm_triggers}` covers failures and deterministic reload; run `cargo test -p oino-core --test v3_compaction`. |
+| wp-codemode | `crates/oino-core/tests/v3_codemode.rs::{search_and_deferred_reload,sandbox_and_permission_gate}` covers exact/keyword lookup, MCP and execution; run `cargo test -p oino-core --test v3_codemode`. |
+| wp-autonomy | `crates/oino-core/tests/v3_autonomy.rs::{risk_table,unattended_and_child_ceiling,approval_protocol,windows_powershell_floor}` tests `ls && rm -rf x` declared low → high, `echo > f` → medium, `echo > /dev/null` → low, PowerShell `iex` and `Remove-Item -Recurse`; unattended High returns exactly `needs Autonomy High`. Run `cargo test -p oino-core --test v3_autonomy`; Windows case is `cfg(windows)`. |
+| wp-autonomy-ui | `apps/unipi/src/components/composer/AutonomyControl.test.tsx` cases `cycles_levels_and_tooltips`, `approval_allow_once_always_deny`, `render_cutoff_preserves_history`; run `cd apps/unipi && npx vitest run src/components/composer/AutonomyControl.test.tsx && npm run typecheck`. Also cover TUI/RPC unattended and ACP permission in `v3_autonomy.rs`. |
+| wp-zvec | `crates/oino-tools/tests/v3_zvec.rs::{exact_without_index,consent_and_missing_index,project_isolation_and_idle_unload,windows_msvc_cpu}`; run `cargo test -p oino-tools --test v3_zvec`. Windows case is `cfg(windows)`. |
+| sa-backend | `apps/unipi/crates/unipi-host/tests/v3_dispatcher.rs::{watcher_manual_race_one_run,two_todos_one_project_worker,crash_mid_launch_blocks_without_second_session,windows_tray_dispatcher}`; run `cargo test --manifest-path apps/unipi/Cargo.toml -p unipi-host --test v3_dispatcher` and `cargo test --manifest-path apps/unipi/Cargo.toml -p unipi-kanboard --test v3_kanboard`; latter covers reaper, claims, ticket defaults and relay. Windows case is `cfg(windows)`. |
+| sa-ui | `apps/unipi/src/components/superagent/SuperagentPage.test.tsx::{worker_and_needs_you,watcher_and_relay,author_not_steer}`; run `cd apps/unipi && npx vitest run src/components/superagent/SuperagentPage.test.tsx && npm run typecheck`. |
+
+**Legacy replay, wp-cache with wp-tools-fs and wp-exec-bg:** `crates/oino-core/tests/v3_legacy_replay.rs::{old_tool_arguments,legacy_compaction_and_context_edit,workflow_and_reveal,append_only_original_bytes}` uses `crates/oino-core/tests/fixtures/v2/*.jsonl` covering find, bg_run/bg_logs, relative read, old grep arguments, legacy `system_message`, context_edit, workflow-mode and reveal entries. Assert original file bytes unchanged with only new lines appended. Run `cargo test -p oino-core --test v3_legacy_replay` after coordinated integrations.
+
+**Already-implemented K regression:** run `cd apps/unipi && npx vitest run src/components/phone/SheetSelect.test.tsx`; add a Subagents-sheet-specific case if absent. Before close run all `cfg(windows)` cases and dispatcher in the tray on an actual Windows host; non-Windows CI does not satisfy that gate.
+
+## Review resolution
+
+| Item | Resolution |
+|---|---|
+| R1 | C freezes slot and declaration bytes, defers tools, appends schemas and checks model changes; acceptance records both serializers. |
+| R2 | A/C append snapshot and tail reminder, exclude old system content from provider, preserve display and reveal state. |
+| R3 | B provides legacy argument mappings, normalized permission gating and card preservation. |
+| R4 | E records supervisor-accepted reviewer decisions; owner may override. |
+| R5 | E specifies effective floor, shell parsing, all entry points and unattended behavior. |
+| R6 | Work packages assign features and shared files; declared edits coordinate non-owners. |
+| R7 | Twelve-package DAG is the requested graph with already-implemented J/K omitted; no total order. |
+| R8 | F defines turn-safe anchors, retry, epochs, deterministic persistence and context_edit restriction. |
+| R9 | F specifies soft cap, retry and settings; review's exclusion of §5.2 conflicts with owner F5, so both bodies remain pending clarification. |
+| R10 | L specifies locks, idempotent claim/launch, crash recovery and reaper exclusion. |
+| R11 | L defines workspace-free session, tools and historical command rendering. |
+| R12 | B/E/I/L specify Windows behavior and acceptance requires Windows host. |
+| R13 | E specifies chip, approval and cutoff UI. |
+| R14 | I specifies in-process engine, mode snapshot, refusal and idle unload. |
+| R15 | J records existing sidecar behavior and assigns remaining metadata/prune gap to wp-ext-reminders. |
+| R16 | G specifies guard counts and recovered reminder text; §4.2 is only partially recovered, so its missing text cannot be quoted verbatim. |
+| R17 | C escapes untrusted literal reminder tags without modifying stored text. |
+| R18 | Acceptance table defines new file::case targets, fixtures, exact commands and Windows gate. |
+
+Optional suggestions: stale reminder pruning and the `dedupe` field are omitted (C); `.zvec-grep/.gitignore` contains `*` (I); forbidden system-prompt strings are tested (acceptance); model download requires index-build consent (I).
 
 ### Open owner questions
 
-1. When an above-ceiling interactive call is approved with “always”, should that choice raise the session/ticket autonomy ceiling, or authorize a scoped exception without raising it? E1 says the ceiling is enforced while E3 offers always; this affects both UI wording and unattended safety.
-2. What is the default autonomy for legacy tasks without a per-ticket value, and for newly created tickets when none is specified? A safe migration must not silently grant High.
+1. F5 requires §5 verbatim, while R9 excludes the classic §5.2 body. Should §5.2 remain available as an alternative, or does the owner authorize omitting it? The adaptive §5.1 body is the default pending clarification.
+2. The §4.2 stale-todo reminder is only partially recovered. Can the owner provide the full text, or approve using the recovered prefix as specified?
