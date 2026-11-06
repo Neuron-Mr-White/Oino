@@ -104,8 +104,8 @@ jobs:
           # Linux is static musl (runs on any distro, glibc or musl).
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-musl }
           - { os: ubuntu-22.04, target: aarch64-unknown-linux-musl }
-          - { os: macos-14, target: aarch64-apple-darwin }
-          - { os: macos-14, target: x86_64-apple-darwin }
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15, target: x86_64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -120,6 +120,7 @@ jobs:
           name: dist
           path: extensions/dist
       - run: rustup target add "$TARGET"
+        shell: bash
       - name: Build the CLI and the kanboard package CLI
         shell: bash
         run: |
@@ -351,7 +352,7 @@ jobs:
     # UNSIGNED: ad-hoc codesign only (dist.md §2.1) — no Apple Developer
     # account. First launch needs right-click → Open; apps/unipi/BUILDING.md.
     needs: [wasm, version]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       VERSION: ${{ needs.version.outputs.version }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
