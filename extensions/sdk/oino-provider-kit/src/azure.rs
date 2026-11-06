@@ -47,11 +47,7 @@ pub fn prepare(request: &ProviderRequest, now: i64) -> Result<Prepared, String> 
     let deployment = resolve_deployment_name(request);
     let mut compat = compat(model);
     compat.supports_strict_mode = compat_bool(model, "supportsStrictMode").unwrap_or(true);
-    let normalized = if compat.supports_mid_convo_system_messages {
-        request.context.clone()
-    } else {
-        collapse_system_messages(request.context.clone())
-    };
+    let normalized = collapse_system_messages(request.context.clone());
     let grammar = grammar_input_properties(
         &declared_tools(&normalized.messages),
         compat.supports_openai_grammar_tools,

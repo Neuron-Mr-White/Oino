@@ -187,6 +187,13 @@ impl SessionEntry {
     reason = "variants mirror the entry shapes; entries are stored by value in one Vec"
 )]
 pub enum EntryKind {
+    /// Exact v3 system bytes. Appended once, including on legacy resume.
+    SystemSnapshot {
+        /// Frozen rendered prompt, independent of provider serialization.
+        text: String,
+        /// Prompt contract version (currently 3).
+        version: u32,
+    },
     /// Conversation message.
     Message {
         /// The message.
@@ -311,6 +318,7 @@ impl EntryKind {
     #[must_use]
     pub const fn type_name(&self) -> &'static str {
         match self {
+            Self::SystemSnapshot { .. } => "system_snapshot",
             Self::Message { .. } => "message",
             Self::ThinkingLevelChange { .. } => "thinking_level_change",
             Self::ModelChange { .. } => "model_change",

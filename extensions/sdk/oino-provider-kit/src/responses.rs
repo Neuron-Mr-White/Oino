@@ -127,14 +127,8 @@ pub fn compat(model: &Model) -> ResponsesCompat {
 }
 
 /// pi `getResponsesToolSupport`.
-pub(crate) fn tool_support(compat: &ResponsesCompat) -> ToolChangeSupport {
-    if compat.supports_mid_convo_system_messages && compat.supports_additional_tools {
-        ToolChangeSupport::Changes
-    } else if compat.supports_tool_search {
-        ToolChangeSupport::Additive
-    } else {
-        ToolChangeSupport::None
-    }
+pub(crate) fn tool_support(_compat: &ResponsesCompat) -> ToolChangeSupport {
+    ToolChangeSupport::None
 }
 
 /// pi `isChatGPTSignIn`.
@@ -322,11 +316,7 @@ pub(crate) fn convert_messages(
     now: i64,
 ) -> Result<Vec<Value>, String> {
     let compat = options.compat;
-    let normalized = if compat.supports_mid_convo_system_messages {
-        transcript.clone()
-    } else {
-        collapse_system_messages(transcript.clone())
-    };
+    let normalized = collapse_system_messages(transcript.clone());
     let transformed = transform_messages(
         normalized.messages.clone(),
         model,
@@ -775,11 +765,7 @@ pub fn prepare(request: &ProviderRequest, now: i64) -> Result<Prepared, String> 
             MapEntry::Value(v) => v.to_owned(),
             _ => level.as_str().to_owned(),
         });
-    let normalized = if compat.supports_mid_convo_system_messages {
-        request.context.clone()
-    } else {
-        collapse_system_messages(request.context.clone())
-    };
+    let normalized = collapse_system_messages(request.context.clone());
     let grammar = grammar_input_properties(
         &declared_tools(&normalized.messages),
         compat.supports_openai_grammar_tools,

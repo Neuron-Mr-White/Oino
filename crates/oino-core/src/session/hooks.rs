@@ -16,13 +16,13 @@ use oino_agent::{
 };
 use oino_ai::{
     AgentMessage, AssistantMessage, AssistantMessageEvent, ErrorReason, JsonObject, JsonValue,
-    StopReason, SystemMessage, UserContent,
+    StopReason, UserContent,
 };
 use oino_models::AuthOverrides;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::{AgentSession, Inner, current_system_message, lock};
+use super::{AgentSession, Inner, lock};
 
 /// Where the session log must be durable before the run proceeds (D-FLUSH, core spec
 /// §2.1): the three fsync barriers.
@@ -413,46 +413,8 @@ impl AgentSession {
             } else {
                 messages
             };
-        let hidden = self.hidden_declarations();
-        if !hidden.is_empty() {
-            for message in &mut messages {
-                if let AgentMessage::System(system) = message {
-                    if let Some(added) = &mut system.tools_added {
-                        added.retain(|t| !hidden.contains(&t.name));
-                        if added.is_empty() {
-                            system.tools_added = None;
-                        }
-                    }
-                    if let Some(removed) = &mut system.tools_removed {
-                        removed.retain(|t| !hidden.contains(&t.name));
-                        if removed.is_empty() {
-                            system.tools_removed = None;
-                        }
-                    }
-                }
-            }
-        }
-        let forced = lock(&self.inner.book)
-            .run_prompt_options
-            .as_ref()
-            .and_then(|o| o.force_system_prompt.clone());
-        if let Some(forced) = forced {
-            let current = current_system_message(&messages);
-            let head = SystemMessage {
-                content: oino_ai::UserTextField::Text(forced),
-                sections: None,
-                tools_added: current.as_ref().and_then(|c| c.tools_added.clone()),
-                tools_removed: None,
-                timestamp: current.map_or_else(now_ms, |c| c.timestamp),
-            };
-            messages = std::iter::once(AgentMessage::System(head))
-                .chain(
-                    messages
-                        .into_iter()
-                        .filter(|m| !matches!(m, AgentMessage::System(_))),
-                )
-                .collect();
-        }
+        messages = self.prefix_view(messages);
+
         messages
     }
 }
@@ -479,14 +441,48 @@ impl StreamFn for SessionStream {
                     return base.stream(request);
                 };
                 let session = AgentSession::from_inner(inner);
+                let mut request = request;
                 let model = request.model.clone();
+                // Append model changes before this request, never into either slot.
+                let selection = format!("{}/{}", model.provider, model.id);
+                let changed = lock(&session.inner.book)
+                    .reminder_model
+                    .as_ref()
+                    .is_some_and(|old| old != &selection);
+                let reminder_error = if changed {
+                    match session.append_reminder(
+                        "oino",
+                        "oino/model",
+                        &format!("Model changed to {selection}."),
+                    ) {
+                        Ok(_) => {
+                            lock(&session.inner.book).reminder_model = Some(selection);
+                            None
+                        }
+                        Err(error) => Some(error.to_string()),
+                    }
+                } else {
+                    None
+                };
+                // A reminder may arrive after context transformation. Add only
+                // missing host envelopes, preserving extension context transforms.
+                let reminders = session.reminder_messages();
+                let serialized = convert_provider_view(&session, &reminders);
+                for reminder in serialized {
+                    if !request.context.messages.contains(&reminder) {
+                        request.context.messages.push(reminder);
+                    }
+                }
                 // D-FLUSH barrier 1: the log is durable before each model request (first
                 // request, steering, retries, compaction continuations). A failure returns
                 // a single error event shaped like an authorize failure, so the request
                 // never leaves the process.
-                let authorized = match session.durability_barrier(Barrier::Request) {
-                    Ok(()) => session.authorize(request).await,
-                    Err(message) => Err(message),
+                let authorized = match reminder_error {
+                    Some(error) => Err(error),
+                    None => match session.durability_barrier(Barrier::Request) {
+                        Ok(()) => session.authorize(request).await,
+                        Err(message) => Err(message),
+                    },
                 };
                 match authorized {
                     Ok(request) => base.stream(request),
@@ -583,4 +579,11 @@ pub(crate) fn oauth_failed_message(provider: &str) -> String {
     format!(
         "Authentication failed for \"{provider}\". Credentials may have expired or network is unavailable. Run '/login {provider}' to re-authenticate."
     )
+}
+
+fn convert_provider_view(
+    session: &AgentSession,
+    messages: &[AgentMessage],
+) -> Vec<oino_ai::Message> {
+    (super::convert_with_block_images(Arc::clone(&session.inner.settings)))(messages)
 }

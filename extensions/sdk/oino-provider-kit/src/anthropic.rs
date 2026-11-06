@@ -759,9 +759,8 @@ fn build_params(
     let initial_tools = initial
         .and_then(|s| s.tools_added.clone())
         .unwrap_or_default();
-    let native_tool_changes = compat.mid_convo_system_messages
-        && compat.mid_convo_tool_changes
-        && !initial_tools.is_empty();
+    // v3 declarations live in one request-level array, never inline patches.
+    let native_tool_changes = false;
     let thinking_disabled = model.reasoning
         && !options.thinking_enabled
         && mapped_level(model, ThinkingLevel::Off) != MapEntry::Null;
@@ -927,11 +926,7 @@ pub fn prepare(
         return Err(format!("No API key for provider: {}", model.provider));
     }
     let compat = compat(model);
-    let context = if compat.mid_convo_system_messages {
-        request.context.clone()
-    } else {
-        collapse_system_messages(request.context.clone())
-    };
+    let context = collapse_system_messages(request.context.clone());
     let options = simple_options(request);
     let api_key = request.api_key.clone().unwrap_or_default();
     let is_copilot = model.provider == providers::GITHUB_COPILOT;

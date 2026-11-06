@@ -193,11 +193,31 @@ pub fn initial_system_message(system_prompt: &str, tools: &[ToolDecl]) -> Option
 /// One leading folded system message, other messages unchanged.
 #[must_use]
 pub fn collapse_system_messages(context: Context) -> Context {
-    let head = current_system_message(&context.messages);
-    let rest = context
-        .messages
-        .into_iter()
-        .filter(|message| !matches!(message, Message::System(_)));
+    let mut head: Option<SystemMessage> = None;
+    let mut rest = Vec::new();
+    let tools = current_tools(&context.messages);
+    for message in context.messages {
+        match message {
+            Message::System(system) if head.is_none() => head = Some(system),
+            Message::System(system) => {
+                let text = render_system_message_update(&system);
+                if !text.is_empty() {
+                    rest.push(Message::User(crate::message::UserMessage {
+                        content: crate::content::UserContentField::Text(format!(
+                            "<system-reminder>\n{}\n</system-reminder>",
+                            escape_reminder_tags(&text)
+                        )),
+                        timestamp: system.timestamp,
+                    }));
+                }
+            }
+            other => rest.push(other),
+        }
+    }
+    if let Some(head) = &mut head {
+        head.tools_added = (!tools.is_empty()).then_some(tools);
+        head.tools_removed = None;
+    }
     Context {
         messages: head.map(Message::System).into_iter().chain(rest).collect(),
     }
@@ -330,7 +350,7 @@ mod tests {
             collapse_system_messages(Context { messages })
                 .messages
                 .len(),
-            2
+            3
         );
     }
 
@@ -358,5 +378,38 @@ mod tests {
             Some(json!({"b":"3","c":"4","a":null}))
         );
         assert_eq!(diff_sections(&current, &current), None);
+    }
+}
+
+/// Escape only literal trust-envelope delimiters, leaving stored source bytes untouched.
+#[must_use]
+pub fn escape_reminder_tags(text: &str) -> String {
+    text.replace("<system-reminder>", "&lt;system-reminder&gt;")
+        .replace("</system-reminder>", "&lt;/system-reminder&gt;")
+}
+
+/// Serialization-boundary escaping for untrusted user text and tool output.
+/// The host calls this before custom reminders lose their provenance in `to_llm`.
+pub fn escape_message_reminders(message: &mut Message) {
+    let escape = |content: &mut crate::content::UserContentField| match content {
+        crate::content::UserContentField::Text(text) => *text = escape_reminder_tags(text),
+        crate::content::UserContentField::Blocks(blocks) => {
+            for block in blocks {
+                if let crate::content::UserContent::Text(text) = block {
+                    text.text = escape_reminder_tags(&text.text);
+                }
+            }
+        }
+    };
+    match message {
+        Message::User(user) => escape(&mut user.content),
+        Message::ToolResult(tool) => {
+            for block in &mut tool.content {
+                if let crate::content::UserContent::Text(text) = block {
+                    text.text = escape_reminder_tags(&text.text);
+                }
+            }
+        }
+        _ => {}
     }
 }

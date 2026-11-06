@@ -262,6 +262,9 @@ impl AgentSession {
             }
             HostOp::SessionRead(query) => self.session_read(&query),
             HostOp::AppendEntry { custom_type, data } => {
+                if custom_type == "oino.tool-declarations" {
+                    return Err(HostError::Invalid("reserved host declaration state".into()));
+                }
                 let id = lock(&self.inner.manager)
                     .append_custom_entry(&custom_type, data)
                     .map_err(failed)?;

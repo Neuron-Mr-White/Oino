@@ -8,14 +8,13 @@ use std::sync::Arc;
 
 use indexmap::{IndexMap, IndexSet};
 use oino_agent::AgentTool;
-use oino_ai::{AgentMessage, JsonValue, SystemMessage, UserTextField};
+use oino_ai::{AgentMessage, JsonValue, SystemMessage};
 use oino_resources::BuildSystemPromptOptions;
 use oino_resources::source::SourceInfo;
-use oino_resources::system_prompt::{build_system_prompt_sections, diff_system_prompt_sections};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::{AgentSession, current_system_message, lock};
+use super::{AgentSession, lock};
 use crate::events::OinoEvent;
 use crate::extensions::api::ToolExposure;
 use crate::extensions::tool::ExtensionTool;
@@ -179,6 +178,10 @@ pub(crate) struct ToolState {
     pending: IndexSet<String>,
     hidden: HashSet<String>,
     pub(crate) base_options: BuildSystemPromptOptions,
+    /// Frozen metadata, in declaration order. Execution always resolves the live registry.
+    declared: Vec<oino_agent::ToolDefinitionMeta>,
+    initialized: bool,
+    catalog: Vec<String>,
 }
 
 impl ToolState {
@@ -197,6 +200,9 @@ impl ToolState {
             pending: IndexSet::new(),
             hidden: HashSet::new(),
             base_options: BuildSystemPromptOptions::default(),
+            declared: Vec::new(),
+            initialized: false,
+            catalog: Vec::new(),
         }
     }
 
@@ -219,10 +225,6 @@ impl ToolState {
 
     fn activated_on_registration(&self, name: &str) -> bool {
         self.is_declarable(name) && self.registry.get(name).is_some_and(|e| e.default_active)
-    }
-
-    pub(crate) fn hidden(&self) -> &HashSet<String> {
-        &self.hidden
     }
 }
 
@@ -376,21 +378,133 @@ impl AgentSession {
 
     /// Sets the agent's tools to the registered, non-hidden ones.
     pub(crate) fn apply_tool_loadout(&self, names: &[String]) -> Vec<Arc<dyn AgentTool>> {
-        let mut seen = HashSet::new();
-        let tools: Vec<Arc<dyn AgentTool>> = {
-            let state = lock(&self.inner.tools);
-            names
+        let mut state = lock(&self.inner.tools);
+        if state.declared.is_empty() {
+            let recorded = lock(&self.inner.manager)
+                .branch(None)
                 .iter()
-                .filter(|name| seen.insert((*name).clone()))
-                .filter_map(|name| {
-                    let entry = state.registry.get(name)?;
-                    (entry.exposure != ToolExposure::Hidden).then(|| Arc::clone(&entry.tool))
+                .filter_map(|entry| match &entry.kind {
+                    oino_session::EntryKind::Custom {
+                        custom_type,
+                        data: Some(data),
+                    } if custom_type == "oino.tool-declarations" => {
+                        serde_json::from_value::<Vec<oino_ai::ToolDecl>>(data.clone()).ok()
+                    }
+                    _ => None,
                 })
-                .collect()
-        };
-        lock(&self.inner.tools).hidden.clear();
+                .next_back();
+            if let Some(recorded) = recorded {
+                state.declared = recorded
+                    .into_iter()
+                    .map(|decl| {
+                        let mut meta = oino_agent::ToolDefinitionMeta::new(
+                            &decl.name,
+                            &decl.name,
+                            decl.description,
+                            decl.parameters,
+                        );
+                        meta.constrained_sampling = decl.constrained_sampling;
+                        meta
+                    })
+                    .collect();
+                state.initialized = true;
+            }
+        }
+        let previous = state
+            .declared
+            .iter()
+            .map(oino_agent::ToolDefinitionMeta::declaration)
+            .collect::<Vec<_>>();
+        let eligible = patch_eligible(self.model().as_ref().map_or("", |m| m.id.as_str()));
+        let mut requested: Vec<String> = names.to_vec();
+        if !state.initialized {
+            // Registry order is built-ins first, then lexically sorted extensions.
+            requested = state
+                .registry
+                .values()
+                .filter(|e| {
+                    e.exposure != ToolExposure::Hidden
+                        && !is_mcp(e)
+                        && (e.name() != "apply_patch" || eligible)
+                })
+                .map(|e| e.name().to_owned())
+                .collect();
+            state.initialized = true;
+        }
+        if eligible && state.registry.contains_key("apply_patch") {
+            requested.push("apply_patch".into());
+        }
+        for name in requested {
+            if state.declared.iter().any(|m| m.name == name) {
+                continue;
+            }
+            if name == "apply_patch" && !eligible {
+                continue;
+            }
+            if let Some(entry) = state.registry.get(&name)
+                && entry.exposure != ToolExposure::Hidden
+            {
+                let meta = entry.tool.meta().clone();
+                state.declared.push(meta);
+            }
+        }
+        let declared = state.declared.clone();
+        state.hidden.clear();
+        drop(state);
+        let current = declared
+            .iter()
+            .map(oino_agent::ToolDefinitionMeta::declaration)
+            .collect::<Vec<_>>();
+        if previous != current
+            && let Err(error) = lock(&self.inner.manager)
+                .append_custom_entry("oino.tool-declarations", Some(serde_json::json!(current)))
+        {
+            self.runner()
+                .emit_error("<runtime>", "tool_declarations", error.to_string());
+        }
+        let tools: Vec<Arc<dyn AgentTool>> = declared
+            .into_iter()
+            .map(|meta| {
+                Arc::new(DeclaredTool {
+                    meta,
+                    inner: Arc::downgrade(&self.inner),
+                }) as Arc<dyn AgentTool>
+            })
+            .collect();
         self.inner.agent.set_tools(tools.clone());
         tools
+    }
+
+    /// Compaction-only declaration rebuild. Keep loaded, available tools, drop
+    /// unavailable declarations, and restore built-in/lexical-extension order.
+    /// wp-compaction calls this after persisting its new tail view. Slot bytes
+    /// are independent and must not be reset. Outside compaction use suffix loads.
+    pub fn rebuild_declarations_after_compaction(&self) {
+        let mut state = lock(&self.inner.tools);
+        let loaded = state
+            .declared
+            .iter()
+            .map(|m| m.name.clone())
+            .collect::<HashSet<_>>();
+        state.declared = state
+            .registry
+            .values()
+            .filter(|entry| loaded.contains(entry.name()))
+            .map(|entry| entry.tool.meta().clone())
+            .collect();
+        let current = state
+            .declared
+            .iter()
+            .map(oino_agent::ToolDefinitionMeta::declaration)
+            .collect::<Vec<_>>();
+        drop(state);
+        if let Err(error) = lock(&self.inner.manager)
+            .append_custom_entry("oino.tool-declarations", Some(serde_json::json!(current)))
+        {
+            self.runner()
+                .emit_error("<runtime>", "tool_declarations", error.to_string());
+        }
+        self.apply_tool_loadout(&[]);
     }
 
     /// Recomputes the base prompt options.
@@ -487,50 +601,27 @@ impl AgentSession {
     /// Current effective system prompt, including changes not yet sent.
     #[must_use]
     pub fn system_prompt(&self) -> String {
-        let options = lock(&self.inner.book)
-            .run_prompt_options
-            .clone()
-            .unwrap_or_else(|| self.system_prompt_options());
-        oino_resources::system_prompt::build_system_prompt(&options, &self.inner.docs_root)
+        self.frozen_prompt().unwrap_or_else(|| {
+            oino_resources::system_prompt::build_system_prompt(
+                &self.system_prompt_options(),
+                &self.inner.docs_root,
+            )
             .unwrap_or_default()
+        })
     }
 
-    /// Applies `options` and returns the system patch.
+    /// v3 never emits section patches. Declarations may only gain suffixes.
     pub(crate) fn prepare_prompt_and_tool_loadout(
         &self,
         options: &mut BuildSystemPromptOptions,
-        messages: &[AgentMessage],
+        _messages: &[AgentMessage],
     ) -> Option<SystemMessage> {
         options.selected_tools = self
             .apply_tool_loadout(&options.selected_tools)
             .iter()
             .map(|t| t.meta().name.clone())
             .collect();
-        options.hidden_tools = lock(&self.inner.tools).hidden().iter().cloned().collect();
-        let previous: IndexMap<String, String> = current_system_message(messages)
-            .and_then(|m| m.sections)
-            .map(|sections| {
-                sections
-                    .into_iter()
-                    .filter_map(|(name, text)| text.map(|text| (name, text)))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let sections = match build_system_prompt_sections(options, &self.inner.docs_root) {
-            Ok(sections) => sections,
-            Err(error) => {
-                self.runner()
-                    .emit_error("<runtime>", "system_prompt", error.to_string());
-                return None;
-            }
-        };
-        diff_system_prompt_sections(&previous, &sections).map(|sections| SystemMessage {
-            content: UserTextField::Text(String::new()),
-            sections: Some(sections),
-            tools_added: None,
-            tools_removed: None,
-            timestamp: oino_agent::now_ms(),
-        })
+        None
     }
 
     /// Refreshes the tool registry.
@@ -581,26 +672,37 @@ impl AgentSession {
             extension_names.push(entry.name().to_owned());
             registry.insert(entry.name().to_owned(), entry.clone());
         }
-        state.registry = registry;
+        let mut ordered = IndexMap::new();
+        for entry in &state.builtin {
+            if let Some(value) = registry.shift_remove(entry.name()) {
+                ordered.insert(entry.name().to_owned(), value);
+            }
+        }
+        registry.sort_keys();
+        ordered.extend(registry);
+        let catalog: Vec<String> = ordered.keys().cloned().collect();
+        let changed = state.initialized && state.catalog != catalog;
+        state.catalog = catalog;
+        state.registry = ordered;
         let explicit = active.is_some();
         let mut next: Vec<String> = active
             .unwrap_or(previous_active)
             .into_iter()
             .filter(|name| state.is_allowed(name))
             .collect();
-        if let Some(allowed) = state.allowed.clone() {
+        if let Some(allowed) = state.allowed.clone().filter(|_| !state.initialized) {
             for name in state.registry.keys() {
                 if allowed.matches(name) && state.is_declarable(name) {
                     next.push(name.clone());
                 }
             }
-        } else if include_all_extension_tools {
+        } else if include_all_extension_tools && !state.initialized {
             for name in &extension_names {
                 if state.activated_on_registration(name) {
                     next.push(name.clone());
                 }
             }
-        } else if !explicit {
+        } else if !explicit && !state.initialized {
             for name in state.registry.keys() {
                 if !previous_activated.contains(name) && state.activated_on_registration(name) {
                     next.push(name.clone());
@@ -612,6 +714,34 @@ impl AgentSession {
         let mut seen = HashSet::new();
         next.retain(|name| seen.insert(name.clone()));
         self.set_active_tools(&next);
+        if changed
+            && self.frozen_prompt().is_some()
+            && let Err(error) = self.append_reminder("oino", "oino/tools", &self.tool_catalog())
+        {
+            self.runner()
+                .emit_error("<runtime>", "append_reminder", error.to_string());
+        }
+    }
+
+    /// Unified catalog for the immutable start slot and later tail updates.
+    pub(crate) fn tool_catalog(&self) -> String {
+        let state = lock(&self.inner.tools);
+        let names = state
+            .registry
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        let deferred = state
+            .registry
+            .keys()
+            .filter(|name| !state.declared.iter().any(|m| &m.name == *name))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "Unified tool catalog:\n{names}\n\nLoad deferred schemas with tool_search using select:<name> or keywords. Never invent tool names.\n\nDeferred tools:\n{deferred}"
+        )
     }
 
     /// Restores the active tool set from the transcript.
@@ -691,11 +821,6 @@ impl AgentSession {
         self.set_active_tools(&names);
     }
 
-    /// Hidden declarations (`prepareLoadout`).
-    pub(crate) fn hidden_declarations(&self) -> HashSet<String> {
-        lock(&self.inner.tools).hidden().clone()
-    }
-
     /// Clears pending (not yet registered) restored tools.
     pub(crate) fn clear_pending_tools(&self) {
         lock(&self.inner.tools).pending.clear();
@@ -719,4 +844,74 @@ fn normalize_guidelines(guidelines: &[String]) -> Vec<String> {
         }
     }
     unique.into_iter().collect()
+}
+
+fn is_mcp(entry: &ToolEntry) -> bool {
+    matches!(&entry.source, ToolSource::Extension(id) if id == "mcp" || id.ends_with("/mcp") || id.rsplit_once('.').is_some_and(|(_, suffix)| suffix == "mcp"))
+        || entry.name().starts_with("mcp_")
+}
+
+fn patch_eligible(model: &str) -> bool {
+    let model = model.to_ascii_lowercase();
+    model.contains("gpt")
+        || model.contains("codex")
+        || model
+            .split(['/', '-'])
+            .any(|part| matches!(part, "o1" | "o3" | "o4"))
+}
+
+/// A declaration's bytes never change, even if its live implementation disappears.
+struct DeclaredTool {
+    meta: oino_agent::ToolDefinitionMeta,
+    inner: std::sync::Weak<super::Inner>,
+}
+
+impl AgentTool for DeclaredTool {
+    fn meta(&self) -> &oino_agent::ToolDefinitionMeta {
+        &self.meta
+    }
+
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        self.inner
+            .upgrade()
+            .and_then(|inner| {
+                lock(&inner.tools)
+                    .registry
+                    .get(&self.meta.name)
+                    .map(|e| Arc::clone(&e.tool))
+            })
+            .map_or_else(|| raw.clone(), |tool| tool.prepare_arguments(raw.clone()))
+    }
+
+    fn execute(
+        &self,
+        call: oino_agent::ToolInvocation,
+        updates: oino_agent::UpdateSink,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<oino_agent::AgentToolResult, oino_agent::ToolError>,
+    > {
+        let live = self.inner.upgrade().and_then(|inner| {
+            let session = AgentSession::from_inner(Arc::clone(&inner));
+            if self.meta.name == "apply_patch"
+                && !patch_eligible(session.model().as_ref().map_or("", |m| m.id.as_str()))
+            {
+                return None;
+            }
+            lock(&inner.tools)
+                .registry
+                .get(&self.meta.name)
+                .map(|e| Arc::clone(&e.tool))
+        });
+        let name = self.meta.name.clone();
+        Box::pin(async move {
+            match live {
+                Some(tool) => tool.execute(call, updates, cancel).await,
+                None => Err(oino_agent::ToolError::new(format!(
+                    "tool {name} is unavailable"
+                ))),
+            }
+        })
+    }
 }

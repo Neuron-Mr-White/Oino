@@ -63,7 +63,9 @@ pub use host::SlashCommandInfo;
 pub(crate) use host::check_render_override;
 pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
-pub use prompt::{InputSource, PromptDisposition, PromptOptions, StreamingBehavior};
+pub use prompt::{
+    InputSource, PromptDisposition, PromptOptions, ReminderAppend, StreamingBehavior,
+};
 pub use queue::{QueueEdit, QueueKind};
 pub use stats::{ContextUsage, ModelStats, SessionStats, TokenTotals};
 pub use tools::{BUILTIN_PATH_PREFIX, ToolEntry, ToolInfo, ToolSource};
@@ -200,6 +202,7 @@ pub(crate) struct RunBook {
     pub(crate) emitting_settled: bool,
     pub(crate) boundary_dispatched: bool,
     pub(crate) run_prompt_options: Option<BuildSystemPromptOptions>,
+    pub(crate) reminder_model: Option<String>,
     /// Entry id of the latest persisted assistant message.
     pub(crate) last_assistant_entry: Option<EntryId>,
     /// Entry ids of persisted tool results by tool-call id (current run).
@@ -498,6 +501,14 @@ impl AgentSession {
             .agent
             .set_hooks(hooks::install(&session.inner));
         session.refresh_tool_registry(Some(config.initial_active_tools), true);
+        lock(&session.inner.book).reminder_model = session
+            .model()
+            .map(|model| format!("{}/{}", model.provider, model.id));
+        if let Err(error) = session.ensure_prompt_prefix() {
+            session
+                .runner()
+                .emit_error("<runtime>", "system_snapshot", error.to_string());
+        }
         session
     }
 
@@ -956,7 +967,7 @@ impl AgentSession {
         let messages = lock(&self.inner.manager)
             .build_session_projection()
             .messages;
-        self.inner.agent.set_messages(messages);
+        self.inner.agent.set_messages(self.prefix_view(messages));
     }
 
     /// Copy of the session entries (`get_entries`).
@@ -1271,7 +1282,18 @@ fn unmap_queue_mode(mode: oino_agent::QueueMode) -> oino_settings::QueueMode {
 /// Converts an entry to LLM records, blocking images.
 fn convert_with_block_images(settings: Arc<Mutex<SettingsManager>>) -> oino_agent::ConvertToLlm {
     Arc::new(move |messages: &[AgentMessage]| {
-        let converted = oino_session::convert_to_llm(messages);
+        let converted = messages
+            .iter()
+            .filter_map(|message| {
+                let mut converted = oino_session::messages::to_llm(message)?;
+                let trusted = matches!(message, AgentMessage::Custom(c)
+                if c.custom_type == prompt::REMINDER_TYPE || c.custom_type == "oino.session-start");
+                if !trusted {
+                    oino_ai::transcript::escape_message_reminders(&mut converted);
+                }
+                Some(converted)
+            })
+            .collect::<Vec<_>>();
         if !lock(&settings).settings().image_settings().block_images {
             return converted;
         }

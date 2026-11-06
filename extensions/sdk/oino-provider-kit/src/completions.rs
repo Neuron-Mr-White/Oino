@@ -245,12 +245,8 @@ pub fn compat(model: &Model) -> CompletionsCompat {
     }
 }
 
-fn tool_support(compat: &CompletionsCompat) -> ToolChangeSupport {
-    if compat.supports_mid_convo_system_messages && compat.supports_mid_convo_tool_additions {
-        ToolChangeSupport::Additive
-    } else {
-        ToolChangeSupport::None
-    }
+fn tool_support(_compat: &CompletionsCompat) -> ToolChangeSupport {
+    ToolChangeSupport::None
 }
 
 /// pi `convertTools`.
@@ -372,11 +368,7 @@ fn convert_messages(
     grammar: &BTreeMap<String, String>,
     now: i64,
 ) -> Result<Vec<Value>, String> {
-    let normalized = if compat.supports_mid_convo_system_messages {
-        transcript.clone()
-    } else {
-        collapse_system_messages(transcript.clone())
-    };
+    let normalized = collapse_system_messages(transcript.clone());
     let transformed = transform_messages(
         normalized.messages.clone(),
         model,
@@ -1064,11 +1056,7 @@ pub fn prepare(
         return Err(format!("No API key for provider: {}", model.provider));
     }
     let compat = compat(model);
-    let normalized = if compat.supports_mid_convo_system_messages {
-        request.context.clone()
-    } else {
-        collapse_system_messages(request.context.clone())
-    };
+    let normalized = collapse_system_messages(request.context.clone());
     let grammar = grammar_input_properties(
         &declared_tools(&normalized.messages),
         compat.supports_openai_grammar_tools,

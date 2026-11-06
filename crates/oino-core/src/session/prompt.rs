@@ -413,6 +413,11 @@ impl AgentSession {
         trigger_turn: bool,
         deliver_as: Option<Delivery>,
     ) -> Result<(), SessionOpError> {
+        if matches!(draft.custom_type.as_str(), REMINDER_TYPE | START_TYPE) {
+            return Err(SessionOpError::Failed(
+                "reserved host reminder type; use append_reminder".into(),
+            ));
+        }
         let message = CustomMessage {
             custom_type: draft.custom_type,
             content: draft.content,
@@ -696,32 +701,19 @@ impl AgentSession {
                 );
             }
         }
+        // Compatibility hooks still run, but cannot mutate the frozen system slots.
         let mut options = base.clone();
         let mut injected = Vec::new();
         if runner.has_handlers("before_agent_start") {
-            let docs_root = self.inner.docs_root.clone();
-            let render = move |options: &JsonValue| -> String {
-                serde_json::from_value::<oino_resources::BuildSystemPromptOptions>(options.clone())
-                    .ok()
-                    .and_then(|o| {
-                        oino_resources::system_prompt::build_system_prompt(&o, &docs_root).ok()
-                    })
-                    .unwrap_or_default()
-            };
+            let frozen = self.system_prompt();
+            let render = move |_: &JsonValue| frozen.clone();
             let outcome = runner
                 .emit_before_agent_start(trigger_json, json!(base), &render)
                 .await;
-            if let Ok(next) = serde_json::from_value(outcome.system_prompt_options) {
-                options = next;
-            }
-            if outcome.system_prompt.is_some() {
-                options.force_system_prompt = outcome.system_prompt;
-            }
             injected = outcome.messages;
         }
-        if options.selected_tools == base.selected_tools {
-            options.selected_tools = self.active_tool_names();
-        }
+        options.selected_tools = self.active_tool_names();
+        self.ensure_prompt_prefix()?;
         let mut messages = Vec::new();
         match trigger {
             Trigger::Custom(message) => messages.push(AgentMessage::Custom(message)),
@@ -839,4 +831,283 @@ pub(crate) fn command_name(text: &str) -> &str {
     without_slash
         .split_once(' ')
         .map_or(without_slash, |(name, _)| name)
+}
+
+/// Result of a durable append. Keys identify ownership/topics, never an upsert target.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReminderAppend {
+    /// Persisted session entry id.
+    pub id: String,
+    /// True after a successful append (including repeated keys).
+    pub appended: bool,
+}
+
+/// Only host-created custom messages with this type carry trusted envelopes.
+pub(crate) const REMINDER_TYPE: &str = "oino.system-reminder";
+const START_TYPE: &str = "oino.session-start";
+
+impl AgentSession {
+    /// Append plain text as trusted harness context. `key` must start with
+    /// `extension_id/` and have a nonempty topic. Repeated keys APPEND, never replace.
+    ///
+    /// wp-ext-reminders should bind `{type:"append_reminder",key,text}` to this
+    /// method using the authenticated caller id, and return this result unchanged.
+    /// wp-loop-guards may use caller `oino`. wp-compaction must retain both frozen
+    /// slots, and may rebuild declarations at its boundary. No reminder is pruned.
+    /// The manager lock serializes appends. Persistence errors reach the caller;
+    /// the request projection reads these entries before every provider call.
+    ///
+    /// # Errors
+    /// Invalid ownership, or a session persistence failure.
+    pub fn append_reminder(
+        &self,
+        extension_id: &str,
+        key: &str,
+        text: &str,
+    ) -> Result<ReminderAppend, SessionOpError> {
+        if extension_id.is_empty()
+            || key
+                .strip_prefix(extension_id)
+                .and_then(|s| s.strip_prefix('/'))
+                .is_none_or(str::is_empty)
+        {
+            return Err(SessionOpError::Failed(
+                "reminder key must belong to the originating extension".into(),
+            ));
+        }
+        let mut manager = lock(&self.inner.manager);
+        let id = manager
+            .append_custom_message_entry(
+                REMINDER_TYPE,
+                UserContentField::Text(reminder(text)),
+                false,
+                Some(json!({"key":key})),
+            )
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        manager
+            .sync()
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        Ok(ReminderAppend {
+            id: id.to_string(),
+            appended: true,
+        })
+    }
+
+    pub(crate) fn reminder_messages(&self) -> Vec<AgentMessage> {
+        lock(&self.inner.manager)
+            .branch(None)
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                oino_session::EntryKind::CustomMessage {
+                    custom_type,
+                    content,
+                    details,
+                    ..
+                } if custom_type == REMINDER_TYPE => Some(AgentMessage::Custom(CustomMessage {
+                    custom_type: custom_type.clone(),
+                    content: content.clone(),
+                    display: false,
+                    details: details.clone(),
+                    timestamp: entry.timestamp.to_ms().unwrap_or(0),
+                })),
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub(crate) fn frozen_prompt(&self) -> Option<String> {
+        lock(&self.inner.manager)
+            .branch(None)
+            .iter()
+            .find_map(|e| match &e.kind {
+                oino_session::EntryKind::SystemSnapshot { text, version: 3 } => Some(text.clone()),
+                _ => None,
+            })
+    }
+
+    /// Capture once, before any user turn. Legacy history receives start context
+    /// at its tail rather than an inserted synthetic message.
+    pub(crate) fn ensure_prompt_prefix(&self) -> Result<(), SessionOpError> {
+        if self.frozen_prompt().is_some()
+            && lock(&self.inner.manager).branch(None).iter().any(|entry|
+                matches!(&entry.kind, oino_session::EntryKind::CustomMessage { custom_type, .. } if custom_type == START_TYPE)) {
+            return Ok(());
+        }
+        let text = self.system_prompt();
+        let options = self.system_prompt_options();
+        let cwd = self.work_cwd();
+        let mut blocks = vec![reminder(&self.tool_catalog())];
+        blocks.push(reminder(&format!(
+            "Available subagents:\n{}",
+            self.agents_list()
+        )));
+        blocks.push(reminder(&format!(
+            "User system info ({}/{})\nSession working directory: {}",
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+            cwd.display()
+        )));
+        let date = oino_session::IsoTimestamp::now().to_string();
+        blocks.push(reminder(&format!(
+            "Current date: {}",
+            date.get(..10).unwrap_or(&date)
+        )));
+        let mut listing = std::fs::read_dir(&cwd)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        listing.sort();
+        let git = std::process::Command::new("git")
+            .args(["status", "--short", "--branch"])
+            .current_dir(&cwd)
+            .output()
+            .map_or_else(
+                |e| e.to_string(),
+                |o| {
+                    format!(
+                        "{}{}",
+                        String::from_utf8_lossy(&o.stdout),
+                        String::from_utf8_lossy(&o.stderr)
+                    )
+                },
+            );
+        blocks.push(reminder(&format!("Workspace snapshot captured once at session start:\n% ls\n{}\n% git status --short --branch\n{git}", listing.join("\n"))));
+        if !options.context_files.is_empty() {
+            blocks.push(reminder(
+                &oino_resources::system_prompt::render_project_context(&options.context_files),
+            ));
+        }
+        let mut manager = lock(&self.inner.manager);
+        // Complete a partially persisted prefix without ever replacing its bytes.
+        if manager.branch(None).iter().any(|entry|
+            matches!(&entry.kind, oino_session::EntryKind::CustomMessage {custom_type, ..} if custom_type == START_TYPE)) {
+            return Ok(());
+        }
+        if !manager.branch(None).iter().any(|entry| {
+            matches!(
+                entry.kind,
+                oino_session::EntryKind::SystemSnapshot { version: 3, .. }
+            )
+        }) {
+            manager
+                .append_entry(oino_session::EntryKind::SystemSnapshot { text, version: 3 })
+                .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        }
+        manager
+            .append_custom_message_entry(
+                START_TYPE,
+                UserContentField::Text(blocks.join("\n\n")),
+                false,
+                None,
+            )
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        manager
+            .sync()
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        drop(manager);
+        self.refresh_context();
+        Ok(())
+    }
+
+    /// Restore the immutable slots around the model's tail view without changing
+    /// stored source messages. Legacy system patches remain in the UI only.
+    pub(crate) fn prefix_view(&self, messages: Vec<AgentMessage>) -> Vec<AgentMessage> {
+        let manager = lock(&self.inner.manager);
+        let branch = manager.branch(None);
+        let snapshot = branch.iter().find_map(|e| match &e.kind {
+            oino_session::EntryKind::SystemSnapshot { text, version: 3 } => {
+                Some((text.clone(), e.timestamp.to_ms().unwrap_or(0)))
+            }
+            _ => None,
+        });
+        let Some((text, timestamp)) = snapshot else {
+            return messages;
+        };
+        let start = branch.iter().find_map(|e| match &e.kind {
+            oino_session::EntryKind::CustomMessage {
+                custom_type,
+                content,
+                ..
+            } if custom_type == START_TYPE => Some((e, content.clone())),
+            _ => None,
+        });
+        // A legacy conversation already had real history before its snapshot.
+        let legacy = branch
+            .iter()
+            .take_while(|e| {
+                !matches!(
+                    e.kind,
+                    oino_session::EntryKind::SystemSnapshot { version: 3, .. }
+                )
+            })
+            .any(|e| {
+                matches!(
+                    e.kind,
+                    oino_session::EntryKind::Message { .. }
+                        | oino_session::EntryKind::Compaction(_)
+                )
+            });
+        let trusted = branch
+            .iter()
+            .filter_map(|e| match &e.kind {
+                oino_session::EntryKind::CustomMessage {
+                    custom_type,
+                    content,
+                    ..
+                } if custom_type == REMINDER_TYPE || custom_type == START_TYPE => {
+                    Some((custom_type, content))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let mut tail: Vec<_> = messages
+            .into_iter()
+            .filter(|m| !matches!(m, AgentMessage::System(_)))
+            .map(|mut m| {
+                if let AgentMessage::Custom(c) = &mut m
+                    && matches!(c.custom_type.as_str(), REMINDER_TYPE | START_TYPE)
+                    && !trusted
+                        .iter()
+                        .any(|(kind, content)| **kind == c.custom_type && **content == c.content)
+                {
+                    c.custom_type = "oino.untrusted-context".into();
+                }
+                m
+            })
+            .collect();
+        let mut out = vec![AgentMessage::System(oino_ai::SystemMessage {
+            content: oino_ai::UserTextField::Text(text),
+            sections: None,
+            tools_added: Some(
+                self.inner
+                    .agent
+                    .with_state(|s| s.tools.iter().map(|t| t.meta().declaration()).collect()),
+            ),
+            tools_removed: None,
+            timestamp,
+        })];
+        if !legacy && let Some((entry, content)) = start {
+            tail.retain(|m| !matches!(m, AgentMessage::Custom(c) if c.custom_type == START_TYPE));
+            out.push(AgentMessage::Custom(CustomMessage {
+                custom_type: START_TYPE.into(),
+                content,
+                display: false,
+                details: None,
+                timestamp: entry.timestamp.to_ms().unwrap_or(0),
+            }));
+        }
+        out.extend(tail);
+        out
+    }
+}
+
+fn reminder(text: &str) -> String {
+    format!(
+        "<system-reminder>\n{}\n</system-reminder>",
+        oino_ai::transcript::escape_reminder_tags(text)
+    )
 }
