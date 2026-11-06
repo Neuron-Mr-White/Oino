@@ -38,6 +38,8 @@ pub struct DetachedProcess {
     pub output_so_far: String,
     /// Temp file holding the complete output so far (when output was truncated).
     pub full_output_path: Option<String>,
+    /// Remaining execution timeout after detaching.
+    pub remaining_timeout: std::time::Duration,
 }
 
 /// Running shell calls by tool-call id. Cheap to clone; clones share the registry.

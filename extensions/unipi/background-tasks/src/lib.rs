@@ -282,7 +282,18 @@ impl Bg {
             l.error = reason.map(ToOwned::to_owned);
         });
         self.persist_local(cx);
-        tasks::kill(&host.id)?;
+        let info = tasks::get(&host.id)?.unwrap_or_default();
+        if info.get("externalId").and_then(Value::as_str).is_some() {
+            services::call(
+                Some("unipi.subagents"),
+                "subagents.cancel",
+                &json!({"id":host.id}),
+                Some(Duration::from_secs(10)),
+            )
+            .await?;
+        } else {
+            tasks::kill(&host.id)?;
+        }
         let deadline = timers::now_ms() + STOP_WAIT_MS;
         loop {
             let now = tasks::get(&host.id)?.as_ref().and_then(HostTask::decode);
@@ -326,61 +337,109 @@ impl Bg {
         (stopped, failures)
     }
 
+    fn shell(&self, args: &Value, cx: &Ctx) -> Result<ToolResult> {
+        let command = obj_str(args, "command").ok_or_else(|| Error::msg("command required"))?;
+        let summary = obj_str(args, "summary").unwrap_or("(legacy call)");
+        let risk = obj_str(args, "riskLevel").unwrap_or("high");
+        if !["low", "medium", "high"].contains(&risk) {
+            return Err(Error::msg("Invalid riskLevel"));
+        }
+        let timeout = args.get("timeout").and_then(Value::as_f64).unwrap_or(60.0);
+        if !timeout.is_finite() || timeout <= 0.0 {
+            return Err(Error::msg("Invalid timeout"));
+        }
+        let mut visible = args.clone();
+        if let Some(object) = visible.as_object_mut() {
+            for key in ["program", "args", "vars", "stdin", "shell"] {
+                object.remove(key);
+            }
+        }
+        let spec = json!({"command": command, "name": summary, "shell": obj_str(args, "shell").unwrap_or(if cfg!(windows) { "powershell" } else { "bash" }),
+            "riskLevel": risk, "arguments": visible, "timeoutSeconds": timeout,
+            "execution": if args.get("program").is_some() { json!({"program": args["program"], "args": args["args"], "vars": args["vars"], "stdin": args["stdin"]}) } else { Value::Null },
+            "notifyOnCompletion": true, "triggerOnCompletion": true});
+        let id = tasks::start(&spec)?;
+        let host = tasks::get(&id)?.ok_or_else(|| Error::msg("Task registration missing"))?;
+        self.publish(cx);
+        Ok(ToolResult::text(format!("Background task {id} started. Log: {}. The result will be delivered automatically on exit; do not poll.", obj_str(&host, "outputPath").unwrap_or_default()))
+            .with_details(json!({"task_id": id, "log_path": host.get("outputPath"), "arguments": visible})))
+    }
+
+    async fn task_output(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
+        let Some(id) = obj_str(args, "task_id") else {
+            return self.bg_status(&json!({}), cx);
+        };
+        let timeout = args
+            .get("timeout")
+            .and_then(Value::as_u64)
+            .unwrap_or(30_000)
+            .min(1_200_000);
+        let block = args.get("block").and_then(Value::as_bool).unwrap_or(true);
+        let deadline = timers::now_ms().saturating_add(i64::try_from(timeout).unwrap_or(1_200_000));
+        let host = loop {
+            let host =
+                tasks::get(id)?.ok_or_else(|| Error::msg(format!("Unknown task ID: {id}")))?;
+            if !block
+                || (obj_str(&host, "state") != Some("running")
+                    && host.get("finishedAt").is_some_and(|v| !v.is_null()))
+                || timers::now_ms() >= deadline
+                || cx.is_cancelled()
+            {
+                break host;
+            }
+            timers::sleep(Duration::from_millis(25)).await;
+        };
+        let head = tasks::logs(id, 15 * 1024, false)?;
+        let tail = tasks::logs(id, 15 * 1024, true)?;
+        let size = head.len();
+        let out = if size < 15 * 1024 || head == tail {
+            head
+        } else {
+            format!("{head}\n[... output omitted; complete log below ...]\n{tail}")
+        };
+        Ok(ToolResult::text(format!(
+            "Task {id}: {}\n{out}\nLog: {}",
+            obj_str(&host, "state").unwrap_or("unknown"),
+            obj_str(&host, "outputPath").unwrap_or_default()
+        ))
+        .with_details(json!({"task_id":id,"state":host.get("state"),"exit_code":host.get("exitCode"),"log_path":host.get("outputPath")})))
+    }
+
+    async fn task_stop(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
+        let id = obj_str(args, "task_id").ok_or_else(|| Error::msg("task_id required"))?;
+        let host = tasks::get(id)?.ok_or_else(|| Error::msg(format!("Unknown task ID: {id}")))?;
+        if obj_str(&host, "state") == Some("running") {
+            if host.get("externalId").and_then(Value::as_str).is_some() {
+                services::call(
+                    Some("unipi.subagents"),
+                    "subagents.cancel",
+                    &json!({"id": id}),
+                    Some(Duration::from_secs(10)),
+                )
+                .await?;
+            } else {
+                tasks::kill(id)?;
+            }
+        }
+        self.task_output(&json!({"task_id": id, "block": true, "timeout": 5000}), cx)
+            .await
+    }
+
     // ── tools ───────────────────────────────────────────────────────────────
 
     fn bg_run(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
-        let Some(is_agent) = args.get("isAgent").and_then(Value::as_bool) else {
-            return Err(Error::msg(
-                "bg_run requires isAgent boolean. Set true only for LLM/agent tasks; set false for scripts, tests, servers, sleeps.",
-            ));
-        };
-        let cfg = self.config();
-        let notify = args
-            .get("notifyOnCompletion")
-            .and_then(Value::as_bool)
-            .unwrap_or(cfg.notify_on_completion);
-        let trigger = args
-            .get("triggerOnCompletion")
-            .and_then(Value::as_bool)
-            .unwrap_or(cfg.trigger_on_completion);
-        let timeout = args
-            .get("timeoutSeconds")
-            .and_then(Value::as_f64)
-            .filter(|t| *t > 0.0)
-            .map(|t| {
-                #[allow(
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss,
-                    reason = "positive seconds"
-                )]
-                let s = t.ceil() as u64;
-                s
-            });
-        let task = self.start(
-            &cx.cx,
-            obj_str(args, "command").unwrap_or_default(),
-            obj_str(args, "name"),
-            obj_str(args, "description"),
-            is_agent,
-            timeout,
-            notify,
-            trigger,
-        )?;
-        let (_, guidance) = text::completion_delivery_guidance(
-            task.notify_on_completion,
-            task.trigger_on_completion,
-        );
-        let pid = task
-            .pid
-            .map_or_else(|| "unknown".to_owned(), |p| p.to_string());
-        Ok(ToolResult::text(format!(
-            "Started background task {} ({})\nStatus: {}\nPID: {pid}\nOutput: {}\n{guidance}",
-            task.display_name(),
-            task.id,
-            task.status.as_str(),
-            task.output_path
-        ))
-        .with_details(json!({"task": task})))
+        let mut canonical = json!({"command": args.get("command"), "summary": obj_str(args, "name").unwrap_or("(legacy call)"), "riskLevel":"high", "shell": if cfg!(windows) { "powershell" } else { "bash" }});
+        if let Some(timeout) = args.get("timeoutSeconds") {
+            canonical["timeout"] = timeout.clone();
+        }
+        let mut result = self.shell(&canonical, &cx.cx)?;
+        if let Some(id) = result.details.as_ref().and_then(|d| obj_str(d, "task_id"))
+            && let Ok(host) = self.resolve(&cx.cx, id)
+        {
+            let task = self.snapshot(cx.session_id(), &host, &cx.cx.cwd().to_string_lossy());
+            result.details = Some(json!({"task":task}));
+        }
+        Ok(result)
     }
 
     fn bg_status(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
@@ -420,28 +479,14 @@ impl Bg {
         Ok((text, details))
     }
 
-    fn bg_logs(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
-        let id = obj_str(args, "taskId").unwrap_or_default();
-        let max = text::normalize_max_bytes(
-            args.get("maxBytes").and_then(Value::as_f64),
-            text::DEFAULT_LOG_BYTES,
-        );
-        let tail = args.get("tail").and_then(Value::as_bool).unwrap_or(true);
-        let (text, details) = self.logs(&cx.cx, id, max, tail)?;
-        Ok(ToolResult::text(text).with_details(details))
+    async fn bg_logs(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
+        self.task_output(&json!({"task_id":args.get("taskId"),"block":false}), cx)
+            .await
     }
 
     async fn bg_kill(&self, args: &Value, cx: &ToolCtx) -> Result<ToolResult> {
-        let host = self.resolve(&cx.cx, obj_str(args, "taskId").unwrap_or_default())?;
-        let task = self.stop(&cx.cx, &host, None).await?;
-        let message = format!(
-            "Killed background task {} ({}). Output: {}",
-            task.display_name(),
-            task.id,
-            task.output_path
-        );
-        Ok(ToolResult::text(message.clone())
-            .with_details(json!({"task": task, "message": message})))
+        self.task_stop(&json!({"task_id":args.get("taskId")}), cx)
+            .await
     }
 
     // ── commands ────────────────────────────────────────────────────────────
@@ -703,7 +748,7 @@ impl Bg {
                         Some(&t.name),
                         t.description.as_deref(),
                         t.is_agent,
-                        t.timeout_seconds,
+                        t.timeout_seconds.and_then(|t| t.to_string().parse().ok()),
                         true,
                         false,
                     ) {
@@ -995,6 +1040,16 @@ pub fn tool_schema(name: &str) -> Value {
 }
 
 fn register_tools(cx: &mut Init<Bg>) {
+    cx.tool(Tool::<Bg>::new("task_output")
+        .description("Read output and status of a shell or subagent task. Completed reports arrive automatically; prefer block=false progress peeks. Blocking timeout is milliseconds.")
+        .parameters(&json!({"type":"object","properties":{"task_id":{"type":"string"},"block":{"type":"boolean","default":true},"timeout":{"type":"integer","minimum":0,"maximum":1_200_000,"default":30_000}},"required":["task_id"],"additionalProperties":false}))
+        .kind(ToolKind::Read)
+        .run(|ext, args: Value, cx| async move { ext.task_output(&args, &cx).await }));
+    cx.tool(Tool::<Bg>::new("task_stop")
+        .description("Stop a shell or subagent task.")
+        .parameters(&json!({"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"],"additionalProperties":false}))
+        .kind(ToolKind::Execute)
+        .run(|ext, args: Value, cx| async move { ext.task_stop(&args, &cx).await }));
     cx.tool(
         Tool::<Bg>::new("bg_run")
             .label("Background Run")
@@ -1008,6 +1063,7 @@ fn register_tools(cx: &mut Init<Bg>) {
             .guideline("bg_run returns immediately. For finite tasks with default wake-up, continue only independent useful work that does not merely wait for the task; otherwise end the current turn. Do not call sleep, bg_status, or bg_logs merely to wait; the terminal notification will wake you.")
             .guideline("A running result is not an instruction to poll again.")
             .guideline("Treat <background-task-notification> as durable terminal truth. Do not call bg_status to reconfirm it.")
+            .exposure(oino_extension::wit::registry::Exposure::Hidden)
             .parameters(&tool_schema("bg_run"))
             .kind(ToolKind::Execute)
             .render_hints(&json!({"title": "bg_run {name}"}))
@@ -1021,10 +1077,11 @@ fn register_tools(cx: &mut Init<Bg>) {
             .guideline("Use bg_status for deliberate point-in-time inspection, not as a waiting primitive.")
             .guideline("A running result is not an instruction to poll again.")
             .guideline("Use bg_status when the user explicitly requests an update, automatic completion handling was disabled, or there is concrete evidence a task is hung.")
+            .exposure(oino_extension::wit::registry::Exposure::Hidden)
             .parameters(&tool_schema("bg_status"))
             .kind(ToolKind::Read)
             .render_hints(&json!({"title": "bg_status {taskId}"}))
-            .run(|ext, args: Value, cx| async move { ext.bg_status(&args, &cx) }),
+            .run(|ext, args: Value, cx| async move { if args.get("taskId").is_some() { ext.task_output(&json!({"task_id":args["taskId"],"block":false}), &cx).await } else { ext.bg_status(&args, &cx) } }),
     );
     cx.tool(
         Tool::<Bg>::new("bg_logs")
@@ -1033,10 +1090,11 @@ fn register_tools(cx: &mut Init<Bg>) {
             .prompt_snippet("Read bounded task output when needed; never tail it repeatedly as a wait loop")
             .guideline("Use bg_logs with a modest maxBytes value only when task output is needed.")
             .guideline("Do not repeatedly call bg_logs to wait for completion while an automatic terminal notification is pending.")
+            .exposure(oino_extension::wit::registry::Exposure::Hidden)
             .parameters(&tool_schema("bg_logs"))
             .kind(ToolKind::Read)
             .render_hints(&json!({"title": "bg_logs {taskId}"}))
-            .run(|ext, args: Value, cx| async move { ext.bg_logs(&args, &cx) }),
+            .run(|ext, args: Value, cx| async move { ext.bg_logs(&args, &cx).await }),
     );
     cx.tool(
         Tool::<Bg>::new("bg_kill")
@@ -1044,6 +1102,7 @@ fn register_tools(cx: &mut Init<Bg>) {
             .description("Stop a running background task by ID. Fails loudly if the task is unknown or already finished.")
             .prompt_snippet("Stop a running background task by ID")
             .guideline("Use bg_kill when the user asks to stop a background task or when a bg_run command is no longer needed.")
+            .exposure(oino_extension::wit::registry::Exposure::Hidden)
             .parameters(&tool_schema("bg_kill"))
             .kind(ToolKind::Execute)
             .render_hints(&json!({"title": "bg_kill {taskId}"}))
@@ -1133,6 +1192,9 @@ impl Extension for Bg {
         }
         register_tools(cx);
         register_ui(cx);
+        cx.service("tasks.shell", |ext, args, _caller, cx| async move {
+            Ok(serde_json::to_value(ext.shell(&args, &cx)?)?)
+        });
         cx.service(
             point::TASKS_NOTIFICATION,
             |ext, payload, _caller, cx| async move {
@@ -1144,7 +1206,27 @@ impl Extension for Bg {
                 ext.persist_local(&cx);
                 let cwd = cx.cwd().to_string_lossy().into_owned();
                 let snap = ext.snapshot(cx.session_id(), &host, &cwd);
-                Ok(json!(text::notification_text(&snap)))
+                let out = ext
+                    .task_output(
+                        &json!({"task_id": host.id, "block": false}),
+                        &ToolCtx {
+                            cx: cx.clone(),
+                            tool_call_id: String::new(),
+                            cancel: oino_extension::context::Cancel::default(),
+                        },
+                    )
+                    .await?;
+                let output = out
+                    .content
+                    .first()
+                    .and_then(|v| v.get("text"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                Ok(json!(format!(
+                    "{}\n{}",
+                    text::notification_text(&snap),
+                    output
+                )))
             },
         );
         // Children too: a child has no arbiter, but its running tasks keep it from

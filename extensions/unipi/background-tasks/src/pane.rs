@@ -464,6 +464,12 @@ pub fn detail_body(t: &Snapshot, log: Option<&LogView>, state: &PaneState, now: 
         t.command.clone()
     };
     children.push(section("Command", Code::new(cmd).language("sh")));
+    if let Some(arguments) = &t.arguments {
+        children.push(section(
+            "Arguments",
+            Code::new(serde_json::to_string_pretty(arguments).unwrap_or_default()).language("json"),
+        ));
+    }
     if let Some(d) = &t.description
         && compact_whitespace(d) != compact_whitespace(&t.display_name())
     {

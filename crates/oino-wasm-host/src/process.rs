@@ -173,7 +173,7 @@ pub(crate) fn resolve_program(command: &str) -> PathBuf {
 /// Tracks non-detached children so they die with the extension.
 #[derive(Default)]
 pub(crate) struct ProcessService {
-    live: Mutex<Vec<(u32, bool)>>,
+    live: Mutex<Vec<std::sync::Weak<ChildHandle>>>,
 }
 
 impl ProcessService {
@@ -197,13 +197,32 @@ impl ProcessService {
             cmd.process_group(0);
         }
         cmd.kill_on_drop(false);
+        #[cfg(not(windows))]
         let mut child = cmd
             .spawn()
             .map_err(|e| HostError::Failed(format!("spawn {}: {e}", spec.command)))?;
+        #[cfg(windows)]
+        let mut child = {
+            use process_wrap::tokio::{CommandWrap, JobObject, KillOnDrop};
+            let mut wrapped = CommandWrap::from(cmd);
+            wrapped.wrap(JobObject).wrap(KillOnDrop);
+            wrapped
+                .spawn()
+                .map_err(|e| HostError::Failed(format!("spawn {}: {e}", spec.command)))?
+        };
         let pid = child.id().unwrap_or(0);
+        #[cfg(not(windows))]
         let stdout = child.stdout.take().map(pipe_stream);
+        #[cfg(windows)]
+        let stdout = child.stdout().take().map(pipe_stream);
+        #[cfg(not(windows))]
         let stderr = child.stderr.take().map(pipe_stream);
+        #[cfg(windows)]
+        let stderr = child.stderr().take().map(pipe_stream);
+        #[cfg(not(windows))]
         let stdin = child.stdin.take();
+        #[cfg(windows)]
+        let stdin = child.stdin().take();
         let (exit_tx, exit_rx) = watch::channel(None);
         let (kill_tx, kill_rx) = oneshot::channel::<()>();
         let timeout = spec.timeout;
@@ -224,6 +243,7 @@ impl ProcessService {
                     status = child.wait() => break status,
                     () = &mut deadline, if !timed_out => {
                         timed_out = true;
+                        #[cfg(not(windows))]
                         kill_tree(pid, group);
                         let _ = child.start_kill();
                     }
@@ -247,10 +267,7 @@ impl ProcessService {
             );
             let _ = exit_tx.send(Some(exit));
         });
-        if !spec.detached {
-            lock(&self.live).push((pid, group));
-        }
-        Ok(Arc::new(ChildHandle {
+        let handle = Arc::new(ChildHandle {
             pid,
             group,
             stdin: tokio::sync::Mutex::new(stdin),
@@ -258,13 +275,17 @@ impl ProcessService {
             stderr: Mutex::new(stderr),
             exit: exit_rx,
             kill: Mutex::new(Some(kill_tx)),
-        }))
+        });
+        if !spec.detached {
+            lock(&self.live).push(Arc::downgrade(&handle));
+        }
+        Ok(handle)
     }
 
     /// Kills every tracked (non-detached) child tree.
     pub(crate) fn kill_all(&self) {
-        for (pid, group) in lock(&self.live).drain(..) {
-            kill_tree(pid, group);
+        for child in lock(&self.live).drain(..).filter_map(|c| c.upgrade()) {
+            child.kill();
         }
     }
 }
@@ -337,8 +358,20 @@ impl ChildHandle {
         }
     }
 
+    /// Request graceful termination, then force the full tree after a grace period.
+    pub(crate) fn stop(self: &Arc<Self>) {
+        #[cfg(unix)]
+        let _ = self.signal(Sig::Term, true);
+        let child = Arc::clone(self);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            child.kill();
+        });
+    }
+
     /// Kills the child (tree when it leads a group).
     pub(crate) fn kill(&self) {
+        #[cfg(not(windows))]
         kill_tree(self.pid, self.group);
         if let Some(tx) = lock(&self.kill).take() {
             let _ = tx.send(());

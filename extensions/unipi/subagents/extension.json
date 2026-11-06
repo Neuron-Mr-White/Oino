@@ -8,6 +8,7 @@
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {
+    "process": { "spawn": true, "allow": ["*"] },
     "agents": { "spawn": true, "maxDepth": 2 },
     "fs": { "project": "write" },
     "sessionControl": true,

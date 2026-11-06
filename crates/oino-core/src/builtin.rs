@@ -39,6 +39,25 @@ impl SessionToolContext {
 }
 
 impl ToolContext for SessionToolContext {
+    fn background_shell(
+        &self,
+        args: oino_ai::JsonValue,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<oino_agent::AgentToolResult, oino_agent::ToolError>,
+    > {
+        let session = self.session();
+        Box::pin(async move {
+            let session =
+                session.ok_or_else(|| oino_agent::ToolError::new("No session task service"))?;
+            let value = session
+                .service_call(Some("unipi.background-tasks"), "tasks.shell", args)
+                .await
+                .map_err(|e| oino_agent::ToolError::new(e.to_string()))?;
+            serde_json::from_value(value).map_err(|e| oino_agent::ToolError::new(e.to_string()))
+        })
+    }
+
     fn cwd(&self) -> Option<String> {
         self.session().map(|s| s.work_cwd().display().to_string())
     }

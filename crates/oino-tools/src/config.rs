@@ -86,6 +86,21 @@ impl SessionEnv {
 
 /// Live values read at call time (from the `ExtensionContext`).
 pub trait ToolContext: Send + Sync {
+    /// Launch a shell through the host's single background task registry.
+    fn background_shell(
+        &self,
+        _args: oino_ai::JsonValue,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<oino_agent::AgentToolResult, oino_agent::ToolError>,
+    > {
+        Box::pin(async {
+            Err(oino_agent::ToolError::new(
+                "Background tasks require a session task service",
+            ))
+        })
+    }
+
     /// Current working directory; `None` uses [`ToolConfig::cwd`].
     fn cwd(&self) -> Option<String> {
         None

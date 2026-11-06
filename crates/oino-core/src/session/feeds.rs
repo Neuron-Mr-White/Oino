@@ -385,6 +385,7 @@ impl AgentSession {
             .detach(tool_call_id, task_id, reason)
             .await
             .ok_or_else(not_running)?;
+        let remaining_timeout = detached.remaining_timeout;
         let mut process = detached.process;
         let pid = process.control.pid();
         let kill = CancellationToken::new();
@@ -394,6 +395,12 @@ impl AgentSession {
             let status = tokio::select! {
                 status = control.wait() => status,
                 () = killed.cancelled() => {
+                    control.terminate_tree();
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    control.kill_tree();
+                    control.wait().await
+                }
+                () = tokio::time::sleep(remaining_timeout) => {
                     control.kill_tree();
                     control.wait().await
                 }

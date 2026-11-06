@@ -62,12 +62,14 @@ pub struct HostTask {
     pub name: String,
     /// Shell command.
     pub command: String,
+    /// Complete original execution arguments.
+    pub arguments: Option<Value>,
     /// Launches an agent.
     pub is_agent: bool,
     /// Description.
     pub description: Option<String>,
     /// Timeout.
-    pub timeout_seconds: Option<u64>,
+    pub timeout_seconds: Option<f64>,
     /// Notify on completion.
     pub notify_on_completion: bool,
     /// Trigger a turn on completion.
@@ -165,6 +167,8 @@ pub struct Snapshot {
     pub name: Option<String>,
     /// Command.
     pub command: String,
+    /// Complete original execution arguments.
+    pub arguments: Option<Value>,
     /// Description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -204,7 +208,7 @@ pub struct Snapshot {
     pub trigger_on_completion: bool,
     /// Timeout.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_seconds: Option<u64>,
+    pub timeout_seconds: Option<f64>,
     /// Why agent telemetry is missing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub telemetry_unavailable_reason: Option<String>,
@@ -265,6 +269,7 @@ impl Snapshot {
                 Some(&host.id),
             )),
             command: host.command.clone(),
+            arguments: host.arguments.clone(),
             description: host.description.clone(),
             status,
             output_path: host.output_path.clone(),
@@ -307,7 +312,7 @@ impl Snapshot {
 
 /// Host error texts → unipi's (`timed out` → `Timed out after Ns`, output cap).
 #[must_use]
-pub fn map_host_error(error: &str, timeout_seconds: Option<u64>) -> String {
+pub fn map_host_error(error: &str, timeout_seconds: Option<f64>) -> String {
     if error == "timed out" {
         return timeout_seconds.map_or_else(
             || "Timed out".to_owned(),
@@ -395,7 +400,7 @@ mod tests {
         assert_eq!(v["exitCode"], Value::Null);
         assert!(v.as_object().is_some_and(|o| o.contains_key("exitCode")));
         assert_eq!(v["status"], "killed");
-        assert_eq!(map_host_error("timed out", Some(5)), "Timed out after 5s");
+        assert_eq!(map_host_error("timed out", Some(5.0)), "Timed out after 5s");
         assert_eq!(
             map_host_error("output exceeded 1048576 bytes", None),
             "Output exceeded cap of 1.0MB"

@@ -4,8 +4,12 @@ use std::process::Stdio;
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
+#[cfg(windows)]
+use process_wrap::tokio::{ChildWrapper, CommandWrap, JobObject, KillOnDrop};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, Command};
+#[cfg(not(windows))]
+use tokio::process::Child;
+use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -181,15 +185,19 @@ fn spawn_local(request: SpawnRequest) -> Result<SpawnedProcess, SpawnError> {
         .stderr(Stdio::piped());
     #[cfg(unix)]
     command.process_group(0);
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+    #[cfg(not(windows))]
     let mut child = command
         .spawn()
         .map_err(|error| SpawnError::from_io(&error, &request.program))?;
-    if let (Some(input), Some(mut stdin)) = (request.stdin, child.stdin.take()) {
+    #[cfg(windows)]
+    let mut child = {
+        let mut wrapped = CommandWrap::from(command);
+        wrapped.wrap(JobObject).wrap(KillOnDrop);
+        wrapped
+            .spawn()
+            .map_err(|error| SpawnError::from_io(&error, &request.program))?
+    };
+    if let (Some(input), Some(mut stdin)) = (request.stdin, take_stdin(&mut child)) {
         tokio::spawn(async move {
             // Errors writing stdin are ignored (`child.stdin.on("error", () => {})`).
             let _ = stdin.write_all(&input).await;
@@ -198,20 +206,48 @@ fn spawn_local(request: SpawnRequest) -> Result<SpawnedProcess, SpawnError> {
     }
     let (tx, rx) = mpsc::unbounded_channel();
     let mut readers = Vec::new();
-    if let Some(stdout) = child.stdout.take() {
+    if let Some(stdout) = take_stdout(&mut child) {
         readers.push(tokio::spawn(pump(stdout, tx.clone())));
     }
-    if let Some(stderr) = child.stderr.take() {
+    if let Some(stderr) = take_stderr(&mut child) {
         readers.push(tokio::spawn(pump(stderr, tx)));
     }
     Ok(SpawnedProcess {
         output: rx,
         control: Box::new(LocalProcess {
             pid: child.id(),
+            #[cfg(not(windows))]
             child,
+            #[cfg(windows)]
+            child: std::sync::Mutex::new(child),
             readers,
         }),
     })
+}
+
+#[cfg(not(windows))]
+fn take_stdin(child: &mut Child) -> Option<tokio::process::ChildStdin> {
+    child.stdin.take()
+}
+#[cfg(windows)]
+fn take_stdin(child: &mut Box<dyn ChildWrapper>) -> Option<tokio::process::ChildStdin> {
+    child.stdin().take()
+}
+#[cfg(not(windows))]
+fn take_stdout(child: &mut Child) -> Option<tokio::process::ChildStdout> {
+    child.stdout.take()
+}
+#[cfg(windows)]
+fn take_stdout(child: &mut Box<dyn ChildWrapper>) -> Option<tokio::process::ChildStdout> {
+    child.stdout().take()
+}
+#[cfg(not(windows))]
+fn take_stderr(child: &mut Child) -> Option<tokio::process::ChildStderr> {
+    child.stderr.take()
+}
+#[cfg(windows)]
+fn take_stderr(child: &mut Box<dyn ChildWrapper>) -> Option<tokio::process::ChildStderr> {
+    child.stderr().take()
 }
 
 async fn pump(mut pipe: impl AsyncRead + Unpin, tx: mpsc::UnboundedSender<Vec<u8>>) {
@@ -230,7 +266,10 @@ async fn pump(mut pipe: impl AsyncRead + Unpin, tx: mpsc::UnboundedSender<Vec<u8
 
 struct LocalProcess {
     pid: Option<u32>,
+    #[cfg(not(windows))]
     child: Child,
+    #[cfg(windows)]
+    child: std::sync::Mutex<Box<dyn ChildWrapper>>,
     readers: Vec<JoinHandle<()>>,
 }
 
@@ -240,14 +279,48 @@ impl ProcessControl for LocalProcess {
     }
 
     fn kill_tree(&self) {
+        #[cfg(not(windows))]
         if let Some(pid) = self.pid {
             kill_process_tree(pid);
         }
+        #[cfg(windows)]
+        {
+            let _ = self
+                .child
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .start_kill();
+        }
+    }
+
+    fn terminate_tree(&self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.pid.and_then(|p| i32::try_from(p).ok()) {
+            let _ = nix::sys::signal::killpg(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGTERM,
+            );
+        }
+        #[cfg(not(unix))]
+        self.kill_tree();
     }
 
     fn wait(&mut self) -> BoxFuture<'_, std::io::Result<ExitStatus>> {
         async move {
+            #[cfg(not(windows))]
             let status = self.child.wait().await?;
+            #[cfg(windows)]
+            let status = loop {
+                let status = self
+                    .child
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .try_wait()?;
+                if let Some(status) = status {
+                    break status;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            };
             Ok(convert_status(status))
         }
         .boxed()
@@ -296,18 +369,4 @@ pub(crate) fn kill_process_tree(pid: u32) {
         // Already dead when this fails too.
         let _ = kill(pid, Signal::SIGKILL);
     }
-}
-
-/// `%SystemRoot%\System32\taskkill.exe /F /T /PID <pid>`.
-#[cfg(windows)]
-pub(crate) fn kill_process_tree(pid: u32) {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
-    let taskkill = format!("{root}\\System32\\taskkill.exe");
-    // Failures are ignored.
-    let _ = std::process::Command::new(taskkill)
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
 }

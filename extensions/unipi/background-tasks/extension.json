@@ -9,6 +9,6 @@
   "permissions": {
     "process": { "spawn": true, "allow": ["*"] },
     "sessionControl": true,
-    "services": { "call": ["unipi.core/core.open-tray"] }
+    "services": { "call": ["unipi.core/core.open-tray", "unipi.subagents/subagents.cancel"] }
   }
 }

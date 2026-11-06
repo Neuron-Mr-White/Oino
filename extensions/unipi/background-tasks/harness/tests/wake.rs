@@ -128,10 +128,13 @@ impl Env {
             .local_services()
             .expect("local services")
             .clone();
-        let wrapped: Arc<dyn HostServices> = hub.wrap_for_test(&id, Arc::clone(&self.host) as Arc<dyn HostServices>);
-        let manifest =
-            Manifest::parse(&std::fs::read_to_string(extensions_dir().join(format!("unipi/{DIR}/extension.json"))).unwrap())
-                .unwrap();
+        let wrapped: Arc<dyn HostServices> =
+            hub.wrap_for_test(&id, Arc::clone(&self.host) as Arc<dyn HostServices>);
+        let manifest = Manifest::parse(
+            &std::fs::read_to_string(extensions_dir().join(format!("unipi/{DIR}/extension.json")))
+                .unwrap(),
+        )
+        .unwrap();
         let package = LoadedPackage {
             manifest,
             component: ComponentSource::Path(wasm_dir().join(format!("{GUEST}.wasm"))),
@@ -139,11 +142,13 @@ impl Env {
             bundled: true,
         };
         let ext = self.runtime.load(package, wrapped).await.unwrap();
-        ext.init(InitInput::default(), self.cx())
-            .await
-            .unwrap();
-        self.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"}))
-            .await;
+        ext.init(InitInput::default(), self.cx()).await.unwrap();
+        self.event(
+            &ext,
+            EventKind::SessionStart,
+            json!({"type": "session_start", "reason": "startup"}),
+        )
+        .await;
         ext
     }
 
@@ -225,8 +230,10 @@ async fn bg_run_completion_notifies_and_wakes() {
     let ext = env.load().await;
     let id = env.bg_run(&ext, "Echo harness", "echo harness-ok").await;
     assert!(!id.is_empty(), "bg_run returned a task id");
-    env.wait_for("the completion wake", |env| !wake_notifications(env).is_empty())
-        .await;
+    env.wait_for("the completion wake", |env| {
+        !wake_notifications(env).is_empty()
+    })
+    .await;
     let wake = wake_notifications(&env).pop().unwrap();
     assert_eq!(
         wake["sendMessage"]["details"]["taskId"],
@@ -240,7 +247,11 @@ async fn bg_run_completion_notifies_and_wakes() {
             .contains("harness"),
         "the extension rendered the notification text: {wake}"
     );
-    assert_eq!(wake["options"]["triggerTurn"], json!(true), "the agent is woken: {wake}");
+    assert_eq!(
+        wake["options"]["triggerTurn"],
+        json!(true),
+        "the agent is woken: {wake}"
+    );
     env.wait_for("the notified local snapshot", |env| {
         notified_entries(env)
             .iter()
@@ -264,16 +275,15 @@ async fn completion_survives_a_newer_load_of_the_extension_dying() {
     // A second services set loads the extension (the hub entry is replaced, last one
     // wins) and is disposed before the task ends: its instance and host drop.
     {
-        let mut options = WasmRuntimeOptions::new(HostConfig::new(
-            env.agent.path(),
-            env.project.path(),
-        ));
+        let mut options =
+            WasmRuntimeOptions::new(HostConfig::new(env.agent.path(), env.project.path()));
         options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
         let runtime2 = WasmRuntime::new(options).unwrap();
         let host2 = RecordingHostServices::new();
         let id2 = ExtensionId::new(EXTENSION_ID).unwrap();
         let hub = runtime2.local_services().expect("local services").clone();
-        let wrapped: Arc<dyn HostServices> = hub.wrap_for_test(&id2, Arc::clone(&host2) as Arc<dyn HostServices>);
+        let wrapped: Arc<dyn HostServices> =
+            hub.wrap_for_test(&id2, Arc::clone(&host2) as Arc<dyn HostServices>);
         let manifest = Manifest::parse(
             &std::fs::read_to_string(extensions_dir().join(format!("unipi/{DIR}/extension.json")))
                 .unwrap(),
@@ -292,9 +302,10 @@ async fn completion_survives_a_newer_load_of_the_extension_dying() {
         drop(runtime2);
     }
 
-    env.wait_for("the completion wake through the older registration", |env| {
-        !wake_notifications(env).is_empty()
-    })
+    env.wait_for(
+        "the completion wake through the older registration",
+        |env| !wake_notifications(env).is_empty(),
+    )
     .await;
     let wake = wake_notifications(&env).pop().unwrap();
     assert_eq!(wake["sendMessage"]["details"]["taskId"], json!(id));
@@ -341,4 +352,89 @@ async fn bg_run_before_and_after_a_host_restart_both_wake() {
             json!(true)
         );
     }
+}
+
+/// v3 Execute service uses the same registry, bounded task output and automatic delivery.
+#[tokio::test(flavor = "multi_thread")]
+async fn execute_task_output_peek_block_stop_and_mixed_ids() {
+    let env = Env::new();
+    let ext = env.load().await;
+    let launched = ext.handle_service("tasks.shell", RawJson::from(json!({
+        "command":"sleep 1; echo v3-completed", "summary":"Run v3 background acceptance", "riskLevel":"low", "timeout":60, "shell":"bash"
+    })), &ExtensionId::new("oino.frontend").unwrap(), env.cx()).await.unwrap().to_value();
+    let id = launched["details"]["task_id"].as_str().unwrap();
+    assert!(std::path::Path::new(launched["details"]["log_path"].as_str().unwrap()).exists());
+    async fn tool(env: &Env, ext: &Arc<dyn ExtensionInstance>, name: &str, args: Value) -> Value {
+        ext.run_tool(
+            oino_extension_api::ToolInvocation {
+                tool_call_id: "v3-read".into(),
+                name: name.into(),
+                args: RawJson::from(args),
+                parent_tool_call_id: None,
+            },
+            oino_extension_api::CancellationToken::new(),
+            env.cx(),
+        )
+        .await
+        .unwrap()
+        .to_value()
+    }
+    let peek = tool(
+        &env,
+        &ext,
+        "task_output",
+        json!({"task_id":id,"block":false}),
+    )
+    .await;
+    assert_eq!(peek["details"]["state"], "running");
+    let blocked = tool(
+        &env,
+        &ext,
+        "task_output",
+        json!({"task_id":id,"block":true,"timeout":5000}),
+    )
+    .await;
+    assert_eq!(blocked["details"]["state"], "done");
+    assert!(
+        blocked["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("v3-completed")
+    );
+    env.wait_for("v3 automatic completion", |env| {
+        !wake_notifications(env).is_empty()
+    })
+    .await;
+    let wake = wake_notifications(&env).pop().unwrap();
+    assert!(
+        wake["sendMessage"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("v3-completed")
+    );
+    assert_eq!(wake["options"]["triggerTurn"], true);
+    let hub = env.runtime.local_services().unwrap();
+    let tasks = hub.tasks();
+    let owner = ExtensionId::new("unipi.subagents").unwrap();
+    let spec = serde_json::from_value(json!({"name":"Mixed id subagent", "command":"Inspect", "isAgent":true, "externalId":"agent-acceptance-42", "externalState":"done", "externalOutput":"subagent-result", "notifyOnCompletion":false})).unwrap();
+    tasks
+        .start(&owner, "s1", env.project.path(), spec, Arc::new(|_| {}))
+        .unwrap();
+    let sub = tool(
+        &env,
+        &ext,
+        "task_output",
+        json!({"task_id":"agent-acceptance-42","block":false}),
+    )
+    .await;
+    assert!(
+        sub["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("subagent-result")
+    );
+    let running = ext.handle_service("tasks.shell",RawJson::from(json!({"command":"trap '' TERM; sleep 30 & wait","summary":"Stop v3 background acceptance","riskLevel":"low","shell":"bash"})),&ExtensionId::new("oino.frontend").unwrap(),env.cx()).await.unwrap().to_value();
+    let stop_id = running["details"]["task_id"].as_str().unwrap();
+    let stopped = tool(&env, &ext, "task_stop", json!({"task_id":stop_id})).await;
+    assert_eq!(stopped["details"]["state"], "killed");
 }

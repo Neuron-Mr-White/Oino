@@ -5,10 +5,7 @@ use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 
 use crate::env::FsError;
 use crate::node_path;
-use crate::truncate::{
-    DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, TruncationOptions, TruncationResult,
-    truncate_tail,
-};
+use crate::truncate::{TruncatedBy, TruncationOptions, TruncationResult, truncate_tail};
 
 /// Streaming UTF-8 decoder with WHATWG `TextDecoder` replacement semantics.
 #[derive(Debug, Default)]
@@ -118,9 +115,9 @@ fn count(value: usize) -> u64 {
 impl OutputAccumulator {
     /// An accumulator whose temp file goes to `temp_dir/<temp_prefix>-*.log`.
     pub(crate) fn new(temp_dir: String, temp_prefix: &'static str) -> Self {
-        let max_bytes = DEFAULT_MAX_BYTES;
+        let max_bytes = 32 * 1024 - 1024;
         Self {
-            max_lines: DEFAULT_MAX_LINES,
+            max_lines: u64::MAX,
             max_bytes,
             max_rolling_bytes: usize::try_from(max_bytes * 2).unwrap_or(usize::MAX).max(1),
             temp_dir,
@@ -202,8 +199,14 @@ impl OutputAccumulator {
         if persist_if_truncated && truncation.truncated {
             self.ensure_temp_file();
         }
+        if let Some(file) = &mut self.temp_file {
+            let _ = file.flush();
+        }
+        let content = self
+            .read_full_output(self.max_bytes)
+            .map_or_else(|_| truncation.content.clone(), |full| full.content);
         OutputSnapshot {
-            content: truncation.content.clone(),
+            content,
             truncation,
             full_output_path: self.temp_path.clone(),
         }

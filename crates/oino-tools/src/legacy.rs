@@ -83,6 +83,32 @@ pub fn normalize_call(
                 args.entry("line_numbers".to_owned()).or_insert(json!(true));
             }
         }
+        "bg_run" => {
+            if cfg!(windows) { "powershell" } else { "bash" }.clone_into(&mut canonical);
+            let command = args.get("command").cloned().unwrap_or(JsonValue::Null);
+            let summary = args.get("name").cloned().unwrap_or(json!("(legacy call)"));
+            let timeout = args.get("timeoutSeconds").cloned();
+            args = json!({"command": command, "summary": summary, "riskLevel": "high", "fireAndForget": true}).as_object().cloned().unwrap_or_default();
+            if let Some(timeout) = timeout {
+                args.insert("timeout".to_owned(), timeout);
+            }
+        }
+        "bg_status" | "bg_logs" | "bg_kill" => {
+            if name == "bg_kill" {
+                "task_stop"
+            } else {
+                "task_output"
+            }
+            .clone_into(&mut canonical);
+            let id = args.get("taskId").cloned();
+            args.clear();
+            if let Some(id) = id {
+                args.insert("task_id".to_owned(), id);
+            }
+            if name != "bg_kill" {
+                args.insert("block".to_owned(), json!(false));
+            }
+        }
         "bash" | "powershell" => {
             args.entry("summary".to_owned())
                 .or_insert(json!("(legacy call)"));

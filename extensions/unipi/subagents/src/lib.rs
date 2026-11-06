@@ -619,6 +619,7 @@ impl Subagents {
             s.records.retain(|r| r.id != id);
             s.records.push(rec.clone());
         });
+        Self::register_task(&sid, &rec);
         self.persist(&sid);
         self.publish(&sid);
         let driver = self.drive(sid, rec.clone(), Rc::clone(&run), task.to_owned());
@@ -702,6 +703,25 @@ impl Subagents {
         self.after_done(&sid, &rec.id, &run, &report).await;
     }
 
+    fn register_task(sid: &str, rec: &Record) {
+        let state = match rec.status {
+            Status::Running => "running",
+            Status::Completed => "done",
+            _ => "failed",
+        };
+        if let Err(error) = tasks::start(
+            &json!({"name": rec.title, "command": rec.task, "isAgent": true,
+            "externalId": rec.id, "externalState": state, "externalOutput": rec.report,
+            "notifyOnCompletion": false, "triggerOnCompletion": false,
+            "arguments": {"title": rec.title, "task": rec.task, "profile": rec.profile, "is_background": rec.background}}),
+        ) {
+            oino_extension::host::log(
+                oino_extension::host::LogLevel::Warn,
+                &format!("Could not register subagent task for {sid}: {error}"),
+            );
+        }
+    }
+
     fn settle(&self, sid: &str, id: &str, run: &Rc<Run>, report: &Report) {
         self.sessions.with(sid, |s| {
             if s.runs.get(id).is_some_and(|r| Rc::ptr_eq(r, run)) {
@@ -716,6 +736,9 @@ impl Subagents {
             r.error.clone_from(&report.error);
             r.usage = Some(report.usage);
         });
+        if let Some(rec) = self.record(sid, id) {
+            Self::register_task(sid, &rec);
+        }
         self.persist(sid);
         self.publish(sid);
         self.refresh_watched(sid);
@@ -2169,6 +2192,10 @@ impl Extension for Subagents {
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.restore(cx.session_id());
+            let records = ext.sessions.with(cx.session_id(), |s| s.records.clone());
+            for rec in &records {
+                Self::register_task(cx.session_id(), rec);
+            }
             ext.refresh(&cx);
             ext.sync_schema(&cx);
             Ok(())

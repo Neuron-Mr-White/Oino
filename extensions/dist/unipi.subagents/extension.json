@@ -12,6 +12,12 @@
     ]
   },
   "permissions": {
+    "process": {
+      "spawn": true,
+      "allow": [
+        "*"
+      ]
+    },
     "agents": {
       "spawn": true,
       "maxDepth": 2
@@ -29,6 +35,6 @@
   },
   "component": "component.wasm",
   "checksums": {
-    "component.wasm": "sha256:1f78ea13c3da822300e3ec04b060eb7d265d45e3b910b912d02382a0ef31c789"
+    "component.wasm": "sha256:96199280feea104a1c6b9026037c371c11d7417f759325198b42396a220267d4"
   }
 }

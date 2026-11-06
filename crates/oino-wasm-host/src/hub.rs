@@ -445,6 +445,18 @@ impl LocalServices {
         via: Option<Weak<dyn HostServices>>,
     ) -> Result<RawJson, HostError> {
         let to_json = |v: serde_json::Value| RawJson::from(v);
+        let id = match &op {
+            TaskOp::Get(id) | TaskOp::Kill(id) | TaskOp::Logs { id, .. } => Some(id),
+            _ => None,
+        };
+        if let Some(id) = id
+            && self
+                .tasks
+                .get(id)
+                .is_some_and(|t| t.session_id != cx.session_id)
+        {
+            return Err(HostError::NotFound(format!("task {id}")));
+        }
         match op {
             TaskOp::Start(spec) => {
                 let spec: TaskSpec = spec

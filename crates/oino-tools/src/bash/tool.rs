@@ -17,13 +17,12 @@ use super::shell::{shell_env, tool_env};
 use super::temp_dir;
 use crate::config::ToolConfig;
 use crate::info::{ShellKind, shell_info};
-use crate::truncate::{DEFAULT_MAX_BYTES, TruncatedBy, format_size};
 use crate::{args, js_number};
 
 /// Update throttle.
 pub const BASH_UPDATE_THROTTLE: std::time::Duration = std::time::Duration::from_millis(100);
 /// Limit of `structuredContent.output`.
-const STRUCTURED_OUTPUT_MAX_BYTES: u64 = 1024 * 1024;
+const STRUCTURED_OUTPUT_MAX_BYTES: u64 = 32 * 1024 - 1024;
 /// Prepended to PowerShell commands.
 const POWERSHELL_UTF8_PREFIX: &str =
     "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n";
@@ -61,6 +60,11 @@ impl ShellTool {
 impl AgentTool for ShellTool {
     fn meta(&self) -> &ToolDefinitionMeta {
         &self.meta
+    }
+
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        crate::legacy::normalize_call(self.meta.name.as_str(), &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
     }
 
     fn execute(
@@ -164,26 +168,8 @@ fn format_output(
     if let Some(path) = &snapshot.full_output_path {
         details.insert("fullOutputPath".to_owned(), json!(path));
     }
-    let start = truncation.total_lines - truncation.output_lines + 1;
-    let end = truncation.total_lines;
-    let footer = if truncation.last_line_partial {
-        format!(
-            "\n\n[Showing last {} of line {end} (line is {}). Full output: {path}]",
-            format_size(truncation.output_bytes),
-            format_size(last_line_bytes)
-        )
-    } else if truncation.truncated_by == Some(TruncatedBy::Lines) {
-        format!(
-            "\n\n[Showing lines {start}-{end} of {}. Full output: {path}]",
-            truncation.total_lines
-        )
-    } else {
-        format!(
-            "\n\n[Showing lines {start}-{end} of {} ({} limit). Full output: {path}]",
-            truncation.total_lines,
-            format_size(DEFAULT_MAX_BYTES)
-        )
-    };
+    let _ = last_line_bytes;
+    let footer = format!("\n\n[Output truncated to 32 KiB head+tail. Full output: {path}]");
     text.push_str(&footer);
     (text, Some(JsonValue::Object(details)))
 }
@@ -197,6 +183,55 @@ fn append_status(text: &str, status: &str) -> String {
     }
 }
 
+async fn background(
+    config: &ToolConfig,
+    kind: ShellKind,
+    call: &ToolInvocation,
+    command: String,
+    vars: Vec<(String, String)>,
+    timeout: Option<f64>,
+    risk: &str,
+) -> Result<AgentToolResult, ToolError> {
+    let mut arguments = call.args.clone();
+    arguments.insert(
+        "shell".to_owned(),
+        json!(if kind == ShellKind::PowerShell {
+            "powershell"
+        } else {
+            "bash"
+        }),
+    );
+    arguments.insert("timeout".to_owned(), json!(timeout));
+    arguments.insert("riskLevel".to_owned(), json!(risk));
+    arguments
+        .entry("summary".to_owned())
+        .or_insert(json!("(legacy call)"));
+    let shell = match kind {
+        ShellKind::Bash => {
+            super::shell::resolve_shell_config(
+                config.env.as_ref(),
+                config.shell.shell_path.as_deref(),
+            )
+            .await
+        }
+        ShellKind::PowerShell => super::shell::resolve_powershell_config(config.env.as_ref()).await,
+    }
+    .map_err(ToolError::new)?;
+    let stdin = shell.transport == super::shell::CommandTransport::Stdin;
+    let mut shell_args = shell.args;
+    if !stdin {
+        shell_args.push(command.clone());
+    }
+    arguments.insert("program".to_owned(), json!(shell.shell));
+    arguments.insert("args".to_owned(), json!(shell_args));
+    arguments.insert("vars".to_owned(), json!(vars));
+    arguments.insert("stdin".to_owned(), json!(stdin.then_some(command.clone())));
+    config
+        .context
+        .background_shell(JsonValue::Object(arguments))
+        .await
+}
+
 async fn run(
     config: &ToolConfig,
     kind: ShellKind,
@@ -205,7 +240,13 @@ async fn run(
     cancel: &CancellationToken,
 ) -> Result<AgentToolResult, ToolError> {
     let command = args::required_str(&call.args, "command")?;
-    let timeout = args::optional_f64(&call.args, "timeout");
+    let seconds = args::optional_f64(&call.args, "timeout").unwrap_or(60.0);
+    let timeout = Some(seconds);
+    super::exec::resolve_timeout(timeout).map_err(ToolError::new)?;
+    let risk = args::optional_str(&call.args, "riskLevel").unwrap_or("high");
+    if !["low", "medium", "high"].contains(&risk) {
+        return Err(ToolError::new("riskLevel must be low, medium or high"));
+    }
     let command = match (kind, config.shell.command_prefix.as_deref()) {
         (ShellKind::PowerShell, _) => format!("{POWERSHELL_UTF8_PREFIX}{command}"),
         (ShellKind::Bash, Some(prefix)) if !prefix.is_empty() => format!("{prefix}\n{command}"),
@@ -220,6 +261,10 @@ async fn run(
         shell_env(config.process_env.as_deref(), &config.agent_dir),
         session.as_ref(),
     );
+    if call.args.get("fireAndForget").and_then(JsonValue::as_bool) == Some(true) {
+        return background(config, kind, call, command, vars, timeout, risk).await;
+    }
+
     let mut streaming = Streaming {
         output: OutputAccumulator::new(temp_dir(&config.agent_dir), kind.temp_file_prefix()),
         updates: updates.clone(),
@@ -266,6 +311,8 @@ async fn run(
                 process,
                 output_so_far: text.clone(),
                 full_output_path: snapshot.full_output_path,
+                remaining_timeout: std::time::Duration::from_secs_f64(seconds)
+                    .saturating_sub(started.elapsed()),
             };
             // A dropped requester simply lets the process run unobserved.
             let _ = request.reply.send(reply);

@@ -1,0 +1,34 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.watchdog",
+  "name": "Watchdog",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Finds hung tool calls with jev and moves them to the background, kills them or warns; opt-in session caps.",
+  "license": "MIT",
+  "permissions": {
+    "process": {
+      "spawn": true,
+      "allow": []
+    },
+    "sessionControl": true,
+    "network": {
+      "hosts": [
+        "openrouter.ai",
+        "api.typesafe.ai"
+      ]
+    },
+    "env": [
+      "TYPESAFE_API_KEY",
+      "OPENROUTER_API_KEY"
+    ],
+    "secrets": true,
+    "credentials": [
+      "openrouter"
+    ]
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:eacd5d8c2f49e1e56e8fca3a092c57cf528fa0d83b92dcfab788790407aa3f83"
+  }
+}

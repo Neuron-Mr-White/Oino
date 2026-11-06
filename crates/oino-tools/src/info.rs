@@ -4,8 +4,6 @@ use oino_agent::{ExecutionMode, ToolDefinitionMeta};
 use oino_ai::{ConstrainedSampling, ConstrainedSamplingConfig, JsonValue, StrictMode};
 use serde_json::json;
 
-use crate::truncate::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES};
-
 /// Built-in tool names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BuiltinToolName {
@@ -154,10 +152,6 @@ fn strict_prefer() -> ConstrainedSampling {
     })
 }
 
-fn kb(bytes: u64) -> u64 {
-    bytes / 1024
-}
-
 fn info(
     name: BuiltinToolName,
     description: String,
@@ -267,32 +261,24 @@ pub fn shell_info(kind: ShellKind, expose_session_environment: bool) -> BuiltinT
     let mut info = info(
         kind.tool_name(),
         format!(
-            "Execute a {} command in the current working directory. Returns stdout and stderr. Output is truncated to last {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
-            kind.shell_name(),
-            kb(DEFAULT_MAX_BYTES)
+            "Execute a {} command in a NEW shell in the session working directory. Shell state does not persist. Timeout defaults to 60 seconds. Output keeps its head and tail within 32 KiB, with the complete output in a log. Use fireAndForget for background work; its task id and log path return immediately and the exit result is delivered automatically. Declare riskLevel from plausible consequences: low for read-only local inspection, medium for bounded reversible changes, high for destructive, privileged, remote or hard-to-recover changes. Chained commands take the maximum risk; file redirection is at least medium. User authorization does not lower risk.",
+            kind.shell_name()
         ),
         kind.prompt_snippet(),
         expose_session_environment.then(|| strings(&[SESSION_ENV_GUIDELINE])),
         json!({
             "type": "object",
-            "required": ["command"],
+            "required": ["command", "summary", "riskLevel"],
             "properties": {
                 "command": {"type": "string", "description": "Shell command to execute"},
-                "timeout": {"type": "number", "description": "Timeout in seconds (optional, no default timeout)"}
-            }
+                "summary": {"type": "string"},
+                "riskLevel": {"type": "string", "enum": ["low", "medium", "high"]},
+                "timeout": {"type": "number", "exclusiveMinimum": 0, "default": 60},
+                "fireAndForget": {"type": "boolean", "default": false}
+            },
+            "additionalProperties": false
         }),
     );
-    info.output_schema = Some(json!({
-        "type": "object",
-        "required": ["output", "truncated", "exit_code", "wall_time_seconds"],
-        "properties": {
-            "output": {"type": "string", "description": "Combined stdout and stderr, possibly truncated"},
-            "truncated": {"type": "boolean"},
-            "full_output_path": {"type": "string", "description": "Full output, when truncated"},
-            "exit_code": {"type": "number"},
-            "wall_time_seconds": {"type": "number"}
-        }
-    }));
     info.constrained_sampling = Some(strict_prefer());
     info
 }

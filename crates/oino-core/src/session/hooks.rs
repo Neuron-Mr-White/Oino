@@ -254,15 +254,22 @@ impl AgentSession {
         args: &JsonObject,
         parent_tool_call_id: Option<&str>,
     ) -> Result<Option<BeforeToolCallResult>, HookError> {
+        // Policy sees canonical execution arguments, never a rewritten transcript.
+        let normalized = oino_tools::legacy::normalize_call(
+            &call.name,
+            args,
+            &self.work_cwd().to_string_lossy(),
+        )
+        .map_err(|error| HookError::new(error.to_string()))?;
         let runner = self.runner();
         if !runner.has_handlers("tool_call") {
             return Ok(None);
         }
         let mut payload = json!({
             "type": "tool_call",
-            "toolName": call.name,
+            "toolName": normalized.name,
             "toolCallId": call.id,
-            "input": args,
+            "input": normalized.args,
         });
         if let Some(parent) = parent_tool_call_id {
             payload["parentToolCallId"] = json!(parent);

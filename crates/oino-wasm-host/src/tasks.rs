@@ -1,6 +1,7 @@
 //! Host background-task service (C12, extension-api §5.5).
 
 use std::collections::{HashMap, VecDeque};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -24,6 +25,27 @@ pub struct TaskSpec {
     pub name: String,
     /// Shell command.
     pub command: String,
+    /// Shell selected by the Execute tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell: Option<String>,
+    /// Resolved shell executable, arguments, environment and optional stdin from shell tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<ShellExecution>,
+    /// Declared risk, carried without enforcing a ceiling here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_level: Option<String>,
+    /// Exact launch arguments for live inspection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<serde_json::Value>,
+    /// Existing subagent id registered in this same namespace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    /// Updated subagent state (running/done/failed/killed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_state: Option<TaskState>,
+    /// Latest complete subagent report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_output: Option<String>,
     /// Launches an agent process.
     #[serde(default)]
     pub is_agent: bool,
@@ -32,7 +54,7 @@ pub struct TaskSpec {
     pub description: Option<String>,
     /// Kill after this many seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timeout_seconds: Option<u64>,
+    pub timeout_seconds: Option<f64>,
     /// Deliver a notification message on completion.
     #[serde(default = "yes")]
     pub notify_on_completion: bool,
@@ -46,6 +68,19 @@ pub struct TaskSpec {
 
 fn yes() -> bool {
     true
+}
+
+/// Prepared shell invocation, preserving shell settings and session environment.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ShellExecution {
+    /// Resolved executable.
+    pub program: String,
+    /// Executable arguments.
+    pub args: Vec<String>,
+    /// Complete environment.
+    pub vars: Vec<(String, String)>,
+    /// Script transported via stdin when required.
+    pub stdin: Option<String>,
 }
 
 /// Task state.
@@ -108,7 +143,7 @@ enum Killer {
 impl Killer {
     fn kill(&self) {
         match self {
-            Self::Child(child) => child.kill(),
+            Self::Child(child) => child.stop(),
             Self::Adopted(token) => token.cancel(),
         }
     }
@@ -161,38 +196,86 @@ impl TaskService {
     /// # Errors
     ///
     /// Spawn failures.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "spawn and completion registration form one transaction"
+    )]
     pub fn start(
         self: &Arc<Self>,
         owner: &ExtensionId,
         session_id: &str,
         cwd: &Path,
-        spec: TaskSpec,
+        mut spec: TaskSpec,
         on_finish: OnFinish,
     ) -> Result<String, HostError> {
+        if spec.external_id.is_some() {
+            return self.register_external(owner, session_id, spec);
+        }
+        if let Some(timeout) = spec.timeout_seconds
+            && (!timeout.is_finite() || timeout <= 0.0 || timeout > 2_147_483.647)
+        {
+            return Err(HostError::InvalidArgument("Invalid timeout".to_owned()));
+        }
         let id = self.next_id();
         let output = self.output_path(session_id, &id)?;
-        let (shell, flag) = if cfg!(windows) {
-            ("cmd", "/C")
-        } else {
-            ("sh", "-c")
+        let (shell, args) = match spec.shell.as_deref() {
+            Some("bash") => ("bash", vec!["-c".to_owned(), spec.command.clone()]),
+            Some("powershell") if cfg!(windows) => (
+                "powershell.exe",
+                vec![
+                    "-NoProfile".to_owned(),
+                    "-NonInteractive".to_owned(),
+                    "-Command".to_owned(),
+                    format!(
+                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {}",
+                        spec.command
+                    ),
+                ],
+            ),
+            Some(_) => return Err(HostError::InvalidArgument("Unsupported shell".to_owned())),
+            None if cfg!(windows) => ("cmd", vec!["/C".to_owned(), spec.command.clone()]),
+            None => ("sh", vec!["-c".to_owned(), spec.command.clone()]),
         };
         let child = self.processes.spawn(&Spawn {
-            command: shell.into(),
-            args: vec![flag.into(), spec.command.clone()],
+            command: spec
+                .execution
+                .as_ref()
+                .map_or_else(|| shell.to_owned(), |e| e.program.clone()),
+            args: spec.execution.as_ref().map_or(args, |e| e.args.clone()),
             cwd: cwd.to_path_buf(),
-            env: vec![("OINO_TASK_ID".into(), id.clone())],
-            clear_env: false,
-            stdin: Input::Null,
+            env: spec.execution.as_ref().map_or_else(
+                || vec![("OINO_TASK_ID".into(), id.clone())],
+                |e| e.vars.clone(),
+            ),
+            clear_env: spec.execution.is_some(),
+            stdin: if spec.execution.as_ref().is_some_and(|e| e.stdin.is_some()) {
+                Input::Pipe
+            } else {
+                Input::Null
+            },
             stdout: Output::File(output.clone()),
             stderr: Output::File(output.clone()),
             new_process_group: true,
             detached: false,
-            timeout: spec.timeout_seconds.map(Duration::from_secs),
+            timeout: spec.timeout_seconds.map(Duration::from_secs_f64),
         })?;
+        if let Some(input) = spec.execution.as_ref().and_then(|e| e.stdin.clone()) {
+            let child = Arc::clone(&child);
+            tokio::spawn(async move {
+                let _ = child.write_stdin(input.as_bytes()).await;
+                child.close_stdin();
+            });
+        }
         let max = spec
             .max_output_bytes
-            .unwrap_or(DEFAULT_MAX_OUTPUT)
+            .unwrap_or(if spec.shell.is_some() {
+                u64::MAX
+            } else {
+                DEFAULT_MAX_OUTPUT
+            })
             .max(MIN_MAX_OUTPUT);
+        // Never persist inherited environment values (which may contain credentials).
+        spec.execution = None;
         let info = TaskInfo {
             id: id.clone(),
             owner: owner.to_string(),
@@ -248,6 +331,68 @@ impl TaskService {
         format!("t{:x}{:04x}", crate::timers::now_ms() & 0xffff_ffff, *next)
     }
 
+    fn register_external(
+        &self,
+        owner: &ExtensionId,
+        session_id: &str,
+        mut spec: TaskSpec,
+    ) -> Result<String, HostError> {
+        let id = spec.external_id.clone().unwrap_or_default();
+        if id.is_empty()
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(HostError::InvalidArgument(
+                "Invalid external task id".to_owned(),
+            ));
+        }
+        let mut tasks = lock(&self.tasks);
+        if let Some(old) = tasks.get(&id)
+            && (old.info.owner != owner.as_str()
+                || old.info.session_id != session_id
+                || old.info.spec.external_id.is_none())
+        {
+            return Err(HostError::InvalidArgument(
+                "Task id already registered".to_owned(),
+            ));
+        }
+        let output = self.output_path(session_id, &id)?;
+        if let Some(text) = &spec.external_output {
+            std::fs::write(&output, text).map_err(|e| HostError::io(&e))?;
+        } else if !output.exists() {
+            std::fs::write(&output, "").map_err(|e| HostError::io(&e))?;
+        }
+        // Reports live in the log, not duplicated in every status response.
+        spec.external_output = None;
+        let state = spec.external_state.unwrap_or(TaskState::Running);
+        let started_at = tasks
+            .get(&id)
+            .map_or_else(crate::timers::now_ms, |e| e.info.started_at);
+        tasks.insert(
+            id.clone(),
+            Entry {
+                info: TaskInfo {
+                    id: id.clone(),
+                    owner: owner.to_string(),
+                    session_id: session_id.to_owned(),
+                    spec,
+                    state,
+                    exit_code: (state == TaskState::Done).then_some(0),
+                    error: None,
+                    output_path: output.to_string_lossy().into_owned(),
+                    started_at,
+                    finished_at: (state != TaskState::Running).then(crate::timers::now_ms),
+                    pid: 0,
+                },
+                child: None,
+            },
+        );
+        drop(tasks);
+        self.persist(session_id);
+        Ok(id)
+    }
+
     fn output_path(&self, session_id: &str, id: &str) -> Result<PathBuf, HostError> {
         let dir = self
             .agent_dir
@@ -275,8 +420,13 @@ impl TaskService {
         use std::io::Write as _;
         let output = self.output_path(session_id, id)?;
         let mut file = std::fs::File::create(&output).map_err(|e| HostError::io(&e))?;
-        let _ = file.write_all(detached.output_so_far.as_bytes());
-        let _ = file.write_all(b"\n");
+        if let Some(path) = &detached.full_output_path {
+            let mut previous = std::fs::File::open(path).map_err(|e| HostError::io(&e))?;
+            std::io::copy(&mut previous, &mut file).map_err(|e| HostError::io(&e))?;
+        } else {
+            file.write_all(detached.output_so_far.as_bytes())
+                .map_err(|e| HostError::io(&e))?;
+        }
         let spec = TaskSpec {
             name: format!(
                 "bash: {}",
@@ -284,6 +434,13 @@ impl TaskService {
             ),
             command: detached.command.clone(),
             is_agent: false,
+            shell: None,
+            execution: None,
+            risk_level: None,
+            arguments: None,
+            external_id: None,
+            external_state: None,
+            external_output: None,
             description: detached
                 .full_output_path
                 .as_ref()
@@ -424,16 +581,26 @@ impl TaskService {
         let info = self
             .get(id)
             .ok_or_else(|| HostError::NotFound(format!("task {id}")))?;
-        let bytes = std::fs::read(&info.output_path).unwrap_or_default();
-        let max = usize::try_from(max_bytes)
-            .unwrap_or(usize::MAX)
-            .min(bytes.len());
-        let slice = if tail {
-            &bytes[bytes.len() - max..]
+        let mut file = std::fs::File::open(&info.output_path).map_err(|e| HostError::io(&e))?;
+        let size = file.metadata().map_err(|e| HostError::io(&e))?.len();
+        let max = u64::from(max_bytes).min(size);
+        if tail {
+            file.seek(SeekFrom::Start(size - max))
+                .map_err(|e| HostError::io(&e))?;
+        }
+        let mut bytes = Vec::new();
+        file.take(max)
+            .read_to_end(&mut bytes)
+            .map_err(|e| HostError::io(&e))?;
+        if tail {
+            let skip = bytes.iter().take_while(|b| (**b & 0xc0) == 0x80).count();
+            bytes.drain(..skip);
         } else {
-            &bytes[..max]
-        };
-        Ok(String::from_utf8_lossy(slice).into_owned())
+            while std::str::from_utf8(&bytes).is_err_and(|e| e.error_len().is_none()) {
+                bytes.pop();
+            }
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// Kills a running task.
@@ -609,6 +776,6 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(info.state, TaskState::Killed);
-        assert_eq!(svc.logs(&id, 100, false).unwrap(), "before\nafter\n");
+        assert_eq!(svc.logs(&id, 100, false).unwrap(), "beforeafter\n");
     }
 }

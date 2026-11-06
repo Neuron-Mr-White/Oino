@@ -80,8 +80,13 @@ pub trait ProcessControl: Send {
     fn pid(&self) -> Option<u32>;
 
     /// Kills the process and all its descendants (`killProcessTree`: `killpg(SIGKILL)` on
-    /// Unix, `taskkill /F /T` on Windows). Never fails; a dead process is ignored.
+    /// Unix, Job Objects on Windows). Never fails; a dead process is ignored.
     fn kill_tree(&self);
+
+    /// Request graceful process-tree termination before forced escalation.
+    fn terminate_tree(&self) {
+        self.kill_tree();
+    }
 
     /// Waits for the process to exit. Cancel-safe.
     fn wait(&mut self) -> BoxFuture<'_, std::io::Result<ExitStatus>>;

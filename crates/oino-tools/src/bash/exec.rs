@@ -148,12 +148,13 @@ async fn wait(
 ) -> Result<ExecEnd, ExecError> {
     let timeout_at = timeout.map(|timeout| Instant::now() + timeout);
     let (mut aborted, mut timed_out) = (false, false);
+    let mut kill_at: Option<Instant> = None;
     let mut exit: Option<i32> = None;
     let mut pipes_closed = false;
     let mut idle_deadline: Option<Instant> = None;
     let far = || Instant::now() + Duration::from_hours(24 * 365);
     loop {
-        if exit.is_some() && pipes_closed {
+        if exit.is_some() && pipes_closed && kill_at.is_none() {
             break;
         }
         let flush_at = sink.next_flush();
@@ -174,15 +175,21 @@ async fn wait(
                 }
                 Err(error) => return Err(ExecError::Failed(error.to_string())),
             },
-            () = tokio::time::sleep_until(idle_deadline.unwrap_or_else(far)), if idle_deadline.is_some() => break,
+            () = tokio::time::sleep_until(idle_deadline.unwrap_or_else(far)), if idle_deadline.is_some() && kill_at.is_none() => break,
             () = tokio::time::sleep_until(flush_at.unwrap_or_else(far)), if flush_at.is_some() => sink.flush(),
             () = cancel.cancelled(), if !aborted => {
                 aborted = true;
-                process.control.kill_tree();
+                process.control.terminate_tree();
+                kill_at.get_or_insert(Instant::now() + Duration::from_millis(500));
             },
             () = tokio::time::sleep_until(timeout_at.unwrap_or_else(far)), if timeout_at.is_some() && !timed_out => {
                 timed_out = true;
+                process.control.terminate_tree();
+                kill_at.get_or_insert(Instant::now() + Duration::from_millis(500));
+            },
+            () = tokio::time::sleep_until(kill_at.unwrap_or_else(far)), if kill_at.is_some() => {
                 process.control.kill_tree();
+                kill_at = None;
             },
             request = recv_detach(&mut detach), if detach.is_some() && exit.is_none() && !aborted && !timed_out => {
                 match request {
