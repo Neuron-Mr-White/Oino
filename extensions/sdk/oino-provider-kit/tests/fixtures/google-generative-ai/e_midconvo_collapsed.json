@@ -273,5 +273,79 @@
     "durationMs": 0
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "contents": [
+   {
+    "role": "user",
+    "parts": [
+     {
+      "text": "one"
+     }
+    ]
+   },
+   {
+    "role": "model",
+    "parts": [
+     {
+      "text": "ok"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "parts": [
+     {
+      "text": "<system-reminder>\nUpdated system prompt section \"env\":\n\ncwd=/b\n</system-reminder>"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "parts": [
+     {
+      "text": "two"
+     }
+    ]
+   }
+  ],
+  "systemInstruction": {
+   "parts": [
+    {
+     "text": "Sys\n\ncwd=/a"
+    }
+   ],
+   "role": "user"
+  },
+  "tools": [
+   {
+    "functionDeclarations": [
+     {
+      "name": "write_file",
+      "description": "Write a file",
+      "parametersJsonSchema": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "data": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "generationConfig": {
+   "maxOutputTokens": 65536,
+   "thinkingConfig": {
+    "thinkingBudget": 0
+   }
+  }
+ }
 }

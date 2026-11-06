@@ -297,5 +297,77 @@
     "durationMs": 33
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "claude-sonnet-5",
+  "messages": [
+   {
+    "role": "user",
+    "content": "one"
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "ok"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": "<system-reminder>\nUpdated system prompt section \"env\":\n\ncwd=/b\n</system-reminder>"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "two",
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ]
+   }
+  ],
+  "max_tokens": 128000,
+  "stream": true,
+  "system": [
+   {
+    "type": "text",
+    "text": "Sys\n\ncwd=/a",
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   }
+  ],
+  "tools": [
+   {
+    "name": "write_file",
+    "description": "Write a file",
+    "eager_input_streaming": true,
+    "input_schema": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "data": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ]
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   }
+  ],
+  "thinking": {
+   "type": "disabled"
+  }
+ }
 }

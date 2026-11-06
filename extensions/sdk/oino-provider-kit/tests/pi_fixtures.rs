@@ -197,7 +197,9 @@ fn run(path: &Path) -> Result<(), String> {
     if wire == Wire::Vertex {
         request.extra.vertex_access_token = Some("ya29.adc-token".into());
     }
+    // Decisions A/C: retain the pi oracle, with reviewed v3 wire expectations.
     let pi_request = &fixture["request"];
+    let expected_body = fixture.get("v3RequestBody").unwrap_or(&pi_request["body"]);
     let mut problems = Vec::new();
     let mut prepared = match prepare(wire, &request, PrepareOptions::default(), 0) {
         Ok(prepared) => prepared,
@@ -223,11 +225,8 @@ fn run(path: &Path) -> Result<(), String> {
         }
         let mut headers = prepared.http.headers.clone();
         let body = finalize(wire, prepared.http.payload.clone(), &mut headers);
-        if !json_semantic_eq(&pi_request["body"], &body) {
-            problems.push(format!(
-                "body:\n  pi   {}\n  ours {}",
-                pi_request["body"], body
-            ));
+        if !json_semantic_eq(expected_body, &body) {
+            problems.push(format!("body:\n  pi   {}\n  ours {}", expected_body, body));
         }
         let ours: serde_json::Map<String, Value> = headers
             .pairs()

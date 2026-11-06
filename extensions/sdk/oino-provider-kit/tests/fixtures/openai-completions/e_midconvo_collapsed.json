@@ -256,5 +256,60 @@
     "durationMs": 23
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "llama-3.3-70b-versatile",
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys\n\ncwd=/a"
+   },
+   {
+    "role": "user",
+    "content": "one"
+   },
+   {
+    "role": "assistant",
+    "content": "ok"
+   },
+   {
+    "role": "user",
+    "content": "<system-reminder>\nUpdated system prompt section \"env\":\n\ncwd=/b\n</system-reminder>"
+   },
+   {
+    "role": "user",
+    "content": "two"
+   }
+  ],
+  "stream": true,
+  "stream_options": {
+   "include_usage": true
+  },
+  "store": false,
+  "max_completion_tokens": 32768,
+  "tools": [
+   {
+    "type": "function",
+    "function": {
+     "name": "write_file",
+     "description": "Write a file",
+     "parameters": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string"
+       },
+       "data": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "path"
+      ]
+     },
+     "strict": false
+    }
+   }
+  ]
+ }
 }

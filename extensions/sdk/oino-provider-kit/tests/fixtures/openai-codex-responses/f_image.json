@@ -324,5 +324,90 @@
     "durationMs": 0
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "gpt-5.6-luna",
+  "store": false,
+  "stream": true,
+  "instructions": "Sys",
+  "input": [
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "what is this"
+     },
+     {
+      "type": "input_image",
+      "detail": "auto",
+      "image_url": "data:image/png;base64,iVBORw0KGgo="
+     }
+    ]
+   },
+   {
+    "type": "function_call",
+    "id": "fc_img",
+    "call_id": "call_img",
+    "name": "read",
+    "arguments": "{\"path\":\"a.png\"}"
+   },
+   {
+    "type": "function_call_output",
+    "call_id": "call_img",
+    "output": [
+     {
+      "type": "input_text",
+      "text": "image:"
+     },
+     {
+      "type": "input_image",
+      "detail": "auto",
+      "image_url": "data:image/png;base64,iVBORw0KGgo="
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_image",
+      "detail": "auto",
+      "image_url": "data:image/png;base64,iVBORw0KGgo="
+     }
+    ]
+   }
+  ],
+  "text": {
+   "verbosity": "low"
+  },
+  "include": [
+   "reasoning.encrypted_content"
+  ],
+  "prompt_cache_key": "sess-1234",
+  "tool_choice": "auto",
+  "parallel_tool_calls": true,
+  "tools": [
+   {
+    "type": "function",
+    "name": "read",
+    "description": "Read a file",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ]
+    },
+    "strict": null
+   }
+  ],
+  "reasoning": {
+   "effort": "none"
+  }
+ }
 }

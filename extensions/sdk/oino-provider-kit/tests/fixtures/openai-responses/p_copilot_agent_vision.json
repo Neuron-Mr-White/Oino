@@ -320,5 +320,79 @@
     "durationMs": 0
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "gpt-5.6-luna",
+  "input": [
+   {
+    "role": "developer",
+    "content": "Sys"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "what is this"
+     },
+     {
+      "type": "input_image",
+      "detail": "auto",
+      "image_url": "data:image/png;base64,iVBORw0KGgo="
+     }
+    ]
+   },
+   {
+    "type": "function_call",
+    "id": "fc_1",
+    "call_id": "call_1",
+    "name": "read",
+    "arguments": "{\"path\":\"a.png\"}"
+   },
+   {
+    "type": "function_call_output",
+    "call_id": "call_1",
+    "output": [
+     {
+      "type": "input_text",
+      "text": "image:"
+     },
+     {
+      "type": "input_image",
+      "detail": "auto",
+      "image_url": "data:image/png;base64,iVBORw0KGgo="
+     }
+    ]
+   }
+  ],
+  "stream": true,
+  "prompt_cache_key": "sess-1234",
+  "store": false,
+  "max_output_tokens": 128000,
+  "tools": [
+   {
+    "type": "function",
+    "name": "read",
+    "description": "Read a file",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ]
+    }
+   }
+  ],
+  "reasoning": {
+   "effort": "medium",
+   "summary": "auto"
+  },
+  "include": [
+   "reasoning.encrypted_content"
+  ]
+ }
 }

@@ -346,5 +346,102 @@
     "durationMs": 30
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "gpt-5.5",
+  "input": [
+   {
+    "role": "developer",
+    "content": "Sys"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "look up x"
+     }
+    ]
+   },
+   {
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "output_text",
+      "text": "Sure.",
+      "annotations": []
+     }
+    ],
+    "status": "completed",
+    "id": "msg_pi_1"
+   },
+   {
+    "type": "function_call",
+    "id": "fc_aaa",
+    "call_id": "call_01",
+    "name": "lookup",
+    "arguments": "{\"q\":\"x\"}"
+   },
+   {
+    "type": "function_call_output",
+    "call_id": "call_01",
+    "output": "42"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "thanks"
+     }
+    ]
+   }
+  ],
+  "stream": true,
+  "prompt_cache_key": "sess-1234",
+  "store": false,
+  "tools": [
+   {
+    "type": "function",
+    "name": "lookup",
+    "description": "Look up a value",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "q": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "q"
+     ]
+    },
+    "strict": false
+   },
+   {
+    "type": "function",
+    "name": "write_file",
+    "description": "Write a file",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "data": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ]
+    },
+    "strict": false
+   }
+  ],
+  "reasoning": {
+   "effort": "none"
+  }
+ }
 }

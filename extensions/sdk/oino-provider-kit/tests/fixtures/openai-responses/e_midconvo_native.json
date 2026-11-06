@@ -345,5 +345,82 @@
     "durationMs": 28
    }
   }
- ]
+ ],
+ "v3RequestBody": {
+  "model": "gpt-5.5",
+  "input": [
+   {
+    "role": "developer",
+    "content": "Sys\n\ncwd=/a"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "one"
+     }
+    ]
+   },
+   {
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "output_text",
+      "text": "ok",
+      "annotations": []
+     }
+    ],
+    "status": "completed",
+    "id": "msg_pi_1"
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "<system-reminder>\nUpdated system prompt section \"env\":\n\ncwd=/b\n</system-reminder>"
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "input_text",
+      "text": "two"
+     }
+    ]
+   }
+  ],
+  "stream": true,
+  "prompt_cache_key": "sess-1234",
+  "store": false,
+  "tools": [
+   {
+    "type": "function",
+    "name": "write_file",
+    "description": "Write a file",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "data": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "path"
+     ]
+    },
+    "strict": false
+   }
+  ],
+  "reasoning": {
+   "effort": "none"
+  }
+ }
 }
