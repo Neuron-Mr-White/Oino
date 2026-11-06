@@ -1008,7 +1008,6 @@
           "type": "toolcall_end",
           "contentIndex": 1,
           "toolCall": {
-            "type": "toolCall",
             "id": "c1",
             "name": "echo",
             "arguments": {
@@ -1155,7 +1154,6 @@
           "type": "toolcall_end",
           "contentIndex": 2,
           "toolCall": {
-            "type": "toolCall",
             "id": "c2",
             "name": "boom",
             "arguments": {}
@@ -1318,7 +1316,6 @@
           "type": "toolcall_end",
           "contentIndex": 3,
           "toolCall": {
-            "type": "toolCall",
             "id": "c3",
             "name": "missing",
             "arguments": {}
@@ -1499,7 +1496,6 @@
           "type": "toolcall_end",
           "contentIndex": 4,
           "toolCall": {
-            "type": "toolCall",
             "id": "c4",
             "name": "echo",
             "arguments": {}
@@ -1659,18 +1655,20 @@
       },
       {
         "type": "tool_execution_end",
-        "toolCallId": "c4",
+        "toolCallId": "c1",
         "toolName": "echo",
         "result": {
           "content": [
             {
               "type": "text",
-              "text": "Validation failed for tool \"echo\":\n  - text: must have required properties text\n\nReceived arguments:\n{}"
+              "text": "echoed"
             }
           ],
-          "details": {}
+          "details": {
+            "n": 1
+          }
         },
-        "isError": true
+        "isError": false
       },
       {
         "type": "tool_execution_update",
@@ -1706,20 +1704,18 @@
       },
       {
         "type": "tool_execution_end",
-        "toolCallId": "c1",
+        "toolCallId": "c4",
         "toolName": "echo",
         "result": {
           "content": [
             {
               "type": "text",
-              "text": "echoed"
+              "text": "Validation failed for tool \"echo\":\n  - text: must have required properties text\n\nReceived arguments:\n{}"
             }
           ],
-          "details": {
-            "n": 1
-          }
+          "details": {}
         },
-        "isError": false
+        "isError": true
       },
       {
         "type": "message_start",
@@ -2629,7 +2625,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "s1",
             "name": "seq",
             "arguments": {
@@ -2764,7 +2759,6 @@
           "type": "toolcall_end",
           "contentIndex": 1,
           "toolCall": {
-            "type": "toolCall",
             "id": "p1",
             "name": "par",
             "arguments": {}
@@ -3590,7 +3584,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "t1",
             "name": "t",
             "arguments": {}
@@ -3786,6 +3779,30 @@
       {
         "type": "message_start",
         "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
           "role": "assistant",
           "content": [],
           "api": "faux",
@@ -3844,46 +3861,41 @@
       },
       {
         "type": "message_update",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "a"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending"
+        },
         "assistantMessageEvent": {
           "type": "text_delta",
           "contentIndex": 0,
           "delta": "a"
-        },
-        "message": {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "a"
-            }
-          ],
-          "api": "faux",
-          "provider": "faux",
-          "model": "faux-1",
-          "usage": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "totalTokens": 0,
-            "cost": {
-              "input": 0,
-              "output": 0,
-              "cacheRead": 0,
-              "cacheWrite": 0,
-              "total": 0
-            }
-          },
-          "stopReason": "pending"
         }
       },
       {
         "type": "message_update",
-        "assistantMessageEvent": {
-          "type": "text_end",
-          "contentIndex": 0,
-          "content": "a"
-        },
         "message": {
           "role": "assistant",
           "content": [
@@ -3910,6 +3922,11 @@
             }
           },
           "stopReason": "pending"
+        },
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "a"
         }
       },
       {
@@ -3925,6 +3942,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -3939,8 +3957,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         }
       },
       {
@@ -3956,6 +3973,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -3970,8 +3988,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         },
         "toolResults": []
       },
@@ -4005,6 +4022,30 @@
       {
         "type": "message_start",
         "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
           "role": "assistant",
           "content": [],
           "api": "faux",
@@ -4029,10 +4070,6 @@
       },
       {
         "type": "message_update",
-        "assistantMessageEvent": {
-          "type": "text_start",
-          "contentIndex": 0
-        },
         "message": {
           "role": "assistant",
           "content": [
@@ -4059,50 +4096,49 @@
             }
           },
           "stopReason": "pending"
+        },
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 0
         }
       },
       {
         "type": "message_update",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "b"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending"
+        },
         "assistantMessageEvent": {
           "type": "text_delta",
           "contentIndex": 0,
           "delta": "b"
-        },
-        "message": {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "b"
-            }
-          ],
-          "api": "faux",
-          "provider": "faux",
-          "model": "faux-1",
-          "usage": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "totalTokens": 0,
-            "cost": {
-              "input": 0,
-              "output": 0,
-              "cacheRead": 0,
-              "cacheWrite": 0,
-              "total": 0
-            }
-          },
-          "stopReason": "pending"
         }
       },
       {
         "type": "message_update",
-        "assistantMessageEvent": {
-          "type": "text_end",
-          "contentIndex": 0,
-          "content": "b"
-        },
         "message": {
           "role": "assistant",
           "content": [
@@ -4129,6 +4165,11 @@
             }
           },
           "stopReason": "pending"
+        },
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "b"
         }
       },
       {
@@ -4144,6 +4185,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -4158,8 +4200,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         }
       },
       {
@@ -4175,6 +4216,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -4189,8 +4231,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         },
         "toolResults": []
       },
@@ -4219,6 +4260,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -4233,8 +4275,7 @@
                 "total": 0
               }
             },
-            "stopReason": "toolUse",
-            "thinkingLevel": "off"
+            "stopReason": "toolUse"
           },
           {
             "role": "toolResult",
@@ -4258,6 +4299,15 @@
             ]
           },
           {
+            "role": "custom",
+            "customType": "oino.system-reminder",
+            "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+            "display": false,
+            "details": {
+              "key": "oino/steering"
+            }
+          },
+          {
             "role": "assistant",
             "content": [
               {
@@ -4268,6 +4318,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -4282,8 +4333,7 @@
                 "total": 0
               }
             },
-            "stopReason": "stop",
-            "thinkingLevel": "off"
+            "stopReason": "stop"
           },
           {
             "role": "user",
@@ -4293,6 +4343,15 @@
                 "text": "steer two"
               }
             ]
+          },
+          {
+            "role": "custom",
+            "customType": "oino.system-reminder",
+            "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+            "display": false,
+            "details": {
+              "key": "oino/steering"
+            }
           },
           {
             "role": "assistant",
@@ -4305,6 +4364,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -4319,8 +4379,7 @@
                 "total": 0
               }
             },
-            "stopReason": "stop",
-            "thinkingLevel": "off"
+            "stopReason": "stop"
           }
         ]
       }
@@ -4401,6 +4460,15 @@
         ]
       },
       {
+        "role": "custom",
+        "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+        "customType": "oino.system-reminder",
+        "display": false,
+        "details": {
+          "key": "oino/steering"
+        }
+      },
+      {
         "role": "assistant",
         "content": [
           {
@@ -4411,6 +4479,7 @@
         "api": "faux",
         "provider": "faux",
         "model": "faux-1",
+        "thinkingLevel": "off",
         "usage": {
           "input": 0,
           "output": 0,
@@ -4425,8 +4494,7 @@
             "total": 0
           }
         },
-        "stopReason": "stop",
-        "thinkingLevel": "off"
+        "stopReason": "stop"
       },
       {
         "role": "user",
@@ -4436,6 +4504,15 @@
             "text": "steer two"
           }
         ]
+      },
+      {
+        "role": "custom",
+        "customType": "oino.system-reminder",
+        "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+        "display": false,
+        "details": {
+          "key": "oino/steering"
+        }
       },
       {
         "role": "assistant",
@@ -4448,6 +4525,7 @@
         "api": "faux",
         "provider": "faux",
         "model": "faux-1",
+        "thinkingLevel": "off",
         "usage": {
           "input": 0,
           "output": 0,
@@ -4462,8 +4540,7 @@
             "total": 0
           }
         },
-        "stopReason": "stop",
-        "thinkingLevel": "off"
+        "stopReason": "stop"
       }
     ],
     "errorMessage": null
@@ -4605,7 +4682,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "t1",
             "name": "t",
             "arguments": {}
@@ -4825,6 +4901,30 @@
       {
         "type": "message_start",
         "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
           "role": "assistant",
           "content": [],
           "api": "faux",
@@ -4883,46 +4983,41 @@
       },
       {
         "type": "message_update",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "a"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending"
+        },
         "assistantMessageEvent": {
           "type": "text_delta",
           "contentIndex": 0,
           "delta": "a"
-        },
-        "message": {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "a"
-            }
-          ],
-          "api": "faux",
-          "provider": "faux",
-          "model": "faux-1",
-          "usage": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "totalTokens": 0,
-            "cost": {
-              "input": 0,
-              "output": 0,
-              "cacheRead": 0,
-              "cacheWrite": 0,
-              "total": 0
-            }
-          },
-          "stopReason": "pending"
         }
       },
       {
         "type": "message_update",
-        "assistantMessageEvent": {
-          "type": "text_end",
-          "contentIndex": 0,
-          "content": "a"
-        },
         "message": {
           "role": "assistant",
           "content": [
@@ -4949,6 +5044,11 @@
             }
           },
           "stopReason": "pending"
+        },
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "a"
         }
       },
       {
@@ -4964,6 +5064,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -4978,8 +5079,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         }
       },
       {
@@ -4995,6 +5095,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -5009,8 +5110,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         },
         "toolResults": []
       },
@@ -5039,6 +5139,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -5053,8 +5154,7 @@
                 "total": 0
               }
             },
-            "stopReason": "toolUse",
-            "thinkingLevel": "off"
+            "stopReason": "toolUse"
           },
           {
             "role": "toolResult",
@@ -5087,6 +5187,15 @@
             ]
           },
           {
+            "role": "custom",
+            "customType": "oino.system-reminder",
+            "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+            "display": false,
+            "details": {
+              "key": "oino/steering"
+            }
+          },
+          {
             "role": "assistant",
             "content": [
               {
@@ -5097,6 +5206,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -5111,8 +5221,7 @@
                 "total": 0
               }
             },
-            "stopReason": "stop",
-            "thinkingLevel": "off"
+            "stopReason": "stop"
           }
         ]
       }
@@ -5202,6 +5311,15 @@
         ]
       },
       {
+        "role": "custom",
+        "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+        "customType": "oino.system-reminder",
+        "display": false,
+        "details": {
+          "key": "oino/steering"
+        }
+      },
+      {
         "role": "assistant",
         "content": [
           {
@@ -5212,6 +5330,7 @@
         "api": "faux",
         "provider": "faux",
         "model": "faux-1",
+        "thinkingLevel": "off",
         "usage": {
           "input": 0,
           "output": 0,
@@ -5226,8 +5345,7 @@
             "total": 0
           }
         },
-        "stopReason": "stop",
-        "thinkingLevel": "off"
+        "stopReason": "stop"
       }
     ],
     "errorMessage": null
@@ -5369,7 +5487,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "t1",
             "name": "t",
             "arguments": {}
@@ -5760,6 +5877,30 @@
       {
         "type": "message_start",
         "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "custom",
+          "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+          "customType": "oino.system-reminder",
+          "display": false,
+          "details": {
+            "key": "oino/steering"
+          }
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
           "role": "assistant",
           "content": [],
           "api": "faux",
@@ -5818,46 +5959,41 @@
       },
       {
         "type": "message_update",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "b"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending"
+        },
         "assistantMessageEvent": {
           "type": "text_delta",
           "contentIndex": 0,
           "delta": "b"
-        },
-        "message": {
-          "role": "assistant",
-          "content": [
-            {
-              "type": "text",
-              "text": "b"
-            }
-          ],
-          "api": "faux",
-          "provider": "faux",
-          "model": "faux-1",
-          "usage": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0,
-            "totalTokens": 0,
-            "cost": {
-              "input": 0,
-              "output": 0,
-              "cacheRead": 0,
-              "cacheWrite": 0,
-              "total": 0
-            }
-          },
-          "stopReason": "pending"
         }
       },
       {
         "type": "message_update",
-        "assistantMessageEvent": {
-          "type": "text_end",
-          "contentIndex": 0,
-          "content": "b"
-        },
         "message": {
           "role": "assistant",
           "content": [
@@ -5884,6 +6020,11 @@
             }
           },
           "stopReason": "pending"
+        },
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "b"
         }
       },
       {
@@ -5899,6 +6040,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -5913,8 +6055,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         }
       },
       {
@@ -5930,6 +6071,7 @@
           "api": "faux",
           "provider": "faux",
           "model": "faux-1",
+          "thinkingLevel": "off",
           "usage": {
             "input": 0,
             "output": 0,
@@ -5944,8 +6086,7 @@
               "total": 0
             }
           },
-          "stopReason": "stop",
-          "thinkingLevel": "off"
+          "stopReason": "stop"
         },
         "toolResults": []
       },
@@ -5974,6 +6115,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -5988,8 +6130,7 @@
                 "total": 0
               }
             },
-            "stopReason": "toolUse",
-            "thinkingLevel": "off"
+            "stopReason": "toolUse"
           },
           {
             "role": "toolResult",
@@ -6014,6 +6155,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -6028,8 +6170,7 @@
                 "total": 0
               }
             },
-            "stopReason": "stop",
-            "thinkingLevel": "off"
+            "stopReason": "stop"
           },
           {
             "role": "user",
@@ -6039,6 +6180,15 @@
                 "text": "later"
               }
             ]
+          },
+          {
+            "role": "custom",
+            "customType": "oino.system-reminder",
+            "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+            "display": false,
+            "details": {
+              "key": "oino/steering"
+            }
           },
           {
             "role": "assistant",
@@ -6051,6 +6201,7 @@
             "api": "faux",
             "provider": "faux",
             "model": "faux-1",
+            "thinkingLevel": "off",
             "usage": {
               "input": 0,
               "output": 0,
@@ -6065,8 +6216,7 @@
                 "total": 0
               }
             },
-            "stopReason": "stop",
-            "thinkingLevel": "off"
+            "stopReason": "stop"
           }
         ]
       }
@@ -6175,6 +6325,15 @@
         ]
       },
       {
+        "role": "custom",
+        "content": "<system-reminder>\nA follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.\n</system-reminder>",
+        "customType": "oino.system-reminder",
+        "display": false,
+        "details": {
+          "key": "oino/steering"
+        }
+      },
+      {
         "role": "assistant",
         "content": [
           {
@@ -6185,6 +6344,7 @@
         "api": "faux",
         "provider": "faux",
         "model": "faux-1",
+        "thinkingLevel": "off",
         "usage": {
           "input": 0,
           "output": 0,
@@ -6199,8 +6359,7 @@
             "total": 0
           }
         },
-        "stopReason": "stop",
-        "thinkingLevel": "off"
+        "stopReason": "stop"
       }
     ],
     "errorMessage": null
@@ -6342,7 +6501,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "t1",
             "name": "t",
             "arguments": {}
@@ -7221,7 +7379,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "x1",
             "name": "stop",
             "arguments": {}
@@ -7348,7 +7505,6 @@
           "type": "toolcall_end",
           "contentIndex": 1,
           "toolCall": {
-            "type": "toolCall",
             "id": "x2",
             "name": "stop",
             "arguments": {}
@@ -7895,7 +8051,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "d1",
             "name": "danger",
             "arguments": {}
@@ -8022,7 +8177,6 @@
           "type": "toolcall_end",
           "contentIndex": 1,
           "toolCall": {
-            "type": "toolCall",
             "id": "e1",
             "name": "echo",
             "arguments": {}
@@ -9396,7 +9550,6 @@
           "type": "toolcall_end",
           "contentIndex": 0,
           "toolCall": {
-            "type": "toolCall",
             "id": "t1",
             "name": "t",
             "arguments": {}

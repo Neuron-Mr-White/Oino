@@ -174,18 +174,11 @@ fn loader_output_feeds_the_system_prompt() {
     };
     let sections = build_system_prompt_sections(&options, Path::new("/docs")).unwrap();
     let names: Vec<_> = sections.keys().map(String::as_str).collect();
-    assert_eq!(
-        names,
-        [
-            "preamble",
-            "tools",
-            "rules",
-            "docs",
-            "addendum",
-            "project_context",
-            "skills",
-            "cwd"
-        ]
+    assert_eq!(names, ["preamble", "docs", "addendum"]);
+    assert!(
+        !sections
+            .values()
+            .any(|text| text.contains("Be nice.") || text.contains("<name>s</name>"))
     );
     assert_eq!(sections["addendum"], "<addendum>\nAppended.\n</addendum>");
 }
