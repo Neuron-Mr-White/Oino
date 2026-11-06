@@ -220,7 +220,7 @@ pub fn is_trivial_shell(command: &str) -> bool {
             i += 2;
             continue;
         }
-        if quote != b'\'' && (rest[i..].starts_with("$(") || c == b'`') {
+        if quote != b'\'' && (b[i..].starts_with(b"$(") || c == b'`') {
             return false;
         }
         if quote != 0 {
@@ -235,12 +235,12 @@ pub fn is_trivial_shell(command: &str) -> bool {
             i += 1;
             continue;
         }
-        if c == b'>' || rest[i..].starts_with("<<") {
+        if c == b'>' || b[i..].starts_with(b"<<") {
             return false;
         }
-        if c == b';' || c == b'|' || c == b'\n' || rest[i..].starts_with("&&") {
+        if c == b';' || c == b'|' || c == b'\n' || b[i..].starts_with(b"&&") {
             segments.push(&rest[start..i]);
-            if rest[i..].starts_with("&&") || rest[i..].starts_with("||") {
+            if b[i..].starts_with(b"&&") || b[i..].starts_with(b"||") {
                 i += 1;
             }
             start = i + 1;
@@ -276,6 +276,15 @@ pub fn estimate_savings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_ascii_commands_never_panic() {
+        // A byte index inside a multi-byte char used to slice the str (panic → trap, owner logs
+        // 2026-11-04/06).
+        assert!(is_trivial_shell("echo \"阿里云 ok\""));
+        assert!(!is_trivial_shell("echo 阿里 && rm -rf x"));
+        assert!(!is_trivial_shell("cat 中文.txt > out"));
+    }
 
     #[test]
     fn trivial_shell_table() {
