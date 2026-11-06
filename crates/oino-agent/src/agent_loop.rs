@@ -126,6 +126,7 @@ async fn run_loop(
     let mut last_turn: Option<CompletedTurn> = None;
     let mut explicit_continuation = false;
     let mut pending = poll(config.get_steering_messages.as_ref()).await;
+    let mut guards = LoopGuards::new(&current.messages);
 
     loop {
         let mut has_more_tool_calls = true;
@@ -154,6 +155,7 @@ async fn run_loop(
                 sink.emit(AgentEvent::TurnStart).await;
             }
 
+            let steering = pending.iter().any(|m| matches!(m, AgentMessage::User(_)));
             prepared.append(&mut pending);
             for message in declare_tool_changes(&current, prepared) {
                 sink.emit(AgentEvent::MessageStart {
@@ -166,6 +168,19 @@ async fn run_loop(
                 .await;
                 current.messages.push(message.clone());
                 new_messages.push(message);
+            }
+
+            if steering {
+                guards.reset_turn();
+                append_guard_message(
+                    &mut current,
+                    new_messages,
+                    sink,
+                    "steering",
+                    STEERING,
+                    false,
+                )
+                .await;
             }
 
             if let Some(hook) = &config.prepare_request {
@@ -211,9 +226,80 @@ async fn run_loop(
             }
 
             let tool_calls = tool_calls_of(&message);
+            let empty = tool_calls.is_empty()
+                && !message
+                    .content
+                    .iter()
+                    .any(|b| matches!(b, AssistantContent::Text(t) if !t.text.trim().is_empty()));
+            guards.empty = if empty { guards.empty + 1 } else { 0 };
+            let degenerate = degenerate_output(&message);
+            let repeated = !degenerate && guards.repeated_calls(&tool_calls);
+            let stop_notice = if guards.empty >= 3 {
+                Some("Oino stopped after three consecutive empty responses.")
+            } else if repeated {
+                Some("Oino stopped before executing three consecutive identical tool calls.")
+            } else if degenerate && guards.resamples >= 3 {
+                Some("Oino stopped after three resamples of degenerate output.")
+            } else {
+                None
+            };
+            if let Some(notice) = stop_notice {
+                let mut stopped_results = Vec::new();
+                if !tool_calls.is_empty() {
+                    let batch = fail_guarded_tool_calls(&tool_calls, notice, sink).await;
+                    stopped_results = batch.messages;
+                    for result in &stopped_results {
+                        current
+                            .messages
+                            .push(AgentMessage::ToolResult(result.clone()));
+                        new_messages.push(AgentMessage::ToolResult(result.clone()));
+                    }
+                }
+                sink.emit(AgentEvent::TurnEnd {
+                    message: AgentMessage::Assistant(message),
+                    tool_results: stopped_results,
+                })
+                .await;
+                append_guard_message(&mut current, new_messages, sink, "stop", notice, true).await;
+                sink.emit(AgentEvent::AgentEnd {
+                    messages: new_messages.clone(),
+                })
+                .await;
+                return Ok(());
+            }
+            let recover = empty || degenerate;
+            if degenerate {
+                guards.resamples += 1;
+            } else if !empty {
+                guards.resamples = 0;
+            }
             let mut tool_results = Vec::new();
+            if recover && !tool_calls.is_empty() {
+                let batch = fail_guarded_tool_calls(
+                    &tool_calls,
+                    "Output was degenerate; resample before running tools.",
+                    sink,
+                )
+                .await;
+                tool_results = batch.messages;
+                for result in &tool_results {
+                    current
+                        .messages
+                        .push(AgentMessage::ToolResult(result.clone()));
+                    new_messages.push(AgentMessage::ToolResult(result.clone()));
+                }
+            }
+            if recover {
+                let text = if empty && message.stop_reason == StopReason::Length {
+                    "Continue."
+                } else {
+                    "The previous response was empty or degenerate. Try again without repeating it."
+                };
+                append_guard_message(&mut current, new_messages, sink, "resample", text, false)
+                    .await;
+            }
             has_more_tool_calls = false;
-            if !tool_calls.is_empty() {
+            if !recover && !tool_calls.is_empty() {
                 let batch = if message.stop_reason == StopReason::Length {
                     fail_truncated_tool_calls(&tool_calls, sink).await
                 } else {
@@ -229,6 +315,25 @@ async fn run_loop(
                 }
             }
 
+            let mut guard_continue = recover;
+            if !recover {
+                if let Some((key, text)) = guards.completed(&message, &tool_results) {
+                    append_guard_message(&mut current, new_messages, sink, key, text, false).await;
+                }
+                if tool_calls_of(&message).is_empty() && guards.open && !guards.settled {
+                    guards.settled = true;
+                    guard_continue = true;
+                    append_guard_message(
+                        &mut current,
+                        new_messages,
+                        sink,
+                        "todo-settle",
+                        TODO_SETTLE,
+                        false,
+                    )
+                    .await;
+                }
+            }
             let decision = match &config.finish_turn {
                 Some(hook) => {
                     let cx = AgentTurnContext {
@@ -250,14 +355,14 @@ async fn run_loop(
                 message,
                 tool_results,
             });
-            if decision == Some(TurnDecision::End) {
+            if decision == Some(TurnDecision::End) && !guard_continue {
                 sink.emit(AgentEvent::AgentEnd {
                     messages: new_messages.clone(),
                 })
                 .await;
                 return Ok(());
             }
-            explicit_continuation = decision == Some(TurnDecision::Continue);
+            explicit_continuation = guard_continue || decision == Some(TurnDecision::Continue);
             pending = poll(config.get_steering_messages.as_ref()).await;
             if has_more_tool_calls || !pending.is_empty() {
                 explicit_continuation = false;
@@ -281,6 +386,211 @@ async fn run_loop(
     })
     .await;
     Ok(())
+}
+
+const TODO_MISSING: &str = "TodoWrite has not been called. If the task requires 3 or more distinct actions or tool calls, create a list and keep it current; otherwise ignore this reminder. Performance tip: call the TodoWrite tool in parallel to the main flow related tool calls to save user's time and tokens.";
+const TODO_STALE: &str = "IMPORTANT: Your todo list has pending items but hasn't been updated in a while. Update it with todowrite to reflect your current progress: mark finished items completed and keep exactly one item in_progress.";
+const TODO_SETTLE: &str = "IMPORTANT: You may be ending the turn, but the TodoWrite plan still has open items. Continue working on every actionable pending or in-progress item before ending the turn. Do not stop merely because the plan is accurate. Call TodoWrite as work finishes. Once no actionable work remains, end the turn by replying with no text and no tool calls.\nDo not reference this reminder to the user.";
+const STEERING: &str = "A follow-up user message arrived while you were working. Treat it as steering, not implicit cancellation. Continue all earlier actionable instructions unless the user explicitly canceled or replaced them. Respect blockers that require user input.";
+
+#[derive(Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent list presence, open-item and one-shot reminder flags"
+)]
+struct LoopGuards {
+    calls: usize,
+    has_list: bool,
+    open: bool,
+    nagged: bool,
+    settled: bool,
+    empty: usize,
+    resamples: usize,
+    previous_call: Option<(String, serde_json::Value)>,
+    repeats: usize,
+}
+
+impl LoopGuards {
+    fn new(messages: &[AgentMessage]) -> Self {
+        let mut state = Self::default();
+        // Restore the list, but never historical counters, for existing sessions.
+        for message in messages {
+            if let AgentMessage::Assistant(assistant) = message {
+                for call in tool_calls_of(assistant) {
+                    if messages.iter().any(|m| {
+                        matches!(m, AgentMessage::ToolResult(r)
+                        if r.tool_call_id == call.id && !r.is_error)
+                    }) {
+                        state.update_list(&call);
+                    }
+                }
+            }
+        }
+        state
+    }
+
+    fn reset_turn(&mut self) {
+        self.empty = 0;
+        self.resamples = 0;
+        self.previous_call = None;
+        self.repeats = 0;
+        self.settled = false;
+    }
+
+    fn update_list(&mut self, call: &ToolCall) -> bool {
+        if call.name.eq_ignore_ascii_case("todowrite")
+            && let Some(todos) = call
+                .arguments
+                .get("todos")
+                .and_then(serde_json::Value::as_array)
+        {
+            self.has_list = true;
+            self.open = todos
+                .iter()
+                .any(|todo| matches!(todo["status"].as_str(), Some("pending" | "in_progress")));
+            self.calls = 0;
+            self.nagged = false;
+            self.settled = false;
+            return true;
+        }
+        false
+    }
+
+    fn completed(
+        &mut self,
+        message: &AssistantMessage,
+        results: &[ToolResultMessage],
+    ) -> Option<(&'static str, &'static str)> {
+        for call in tool_calls_of(message) {
+            if let Some(result) = results.iter().find(|r| r.tool_call_id == call.id) {
+                if !result.is_error && self.update_list(&call) {
+                    continue;
+                }
+                self.calls += 1;
+            }
+        }
+        if !self.nagged && ((!self.has_list && self.calls >= 5) || (self.open && self.calls >= 20))
+        {
+            self.nagged = true;
+            return Some(if self.has_list {
+                ("todo-stale", TODO_STALE)
+            } else {
+                ("todo-missing", TODO_MISSING)
+            });
+        }
+        None
+    }
+
+    fn repeated_calls(&mut self, calls: &[ToolCall]) -> bool {
+        for call in calls {
+            let key = (
+                call.name.clone(),
+                canonical_json(serde_json::Value::Object(call.arguments.clone())),
+            );
+            if self.previous_call.as_ref() == Some(&key) {
+                self.repeats += 1;
+            } else {
+                self.previous_call = Some(key);
+                self.repeats = 1;
+            }
+            if self.repeats >= 3 {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn canonical_json(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let sorted: std::collections::BTreeMap<_, _> = map
+                .into_iter()
+                .map(|(k, v)| (k, canonical_json(v)))
+                .collect();
+            serde_json::Value::Object(sorted.into_iter().collect())
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(canonical_json).collect())
+        }
+        other => other,
+    }
+}
+
+// Exact repeated lines are a conservative signal: never guess from prose similarity.
+fn degenerate_output(message: &AssistantMessage) -> bool {
+    message.content.iter().any(|block| {
+        let text = match block {
+            AssistantContent::Text(t) => &t.text,
+            AssistantContent::Thinking(t) => &t.thinking,
+            AssistantContent::ToolCall(_) => return false,
+        };
+        let lines: Vec<_> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        lines.len() >= 16 && lines.iter().all(|line| *line == lines[0])
+    })
+}
+
+async fn append_guard_message(
+    current: &mut AgentContext,
+    new_messages: &mut Vec<AgentMessage>,
+    sink: &dyn EventSink,
+    key: &str,
+    text: &str,
+    display: bool,
+) {
+    // Same trusted channel as wp-cache's append_reminder. MessageEnd persists it
+    // through the session listener before prepare_request projects the next tail.
+    let message = AgentMessage::Custom(oino_ai::CustomMessage {
+        custom_type: if display {
+            "oino.loop-notice"
+        } else {
+            "oino.system-reminder"
+        }
+        .into(),
+        content: oino_ai::UserContentField::Text(if display {
+            text.into()
+        } else {
+            format!("<system-reminder>\n{text}\n</system-reminder>")
+        }),
+        display,
+        details: Some(serde_json::json!({"key": format!("oino/{key}")})),
+        timestamp: now_ms(),
+    });
+    current.messages.push(message.clone());
+    new_messages.push(message.clone());
+    sink.emit(AgentEvent::MessageStart {
+        message: message.clone(),
+    })
+    .await;
+    sink.emit(AgentEvent::MessageEnd { message }).await;
+}
+
+async fn fail_guarded_tool_calls(
+    calls: &[ToolCall],
+    reason: &str,
+    sink: &dyn EventSink,
+) -> ToolBatch {
+    let mut messages = Vec::new();
+    for call in calls {
+        emit_start(call, sink).await;
+        let outcome = ToolCallOutcome {
+            tool_call: call.clone(),
+            result: AgentToolResult::error(reason),
+            is_error: true,
+            duration_ms: None,
+        };
+        emit_end(&outcome, sink).await;
+        let message = tool_result_message(&outcome);
+        emit_result_message(&message, sink).await;
+        messages.push(message);
+    }
+    ToolBatch {
+        messages,
+        terminate: true,
+    }
 }
 
 async fn poll(source: Option<&Arc<dyn crate::config::QueueSource>>) -> Vec<AgentMessage> {
