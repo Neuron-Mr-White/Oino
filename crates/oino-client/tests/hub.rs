@@ -546,7 +546,9 @@ async fn idle_eviction_disposes_releases_and_reopen_continues() {
 #[tokio::test]
 async fn running_bash_prevents_idle_eviction() {
     let (dir, hub, _loads, _provider) = hub_with(
-        Some(r#"{"extensionSettings":{"hub":{"sessionIdleSec":1}}}"#),
+        Some(
+            r#"{"autonomy":{"defaultLevel":"high"},"extensionSettings":{"hub":{"sessionIdleSec":1}}}"#,
+        ),
         Vec::new(),
         Vec::new(),
         ToolSelection::Default,

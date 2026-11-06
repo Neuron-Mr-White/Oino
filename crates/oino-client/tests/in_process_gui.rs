@@ -212,7 +212,10 @@ async fn frontend_api_covers_the_gui_feeds() {
         .await
         .unwrap();
     backend.runtime().session().wait_for_idle().await;
-    assert_eq!(std::fs::read_to_string(f.cwd.join("a.txt")).unwrap(), "new");
+    assert_eq!(
+        std::fs::read_to_string(f.cwd.join("a.txt")).unwrap(),
+        "new\n"
+    );
     let checkpoints = backend.checkpoints().await.unwrap();
     assert_eq!(checkpoints.len(), 1);
     let old_id = backend.session_id();

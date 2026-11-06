@@ -158,19 +158,47 @@ fn binary_carries_no_bundled_components() {
     );
 }
 
-/// The system message sections of a `--mode json` run.
+/// Inspect the persisted startup prefix through RPC; A/C no longer emit it as a turn event.
 fn system_sections(sandbox: &Sandbox, package: &Path, envs: &[(&str, &str)]) -> Value {
-    let output = sandbox.run(package, &["--mode", "json", "hi"], envs);
+    use std::io::Write as _;
+    let mut child = sandbox
+        .command(package, &["--mode", "rpc", "--no-session"], envs)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"{\"type\":\"get_messages\",\"id\":\"prefix\"}\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
     assert!(output.status.success(), "{}", stderr(&output));
     let events: Vec<Value> = stdout(&output)
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let system = events
+    let response = events
         .iter()
-        .find(|e| e["type"] == "message_end" && e["message"]["role"] == "system")
-        .expect("system message");
-    system["message"]["sections"].clone()
+        .find(|e| e["id"] == "prefix")
+        .expect("messages response");
+    let system = &response["data"]["messages"][0];
+    assert_eq!(system["role"], "system");
+    let text = system["content"].as_str().unwrap();
+    let names = system["toolsAdded"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut sections = serde_json::json!({"preamble": text, "tools": names});
+    if text.contains("<docs>") {
+        sections["docs"] = Value::String(text.into());
+    }
+    sections
 }
 
 #[test]
@@ -192,7 +220,7 @@ fn share_dir_feeds_packages_and_docs_root() {
     // The share packages load and the docs section points at the staged docs tree.
     let sections = system_sections(&sandbox, &package, &[]);
     let tools = sections["tools"].as_str().unwrap();
-    for tool in ["bg_run", "memory_search", "web_search", "plan_submit"] {
+    for tool in ["task_output", "memory_search", "web_search", "plan_submit"] {
         assert!(tools.contains(tool), "{tool} missing from {tools}");
     }
     let docs = sections["docs"].as_str().unwrap();

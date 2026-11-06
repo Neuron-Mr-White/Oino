@@ -213,7 +213,7 @@ fn extension_and_core_settings_round_trip() {
     let defaults =
         rpc.ok(json!({"type": "_oino/get_extension_settings", "namespace": "oino.compaction"}));
     assert_eq!(defaults["values"]["enabled"], true);
-    assert_eq!(defaults["values"]["reserveTokens"], 16_384);
+    assert_eq!(defaults["values"]["tokenLimit"], 250_000);
     assert_eq!(defaults["diagnostics"], json!([]));
     rpc.ok(json!({"type": "_oino/set_extension_setting", "namespace": "oino.compaction", "key": "enabled", "value": false, "scope": "global"}));
     let stored: Value = serde_json::from_str(
@@ -240,12 +240,12 @@ fn extension_and_core_settings_round_trip() {
     );
     // An invalid stored value resolves to the layer below and is reported.
     rpc.ok(
-        json!({"type": "_oino/set_setting", "key": "compaction.reserveTokens", "value": "lots", "scope": "global"}),
+        json!({"type": "_oino/set_setting", "key": "compaction.tokenLimit", "value": "lots", "scope": "global"}),
     );
     let values =
         rpc.ok(json!({"type": "_oino/get_extension_settings", "namespace": "oino.compaction"}));
-    assert_eq!(values["values"]["reserveTokens"], 16_384);
-    assert_eq!(values["diagnostics"][0]["key"], "reserveTokens");
+    assert_eq!(values["values"]["tokenLimit"], 250_000);
+    assert_eq!(values["diagnostics"][0]["key"], "tokenLimit");
     assert_eq!(rpc.close(), Some(0));
 }
 

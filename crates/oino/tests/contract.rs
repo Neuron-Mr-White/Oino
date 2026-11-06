@@ -39,7 +39,7 @@ async fn in_process(sandbox: &Sandbox) -> Arc<dyn SessionBackend> {
     let services = Services::create(ServicesOptions {
         cwd: sandbox.cwd(),
         agent_dir: sandbox.agent(),
-        docs_root: sandbox.agent(),
+        docs_root: "/oino-contract-docs".into(),
         mode: ExtensionMode::Rpc,
         has_ui: true,
         flags: ResourceFlags {
@@ -91,6 +91,7 @@ async fn over_rpc(sandbox: &Sandbox) -> Arc<dyn SessionBackend> {
                 sandbox.agent().display().to_string(),
             ),
             ("OINO_FAUX_API_KEY".into(), "faux-key".into()),
+            ("OINO_DOCS_ROOT".into(), "/oino-contract-docs".into()),
             ("OINO_FAUX_RESPONSES".into(), SCRIPT.into()),
         ],
     });
@@ -225,12 +226,22 @@ async fn scenario(backend: Arc<dyn SessionBackend>) -> Observed {
             break Some(reason);
         }
     };
-    let messages_after_new = backend
+    let mut messages_after_new = backend
         .send(AgentCommand::GetMessages.into())
         .await
         .unwrap()
         .unwrap()["messages"]
         .clone();
+    for message in messages_after_new.as_array_mut().unwrap() {
+        message.as_object_mut().unwrap().shift_remove("timestamp");
+        if message["customType"] == "oino.session-start" {
+            let text = message["content"].as_str().unwrap();
+            assert!(text.contains("Workspace snapshot captured once at session start:"));
+            let marker = "Session working directory: ";
+            let cwd = text.split(marker).nth(1).unwrap().lines().next().unwrap();
+            message["content"] = json!(text.replace(cwd, "<cwd>"));
+        }
+    }
     backend.shutdown().await;
     Observed {
         kinds,

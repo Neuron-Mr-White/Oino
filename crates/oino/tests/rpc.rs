@@ -122,7 +122,7 @@ fn prompt_streams_pi_events_after_its_response() {
         .find(|e| e["type"] == "tool_execution_end")
         .unwrap();
     assert_eq!(end["toolCallId"], "c1");
-    assert_eq!(end["result"]["content"][0]["text"], "alpha\n");
+    assert_eq!(end["result"]["content"][0]["text"], "alpha");
     assert!(
         events
             .iter()
@@ -286,6 +286,7 @@ fn queueing_steering_follow_up_clear_and_abort() {
 #[test]
 fn bash_streams_updates_with_the_request_id() {
     let sandbox = Sandbox::new();
+    sandbox.write_settings(&json!({"autonomy":{"defaultLevel":"high"}}));
     let mut rpc = sandbox.rpc(&json!([]), &["--no-session"]);
     let id = rpc.send(json!({"type": "bash", "command": "printf 'one\\ntwo\\n'"}));
     let (response, before) = rpc.until(|v| v["type"] == "response" && v["id"] == id);
@@ -403,7 +404,7 @@ fn session_commands_entries_tree_fork_clone_switch_export_stats() {
     );
     let fresh = rpc.ok(json!({"type": "get_state"}));
     assert_ne!(fresh["sessionId"], state["sessionId"]);
-    assert_eq!(fresh["messageCount"], 0);
+    assert_eq!(fresh["messageCount"], 2);
     assert_eq!(
         rpc.ok(json!({"type": "get_last_assistant_text"})),
         json!({"text": null})
