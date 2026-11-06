@@ -34,6 +34,9 @@ pub struct HostInfoData {
     pub tools: HostTools,
     /// Paired phones.
     pub devices: u32,
+    /// Sessions running or waiting on work (live update swaps an old host only at 0).
+    #[serde(default)]
+    pub busy: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

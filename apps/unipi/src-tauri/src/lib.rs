@@ -42,8 +42,8 @@ mod local_host;
 mod lsp;
 mod net;
 mod no_window;
-mod open_local;
 mod op_stream;
+mod open_local;
 mod pair_phone;
 mod path_kind;
 mod push;
@@ -148,6 +148,8 @@ pub fn run() {
             chat::session_close,
             chat::session_move,
             chat::session_meta_set,
+            chat::draft_get,
+            chat::draft_set,
             chat::events_open,
             chat::events_close,
             chat::events_focus,
@@ -303,6 +305,10 @@ pub fn run() {
                     let shared = app.state::<host_supervisor::Shared>().inner().clone();
                     let bin = host_supervisor::host_bin(Some(app.handle()));
                     tauri::async_runtime::spawn(async move {
+                        // A .deb/.rpm update replaces this binary under us: the restart after it
+                        // keeps the host (live update, owner 2026-11-06).
+                        #[cfg(target_os = "linux")]
+                        host_supervisor::watch_binary_replaced(dir.clone());
                         let (plan, supervisor) = host_supervisor::decide(&dir, bin.as_deref());
                         if let Some(s) = supervisor {
                             *shared.0.lock().await = Some(s);

@@ -168,6 +168,11 @@ pub async fn app_update_install(
         .install(bytes)
         .map_err(|e| err(format!("Install failed: {e}")))?;
     log::info!("updated to {}; relaunching", update.version);
+    // Live update (owner 2026-11-06): the host outlives this restart and the new app takes it
+    // over, so running tasks go on.
+    if let Some(dir) = crate::local_host::host_dir() {
+        crate::host_supervisor::arm_handoff(&dir).await;
+    }
     app.restart();
 }
 

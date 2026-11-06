@@ -256,3 +256,135 @@ fn exit_with_parent_records_a_clean_stop() {
     assert!(!open, "{outcomes:?}");
     assert_eq!(outcomes, vec!["stopped".to_owned()]);
 }
+
+/// One local-only request over `<dir>/app.sock` → the `ok` reply's data.
+fn local_request(dir: &std::path::Path, req: serde_json::Value) -> serde_json::Value {
+    use std::io::{Read, Write};
+    let mut stream =
+        std::os::unix::net::UnixStream::connect(dir.join("app.sock")).expect("app.sock");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let hello =
+        serde_json::json!({"type": "hello", "proto": unipi_proto::PROTO_VERSION, "req": req});
+    stream
+        .write_all(&unipi_proto::frame::encode(
+            unipi_proto::FrameKind::Control,
+            hello.to_string().as_bytes(),
+        ))
+        .unwrap();
+    let mut head = [0u8; 5];
+    stream.read_exact(&mut head).unwrap();
+    let len = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
+    let mut body = vec![0; len];
+    stream.read_exact(&mut body).unwrap();
+    let reply: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(reply["type"], "ok", "{reply}");
+    reply["data"].clone()
+}
+
+fn wait_socket(dir: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while std::os::unix::net::UnixStream::connect(dir.join("app.sock")).is_err() {
+        assert!(Instant::now() < deadline, "app.sock never came up");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Live update (owner 2026-11-06): an armed handoff outlives the app; the next app adopts the
+/// host (refused while the old one lives) and the host then ends with the new app.
+#[test]
+fn a_handed_off_host_waits_for_the_next_app_and_follows_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut parent = Command::new("sleep").arg("120").spawn().unwrap();
+    let mut host = serve(
+        dir.path(),
+        &[
+            "--mode",
+            "app",
+            "--exit-with-parent",
+            &parent.id().to_string(),
+        ],
+    );
+    wait_running_for(dir.path(), &mut [&mut host]);
+    wait_socket(dir.path());
+    let mut next = Command::new("sleep").arg("120").spawn().unwrap();
+    // A second app window never takes the host from a live app.
+    let refused = local_request(
+        dir.path(),
+        serde_json::json!({"op": "host_adopt", "pid": next.id()}),
+    );
+    assert_eq!(refused["adopted"], false);
+    let armed = local_request(
+        dir.path(),
+        serde_json::json!({"op": "host_handoff", "grace_secs": 60}),
+    );
+    assert_eq!(armed["armed"], true);
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("parent.json")).unwrap())
+            .unwrap();
+    assert_eq!(state["armed"], true);
+    parent.kill().unwrap();
+    parent.wait().unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(
+        host.try_wait().unwrap().is_none(),
+        "the handed-off host ended with its old app"
+    );
+    let adopted = local_request(
+        dir.path(),
+        serde_json::json!({"op": "host_adopt", "pid": next.id()}),
+    );
+    assert_eq!(adopted["adopted"], true);
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("parent.json")).unwrap())
+            .unwrap();
+    assert_eq!(state["parent"], next.id());
+    assert_eq!(state["armed"], false);
+    assert_eq!(
+        local_request(dir.path(), serde_json::json!({"op": "host_info"}))["busy"],
+        0
+    );
+    next.kill().unwrap();
+    next.wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while host.try_wait().unwrap().is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "the adopted host outlived its new app by > 3 s"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Nobody adopts a handed-off host: it still ends when the grace runs out (no daemon).
+#[test]
+fn an_unadopted_handoff_ends_after_its_grace() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut parent = Command::new("sleep").arg("120").spawn().unwrap();
+    let mut host = serve(
+        dir.path(),
+        &[
+            "--mode",
+            "app",
+            "--exit-with-parent",
+            &parent.id().to_string(),
+        ],
+    );
+    wait_running_for(dir.path(), &mut [&mut host]);
+    wait_socket(dir.path());
+    assert_eq!(
+        local_request(
+            dir.path(),
+            serde_json::json!({"op": "host_handoff", "grace_secs": 2})
+        )["armed"],
+        true
+    );
+    parent.kill().unwrap();
+    parent.wait().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while host.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline, "an unadopted host never ended");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}

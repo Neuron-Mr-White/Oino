@@ -359,6 +359,24 @@ pub fn orphaned_app_host(dir: &Path) -> bool {
         else {
             return false;
         };
+        // Live update: `parent.json` names the current parent (an adoption makes the command
+        // line stale) and whether a handoff is armed — an armed host whose app is gone is
+        // waiting for us to adopt it, not on its way out.
+        if let Some(state) = std::fs::read_to_string(dir.join("parent.json"))
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .filter(|v| v.get("pid").and_then(serde_json::Value::as_u64) == Some(pid))
+        {
+            let parent = state
+                .get("parent")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0) as u32;
+            let armed = state
+                .get("armed")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            return parent != 0 && !armed && !pid_alive(parent);
+        }
         let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
             return false;
         };
@@ -386,6 +404,142 @@ fn pid_alive(pid: u32) -> bool {
 /// A host that answers and is not on its way out (see [`orphaned_app_host`]).
 fn serving(dir: &Path) -> bool {
     socket_alive(&crate::local_host::listen_addr(dir)) && !orphaned_app_host(dir)
+}
+
+// ------------------------------------------------------------- live update
+
+/// How long a handed-off host waits for the new app (owner 2026-11-06: updates never stop
+/// running tasks; a host nobody adopts still ends — no daemon).
+pub const HANDOFF_GRACE: Duration = Duration::from_secs(120);
+/// How often an adopted host from an older version is checked for "idle → swap".
+pub const SWAP_CHECK_EVERY: Duration = Duration::from_secs(10);
+
+fn local_at(dir: &Path) -> crate::local_host::LocalHost {
+    crate::local_host::LocalHost {
+        id: String::new(),
+        ticket: String::new(),
+        socket: crate::local_host::listen_addr(dir),
+    }
+}
+
+/// Before this app restarts into a new version: ask our host to outlive us for
+/// [`HANDOFF_GRACE`] so the new app can take it over. Off on Windows (the installer can't
+/// replace a running host executable). `true` when armed.
+pub async fn arm_handoff(dir: &Path) -> bool {
+    if cfg!(windows) || lock_owner(dir).is_none_or(|(mode, _)| mode != "app") {
+        return false;
+    }
+    let req = serde_json::json!({"op": "host_handoff", "grace_secs": HANDOFF_GRACE.as_secs()});
+    match crate::local_host::admin_at(&local_at(dir), req).await {
+        Ok(reply) => {
+            let armed = reply
+                .get("armed")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            log::info!("host: live-update handoff armed={armed}");
+            armed
+        }
+        Err(error) => {
+            log::warn!(
+                "host: could not arm the live-update handoff: {}",
+                error.message
+            );
+            false
+        }
+    }
+}
+
+/// A host left behind by the previous app (an update): take it over, so it now ends with us.
+/// `false` for a manual host or one whose app still runs.
+async fn try_adopt(dir: &Path) -> bool {
+    // Only a host that says it was handed off (`parent.json` armed) is asked — a normal adopted
+    // host, or a wedged one, never waits on this request.
+    let armed = std::fs::read_to_string(dir.join("parent.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .is_some_and(|v| v.get("armed").and_then(serde_json::Value::as_bool) == Some(true));
+    if !armed {
+        return false;
+    }
+    let req = serde_json::json!({"op": "host_adopt", "pid": std::process::id()});
+    let adopted = tokio::time::timeout(
+        PING_TIMEOUT,
+        crate::local_host::admin_at(&local_at(dir), req),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .and_then(|reply| reply.get("adopted").and_then(serde_json::Value::as_bool))
+    .unwrap_or(false);
+    if adopted {
+        log::info!("host: took over the previous app's host (live update): running work goes on");
+    }
+    adopted
+}
+
+/// An adopted host from an older version, with nothing running: time to swap in ours.
+async fn swap_due(dir: &Path) -> bool {
+    let Some((_, theirs)) = lock_owner(dir) else {
+        return false;
+    };
+    if skew(env!("CARGO_PKG_VERSION"), Some(&theirs)) != Some(Skew::OursNewer) {
+        return false;
+    }
+    let busy = tokio::time::timeout(
+        PING_TIMEOUT,
+        crate::local_host::admin_at(&local_at(dir), serde_json::json!({"op": "host_info"})),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .and_then(|info| info.get("busy").and_then(serde_json::Value::as_u64));
+    busy == Some(0)
+}
+
+/// Ends the adopted old host gracefully (SIGTERM, then SIGKILL after [`TERM_GRACE`]); the
+/// supervise loop then starts ours from the new binary.
+async fn retire(dir: &Path) {
+    let Some(pid) = lock_holder(dir) else { return };
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(reason) = verify_holder(dir, pid) {
+            log::warn!("host: not retiring pid {pid}: {reason}");
+            return;
+        }
+        log::info!("host: the old host (pid {pid}) is idle; swapping in the new version");
+        let _ = replace_linux(dir, pid).await;
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        log::info!("host: the old host (pid {pid}) is idle; swapping in the new version");
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        let socket = crate::local_host::listen_addr(dir);
+        let deadline = std::time::Instant::now() + TERM_GRACE;
+        while probe(&socket).await != Probe::Gone && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+/// Linux `.deb`/`.rpm` updates replace the binary under a running app (no in-app install):
+/// once ours is replaced on disk, arm the handoff so the restart that follows keeps the work.
+#[cfg(target_os = "linux")]
+pub fn watch_binary_replaced(dir: PathBuf) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+            let replaced = std::fs::read_link("/proc/self/exe")
+                .is_ok_and(|exe| exe.to_string_lossy().ends_with(" (deleted)"));
+            if replaced && arm_handoff(&dir).await {
+                log::info!("host: this app was updated on disk; the next restart keeps the host");
+                return;
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------- wedged recovery
@@ -447,10 +601,7 @@ async fn ping(socket: &Path) -> Option<bool> {
     Some(ping_on(send, recv).await)
 }
 
-async fn ping_on(
-    mut send: crate::op_stream::OpSend,
-    mut recv: crate::op_stream::OpRecv,
-) -> bool {
+async fn ping_on(mut send: crate::op_stream::OpSend, mut recv: crate::op_stream::OpRecv) -> bool {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use unipi_proto::{Control, PROTO_VERSION};
     let hello = serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":{"op":"host_info"}});
@@ -806,9 +957,15 @@ fn holder_starting(dir: &Path) -> bool {
 /// start, so it must not count toward safe mode. Best effort: an unreadable file is left alone.
 fn record_stopped(dir: &Path) {
     let path = dir.join("start-history.json");
-    let Ok(text) = std::fs::read_to_string(&path) else { return };
-    let Ok(mut history) = serde_json::from_str::<serde_json::Value>(&text) else { return };
-    let Some(open) = history.get("openStart").and_then(serde_json::Value::as_u64) else { return };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(mut history) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let Some(open) = history.get("openStart").and_then(serde_json::Value::as_u64) else {
+        return;
+    };
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(open, |d| u64::try_from(d.as_millis()).unwrap_or(open));
@@ -816,9 +973,13 @@ fn record_stopped(dir: &Path) {
     if let Some(object) = history.as_object_mut() {
         object.remove("openStart");
         object.insert("v".into(), serde_json::json!(1));
-        let starts = object.entry("starts").or_insert_with(|| serde_json::json!([]));
+        let starts = object
+            .entry("starts")
+            .or_insert_with(|| serde_json::json!([]));
         if let Some(list) = starts.as_array_mut() {
-            list.push(serde_json::json!({ "ts": open, "outcome": "stopped", "uptime_s": uptime_s }));
+            list.push(
+                serde_json::json!({ "ts": open, "outcome": "stopped", "uptime_s": uptime_s }),
+            );
         }
     }
     if let Ok(text) = serde_json::to_string_pretty(&history) {
@@ -989,6 +1150,9 @@ impl Supervisor {
                     me.set_state(SupervisorState::Held).await;
                     held_since = None;
                     silent = 0;
+                    // Live update: the previous app's host, handed off to us.
+                    let adopted = try_adopt(&me.dir).await;
+                    let mut next_swap_check = std::time::Instant::now() + SWAP_CHECK_EVERY;
                     // Watch it: the moment it goes away (socket refuses) or goes
                     // silent (connects but never replies — a wedged accept() loop)
                     // for [`PING_FAILURES`] pings, replace it with ours.
@@ -1002,6 +1166,14 @@ impl Supervisor {
                                     emit_liveness(true, None);
                                 }
                                 silent = 0;
+                                // An adopted older host is swapped for ours once nothing runs.
+                                if adopted && std::time::Instant::now() >= next_swap_check {
+                                    next_swap_check = std::time::Instant::now() + SWAP_CHECK_EVERY;
+                                    if swap_due(&me.dir).await {
+                                        retire(&me.dir).await;
+                                        break;
+                                    }
+                                }
                                 tokio::time::sleep(PING_EVERY).await;
                                 continue;
                             }
@@ -1146,6 +1318,45 @@ mod tests {
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
+    }
+
+    /// Live update: `parent.json` beats the stale command line — an armed host whose app is
+    /// gone waits to be adopted (not orphaned); an unarmed one with a dead parent is orphaned.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parent_json_decides_whether_an_app_host_is_orphaned() {
+        let dir = tempfile::tempdir().unwrap();
+        let me = std::process::id();
+        std::fs::write(
+            dir.path().join("host.lock"),
+            format!(r#"{{"pid":{me},"version":"1.0.0","mode":"app","started_at":1}}"#),
+        )
+        .unwrap();
+        let dead = 4_000_000; // above pid_max: never a live process
+        std::fs::write(
+            dir.path().join("parent.json"),
+            format!(r#"{{"pid":{me},"parent":{dead},"armed":true}}"#),
+        )
+        .unwrap();
+        assert!(
+            !orphaned_app_host(dir.path()),
+            "an armed handoff is waiting for us"
+        );
+        std::fs::write(
+            dir.path().join("parent.json"),
+            format!(r#"{{"pid":{me},"parent":{dead},"armed":false}}"#),
+        )
+        .unwrap();
+        assert!(
+            orphaned_app_host(dir.path()),
+            "no handoff and the app is gone"
+        );
+        std::fs::write(
+            dir.path().join("parent.json"),
+            format!(r#"{{"pid":{me},"parent":{me},"armed":false}}"#),
+        )
+        .unwrap();
+        assert!(!orphaned_app_host(dir.path()), "its (new) app is alive");
     }
 
     #[test]
@@ -1510,8 +1721,9 @@ while True:
         }
         assert!(
             !Path::new(&format!("/proc/{first}")).exists()
-                || std::fs::read_to_string(format!("/proc/{first}/stat"))
-                    .is_ok_and(|s| s.rsplit_once(')').is_some_and(|(_, r)| r.trim_start().starts_with('Z'))),
+                || std::fs::read_to_string(format!("/proc/{first}/stat")).is_ok_and(|s| s
+                    .rsplit_once(')')
+                    .is_some_and(|(_, r)| r.trim_start().starts_with('Z'))),
             "the wedged child is gone"
         );
         assert_eq!(

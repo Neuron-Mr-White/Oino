@@ -256,6 +256,8 @@ impl Handler {
         if matches!(
             req,
             Request::HostInfo
+                | Request::HostHandoff { .. }
+                | Request::HostAdopt { .. }
                 | Request::PairBegin { .. }
                 | Request::PairStatus { .. }
                 | Request::DevicesList
@@ -899,6 +901,35 @@ impl Handler {
                     .await
                     .map_err(internal)?;
             }
+            Request::HostHandoff { grace_secs } => {
+                let armed = crate::instance::arm_handoff(std::time::Duration::from_secs(
+                    u64::from(grace_secs),
+                ));
+                tracing::info!(op = "host_handoff", grace_secs, armed, "request");
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::json!({ "armed": armed })),
+                    },
+                )
+                .await
+                .map_err(internal)?;
+            }
+            Request::HostAdopt { pid } => {
+                let data = match crate::instance::adopt(pid) {
+                    Ok(()) => serde_json::json!({ "adopted": true }),
+                    Err(crate::instance::AdoptRefused::NotAppHost) => {
+                        serde_json::json!({ "adopted": false, "reason": "not an app host" })
+                    }
+                    Err(crate::instance::AdoptRefused::ParentAlive) => {
+                        serde_json::json!({ "adopted": false, "reason": "its app is still running" })
+                    }
+                };
+                tracing::info!(op = "host_adopt", pid, %data, "request");
+                write_control(write, &Control::Ok { data: Some(data) })
+                    .await
+                    .map_err(internal)?;
+            }
             Request::HostInfo => {
                 let owner = match crate::instance::status(&self.paths) {
                     Ok(crate::instance::Status::Running { owner: Some(o) }) => Some(o),
@@ -923,6 +954,9 @@ impl Handler {
                     data_dir: self.paths.root.display().to_string(),
                     tools: crate::admin::tools(&self.paths),
                     devices,
+                    busy: crate::sessions::SessionService::shared().map_or(0, |service| {
+                        u32::try_from(service.hub().working_count()).unwrap_or(u32::MAX)
+                    }),
                 };
                 write_control(
                     write,
@@ -1116,6 +1150,8 @@ impl Handler {
             | Request::SessionClose { .. }
             | Request::SessionMove { .. }
             | Request::SessionMetaSet { .. }
+            | Request::DraftGet { .. }
+            | Request::DraftSet { .. }
             | Request::HostCmd { .. } => {
                 let Some(service) = crate::sessions::SessionService::shared() else {
                     return Err(error(

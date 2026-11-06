@@ -551,13 +551,17 @@ async fn main() -> anyhow::Result<()> {
             // shutdown — records `stopped`, never a fast fail (host.md §4.4).
             if let Some(parent) = exit_with_parent {
                 let paths = paths.clone();
-                unipi_host::instance::exit_with_parent(parent, move || {
-                    unipi_host::sessions::crash::HostSafeMode::record_stopped_in(&paths.root);
-                    #[cfg(unix)]
-                    let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths));
-                    #[cfg(not(unix))]
-                    drop(paths);
-                });
+                unipi_host::instance::exit_with_parent(
+                    parent,
+                    paths.root.join("parent.json"),
+                    move || {
+                        unipi_host::sessions::crash::HostSafeMode::record_stopped_in(&paths.root);
+                        #[cfg(unix)]
+                        let _ = std::fs::remove_file(unipi_host::push::socket_path(&paths));
+                        #[cfg(not(unix))]
+                        drop(paths);
+                    },
+                );
             }
             // H3 (spec-host §4.4): host-level safe mode. A start that exits within 60 s — or
             // dies before it recorded a success — is a failed start; after two consecutive

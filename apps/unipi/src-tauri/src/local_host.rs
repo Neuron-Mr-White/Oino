@@ -407,20 +407,28 @@ mod offline_e2e {
 /// or the named pipe on Windows). `E_NOT_FOUND` when no local host is
 /// running (or its version has no local transport).
 pub async fn admin(req: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
+    let Some(local) = detect() else {
+        return Err(AppErrorDto::new(
+            unipi_proto::AppErrorCode::E_NOT_FOUND,
+            "unipi-host isn't running on this PC (or is too old to manage from here)",
+            false,
+        ));
+    };
+    admin_at(&local, req).await
+}
+
+/// [`admin`] against a given local host (the supervisor's own data dir).
+pub async fn admin_at(
+    local: &LocalHost,
+    req: serde_json::Value,
+) -> Result<serde_json::Value, AppErrorDto> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use unipi_proto::{
         frame::{encode, FrameKind},
         AppErrorCode, Control, PROTO_VERSION,
     };
-    let Some(local) = detect() else {
-        return Err(AppErrorDto::new(
-            AppErrorCode::E_NOT_FOUND,
-            "unipi-host isn't running on this PC (or is too old to manage from here)",
-            false,
-        ));
-    };
     let fut = async {
-        let (mut s, mut reply) = connect(&local).await.map_err(|e| {
+        let (mut s, mut reply) = connect(local).await.map_err(|e| {
             AppErrorDto::new(
                 AppErrorCode::E_TRANSPORT,
                 format!("can't reach this PC's host: {e}"),

@@ -211,20 +211,132 @@ pub fn status(paths: &HostPaths) -> std::io::Result<Status> {
 /// (the desktop app's sidecar must not outlive the app). Linux also sets
 /// PR_SET_PDEATHSIG when `pid` is our real parent; the poll covers the rest
 /// (macOS, reparenting races).
-pub fn exit_with_parent(pid: u32, on_exit: impl FnOnce() + Send + 'static) {
+///
+/// Live update (owner 2026-11-06): the app may arm a *handoff* ([`arm_handoff`]) right before
+/// it restarts into a new version. Its death then starts a grace period instead of ending the
+/// host: a new app instance [`adopt`]s it (running turns go on), or the host ends when the
+/// grace runs out — never a daemon. `parent_file` (`<host dir>/parent.json`) tells the app
+/// who the current parent is and whether a handoff is armed.
+pub fn exit_with_parent(
+    pid: u32,
+    parent_file: std::path::PathBuf,
+    on_exit: impl FnOnce() + Send + 'static,
+) {
+    use std::sync::atomic::Ordering;
     #[cfg(target_os = "linux")]
     unsafe {
         if libc::getppid() as u32 == pid {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
         }
     }
-    std::thread::spawn(move || loop {
-        if !alive(pid) {
-            on_exit();
-            std::process::exit(0);
+    PARENT.store(pid, Ordering::SeqCst);
+    let _ = PARENT_FILE.set(parent_file);
+    write_parent_file();
+    std::thread::spawn(move || {
+        let mut orphaned_at: Option<std::time::Instant> = None;
+        loop {
+            let parent = PARENT.load(Ordering::SeqCst);
+            if alive(parent) {
+                orphaned_at = None;
+            } else {
+                let grace = HANDOFF_GRACE_MS.load(Ordering::SeqCst);
+                let since = *orphaned_at.get_or_insert_with(std::time::Instant::now);
+                if grace == 0 || since.elapsed() >= std::time::Duration::from_millis(grace) {
+                    on_exit();
+                    std::process::exit(0);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
     });
+}
+
+static PARENT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static HANDOFF_GRACE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PARENT_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// The longest handoff grace the host accepts.
+pub const HANDOFF_MAX: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// `<host dir>/parent.json`: `{pid, parent, armed}` — the app's orphan check reads it (the
+/// command line's `--exit-with-parent` goes stale after an adoption).
+fn write_parent_file() {
+    use std::sync::atomic::Ordering;
+    let Some(path) = PARENT_FILE.get() else {
+        return;
+    };
+    let body = serde_json::json!({
+        "pid": std::process::id(),
+        "parent": PARENT.load(Ordering::SeqCst),
+        "armed": HANDOFF_GRACE_MS.load(Ordering::SeqCst) > 0,
+    });
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    if std::fs::write(&tmp, body.to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Arms the live-update handoff: when the app dies, wait up to `grace` for a new one to adopt
+/// this host. `false` when this host does not run for an app (`--exit-with-parent`).
+pub fn arm_handoff(grace: std::time::Duration) -> bool {
+    use std::sync::atomic::Ordering;
+    if PARENT.load(Ordering::SeqCst) == 0 {
+        return false;
+    }
+    let ms = u64::try_from(grace.min(HANDOFF_MAX).as_millis())
+        .unwrap_or(u64::MAX)
+        .max(1);
+    HANDOFF_GRACE_MS.store(ms, Ordering::SeqCst);
+    // The app's death must not SIGTERM us now; the poll above decides.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_PDEATHSIG, 0);
+    }
+    // stdout/stderr are pipes into the app that is about to go: log straight into host.log
+    // (the file the app's pump was appending to), so nothing is lost and no write hits a
+    // closed pipe.
+    #[cfg(unix)]
+    if let Some(dir) = PARENT_FILE.get().and_then(|p| p.parent()) {
+        use std::os::fd::AsRawFd;
+        if let Ok(log) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("host.log"))
+        {
+            unsafe {
+                libc::dup2(log.as_raw_fd(), 1);
+                libc::dup2(log.as_raw_fd(), 2);
+            }
+        }
+    }
+    write_parent_file();
+    true
+}
+
+/// Why [`adopt`] refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdoptRefused {
+    /// Not an app's host (a manual `serve`).
+    NotAppHost,
+    /// Its app is still running: a second app window never takes the host away from it.
+    ParentAlive,
+}
+
+/// A new app instance takes this host over after a handoff: from now on the host ends with
+/// `pid`. Refused while the current app is alive.
+pub fn adopt(pid: u32) -> Result<(), AdoptRefused> {
+    use std::sync::atomic::Ordering;
+    let parent = PARENT.load(Ordering::SeqCst);
+    if parent == 0 {
+        return Err(AdoptRefused::NotAppHost);
+    }
+    if parent != pid && alive(parent) {
+        return Err(AdoptRefused::ParentAlive);
+    }
+    PARENT.store(pid, Ordering::SeqCst);
+    HANDOFF_GRACE_MS.store(0, Ordering::SeqCst);
+    write_parent_file();
+    Ok(())
 }
 
 /// Is `pid` a live process?
