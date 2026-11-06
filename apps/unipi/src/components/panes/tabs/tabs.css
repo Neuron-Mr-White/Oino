@@ -144,6 +144,7 @@
 }
 .stab-icon { flex: none; color: var(--color-claw); }
 .stab-title { min-width: 0; font-size: calc(13px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.stab-spin { flex: none; color: var(--color-claw); }
 .stab-state { flex: none; height: 18px; padding: 0 7px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(11px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); font-weight: 600; text-transform: capitalize; }
 .stab-state[data-state='running'] { background: rgb(240 120 24 / 16%); color: var(--color-claw); }
 .stab-state[data-state='closed'] { color: var(--color-text-dim); }

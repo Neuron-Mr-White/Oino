@@ -11,13 +11,14 @@
  * same command the Running tab sends.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import { Bot, Square } from 'lucide-solid';
+import { Bot, LoaderCircle, Square } from 'lucide-solid';
 import { textOf } from '../../../lib/chat/model';
 import { sessions, type SessionHandle } from '../../../lib/session/store';
 import type { AgentMessage, Part } from '../../../lib/session/types';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { SubagentTimeline } from './SubagentTimeline';
 import { tabBaseOf } from './sessionTabs';
+import { knownRuns, watchRuns } from '../../sidebar/SubagentTree';
 import './tabs.css';
 
 type AgentInfo = { id: string; label?: string; role?: string; owner?: string; state?: string; depth?: number };
@@ -80,8 +81,8 @@ export async function fetchRecordTranscript(s: SessionHandle, id: string): Promi
  * The child transcript (shared by the desktop tab and the phone sheet): the main chat's own
  * timeline components over the child's messages, read only, bottom-locked.
  */
-export function SubagentTranscript(props: { session: SessionHandle; agentId: string; cwd?: string; messages: readonly AgentMessage[]; running: boolean }) {
-  return <SubagentTimeline session={props.session} agentId={props.agentId} cwd={props.cwd} messages={props.messages} running={props.running} />;
+export function SubagentTranscript(props: { session: SessionHandle; agentId: string; cwd?: string; messages: readonly AgentMessage[]; running: boolean; startedAt?: number }) {
+  return <SubagentTimeline session={props.session} agentId={props.agentId} cwd={props.cwd} messages={props.messages} running={props.running} startedAt={props.startedAt} />;
 }
 
 export function SubagentTab(props: PaneTabProps) {
@@ -113,7 +114,11 @@ export function SubagentTab(props: PaneTabProps) {
   // and on a slow tick, like the Running tab (Z-42 live transcript).
   let last = 0;
   const agent = createMemo(() => agents().find((a) => a.id === agentId()));
-  const running = () => agent()?.state === 'running';
+  /** The subagents extension's record of this run (the live `unipi:subagents:list` topic): a
+   *  record id is not in the host's agent tree, so its state comes from here. */
+  const record = createMemo(() => knownRuns(base().hostId, base().sessionId)?.find((r) => r.id === agentId()));
+  const running = () => agent()?.state === 'running' || (!agent() && record()?.status === 'running');
+  const stateWord = () => agent()?.state ?? record()?.status;
   createEffect(() => {
     // Re-read when the session stream advances (a child event bumps the seq).
     void handle()?.state.seq;
@@ -130,6 +135,8 @@ export function SubagentTab(props: PaneTabProps) {
     if (loaded()) return;
     void read();
   });
+  // The run records (state, start time) ride the subagents topic: make sure it is subscribed.
+  createEffect(() => watchRuns(handle()));
   // perf-app: polls only while the run is running (no idle wake-ups once it settled).
   createEffect(() => {
     if (!running()) return;
@@ -152,9 +159,12 @@ export function SubagentTab(props: PaneTabProps) {
       <header class="stab-head">
         <Bot size={15} class="stab-icon" />
         <span class="stab-title truncate" title={name()}>{name()}</span>
-        <Show when={agent()?.state}>
-          <span class="stab-state" data-state={agent()!.state} data-testid="stab-state">
-            {agent()!.state}
+        <Show when={running()}>
+          <LoaderCircle size={13} class="stab-spin refresh-spinning" data-testid="stab-running" aria-label="Running" />
+        </Show>
+        <Show when={stateWord()}>
+          <span class="stab-state" data-state={stateWord()} data-testid="stab-state">
+            {stateWord()}
           </span>
         </Show>
         <span class="grow" />
@@ -184,7 +194,7 @@ export function SubagentTab(props: PaneTabProps) {
             }
           >
             <Show when={handle()}>
-              {(h) => <SubagentTranscript session={h()} agentId={agentId()} cwd={typeof props.tab.params?.cwd === 'string' ? (props.tab.params.cwd as string) : undefined} messages={messages()} running={running()} />}
+              {(h) => <SubagentTranscript session={h()} agentId={agentId()} cwd={typeof props.tab.params?.cwd === 'string' ? (props.tab.params.cwd as string) : undefined} messages={messages()} running={running()} startedAt={record()?.startedAt} />}
             </Show>
           </Show>
         </Show>

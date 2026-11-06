@@ -686,7 +686,7 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
   const durationMs = (state === 'done' || state === 'error') && meta.startedAt !== undefined && meta.endedAt !== undefined ? Math.max(0, meta.endedAt - meta.startedAt) : undefined;
   s.fold = {
     state,
-    label: state === 'running' ? 'Working' : state === 'stopped' ? 'Stopped' : `Worked for ${formatDuration(durationMs ?? 0)}`,
+    label: state === 'running' ? 'Working' : state === 'stopped' ? 'Stopped' : durationMs === undefined ? 'Worked' : `Worked for ${formatDuration(durationMs)}`,
     detail: [agentsSummary(s.work.flatMap((w) => (w.kind === 'agent' ? [w.run] : []))), foldDetail(tools, meta.steps)].filter(Boolean).join(' · '),
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(meta.startedAt !== undefined ? { startedAt: meta.startedAt } : {}),

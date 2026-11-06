@@ -390,9 +390,22 @@ describe('subagent tab (Z-42)', () => {
     await waitFor(() => expect(screen.getByText('Reading src/lib/status/lh.ts')).toBeTruthy());
     expect(screen.getByText('Map the status topics')).toBeTruthy();
     expect(screen.getByTestId('stab-state').textContent).toBe('running');
+    expect(screen.getByTestId('stab-running')).toBeTruthy();
     // The child keeps writing: the tab re-reads while it runs (live view).
     messages = [...messages, { role: 'assistant', content: [part('Found the publisher in LhSection')] }];
     await waitFor(() => expect(screen.getByText('Found the publisher in LhSection')).toBeTruthy(), { timeout: 5000 });
+  });
+
+  it('a subagent record (not in the agent tree) is live from the subagents topic: loader, state, open working fold (owner 2026-11-06)', async () => {
+    const h = sessions().ensure(HOST, S);
+    await waitFor(() => expect(h.state.conn).toBe('live'));
+    // The record's own run, published on the subagents topic; the agent tree does not know the id.
+    world.push(HOST, S, [{ session: S, seq: h.state.seq + 1, event: { type: 'topic', topic: 'unipi:subagents:list', sticky: true, data: { records: [{ id: 'rec-9', title: 'Resume lb-social lane', status: 'running', startedAt: Date.now() - 5000 }] } } }]);
+    await waitFor(() => expect(h.state.topics['unipi:subagents:list']).toBeTruthy());
+    withRouter(() => <SubagentTab {...tab('subagent', { agentId: 'rec-9', name: 'Resume lb-social lane' })} />);
+    await waitFor(() => expect(screen.getByTestId('subagent-tab')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('stab-running')).toBeTruthy());
+    expect(screen.getByTestId('stab-state').textContent).toBe('running');
   });
 
   it('Stop aborts that agent only', async () => {

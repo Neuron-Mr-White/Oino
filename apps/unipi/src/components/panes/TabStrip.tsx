@@ -7,10 +7,21 @@
  * `tools` after the overview button (full view / hide pane).
  */
 import { createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
-import { ChevronDown, Plus, X } from 'lucide-solid';
+import { ChevronDown, LoaderCircle, Plus, X } from 'lucide-solid';
 import { EXIT_MS, prefersReducedMotion } from '../../lib/motion';
 import { paneKind, tabTitle } from '../../lib/panes/kinds';
 import type { PaneTab } from '../../lib/panes';
+import { knownRuns } from '../sidebar/SubagentTree';
+
+/** A subagent tab whose run is still going shows a loader instead of its icon (owner 2026-11-06). */
+function busy(tab: PaneTab): boolean {
+  if (tab.kind !== 'subagent') return false;
+  const p = tab.params ?? {};
+  const host = typeof p.hostId === 'string' ? p.hostId : '';
+  const session = typeof p.sessionId === 'string' ? p.sessionId : '';
+  const id = typeof p.agentId === 'string' ? p.agentId : '';
+  return !!(host && session && id && knownRuns(host, session)?.some((r) => r.id === id && r.status === 'running'));
+}
 
 export function TabStrip(props: {
   label: string;
@@ -128,7 +139,9 @@ export function TabStrip(props: {
                   setDropAt(undefined);
                 }}
               >
-                <Show when={Icon}>{(I) => { const C = I(); return <C size={14} strokeWidth={1.8} class="pane-tab-icon" />; }}</Show>
+                <Show when={!busy(tab)} fallback={<LoaderCircle size={14} strokeWidth={1.8} class="pane-tab-icon refresh-spinning" data-testid="pane-tab-busy" />}>
+                  <Show when={Icon}>{(I) => { const C = I(); return <C size={14} strokeWidth={1.8} class="pane-tab-icon" />; }}</Show>
+                </Show>
                 <span class="pane-tab-title">{tabTitle(tab)}</span>
                 <Show when={props.badge?.(tab)}>{(b) => <span class="pane-tab-badge">{b()}</span>}</Show>
                 <button

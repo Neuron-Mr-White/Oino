@@ -38,7 +38,7 @@ export function entriesOfMessages(agentId: string, messages: readonly AgentMessa
   });
 }
 
-export function SubagentTimeline(props: { session: SessionHandle; agentId: string; cwd?: string; messages: readonly AgentMessage[]; running: boolean }) {
+export function SubagentTimeline(props: { session: SessionHandle; agentId: string; cwd?: string; messages: readonly AgentMessage[]; running: boolean; startedAt?: number }) {
   const lock = createBottomLock();
   const inner = createInnerFollow();
   const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
@@ -48,7 +48,7 @@ export function SubagentTimeline(props: { session: SessionHandle; agentId: strin
   const entries = createMemo(() => entriesOfMessages(props.agentId, props.messages));
   const turns = createMemo(() => {
     const list = entries();
-    return buildTurns({ entries: list, leafId: list[list.length - 1]?.id ?? null, entriesRev: list.length, liveTools: {}, run: { running: props.running, startedAt: undefined } });
+    return buildTurns({ entries: list, leafId: list[list.length - 1]?.id ?? null, entriesRev: list.length, liveTools: {}, run: { running: props.running, startedAt: props.startedAt } });
   });
   const [width, setWidth] = createSignal(0);
   const ctx: TimelineCtx = {
