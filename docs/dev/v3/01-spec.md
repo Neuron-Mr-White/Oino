@@ -1,6 +1,6 @@
-# Oino v3 implementation spec (draft)
+# Oino v3 implementation spec
 
-Status: **incomplete; not ready for implementation or review**. Binding source: `00-owner-decisions.md` A–L. Reference examples are subordinate to those decisions. Existing sessions must remain readable, including their original tool calls and results; argument migration is only for re-executing legacy calls, never a rewrite of the stored transcript.
+Binding source: `00-owner-decisions.md` A–L. Reference examples are subordinate to those decisions. Existing sessions must remain readable, including their original tool calls and results; argument migration is only for re-executing legacy calls, never a rewrite of the stored transcript.
 
 ## A. Frozen system prompt
 
@@ -8,9 +8,9 @@ Status: **incomplete; not ready for implementation or review**. Binding source: 
 
 **Target:** build one Oino-specific system prompt when a session starts and persist its exact bytes. Follow `ref-droid-prompts.md` §1 structure, retuned to Oino and lowercase tools, omitting Factory-only material. Identify `<system-reminder>` as trusted harness context; distinguish it from ordinary user text. No skill catalog or mutable workspace state in this prompt. On resume and `/reload`, use the persisted bytes, not a fresh render; reload can update catalogs only by appending reminders. Provider adaptation must not fold later changes into the frozen system message. See C for the second immutable slot and change delivery.
 
-**Migration:** a pre-v3 session continues with its existing initial system bytes; establish its immutable snapshot on first v3 resume without altering prior entries. Keep provider-specific serialization separate from stored messages. Settings for existing custom prompts remain session-start inputs, not mid-session mutations.
+**Migration:** pre-v3 sessions have no stored initial prompt (`crates/oino-session/src/entry.rs:189`): on first v3 resume render once and append `system_snapshot {text, version:3}`. Never rewrite prior entries. Keep provider-specific serialization separate from stored messages. Settings for existing custom prompts remain session-start inputs, not mid-session mutations.
 
-**Tests:** compare provider-bound prefix bytes across changes to tools, model, MCP, skills, reload and compaction; resume a legacy fixture and confirm no history mutation.
+**Tests:** assert the rendered prompt contains none of `Droid`, `Factory`, `FetchUrl`, `missions`, or `Co-authored-by`; compare provider-bound prefix bytes across changes to tools, model, MCP, skills, reload and compaction; resume a legacy fixture and confirm no history mutation.
 
 ## B. Tools and execution
 
@@ -36,7 +36,20 @@ Status: **incomplete; not ready for implementation or review**. Binding source: 
 
 Each shell invocation starts a new shell, defaults to 60 seconds, and returns at most 32 KiB head+tail inline with the remainder in a log. `fireAndForget` returns a task id and log path and delivers the exit result automatically, without required polling. Shell tasks and background subagents share an id namespace; `task_output` and `task_stop` address either. Preserve mid-run detach and the work tray's complete arguments and live status. Remove watchdog Decision-model judging; session caps may remain. Risk enforcement is specified in E.
 
-**Migration:** register `find` as a legacy alias of `glob` for old sessions; normalize legacy argument names at execution boundaries, not in persisted calls. Similarly retain replay adapters for `bg_run`, `bg_status`, `bg_logs`, and `bg_kill` and prior shell/read/edit arguments. Do not expose legacy aliases in the new default model tool list. Record precise old-to-new mappings before implementation; see open work below.
+**Legacy execution normalization:** preserve original stored arguments and card renderers (`extensions/unipi/background-tasks/src/lib.rs:919`). Normalize before the permission gate, retaining task-id prefixes:
+
+| Legacy input | Normalized execution |
+|---|---|
+| `read`/`write`/`edit` `{path}` | `{file_path}`; resolve relative paths against session cwd |
+| `ls {path,limit}` | `{directory_path:path}`; truncate results to limit |
+| `find {pattern,path,limit}` | `glob {patterns:[pattern],folder:path}`; truncate results to limit |
+| `grep {glob,ignoreCase,literal,limit,context}` | `{glob_pattern,case_insensitive,fixed_string,head_limit,context,output_mode:"content"}` |
+| shell without summary or risk | `summary:"(legacy call)"`; absent risk is `high` |
+| `bg_run {name,command,timeoutSeconds}` | shell `{command,summary:name,riskLevel:"high",timeout:timeoutSeconds,fireAndForget:true}` |
+| `bg_status` / `bg_logs {taskId}` | `task_output {task_id:taskId,block:false}`; status without id lists shared registry |
+| `bg_kill {taskId}` | `task_stop {task_id:taskId}` |
+
+Legacy aliases are not advertised to new sessions. Replaying results never re-executes calls. On Windows atomic replacement uses `MoveFileExW(REPLACE_EXISTING)` with sharing-violation retry, preserves CRLF/BOM, and process timeout/stop terminates the tree using Job Objects; background log paths must be valid Windows paths.
 
 **Tests:** schema snapshots, old transcript replay, text/image/PDF size limits, declaration outline and paging, ripgrep modes, atomic write and metadata preservation, external edit race, ambiguous edits, patch operations and model gating, Windows PowerShell parity, timeout/background completion/detach/stop and mixed task IDs.
 
@@ -44,13 +57,13 @@ Each shell invocation starts a new shell, defaults to 60 seconds, and returns at
 
 **Current:** prompt hooks rewrite options in `crates/oino-core/src/session/prompt.rs:701`; tool changes produce section patches in `crates/oino-core/src/session/tools.rs:519`. Provider compatibility folds system messages in `crates/oino-ai/src/transcript.rs:195`, called by `extensions/sdk/oino-provider-kit/src/anthropic.rs:930` and completions. Reload destroys extension instances (`crates/oino-core/src/session/mod.rs:617`).
 
-**Target:** slot 1 is A's immutable system bytes. Slot 2 is one persisted synthetic user message, before the first real user message, containing ordered `<system-reminder>` blocks: unified catalog and deferred names, subagents, system/cwd, date, initial ls/git status and context files. Capture once; later changes append LLM-only user-role reminders after existing history. Never mutate either slot; compaction changes only the model's tail view, preserving both slots byte-for-byte. Native tool declarations may change independently of prompt bytes. Adapt providers that cannot accept later system messages by serializing later updates as user-role reminders rather than merging them into slot 1. Reset cache tracking on compaction without altering slot bytes. Prune stale reminders only outside the pinned prefix and only when byte-identical cache reuse is demonstrable.
+**Target:** slot 1 is A's immutable system bytes. Slot 2 is one persisted synthetic user message, before the first real user message, containing ordered `<system-reminder>` blocks: unified catalog and deferred names, subagents, system/cwd, date, initial ls/git status and context files. Capture once; later changes append LLM-only user-role reminders after existing history. Never mutate either slot; compaction changes only the model's tail view, preserving both slots byte-for-byte. The provider prefix comprises the ordered tool declaration array, slot 1, slot 2, then history. At session start freeze declarations in built-in registry order followed by extension names sorted lexically. Later tools are deferred and announced in a tail catalog update; `tool_search` appends loaded schemas only. A removed tool remains declared until compaction and returns `tool X is unavailable`. Check apply_patch gating at start and model switch; append a model-change reminder and append its schema if newly eligible. Slot 2 contains no model id. Existing declaration bytes and both slots remain identical; additions are suffixes, not rewrites. Provider cache invalidation on an appended declaration does not change existing prefix bytes. Adapt providers that cannot accept later system messages by serializing later updates as user-role reminders rather than merging them into slot 1. Reset cache tracking on compaction without altering slot bytes. Do not prune stale reminders in v3. Escape literal `<system-reminder>` and `</system-reminder>` tags in all untrusted user text and tool output at provider serialization; only host-created reminder envelopes retain the trusted tags. Preserve stored source bytes.
 
-**Extension API contract:** replace hook return mutation with host-owned append. A request is `{ "type":"append_reminder", "key":"<extension-id>/<topic>", "text":"<plain text>", "dedupe":"if_changed" }`; response `{ "id":"<message-id>", "appended":true|false }`. Host validates ownership of key, wraps text once in `<system-reminder>`, persists an LLM-only entry before next model request, serializes appends in event order, and deduplicates against the last committed text for that key. This is an append operation, not an upsert: never replace existing message bytes. Restore dedupe state from the stream after reload. Failure to append must be surfaced to the originating extension. Tool results may carry a reminder without altering earlier messages. WIT/host bindings and both native and WASM extension paths must implement the same semantics.
+**Extension API contract:** replace hook return mutation with host-owned append. A request is `{ "type":"append_reminder", "key":"<extension-id>/<topic>", "text":"<plain text>" }`; response `{ "id":"<message-id>", "appended":true|false }`. Host validates ownership of key, wraps text once in `<system-reminder>`, persists an LLM-only entry before next model request, serializes appends in event order, without replacing earlier messages. This is an append operation, not an upsert: never replace existing message bytes. Extensions track their own announcement state in the session stream. Failure to append must be surfaced to the originating extension. Tool results may carry a reminder without altering earlier messages. WIT/host bindings and both native and WASM extension paths must implement the same semantics.
 
-**Migration:** on old transcripts preserve existing system entries and historical provider view; freeze the resume-time baseline and append new changes. `systemPromptOptions` mutations by migrated bundled extensions are removed, not silently applied to slot 1. Keep legacy event deserialization.
+**Migration:** for old transcripts, do not insert slot 2 into old history: append its content as the first tail reminder. Legacy system-role entries and `CompactionEntry.system_message` remain visible in the UI but are excluded from provider requests. Append the v3 system snapshot once. Old reveal entries count as already announced; all other skills are unannounced. `systemPromptOptions` mutations by migrated bundled extensions are removed, not silently applied to slot 1. Keep legacy event deserialization.
 
-**Settings/tests:** no new setting. Test first-turn order, append/dedupe ordering across reload, model changes, dynamic tools, MCP, and both provider serializers; ensure no sensitive user-authored text is promoted to trusted reminder content.
+**Settings/tests:** no new setting. Test first-turn order, append ordering across reload, model changes, dynamic tools, MCP, and both provider serializers; ensure no sensitive user-authored text is promoted to trusted reminder content.
 
 ## D. Skills
 
