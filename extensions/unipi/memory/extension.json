@@ -2,9 +2,9 @@
   "apiVersion": "oino.extension/2",
   "id": "unipi.memory",
   "name": "Memory",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "kind": "extension",
-  "description": "MemPalace-backed cross-session memory: markdown memory files, semantic search over every palace drawer, a recall reminder and an end-of-task save pass.",
+  "description": "MemPalace-backed cross-session memory: markdown memory files, semantic search over every palace drawer, a recall reminder, an end-of-task save pass, and per-memory usage tracking (last used, use count, source sessions) that the dream pass reads to merge and prune.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {

@@ -138,7 +138,7 @@ pub fn dream_prompt(i: &PromptInputs<'_>) -> String {
         "- A lesson is one line: `When <error text or situation>, <shortest path>. [source: <session id>]`".to_owned(),
         "- Keep explicit user preferences and their reasons; never weaken or drop them.".to_owned(),
         "- Never copy a secret, token, or password into any file.".to_owned(),
-        format!("- Write skill and check proposals only under {s}/proposals/, never anywhere else. Skills are crafted with the craft-skill skill (scaffold + check scripts)."),
+        format!("- Write skill and check proposals only under {s}/proposals/, never anywhere else. Skills are crafted with the craft-skill skill (scaffold + check scripts). Name the project each proposal is for in {s}/proposals/projects.json: {{\"<proposal file or folder name>\": \"<project cwd from the digest index>\"}}."),
         format!("- Record every memory change in {s}/memory-changes.json: a JSON array of {{\"action\": \"merged|added|rewritten|pruned\", \"project\", \"title\", \"from\": [titles merged in], \"reason\", \"sources\": [session ids]}}."),
         String::new(),
         format!("Done when {s}/DREAM_REPORT.md exists with three sections: ## Memory edits (applied; one bullet per change, starting with merged / added / rewritten / pruned), ## Proposals (waiting for approval, each with its sources), ## Skipped (groups you judged one-off, with why)."),
@@ -150,8 +150,8 @@ pub fn dream_prompt(i: &PromptInputs<'_>) -> String {
 #[must_use]
 pub fn memory_project(cwd: &str) -> String {
     let base = cwd
-        .trim_end_matches('/')
-        .rsplit('/')
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or_default();
     let mut out = String::new();
@@ -619,7 +619,7 @@ impl Dream {
     fn record_check(trigger: &str, ran: bool, reason: &str) {
         let p = Self::state_path();
         let mut st = store::read_state(&p);
-        st.last_check = Some(LastCheck {
+        st.push_check(LastCheck {
             at: timers::now_ms(),
             trigger: trigger.to_owned(),
             ran,
@@ -746,6 +746,14 @@ impl Dream {
                 .cloned()
                 .unwrap_or(Value::Null);
             v["jobRunning"] = show.pointer("/job/running").cloned().unwrap_or(Value::Null);
+            if let Some(last) = show.pointer("/runs/0") {
+                v["lastFire"] = json!({
+                    "runId": last.get("id"),
+                    "status": last.get("status"),
+                    "firedAt": last.get("fired_at"),
+                    "reason": last.get("reason"),
+                });
+            }
         }
         v
     }
@@ -773,6 +781,18 @@ impl Dream {
             record("rejected");
             self.changed();
             return ok(format!("Rejected {}.", p.name));
+        }
+        // A cross-project dream's skill lands in the project it was proposed for; the
+        // guest can only write the calling session's project, so the caller must be there.
+        if p.kind == "skill"
+            && let Some(target) = p.cwd.as_deref()
+            && target.trim_end_matches(['/', '\\']) != cwd.trim_end_matches(['/', '\\'])
+        {
+            return fail(format!(
+                "{} is for {target}: approve it from a session in that project (the skill lands in its {}).",
+                p.name,
+                self.cfg().skills_target
+            ));
         }
         let result: std::result::Result<String, String> = if p.kind == "skill" {
             let target_rel = format!(
@@ -847,6 +867,7 @@ impl Dream {
             "maxRuntimeMin": cfg.max_runtime_min,
             "lastRunAt": st.last_run_at,
             "lastCheck": st.last_check,
+            "checks": st.checks,
             "running": runs.iter().any(|r| r.status == Status::Running),
             "runs": runs.iter().take(20).map(store::run_info).collect::<Vec<_>>(),
             "scheduler": self.scheduler_json(&cfg).await,
@@ -981,14 +1002,15 @@ impl Dream {
             store::write_state(&p, &st);
             return;
         }
-        // Catch-up: a scheduled dream was missed (no host scheduler was running then).
+        // Catch-up: a scheduled dream was missed (no host scheduler was running then). A
+        // recent host-scheduled check that skipped on its gates counts as on time.
         let now = timers::now_ms();
         if now - self.last_auto.get() < AUTO_CHECK_MS {
             return;
         }
         self.last_auto.set(now);
         let cfg = self.cfg();
-        if schedule::overdue(&cfg, st.last_run_at, now) {
+        if schedule::overdue(&cfg, st.last_scheduled_activity(), now) {
             let _ = self.run_gated("catch-up", false).await;
         }
     }
@@ -1495,6 +1517,7 @@ mod tests {
         assert!(p.contains("always pass `project`"));
         assert!(p.contains("[source: <session id>]"));
         assert!(p.contains("/s/memory-changes.json"));
+        assert!(p.contains("/s/proposals/projects.json"));
         assert!(p.contains("under /m; read them, never edit them directly"));
         assert!(p.contains("/s/DREAM_REPORT.md exists with three sections"));
         let off = dream_prompt(&PromptInputs {
@@ -1507,6 +1530,7 @@ mod tests {
         assert!(off.contains("Projects covered: (none"));
         assert_eq!(memory_project("/home/u/My Project!"), "my_project");
         assert_eq!(memory_project("/"), "unknown");
+        assert_eq!(memory_project(r"C:\Users\u\Web App\"), "web_app");
         assert_eq!(
             pathx_resolve("/w/p", ".agents/skills/x"),
             "/w/p/.agents/skills/x"

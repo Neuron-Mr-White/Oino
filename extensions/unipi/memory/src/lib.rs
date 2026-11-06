@@ -575,7 +575,10 @@ impl Memory {
 
     // ── tool bodies ──────────────────────────────────────────────────────────
 
-    #[allow(clippy::too_many_lines, reason = "one store pass: dedupe, write, merge, report")]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one store pass: dedupe, write, merge, report"
+    )]
     async fn tool_store(&self, args: &Value, cx: &Ctx) -> ToolResult {
         let sid = cx.session_id().to_owned();
         self.sessions.with(&sid, |s| s.store_done = true);

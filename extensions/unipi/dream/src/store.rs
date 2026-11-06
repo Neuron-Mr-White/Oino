@@ -28,6 +28,9 @@ pub const STALE_MS: i64 = 2 * 60 * 60 * 1000;
 pub const HEARTBEAT_MS: i64 = 20_000;
 /// A heartbeat younger than this means the run is alive in some process.
 pub const HEARTBEAT_FRESH_MS: i64 = 75_000;
+/// Slack on `minGapHours` (hours): a scheduled fire starts the dream a few seconds after
+/// the cron time, so "every 6 h" with a 6 h gap must not skip on that jitter.
+pub const GAP_SLACK_H: f64 = 0.25;
 
 /// Schedule lock.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,7 +69,14 @@ pub struct DreamState {
     /// The last scheduled/catch-up gate check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_check: Option<LastCheck>,
+    /// Recent gate checks, newest first (capped at [`MAX_CHECKS`]): the skipped scheduled
+    /// dreams the UI lists next to the runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<LastCheck>,
 }
+
+/// Gate checks kept in [`DreamState::checks`].
+pub const MAX_CHECKS: usize = 20;
 
 /// One gate check of a scheduled (or catch-up) dream.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +93,28 @@ pub struct LastCheck {
 }
 
 impl DreamState {
+    /// Records one gate check (`last_check` + the capped history).
+    pub fn push_check(&mut self, check: LastCheck) {
+        self.checks.insert(0, check.clone());
+        self.checks.truncate(MAX_CHECKS);
+        self.last_check = Some(check);
+    }
+
+    /// When the schedule last acted: the last dream start or the last host-scheduled gate
+    /// check (a skipped scheduled dream still means the host scheduler is alive).
+    #[must_use]
+    pub fn last_scheduled_activity(&self) -> i64 {
+        let check = self
+            .checks
+            .iter()
+            .chain(self.last_check.iter())
+            .filter(|c| c.trigger == "scheduled")
+            .map(|c| c.at)
+            .max()
+            .unwrap_or(0);
+        self.last_run_at.max(check)
+    }
+
     /// Folds a legacy per-workspace state's decisions and dismissals in (v3 moved state to
     /// the global dir).
     pub fn absorb_legacy(&mut self, legacy: &Self) {
@@ -162,7 +194,7 @@ pub fn is_due(
         reason = "millisecond spans fit f64 exactly"
     )]
     let elapsed_h = (now - state.last_run_at) as f64 / 3_600_000.0;
-    if state.last_run_at > 0 && elapsed_h < cfg.min_gap_hours {
+    if state.last_run_at > 0 && elapsed_h + GAP_SLACK_H < cfg.min_gap_hours {
         return mk(
             false,
             format!(
@@ -309,6 +341,48 @@ pub struct Proposal {
     pub path: PathBuf,
     /// `pending | approved | rejected`.
     pub decision: String,
+    /// The project (cwd) the proposal is for: `proposals/projects.json`, else the only
+    /// project the run covered. A skill lands in this project's skills dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+}
+
+/// The sidecar mapping proposal entries to project cwds (not itself a proposal).
+pub const PROPOSAL_PROJECTS: &str = "projects.json";
+
+/// `proposals/projects.json` (`{"<entry>": "<cwd>"}`) plus the single-project fallback
+/// from `digests/INDEX.json`.
+fn proposal_cwds(staging: &Path) -> (BTreeMap<String, String>, Option<String>) {
+    let read = |p: PathBuf| -> Value {
+        std::fs::read(p)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null)
+    };
+    let map = read(staging.join("proposals").join(PROPOSAL_PROJECTS))
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, v)| {
+                    let cwd = v
+                        .as_str()
+                        .or_else(|| v.get("cwd").and_then(Value::as_str))?;
+                    let cwd = cwd.trim();
+                    (!cwd.is_empty()).then(|| (k.trim_end_matches('/').to_owned(), cwd.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let index = read(staging.join("digests/INDEX.json"));
+    let only = match index.get("projects").and_then(Value::as_array) {
+        Some(ps) if ps.len() == 1 => ps[0]
+            .get("cwd")
+            .and_then(Value::as_str)
+            .filter(|c| !c.is_empty())
+            .map(ToOwned::to_owned),
+        _ => None,
+    };
+    (map, only)
 }
 
 /// Proposals left under `<staging>/proposals/`.
@@ -321,6 +395,16 @@ pub fn list_proposals(staging: &Path, decisions: &BTreeMap<String, String>) -> V
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(staging.join("proposals")) else {
         return out;
+    };
+    let (cwds, only) = proposal_cwds(staging);
+    // Keyed by the entry (`skill-x`, `lint.md`) or the bare name (`x`, `lint`).
+    let cwd_of = |entry: &str| {
+        let stem = entry.strip_suffix(".md").unwrap_or(entry);
+        let name = stem.strip_prefix("skill-").unwrap_or(stem);
+        [entry, stem, name]
+            .iter()
+            .find_map(|k| cwds.get(*k).cloned())
+            .or_else(|| only.clone())
     };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -338,6 +422,7 @@ pub fn list_proposals(staging: &Path, decisions: &BTreeMap<String, String>) -> V
                 id,
                 name: name.strip_prefix("skill-").unwrap_or(&name).to_owned(),
                 kind: "skill".into(),
+                cwd: cwd_of(&name),
                 path: p,
                 decision,
             });
@@ -346,6 +431,7 @@ pub fn list_proposals(staging: &Path, decisions: &BTreeMap<String, String>) -> V
                 id,
                 name: stem.to_owned(),
                 kind: "check".into(),
+                cwd: cwd_of(&name),
                 path: p,
                 decision,
             });
@@ -1010,7 +1096,7 @@ pub fn run_info(r: &Run) -> Value {
         "id": r.id, "status": r.status.as_str(), "startedAt": r.started_at, "manual": r.manual,
         "trigger": r.trigger, "projects": r.projects,
         "sessions": r.sessions, "events": r.events, "pending": r.pending, "hasReport": r.has_report,
-        "proposals": r.proposals.iter().map(|p| json!({"id": p.id, "name": p.name, "kind": p.kind, "decision": p.decision})).collect::<Vec<_>>(),
+        "proposals": r.proposals.iter().map(|p| json!({"id": p.id, "name": p.name, "kind": p.kind, "decision": p.decision, "cwd": p.cwd})).collect::<Vec<_>>(),
     });
     if let Some(e) = r.ended_at {
         v["endedAt"] = json!(e);
@@ -1167,6 +1253,39 @@ mod tests {
             is_due(&st, 50, &cfg(), now, &dead).reason,
             "min gap not reached (2.0h of 12h)"
         );
+        // A fire a few seconds early relative to the last start still passes the gap.
+        let jitter = DreamState {
+            last_run_at: now - 12 * H + 10_000,
+            ..DreamState::default()
+        };
+        assert!(is_due(&jitter, 50, &cfg(), now, &dead).due);
+        let mut checks = DreamState {
+            last_run_at: now - 30 * H,
+            ..DreamState::default()
+        };
+        assert_eq!(checks.last_scheduled_activity(), now - 30 * H);
+        checks.push_check(LastCheck {
+            at: now - 2 * H,
+            trigger: "catch-up".into(),
+            ran: false,
+            reason: "x".into(),
+        });
+        assert_eq!(
+            checks.last_scheduled_activity(),
+            now - 30 * H,
+            "a catch-up check is not the host scheduler"
+        );
+        for i in 0..30 {
+            checks.push_check(LastCheck {
+                at: now - H + i,
+                trigger: "scheduled".into(),
+                ran: false,
+                reason: "needs 1 more new sessions".into(),
+            });
+        }
+        assert_eq!(checks.checks.len(), MAX_CHECKS);
+        assert_eq!(checks.checks[0].at, now - H + 29, "newest first");
+        assert_eq!(checks.last_scheduled_activity(), now - H + 29);
         let st = DreamState {
             last_run_at: now - 13 * H,
             sessions_seen: 4,
@@ -1186,6 +1305,43 @@ mod tests {
         write_state(&p, &st);
         assert_eq!(read_state(&p), st);
         assert_eq!(read_state(&p.with_extension("x")), DreamState::default());
+    }
+
+    #[test]
+    fn proposal_projects() {
+        let s = tmp("pp").join("staging-9");
+        std::fs::create_dir_all(s.join("proposals/skill-deploy")).unwrap();
+        std::fs::write(
+            s.join("proposals/skill-deploy/SKILL.md"),
+            "---\nname: deploy\n---\n",
+        )
+        .unwrap();
+        std::fs::write(s.join("proposals/lint.md"), "# check").unwrap();
+        std::fs::write(s.join("proposals/other.md"), "# check").unwrap();
+        std::fs::write(
+            s.join("proposals/projects.json"),
+            json!({"skill-deploy": "/w/oino", "lint": {"cwd": "/w/web"}}).to_string(),
+        )
+        .unwrap();
+        let ps = list_proposals(&s, &BTreeMap::new());
+        assert_eq!(ps.len(), 3, "projects.json is not a proposal: {ps:?}");
+        let by = |n: &str| ps.iter().find(|p| p.name == n).unwrap().cwd.clone();
+        assert_eq!(by("deploy").as_deref(), Some("/w/oino"));
+        assert_eq!(by("lint").as_deref(), Some("/w/web"));
+        assert_eq!(by("other"), None, "several projects, none named");
+        std::fs::create_dir_all(s.join("digests")).unwrap();
+        std::fs::write(
+            s.join("digests/INDEX.json"),
+            json!({"projects": [{"project": "solo", "cwd": "/w/solo"}]}).to_string(),
+        )
+        .unwrap();
+        let ps = list_proposals(&s, &BTreeMap::new());
+        let other = ps.iter().find(|p| p.name == "other").unwrap();
+        assert_eq!(
+            other.cwd.as_deref(),
+            Some("/w/solo"),
+            "single-project fallback"
+        );
     }
 
     #[test]
