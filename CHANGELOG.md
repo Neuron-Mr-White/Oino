@@ -3,6 +3,12 @@
 Notable changes to the published `oino-*` crates. The application (`apps/`) tracks the
 workspace version and is released separately.
 
+## Unreleased — v3 integration gate
+
+- Restore workspace compilation by handling persisted system snapshots in the session tree view.
+- Align Anthropic tool-change coverage with v3 request-level, append-only declarations.
+- Record the failed v3 integration gate, A–L coverage, real-model tool smoke test and uninstalled Linux bundle in `docs/dev/v3/03-integration.md`. Missing implementation packages and failing suites prevent release approval.
+
 ## 2026-11-01 — host-embedding fixes (fd budget + open latency)
 
 ### oino-client 1.1.0

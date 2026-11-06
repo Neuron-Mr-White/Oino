@@ -1099,7 +1099,9 @@ impl TreeModel {
                 "",
                 format!("[title: {}]", name.as_deref().unwrap_or("empty")),
             ),
-            EntryKind::Usage { .. } => text(DisplayKind::Dim, "", String::new()),
+            EntryKind::SystemSnapshot { .. } | EntryKind::Usage { .. } => {
+                text(DisplayKind::Dim, "", String::new())
+            }
         }
     }
 
@@ -1147,6 +1149,17 @@ mod tests {
     fn user(id: &str, parent: Option<&str>, text: &str) -> JsonValue {
         json!({"type":"message","id":id,"parentId":parent,"timestamp":"2026-01-01T00:00:00.000Z",
                "message":{"role":"user","content":text,"timestamp":0}})
+    }
+
+    #[test]
+    fn system_snapshot_has_no_display_or_copy_text() {
+        let data = json!({"leafId":"s","tree":[{"entry":{
+            "type":"system_snapshot","id":"s","parentId":null,
+            "timestamp":"2026-01-01T00:00:00.000Z","text":"frozen","version":3
+        }}]});
+        let model = TreeModel::from_json(&data, None);
+        assert_eq!(model.rows(0, model.len())[0].text.body, "");
+        assert!(model.selected_copy_text().is_none());
     }
 
     fn tree() -> JsonValue {

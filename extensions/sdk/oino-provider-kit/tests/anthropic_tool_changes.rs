@@ -1,10 +1,8 @@
 //! [graph-mode] P0: tools added mid-conversation (the long-horizon tools after `/graph`,
 //! `/goal`, `/ralph`, `/swarm`) must reach the model on every Anthropic Messages endpoint.
 //!
-//! Native inline tool changes (`tool_addition` blocks in a mid-conversation system message,
-//! the inline-tools beta) are only sent to Anthropic's own API. A gateway that forwards the
-//! Messages API keeps the system text and drops the blocks, so there the request-level
-//! `tools` list must carry the current tool set instead.
+//! v3 carries declarations at request level on both first-party and gateway endpoints.
+//! Later context must not rewrite the frozen system prompt or use inline tool changes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 
@@ -107,18 +105,14 @@ fn gateway_declares_mid_conversation_tools_at_request_level() {
 }
 
 #[test]
-fn first_party_api_keeps_native_inline_tool_changes() {
+fn first_party_api_declares_mid_conversation_tools_at_request_level() {
     let (body, beta) = body("https://api.anthropic.com");
+    assert!(inline_additions(&body).is_empty());
     assert_eq!(
-        inline_additions(&body),
-        ["update_agent_graph", "view_agent_graph"]
+        request_tools(&body),
+        ["bash", "update_agent_graph", "view_agent_graph"]
     );
-    assert!(
-        !request_tools(&body)
-            .iter()
-            .any(|t| t == "update_agent_graph")
-    );
-    assert!(beta.contains("inline-tools"), "{beta}");
+    assert!(!beta.contains("inline-tools"), "{beta}");
 }
 
 #[test]
