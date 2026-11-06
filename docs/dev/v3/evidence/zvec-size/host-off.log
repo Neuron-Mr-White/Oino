@@ -1,0 +1,5 @@
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+    Finished `release` profile [optimized] target(s) in 49.97s

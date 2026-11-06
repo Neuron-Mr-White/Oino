@@ -171,6 +171,8 @@ pub struct HostSettingsSetRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HostCmd {
+    /// Compiled semantic-search support of this host, independent of user settings.
+    SearchCapabilities,
     /// User-only Settings action, deliberately absent from session/model commands.
     BuildSearchIndex { cwd: String, consent: bool },
     /// `_oino/get_settings`: the merged pi settings object, or one dot-path
@@ -295,6 +297,7 @@ impl HostCmd {
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::SearchCapabilities => "search_capabilities",
             Self::BuildSearchIndex { .. } => "build_search_index",
             Self::GetSettings { .. } => "get_settings",
             Self::SetSetting { .. } => "set_setting",
@@ -391,6 +394,7 @@ mod tests {
             "{\"kind\":\"get_settings\"}"
         );
         for (cmd, name) in [
+            (HostCmd::SearchCapabilities, "search_capabilities"),
             (HostCmd::GetSettingsSchema, "get_settings_schema"),
             (HostCmd::Extensions, "extensions"),
             (HostCmd::AuthProviders { validate: None }, "auth_providers"),

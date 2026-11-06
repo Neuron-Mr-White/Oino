@@ -1,0 +1,59 @@
+    Checking crypto-common v0.1.7
+    Checking rustls-webpki v0.103.16
+    Checking either v1.19.0
+    Checking oino-settings v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-settings)
+    Checking oino-tools v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tools)
+    Checking oino-session v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-session)
+    Checking unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+    Checking digest v0.10.7
+    Checking universal-hash v0.5.1
+    Checking cipher v0.4.4
+    Checking itertools v0.14.0
+    Checking sha2 v0.10.9
+    Checking polyval v0.6.2
+    Checking ghash v0.5.1
+    Checking cranelift-codegen v0.135.2
+    Checking wasmtime-environ v48.0.2
+    Checking rustls v0.23.46
+    Checking oino-extension-api v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-extension-api)
+    Checking ctr v0.9.2
+    Checking aes v0.8.4
+    Checking rayon v1.12.0
+    Checking aead v0.5.2
+    Checking oino-resources v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-resources)
+    Checking aes-gcm v0.10.3
+    Checking sha1 v0.10.7
+    Checking tungstenite v0.28.0
+    Checking hmac v0.12.1
+    Checking pbkdf2 v0.12.2
+    Checking unipi-browser v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-browser)
+    Checking tokio-tungstenite v0.28.0
+    Checking unipi-kanboard v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-kanboard)
+    Checking oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+    Checking tokio-rustls v0.26.6
+    Checking rustls-platform-verifier v0.7.1
+    Checking noq-proto v1.4.0
+    Checking hyper-rustls v0.27.10
+    Checking reqwest v0.13.5
+    Checking reqwest v0.12.28
+    Checking tokio-websockets v0.13.3
+    Checking unipi-cron v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-cron)
+    Checking n0-dns-resolver v0.1.0
+    Checking iroh-dns v1.4.1
+    Checking noq v1.4.0
+    Checking iroh-relay v1.4.1
+    Checking wasmtime-internal-fiber v48.0.2
+    Checking wasmtime-internal-cache v48.0.2
+    Checking iroh v1.4.1
+    Checking oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+    Checking cranelift-frontend v0.135.2
+    Checking wasmtime-internal-unwinder v48.0.2
+    Checking cranelift-native v0.135.2
+    Checking wasmtime-internal-cranelift v48.0.2
+    Checking wasmtime v48.0.2
+    Checking wasmtime-wasi-io v48.0.2
+    Checking wiggle v48.0.2
+    Checking wasmtime-wasi v48.0.2
+    Checking oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+    Checking unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 32.53s

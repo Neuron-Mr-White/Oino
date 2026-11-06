@@ -1,0 +1,195 @@
+   Compiling serde v1.0.228
+   Compiling typenum v1.20.0
+   Compiling bitflags v2.11.1
+   Compiling rand_core v0.6.4
+   Compiling tree-sitter-language v0.1.9
+   Compiling serde_json v1.0.154
+   Compiling futures-util v0.3.34
+   Compiling cmake v0.1.58
+   Compiling dunce v1.0.5
+   Compiling fs_extra v1.3.0
+   Compiling crypto-common v0.1.7
+   Compiling tracing-core v0.1.36
+   Compiling either v1.15.0
+   Compiling digest v0.10.7
+   Compiling glob v0.3.4
+   Compiling aws-lc-sys v0.47.0
+   Compiling sha2 v0.10.9
+   Compiling wasmtime-internal-core v48.0.2
+   Compiling generic-array v0.14.7
+   Compiling tracing v0.1.44
+   Compiling aws-lc-rs v1.19.0
+   Compiling rustix v1.1.4
+   Compiling clang-sys v1.9.1
+   Compiling block-buffer v0.10.4
+   Compiling cranelift-bitset v0.135.2
+   Compiling linux-raw-sys v0.12.1
+   Compiling prettyplease v0.2.37
+   Compiling zerocopy v0.8.48
+   Compiling zerocopy-derive v0.8.48
+   Compiling minimal-lexical v0.2.1
+   Compiling getrandom v0.3.4
+   Compiling regex-syntax v0.8.10
+   Compiling nom v7.1.3
+   Compiling itertools v0.14.0
+   Compiling regex-automata v0.4.18
+   Compiling libloading v0.8.9
+   Compiling crc32fast v1.5.0
+   Compiling bindgen v0.72.1
+   Compiling rustls v0.23.46
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.9
+   Compiling fnv v1.0.7
+   Compiling itertools v0.10.5
+   Compiling miniz_oxide v0.8.9
+   Compiling darling_core v0.20.11
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling cexpr v0.6.0
+   Compiling xattr v1.6.1
+   Compiling rayon v1.12.0
+   Compiling filetime v0.2.29
+   Compiling regex v1.12.3
+   Compiling zvec-rust-sys v0.8.0
+   Compiling once_cell v1.21.4
+   Compiling same-file v1.0.6
+   Compiling fastrand v2.4.1
+   Compiling rustc-hash v2.1.3
+   Compiling walkdir v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling wasmparser v0.254.0
+   Compiling darling_macro v0.20.11
+   Compiling tar v0.4.46
+   Compiling flate2 v1.1.9
+   Compiling tokio-util v0.7.20
+   Compiling find_cuda_helper v0.2.0
+   Compiling darling v0.20.11
+   Compiling pulley-interpreter v48.0.2
+   Compiling hybrid-array v0.4.15
+   Compiling vcpkg v0.2.15
+   Compiling zvec-rust v0.8.0
+   Compiling tower v0.5.3
+   Compiling derive_builder_core v0.20.2
+   Compiling libsqlite3-sys v0.35.0
+   Compiling hyper-util v0.1.20
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_core v0.9.5
+   Compiling tree-sitter v0.27.1
+   Compiling inout v0.1.4
+   Compiling ahash v0.8.12
+   Compiling ort-sys v2.0.0-rc.15
+   Compiling esaxx-rs v0.1.10
+   Compiling openssl-probe v0.2.2
+   Compiling cranelift-codegen-meta v0.135.2
+   Compiling rustls-native-certs v0.8.5
+   Compiling derive_builder_macro v0.20.2
+   Compiling cipher v0.4.4
+   Compiling llama-cpp-sys-2 v0.1.154 (https://github.com/zvec-ai/llama-cpp-rs.git?rev=b55399ac6c2035f2301120547c4c967e741d25d3#b55399ac)
+   Compiling rand_chacha v0.9.0
+   Compiling tower-http v0.6.10
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling cranelift-codegen v0.135.2
+   Compiling universal-hash v0.5.1
+   Compiling tree-sitter-go v0.25.0
+   Compiling tree-sitter-typescript v0.23.2
+   Compiling tree-sitter-java v0.23.5
+   Compiling tree-sitter-cpp v0.23.4
+   Compiling tree-sitter-rust v0.24.2
+   Compiling tree-sitter-javascript v0.25.0
+   Compiling tree-sitter-c v0.24.2
+   Compiling tree-sitter-python v0.25.0
+   Compiling monostate-impl v0.1.18
+   Compiling enumflags2_derive v0.7.12
+   Compiling macro_rules_attribute-proc_macro v0.2.3
+   Compiling pastey v0.2.3
+   Compiling opaque-debug v0.3.1
+   Compiling base64 v0.13.1
+   Compiling const-oid v0.10.2
+   Compiling llama-cpp-2 v0.1.154 (https://github.com/zvec-ai/llama-cpp-rs.git?rev=b55399ac6c2035f2301120547c4c967e741d25d3#b55399ac)
+   Compiling digest v0.11.3
+   Compiling macro_rules_attribute v0.2.3
+   Compiling spm_precompiled v0.1.4
+   Compiling enumflags2 v0.7.12
+   Compiling poly1305 v0.8.0
+   Compiling monostate v0.1.18
+   Compiling rand v0.9.4
+   Compiling chacha20 v0.9.1
+   Compiling derive_builder v0.20.2
+   Compiling grep-printer v0.3.1
+   Compiling compact_str v0.9.1
+   Compiling rayon-cond v0.4.0
+   Compiling hashlink v0.10.0
+   Compiling fancy-regex v0.17.0
+   Compiling grep-cli v0.1.12
+   Compiling half v2.7.1
+   Compiling aead v0.5.2
+   Compiling unicode-normalization-alignments v0.1.12
+   Compiling dary_heap v0.3.9
+   Compiling libloading v0.9.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling unicode_categories v0.1.1
+   Compiling zg-engine v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling base64 v0.23.1
+   Compiling streaming-iterator v0.1.9
+   Compiling daachorse v3.0.3
+   Compiling wasmtime-environ v48.0.2
+   Compiling tokenizers v0.23.2
+   Compiling wasm-encoder v0.254.0
+   Compiling ort v2.0.0-rc.15
+   Compiling chacha20poly1305 v0.10.1
+   Compiling zg-zvec-fp16 v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling grep v0.4.1
+   Compiling zg-host-native v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling sha2 v0.11.1
+   Compiling zg-engine-macros v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling sysinfo v0.37.2
+   Compiling httpdate v1.0.3
+   Compiling shutdown_hooks v0.1.0
+   Compiling hex v0.4.3
+   Compiling wit-parser v0.254.0
+   Compiling wasm-metadata v0.254.0
+   Compiling oino-agent v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-agent)
+   Compiling oino-extension-api v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-extension-api)
+   Compiling wit-component v0.254.0
+   Compiling oino-models v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-models)
+   Compiling cranelift-entity v0.135.2
+   Compiling cranelift-bforest v0.135.2
+   Compiling postcard v1.1.3
+   Compiling wasmtime-internal-wit-bindgen v48.0.2
+   Compiling smallvec v1.15.1
+   Compiling wasmtime-internal-component-macro v48.0.2
+   Compiling wasmtime-internal-cache v48.0.2
+   Compiling wasmtime-internal-fiber v48.0.2
+   Compiling wiggle-generate v48.0.2
+   Compiling itertools v0.13.0
+   Compiling wiggle-macro v48.0.2
+   Compiling agent-client-protocol v3.5.0
+   Compiling unicode-truncate v1.1.0
+   Compiling ratatui v0.29.0
+   Compiling cranelift-native v0.135.2
+   Compiling cranelift-frontend v0.135.2
+   Compiling wasmtime-internal-unwinder v48.0.2
+   Compiling wasmtime-internal-cranelift v48.0.2
+   Compiling wasmtime v48.0.2
+   Compiling rustls-webpki v0.103.16
+   Compiling tokio-rustls v0.26.4
+   Compiling hyper-rustls v0.27.9
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling reqwest v0.13.5
+   Compiling reqwest v0.12.28
+   Compiling wasmtime-wasi-io v48.0.2
+   Compiling wiggle v48.0.2
+   Compiling wasmtime-wasi v48.0.2
+   Compiling rusqlite v0.37.0
+   Compiling oino-tools v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tools)
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling oino-view v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-view)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling oino-tui v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tui)
+   Compiling oino-rpc v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-rpc)
+   Compiling oino-acp v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-acp)
+   Compiling oino-cli v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino)
+    Finished `release` profile [optimized] target(s) in 2m 10s

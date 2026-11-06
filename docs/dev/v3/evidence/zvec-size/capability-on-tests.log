@@ -1,0 +1,116 @@
+    Blocking waiting for file lock on build directory
+   Compiling rand_core v0.6.4
+   Compiling aws-lc-sys v0.47.0
+   Compiling tree-sitter-language v0.1.9
+   Compiling either v1.19.0
+   Compiling bit-vec v0.8.0
+   Compiling zvec-rust-sys v0.8.0
+   Compiling nom v7.1.3
+   Compiling castaway v0.2.4
+   Compiling base64 v0.13.1
+   Compiling static_assertions v1.1.0
+   Compiling crypto-common v0.1.7
+   Compiling macro_rules_attribute v0.2.3
+   Compiling compact_str v0.9.1
+   Compiling bit-set v0.8.0
+   Compiling itertools v0.14.0
+   Compiling rayon v1.12.0
+   Compiling digest v0.10.7
+   Compiling universal-hash v0.5.1
+   Compiling cipher v0.4.4
+   Compiling aead v0.5.2
+   Compiling sha2 v0.10.9
+   Compiling aws-lc-rs v1.19.0
+   Compiling chacha20 v0.9.1
+   Compiling polyval v0.6.2
+   Compiling poly1305 v0.8.0
+   Compiling wasmtime-environ v48.0.2
+   Compiling cranelift-codegen v0.135.2
+   Compiling fancy-regex v0.17.0
+   Compiling zvec-rust v0.8.0
+   Compiling monostate v0.1.18
+   Compiling rustls-webpki v0.103.16
+   Compiling enumflags2 v0.7.12
+   Compiling grep-printer v0.3.1
+   Compiling esaxx-rs v0.1.10
+   Compiling ahash v0.8.12
+   Compiling ort-sys v2.0.0-rc.15
+   Compiling spm_precompiled v0.1.4
+   Compiling llama-cpp-sys-2 v0.1.154 (https://github.com/zvec-ai/llama-cpp-rs.git?rev=b55399ac6c2035f2301120547c4c967e741d25d3#b55399ac)
+   Compiling grep-cli v0.1.12
+   Compiling rustls v0.23.46
+   Compiling half v2.7.1
+   Compiling unicode-normalization-alignments v0.1.12
+   Compiling rayon-cond v0.4.0
+   Compiling dary_heap v0.3.9
+   Compiling libloading v0.9.0
+   Compiling daachorse v3.0.3
+   Compiling unicode_categories v0.1.1
+   Compiling streaming-iterator v0.1.9
+   Compiling ort v2.0.0-rc.15
+   Compiling zg-zvec-fp16 v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling oino-extension-api v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-extension-api)
+   Compiling grep v0.4.1
+   Compiling tree-sitter v0.27.1
+   Compiling llama-cpp-2 v0.1.154 (https://github.com/zvec-ai/llama-cpp-rs.git?rev=b55399ac6c2035f2301120547c4c967e741d25d3#b55399ac)
+   Compiling tokenizers v0.23.2
+   Compiling tree-sitter-typescript v0.23.2
+   Compiling tree-sitter-c v0.24.2
+   Compiling tree-sitter-java v0.23.5
+   Compiling tree-sitter-python v0.25.0
+   Compiling tree-sitter-cpp v0.23.4
+   Compiling tree-sitter-javascript v0.25.0
+   Compiling tree-sitter-rust v0.24.2
+   Compiling tree-sitter-go v0.25.0
+   Compiling chacha20poly1305 v0.10.1
+   Compiling ghash v0.5.1
+   Compiling ctr v0.9.2
+   Compiling aes v0.8.4
+   Compiling zg-host-native v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling sysinfo v0.37.2
+   Compiling hex v0.4.3
+   Compiling shutdown_hooks v0.1.0
+   Compiling aes-gcm v0.10.3
+   Compiling sha1 v0.10.7
+   Compiling hmac v0.12.1
+   Compiling tokio-rustls v0.26.6
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling noq-proto v1.4.0
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.13.5
+   Compiling reqwest v0.12.28
+   Compiling tokio-websockets v0.13.3
+   Compiling tungstenite v0.28.0
+   Compiling unipi-browser v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-browser)
+   Compiling zg-engine v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling n0-dns-resolver v0.1.0
+   Compiling unipi-cron v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-cron)
+   Compiling wasmtime-internal-cache v48.0.2
+   Compiling wasmtime-internal-fiber v48.0.2
+   Compiling iroh-dns v1.4.1
+   Compiling noq v1.4.0
+   Compiling tokio-tungstenite v0.28.0
+   Compiling pbkdf2 v0.12.2
+   Compiling unipi-kanboard v1.0.0-alpha.5 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-kanboard)
+   Compiling iroh-relay v1.4.1
+   Compiling iroh v1.4.1
+   Compiling cranelift-native v0.135.2
+   Compiling cranelift-frontend v0.135.2
+   Compiling wasmtime-internal-unwinder v48.0.2
+   Compiling wasmtime-internal-cranelift v48.0.2
+   Compiling oino-tools v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tools)
+   Compiling wasmtime v48.0.2
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling wiggle v48.0.2
+   Compiling wasmtime-wasi-io v48.0.2
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling wasmtime-wasi v48.0.2
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 11s
+     Running unittests src/lib.rs (apps/unipi/target/debug/deps/unipi_host-2ee7de450df8f77e)
+
+running 1 test
+test host_cmd::search_capability_tests::reports_compiled_engine_not_user_toggle ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 390 filtered out; finished in 0.00s

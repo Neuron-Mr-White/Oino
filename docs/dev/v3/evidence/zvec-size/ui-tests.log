@@ -1,0 +1,14 @@
+
+ RUN  v5.0.3 /home/oi/Projects/Personal/llm/oino/apps/unipi
+
+ ✓ src/screens/settings/SearchSettings.test.tsx (5 tests) 465ms
+   ✓ defaults off and explains session snapshot semantics 421ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  07:35:01
+   Duration  10.13s (transform 79%, import 10%, environment 6%, tests 5%, setup 1%)
+
+  Transform  transforming modules took 7.88s · 79% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns

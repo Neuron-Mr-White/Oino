@@ -1,0 +1,9 @@
+    Blocking waiting for file lock on build directory
+   Compiling unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.11s
+     Running unittests src/lib.rs (apps/unipi/target/debug/deps/unipi_proto-4730ff33e06d2aaf)
+
+running 1 test
+test settings::tests::host_cmd_wire_names_match_the_oino_commands ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 71 filtered out; finished in 0.00s

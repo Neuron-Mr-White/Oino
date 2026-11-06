@@ -1,0 +1,36 @@
+{
+  "host-off": {
+    "bytes": 86912640,
+    "sha256": "0b31e6fc3504cbfb579adf9d8124927e3b51417360da6b1ac0392dbafd8e8c6f"
+  },
+  "host-on": {
+    "bytes": 109947128,
+    "sha256": "d1bd3e0b30870a532ec7a53d8b4273c4bddf30fa7963c61a00a61574e020d7a8"
+  },
+  "cli-off": {
+    "bytes": 62054024,
+    "sha256": "7b45d645333967f7845c38128a3cc177e9f3699aeb260fb4d4239e76468e009d"
+  },
+  "cli-on": {
+    "bytes": 87727072,
+    "sha256": "18d9cffdb27d7db1614d6a97bfdd5e0b4cedf322e88bbd0602e0e2151c97ed76"
+  },
+  "sidecar-off": {
+    "bytes": 82702328,
+    "sha256": "f4f0a84aa2bf64e75f783ca942da59184771dc7fe756c61a6086870d83ac8ca3"
+  },
+  "libzvec_c_api.so": {
+    "bytes": 41462640,
+    "sha256": "9a4dd245d7dc02ae0615675387ba4c6e9a18356d6e42f9960ad8379bafd095ef"
+  },
+  "libonnxruntime.so.1": {
+    "bytes": 20558552,
+    "sha256": "ffeb07b0994dd8a1b40f5a5bfac44a5c9f2ece6d4408737f2619b59cb1fd5799"
+  },
+  "host_binary_delta_bytes": 23034488,
+  "cli_binary_delta_bytes": 25673048,
+  "runtime_bytes": 62021192,
+  "host_plus_runtime_delta_bytes": 85055680,
+  "host_cli_runtime_delta_bytes": 110728728,
+  "decision": "OFF: exceeds 40 MB (decimal or binary); musl feature build also unsupported"
+}

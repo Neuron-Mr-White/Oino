@@ -1,0 +1,42 @@
+    Blocking waiting for file lock on build directory
+    Checking serde_core v1.0.229
+    Checking thiserror v2.0.21
+    Checking serde v1.0.229
+    Checking serde_path_to_error v0.1.20
+    Checking serde_json v1.0.154
+    Checking unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+error: large size difference between variants
+   --> crates/unipi-proto/src/session.rs:591:1
+    |
+591 | /   pub enum HubEvent {
+592 | |       /// A card was created, renamed, changed state or became idle: keeps the Sessions list
+593 | |       /// live without polling. `run_state` tells created/state/needs-you apart.
+594 | | /     SessionChanged {
+595 | | |         /// The card.
+596 | | |         card: SessionCard,
+597 | | |     },
+    | | |_____- the largest variant contains at least 352 bytes
+...   |
+632 | | /     Ui {
+633 | | |         /// Full registry snapshot (`UiSnapshot`).
+634 | | |         #[serde(default, skip_serializing_if = "Option::is_none")]
+635 | | |         snapshot: Option<Value>,
+...   | |
+638 | | |         patch: Option<Value>,
+639 | | |     },
+    | | |_____- the second-largest variant contains at least 64 bytes
+...   |
+653 | |       },
+654 | |   }
+    | |___^ the entire enum is at least 352 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+596 -         card: SessionCard,
+596 +         card: Box<SessionCard>,
+    |
+
+error: could not compile `unipi-proto` (lib) due to 1 previous error

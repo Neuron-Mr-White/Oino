@@ -1,0 +1,28 @@
+    Blocking waiting for file lock on build directory
+   Compiling oino-settings v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-settings)
+   Compiling unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+   Compiling oino-resources v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-resources)
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+warning: unnecessary qualification
+   --> /home/oi/Projects/Personal/llm/oino/crates/oino-client/src/hub.rs:620:53
+    |
+620 |     pub fn is_live(&self, session_id: &str) -> impl std::future::Future<Output = bool> {
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: requested on the command line with `-W unused-qualifications`
+help: remove the unnecessary path segments
+    |
+620 -     pub fn is_live(&self, session_id: &str) -> impl std::future::Future<Output = bool> {
+620 +     pub fn is_live(&self, session_id: &str) -> impl Future<Output = bool> {
+    |
+
+   Compiling unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+warning: `oino-client` (lib) generated 1 warning (run `cargo fix --lib -p oino-client` to apply 1 suggestion)
+warning: linker stderr: ignoring deprecated linker optimization setting '1'
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `unipi-host` (bin "unipi-host") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 2m 57s

@@ -1,0 +1,10 @@
+   Compiling zvec-rust-sys v0.8.0
+   Compiling zvec-rust v0.8.0
+   Compiling zg-engine v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling zg-zvec-fp16 v0.3.0 (https://github.com/zvec-ai/zvec-grep?rev=407a38512bb0b778819e38035d87fb6ac229a4eb#407a3851)
+   Compiling oino-tools v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tools)
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+    Finished `release` profile [optimized] target(s) in 1m 00s

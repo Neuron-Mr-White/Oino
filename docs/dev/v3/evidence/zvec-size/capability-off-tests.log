@@ -1,0 +1,14 @@
+   Compiling oino-settings v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-settings)
+   Compiling unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+   Compiling oino-resources v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-resources)
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling unipi-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-host)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.06s
+     Running unittests src/lib.rs (apps/unipi/target/debug/deps/unipi_host-65caad6f0bed9a89)
+
+running 1 test
+test host_cmd::search_capability_tests::reports_compiled_engine_not_user_toggle ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 390 filtered out; finished in 0.00s

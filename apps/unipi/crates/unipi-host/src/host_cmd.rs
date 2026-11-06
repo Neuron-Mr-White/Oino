@@ -33,6 +33,10 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+fn search_capabilities() -> Value {
+    json!({ "semanticSearch": cfg!(feature = "zvec") })
+}
+
 fn failed(message: impl std::fmt::Display) -> AppErrorDto {
     // The session commands surface command failures as plain texts; the wire
     // code for a hub-level command failure is `E_INTERNAL` with the core text.
@@ -81,6 +85,7 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     // Package installs are file operations on the agent dir: no services needed (and a
     // broken extension set must not keep the user from removing the culprit).
     match cmd {
+        HostCmd::SearchCapabilities => return Ok(search_capabilities()),
         HostCmd::BuildSearchIndex { cwd, consent } => {
             let root = std::path::Path::new(&cwd);
             if !root.is_absolute() || !root.is_dir() {
@@ -418,7 +423,8 @@ async fn dispatch(
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
         // Served before the services spin up (`run`).
-        HostCmd::BuildSearchIndex { .. }
+        HostCmd::SearchCapabilities
+        | HostCmd::BuildSearchIndex { .. }
         | HostCmd::InstallExtension { .. }
         | HostCmd::RemoveExtension { .. }
         | HostCmd::ReloadExtensions
@@ -787,5 +793,16 @@ mod tests {
             cwd: None,
         };
         assert!(refused_into_repo(&ok).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod search_capability_tests {
+    #[test]
+    fn reports_compiled_engine_not_user_toggle() {
+        assert_eq!(
+            super::search_capabilities(),
+            serde_json::json!({"semanticSearch": cfg!(feature = "zvec")})
+        );
     }
 }

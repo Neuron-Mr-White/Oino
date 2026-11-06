@@ -1,0 +1,25 @@
+   Compiling oino-settings v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-settings)
+   Compiling oino-resources v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-resources)
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling oino-view v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-view)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+warning: unnecessary qualification
+   --> crates/oino-client/src/hub.rs:620:53
+    |
+620 |     pub fn is_live(&self, session_id: &str) -> impl std::future::Future<Output = bool> {
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: requested on the command line with `-W unused-qualifications`
+help: remove the unnecessary path segments
+    |
+620 -     pub fn is_live(&self, session_id: &str) -> impl std::future::Future<Output = bool> {
+620 +     pub fn is_live(&self, session_id: &str) -> impl Future<Output = bool> {
+    |
+
+   Compiling oino-rpc v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-rpc)
+   Compiling oino-tui v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tui)
+   Compiling oino-acp v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-acp)
+   Compiling oino-cli v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino)
+warning: `oino-client` (lib) generated 1 warning (run `cargo fix --lib -p oino-client` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 53.53s
