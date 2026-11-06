@@ -2,15 +2,20 @@
   "apiVersion": "oino.extension/2",
   "id": "unipi.dream",
   "name": "Dream",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "kind": "extension",
-  "description": "Background reflection over past sessions: finds repeated struggles, writes memory lessons, and proposes skills or checks for approval.",
+  "description": "Daily memory consolidation: a scheduled background pass (host cron, even with no chat open) over the recent sessions of every project and their memories. Merges overlapping memories, removes transient details, adds missed lessons, prunes memories no session used, keeps source sessions and preferences, and proposes skills or checks for approval.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {
     "sessions": { "readAll": true },
     "agents": { "spawn": true, "maxDepth": 2 },
-    "fs": { "agentDir": "read", "project": "write" },
-    "services": { "call": ["unipi.core/core.open-tray"] }
+    "hostServices": ["cron"],
+    "fs": {
+      "agentDir": "read",
+      "project": "write",
+      "paths": [{ "path": "~/.oino/cron/jobs", "access": "write", "alias": "cron-jobs" }]
+    },
+    "services": { "call": ["unipi.core/core.open-tray", "unipi.memory/memory.inventory"] }
   }
 }

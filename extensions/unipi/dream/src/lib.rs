@@ -1,15 +1,22 @@
-//! `unipi.dream` — background reflection over past sessions (unipi `packages/dream`,
-//! unipi-port §3.20).
+//! `unipi.dream` — Oino's daily memory consolidation (unipi `packages/dream`, unipi-port
+//! §3.20; v3 J2/J3: Devin "Memory and Dreaming" parity on the `MemPalace` backend).
+//!
+//! A dream is a background agent pass over the recent sessions of **every project** and the
+//! memories they left behind. It consolidates overlapping memories (`memory_store` with
+//! `merge_from`), removes transient details, adds lessons the sessions missed (failed tool
+//! calls + recoveries, corrections, stated preferences), prunes stale memories no session
+//! used (per-memory usage from `unipi.memory`'s `memory.inventory`), keeps source session
+//! links and explicit preferences, and proposes skills / checks for approval.
 //!
 //! | unipi | here |
 //! |---|---|
-//! | due check on open (`minSessions`, `minGapHours`) | `session_start` (once per process, not in child sessions) |
-//! | scrubbed struggle digests | [`digest`] over `/agent/sessions/--<cwd>--/*.jsonl` |
-//! | detached `pi -p` child with craft-skill + memory tools, `timeout maxRuntimeMin` | nested agent (D8): `persistence: File` under the run's staging dir, extensions `only: [unipi.memory]`, aborted at `maxRuntimeMin`; interrupted runs resume once on the next start |
+//! | due check on open (`minSessions`, `minGapHours`) | a host cron job ([`schedule`]) at `schedule.time` (daily) or every `schedule.intervalHours`; gates applied by `/dream run --scheduled`; an interactive session catches up on an overdue dream when no host scheduler is reachable |
+//! | scrubbed struggle digests | [`digest::digest_recent`] over `/agent/sessions/*/*.jsonl` (all projects, since the last dream) |
+//! | detached `pi -p` child with craft-skill + memory tools, `timeout maxRuntimeMin` | nested agent (D8): `persistence: File` under the run's staging dir, extensions `only: [unipi.memory]`, aborted at `maxRuntimeMin`; heartbeat in `run.json` so every process sees it; interrupted runs resume once |
 //! | report card entry `unipi-dream-report-card` + renderer | custom entry + OUS renderer |
 //! | work-tray Dream tab (list/detail, o/s/r/a/x/d/1–9) | `work-tray.tab` / `work-tray.action` ([`tray`]) |
-//! | `/dream [status\|tray\|report\|run\|stop\|approve <n>\|reject <n>]` | command |
-//! | `unipi.dream.api` | services `dream.status`, `dream.run`, `dream.stop` (+ `dream.detail`, `dream.approve`, `dream.reject`, `dream.dismiss`) |
+//! | `/dream [status\|tray\|report\|run\|stop\|approve <n>\|reject <n>]` | command (+ `run --scheduled`, `schedule`) |
+//! | `unipi.dream.api` | services `dream.status`, `dream.run`, `dream.stop`, `dream.detail`, `dream.runs`, `dream.approve`, `dream.reject`, `dream.dismiss` |
 //! | craft-skill `check` before an approved skill lands | [`store::craft_check`] (Rust port); the bundled `craft-skill` skill keeps its scripts |
 //! | `dream` settings | [`settings`] |
 
@@ -19,6 +26,7 @@
 )]
 
 pub mod digest;
+pub mod schedule;
 pub mod settings;
 pub mod store;
 pub mod tray;
@@ -33,6 +41,7 @@ use std::time::Duration;
 use futures::FutureExt;
 use oino_extension::agents::Agent;
 use oino_extension::command::CompletionItem;
+use oino_extension::host_service;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
 use oino_extension::ui::widgets::prelude::*;
@@ -42,44 +51,97 @@ use unipi_kit::settings::Store;
 use unipi_kit::topics;
 use unipi_kit::tray::{Action, ActionReply, Counts, TabRequest, TrayTab};
 
-use crate::settings::{DreamSettings, EXTENSION_ID, NAMESPACE};
-use crate::store::{DreamState, Lock, Run, RunMeta, Status};
+use crate::settings::{DreamSettings, EXTENSION_ID, Mode, NAMESPACE};
+use crate::store::{DreamState, LastCheck, Lock, Run, RunMeta, Status};
 use crate::tray::View;
 
 /// Report card entry type.
 pub const REPORT_CARD: &str = "unipi-dream-report-card";
 const POLL_TIMER: &str = "dream-poll";
-const USAGE: &str = "usage: /dream status|tray|report|run|stop|approve <n>|reject <n>";
+const USAGE: &str = "usage: /dream status|tray|report|run|stop|schedule|approve <n>|reject <n>";
+/// Most recent sessions one dream digests.
+pub const MAX_SESSIONS: usize = 80;
+/// Most memory projects one dream covers.
+pub const MAX_PROJECTS: usize = 12;
+/// How far back the first dream looks.
+pub const FIRST_WINDOW_MS: i64 = 7 * 24 * 3_600_000;
+/// How often an interactive session re-checks for an overdue dream.
+const AUTO_CHECK_MS: i64 = 30 * 60_000;
+const MEMORY_EXT: &str = "unipi.memory";
+const INVENTORY: &str = "memory.inventory";
 
-/// The dream prompt (unipi `dreamPrompt`); paths are host paths.
+/// What the dream prompt points at.
+#[derive(Clone, Debug, Default)]
+pub struct PromptInputs<'a> {
+    /// Staging dir (host path).
+    pub staging: &'a str,
+    /// Memory root (host path).
+    pub memory_root: Option<&'a str>,
+    /// Memory projects covered.
+    pub projects: &'a [String],
+    /// `memory/before.json` was written.
+    pub has_inventory: bool,
+    /// Prune window (days, `0` = never prune).
+    pub stale_days: f64,
+}
+
+/// The dream prompt (unipi `dreamPrompt`, v3 Devin consolidation); paths are host paths.
 #[must_use]
-pub fn dream_prompt(staging: &str, memory_root: Option<&str>) -> String {
+pub fn dream_prompt(i: &PromptInputs<'_>) -> String {
+    let s = i.staging;
+    let projects = if i.projects.is_empty() {
+        "(none: no recent sessions; still consolidate and prune what memory/before.json lists)"
+            .to_owned()
+    } else {
+        i.projects.join(", ")
+    };
+    let inventory = if i.has_inventory {
+        format!(
+            "- {s}/memory/before.json: every memory of the covered projects: project, id, title, type, updated, snippet, file (read it for the full text), useCount, lastUsed, sessions (that used it), sources (that wrote it), stale (true = no session searched, read or was shown it for {} days).",
+            store::fmt_num(i.stale_days)
+        )
+    } else {
+        "- The memory inventory is unavailable this run: use memory_list with `project` for each covered project, and treat no memory as stale.".to_owned()
+    };
+    let prune = if i.stale_days > 0.0 && i.has_inventory {
+        "4. Prune stale memories: a memory marked \"stale\": true that is transient, obsolete or contradicted by the sessions -> memory_delete. Never delete a `preference` or an explicit user instruction; when unsure, keep it.".to_owned()
+    } else {
+        "4. Pruning is off this run: delete only memories you merged or that the sessions plainly contradict.".to_owned()
+    };
     [
-        "You are running a DREAM pass: an offline review of past coding-agent sessions. Nobody is watching; work only with files.".to_owned(),
+        "You are running a DREAM pass: Oino's offline review of recent coding-agent sessions and the memories they left behind. Nobody is watching; work only with files and the memory tools.".to_owned(),
+        String::new(),
+        "Memories are short lessons learned from working with this user: preferences, corrections, project decisions, environment gotchas, each linked to the session it came from. They are NOT session summaries. Keep the memory index small, true and useful for the next session.".to_owned(),
         String::new(),
         "Inputs (read-only):".to_owned(),
-        format!("- {staging}/digests/INDEX.json and the per-session files next to it: failed tool calls (call, errorHead = first line(s) of the error, errorTail = end of the error, recovery = the next successful call of the same tool) and user corrections."),
+        format!("- {s}/digests/INDEX.json: `projects` (memory project, cwd, sessions) and `sessions` (every recent session with its project and first request; sessions with events add errors, corrections, preferences, memoryStores and a `digest` file under {s}/digests/). A digest lists failed tool calls (call, errorHead = first line(s) of the error, errorTail = end of the error, recovery = the next successful call of the same tool), user corrections and stated user preferences."),
+        inventory,
+        format!("- Projects covered: {projects}."),
         String::new(),
-        "Goal: make the next session take the shortest path. Find false paths: an error the agent hit, then recovered from with a different call. Group the same false path across sessions.".to_owned(),
+        "Do these four things, in order:".to_owned(),
+        "1. Consolidate: memories in one project that overlap or say the same thing become ONE memory. memory_store the merged note with `merge_from` = the titles of the notes it replaces (they are deleted and their usage history carries over). Keep the clearest wording and every source reference.".to_owned(),
+        "2. Remove transient details: facts about one moment (a port 'this afternoon', a temp path, a branch or task that is finished, 'today', 'currently') -> rewrite the note into the durable lesson behind it, or delete it when nothing durable remains.".to_owned(),
+        "3. Find missed lessons: a false path in the digests (an error, then a recovery with a different call), a user correction, or a stated preference that no memory captures yet. Group the same false path across sessions and pick the cheapest fix:".to_owned(),
+        "   - seen in 1 session -> a memory lesson, or nothing if it was a one-off".to_owned(),
+        "   - seen in 2+ sessions and mechanical (fixed command shape, schema, banned pattern) -> propose an automated check or a one-line lesson keyed by the error text".to_owned(),
+        "   - seen in 2+ sessions and a multi-step procedure -> propose a skill (write it with the craft-skill skill, loaded for this run)".to_owned(),
+        "   - a stated preference -> a `preference` memory in the user's own words, with the reason they gave".to_owned(),
+        prune,
         String::new(),
-        "For each group, pick the cheapest fix that removes the false path:".to_owned(),
-        "- seen in 1 session -> a memory lesson, or nothing if it was a one-off".to_owned(),
-        "- seen in 2+ sessions and mechanical (fixed command shape, schema, banned pattern) -> propose an automated check or a one-line lesson keyed by the error text".to_owned(),
-        "- seen in 2+ sessions and a multi-step procedure -> propose a skill (write it with the craft-skill skill, loaded for this run)".to_owned(),
-        "Also: memory notes that are summaries of past work, duplicates, or contradicted by the digests -> merge, rewrite as a lesson, or delete.".to_owned(),
-        String::new(),
-        memory_root.map_or_else(
-            || "Memory: edit the memory files directly under the memory directory given in the environment.".to_owned(),
-            |m| format!("Memory: store, update and delete with the memory tools (memory_store / memory_delete) so the search index stays in sync. The memory files live under {m}."),
+        i.memory_root.map_or_else(
+            || "Memory: use the memory tools (memory_store / memory_delete / memory_list) and always pass `project` (the memory's project from the inputs): your working directory is a staging folder, not a project.".to_owned(),
+            |m| format!("Memory: use the memory tools (memory_store / memory_delete / memory_list) so the search index stays in sync, and always pass `project` (the memory's project from the inputs): your working directory is a staging folder, not a project. The memory files live under {m}; read them, never edit them directly."),
         ),
         String::new(),
         "Rules:".to_owned(),
-        "- Every lesson and proposal cites at least one session id. No session id, no lesson.".to_owned(),
+        "- Every memory you write keeps or adds its source line(s): `[source: <session id>]` (session ids are the session names in the digest index). When merging, carry every source of the merged notes. No session id, no new lesson.".to_owned(),
         "- A lesson is one line: `When <error text or situation>, <shortest path>. [source: <session id>]`".to_owned(),
+        "- Keep explicit user preferences and their reasons; never weaken or drop them.".to_owned(),
         "- Never copy a secret, token, or password into any file.".to_owned(),
-        format!("- Write skill and check proposals only under {staging}/proposals/, never anywhere else. Skills are crafted with the craft-skill skill (scaffold + check scripts)."),
+        format!("- Write skill and check proposals only under {s}/proposals/, never anywhere else. Skills are crafted with the craft-skill skill (scaffold + check scripts)."),
+        format!("- Record every memory change in {s}/memory-changes.json: a JSON array of {{\"action\": \"merged|added|rewritten|pruned\", \"project\", \"title\", \"from\": [titles merged in], \"reason\", \"sources\": [session ids]}}."),
         String::new(),
-        format!("Done when {staging}/DREAM_REPORT.md exists with three sections: ## Memory edits (applied), ## Proposals (waiting for approval, each with its sources), ## Skipped (groups you judged one-off, with why)."),
+        format!("Done when {s}/DREAM_REPORT.md exists with three sections: ## Memory edits (applied; one bullet per change, starting with merged / added / rewritten / pruned), ## Proposals (waiting for approval, each with its sources), ## Skipped (groups you judged one-off, with why)."),
     ]
     .join("\n")
 }
@@ -140,7 +202,14 @@ pub struct Dream {
     settings: Store,
     agents: RefCell<HashMap<String, Rc<Agent>>>,
     views: SessionMap<View>,
-    checked: Cell<bool>,
+    /// Last overdue check by an interactive session (unix ms).
+    last_auto: Cell<i64>,
+    /// Resume of interrupted runs already attempted in this process.
+    resumed: Cell<bool>,
+    /// The last schedule sync error.
+    sched_error: RefCell<Option<String>>,
+    /// Runs whose agent is closing (still "in flight" for `run --scheduled`).
+    closing: RefCell<Vec<String>>,
 }
 
 fn spawn(fut: impl Future<Output = ()> + 'static) {
@@ -172,30 +241,102 @@ fn append_log(staging: &Path, line: &str) {
     }
 }
 
+/// The agent dir's memory root (host path).
+fn memory_root() -> Option<String> {
+    agent_dir().map(|a| format!("{a}/state/unipi.memory/global/memory"))
+}
+
+/// `memory.inventory` from `unipi.memory` (`None` when the extension is off or slow).
+async fn inventory(projects: &[String], stale_days: f64) -> Option<Value> {
+    services::call(
+        Some(MEMORY_EXT),
+        INVENTORY,
+        &json!({"projects": projects, "staleDays": stale_days}),
+        Some(Duration::from_secs(60)),
+    )
+    .await
+    .ok()
+    .filter(|v| v.get("memories").is_some_and(Value::is_array))
+}
+
+fn write_json(p: &Path, v: &Value) {
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(p, serde_json::to_vec_pretty(v).unwrap_or_default());
+}
+
+/// Writes `memory/after.json` and `changes.json` for a finished run.
+async fn finalize(staging: &Path, projects: &[String], stale_days: f64) {
+    let before: Option<Value> = std::fs::read(staging.join("memory/before.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok());
+    let Some(before) = before else {
+        return;
+    };
+    let Some(after) = inventory(projects, stale_days).await else {
+        append_log(
+            staging,
+            "memory inventory unavailable after the run; no change list",
+        );
+        return;
+    };
+    write_json(&staging.join("memory/after.json"), &after);
+    let mut changes = store::diff_inventory(&before, &after);
+    changes["actions"] = json!(store::read_actions(staging));
+    write_json(&staging.join("changes.json"), &changes);
+}
+
 impl Dream {
     fn cfg(&self) -> DreamSettings {
         settings::normalize(&self.settings.get(NAMESPACE).0)
     }
 
+    /// Where new runs live (one dream across projects).
     fn root() -> PathBuf {
-        unipi_kit::paths::global(&format!("runs/{}", host::workspace().id))
+        unipi_kit::paths::global("runs/all")
+    }
+
+    /// Every run dir (`runs/all` + legacy `runs/<wsid>`).
+    fn runs_root() -> PathBuf {
+        unipi_kit::paths::global("runs")
     }
 
     fn state_path() -> PathBuf {
-        unipi_kit::paths::workspace("state.json")
+        unipi_kit::paths::global("state.json")
     }
 
-    fn sessions_dir(cwd: &str) -> PathBuf {
-        PathBuf::from("/agent/sessions").join(digest::encode_session_dir_name(cwd))
+    /// The global state, with the current workspace's legacy state folded in once.
+    fn read_state() -> DreamState {
+        let p = Self::state_path();
+        let mut st = store::read_state(&p);
+        let legacy_p = unipi_kit::paths::workspace("state.json");
+        if legacy_p.exists() {
+            let legacy = store::read_state(&legacy_p);
+            st.absorb_legacy(&legacy);
+            store::write_state(&p, &st);
+            let _ = std::fs::rename(&legacy_p, legacy_p.with_extension("json.migrated"));
+        }
+        st
     }
 
+    fn sessions_root() -> PathBuf {
+        PathBuf::from("/agent/sessions")
+    }
+
+    fn skip() -> digest::Skip {
+        digest::Skip::for_agent_dir(agent_dir().as_deref())
+    }
+
+    /// Run ids alive in this process or (by heartbeat) in another one.
     fn alive(&self) -> impl Fn(&str) -> bool + '_ {
-        |id| self.agents.borrow().contains_key(id)
+        let beating = store::heartbeat_ids(&Self::runs_root(), timers::now_ms());
+        move |id| self.agents.borrow().contains_key(id) || beating.iter().any(|b| b == id)
     }
 
     fn runs(&self) -> Vec<Run> {
-        let st = store::read_state(&Self::state_path());
-        store::list_runs(&Self::root(), &st, timers::now_ms(), &self.alive())
+        let st = Self::read_state();
+        store::list_all_runs(&Self::runs_root(), &st, timers::now_ms(), &self.alive())
     }
 
     fn changed(&self) {
@@ -203,15 +344,6 @@ impl Dream {
         if self.agents.borrow().is_empty() {
             timers::cancel(POLL_TIMER);
         }
-    }
-
-    fn memory_root(cwd: &str) -> Option<String> {
-        agent_dir().map(|a| {
-            format!(
-                "{a}/state/unipi.memory/global/memory/{}",
-                memory_project(cwd)
-            )
-        })
     }
 
     fn agent_spec(cfg: &DreamSettings, staging: &str, seed: Option<&str>) -> Value {
@@ -233,14 +365,15 @@ impl Dream {
         spec
     }
 
-    /// Spawns the agent for `staging` and watches it in the background.
+    /// Spawns the agent for `staging` and watches it in the background: heartbeat, stop
+    /// requests from any process, the runtime cap, then the memory change list.
     async fn launch(
         &'static self,
         cfg: &DreamSettings,
         staging: &Path,
         seed: Option<String>,
         prompt: &str,
-    ) -> std::result::Result<(), String> {
+    ) -> std::result::Result<String, String> {
         let id = staging
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -250,6 +383,7 @@ impl Dream {
             .await
             .map_err(|e| e.to_string())?;
         append_log(staging, &format!("dream agent {} started", agent.id()));
+        store::patch_meta(staging, |m| m.heartbeat_at = Some(timers::now_ms()));
         agent.prompt(prompt).await.map_err(|e| e.to_string())?;
         let agent = Rc::new(agent);
         self.agents
@@ -257,21 +391,36 @@ impl Dream {
             .insert(id.clone(), Rc::clone(&agent));
         timers::set(POLL_TIMER, Duration::from_secs(2), true);
         let max = Duration::from_secs_f64(cfg.max_runtime_min * 60.0);
+        let stale_days = cfg.stale_days;
         let staging = staging.to_path_buf();
+        let run_id = id.clone();
         spawn(async move {
             let (code, error) = {
                 let timeout = timers::sleep(max).fuse();
                 let idle = agent.wait_idle().fuse();
-                futures::pin_mut!(timeout, idle);
+                let beat_dir = staging.clone();
+                let beat = async move {
+                    loop {
+                        #[allow(clippy::cast_sign_loss, reason = "positive constant")]
+                        timers::sleep(Duration::from_millis(store::HEARTBEAT_MS as u64)).await;
+                        if store::read_meta(&beat_dir).is_none_or(|m| m.stopped) {
+                            break;
+                        }
+                        store::patch_meta(&beat_dir, |m| m.heartbeat_at = Some(timers::now_ms()));
+                    }
+                }
+                .fuse();
+                futures::pin_mut!(timeout, idle, beat);
                 futures::select! {
                     r = idle => match r {
                         Ok(()) => (0, None),
                         Err(e) => (1, Some(e.to_string())),
                     },
                     () = timeout => (124, None),
+                    () = beat => (130, None),
                 }
             };
-            if code == 124 {
+            if code == 124 || code == 130 {
                 agent.abort();
             }
             if let Some(t) = agent.last_assistant_text() {
@@ -280,18 +429,24 @@ impl Dream {
             if let Some(e) = &error {
                 append_log(&staging, &format!("Error: {e}"));
             }
-            let stopped = store::read_meta(&staging).is_some_and(|m| m.stopped);
+            let meta = store::read_meta(&staging).unwrap_or_default();
+            let stopped = meta.stopped;
             store::patch_meta(&staging, |m| {
                 m.ended_at.get_or_insert(timers::now_ms());
+                m.heartbeat_at = None;
                 if !stopped {
                     m.exit_code = Some(code);
                     m.error.clone_from(&error);
                 }
             });
-            self.agents.borrow_mut().remove(&id);
+            finalize(&staging, &meta.projects, stale_days).await;
+            self.closing.borrow_mut().push(id.clone());
+            let held = self.agents.borrow_mut().remove(&id);
+            drop(held);
             if let Ok(a) = Rc::try_unwrap(agent) {
                 a.close(5_000).await;
             }
+            self.closing.borrow_mut().retain(|c| c != &id);
             let st_path = Self::state_path();
             let mut st = store::read_state(&st_path);
             if st.lock.as_ref().and_then(|l| l.run.as_deref()) == Some(id.as_str()) {
@@ -300,46 +455,77 @@ impl Dream {
             }
             self.changed();
         });
-        Ok(())
+        Ok(run_id)
     }
 
-    /// unipi `startDream`: staging dir, digests, prompt, agent.
-    async fn start(
-        &'static self,
-        cwd: &str,
-        manual: bool,
-    ) -> std::result::Result<(String, u32), String> {
+    /// unipi `startDream`, v3: staging dir, cross-project digests, memory inventory,
+    /// prompt, agent. Returns `(run id, sessions looked at)`.
+    async fn start(&'static self, trigger: &str) -> std::result::Result<(String, u32), String> {
         let cfg = self.cfg();
         let started = timers::now_ms();
+        let st = Self::read_state();
+        let since = if st.last_run_at > 0 {
+            st.last_run_at
+        } else {
+            started - FIRST_WINDOW_MS
+        };
         let staging = Self::root().join(format!("staging-{started}"));
         std::fs::create_dir_all(staging.join("proposals")).map_err(|e| e.to_string())?;
-        let (sessions, events) =
-            digest::digest_sessions(&Self::sessions_dir(cwd), &staging.join("digests"));
+        let recent = digest::digest_recent(
+            &Self::sessions_root(),
+            since,
+            &staging.join("digests"),
+            &Self::skip(),
+            MAX_SESSIONS,
+            &memory_project,
+        );
+        let projects: Vec<String> = recent
+            .projects
+            .iter()
+            .take(MAX_PROJECTS)
+            .map(|p| p.project.clone())
+            .collect();
+        let inv = inventory(&projects, cfg.stale_days).await;
+        if let Some(v) = &inv {
+            write_json(&staging.join("memory/before.json"), v);
+        }
         let host = host_of(&staging);
-        let prompt = dream_prompt(&host, Self::memory_root(cwd).as_deref());
+        let root = memory_root();
+        let prompt = dream_prompt(&PromptInputs {
+            staging: &host,
+            memory_root: root.as_deref(),
+            projects: &projects,
+            has_inventory: inv.is_some(),
+            stale_days: cfg.stale_days,
+        });
         let _ = std::fs::write(staging.join("PROMPT.md"), &prompt);
         store::write_meta(
             &staging,
             &RunMeta {
                 started_at: started,
                 pid: -1,
-                manual,
-                sessions,
-                events,
+                manual: trigger == "manual",
+                sessions: recent.sessions,
+                events: recent.events,
+                trigger: Some(trigger.to_owned()),
+                projects: projects.clone(),
                 ..RunMeta::default()
             },
         );
-        if let Err(e) = self.launch(&cfg, &staging, None, &prompt).await {
-            store::patch_meta(&staging, |m| {
-                m.ended_at = Some(timers::now_ms());
-                m.exit_code = Some(-1);
-                m.error = Some(e.clone());
-            });
-            append_log(&staging, &format!("Error: {e}"));
-            return Err(e);
-        }
-        let id = format!("staging-{started}");
-        let mut st = store::read_state(&Self::state_path());
+        let id = match self.launch(&cfg, &staging, None, &prompt).await {
+            Ok(id) => id,
+            Err(e) => {
+                store::patch_meta(&staging, |m| {
+                    m.ended_at = Some(timers::now_ms());
+                    m.exit_code = Some(-1);
+                    m.error = Some(e.clone());
+                });
+                append_log(&staging, &format!("Error: {e}"));
+                return Err(e);
+            }
+        };
+        let p = Self::state_path();
+        let mut st = store::read_state(&p);
         st.last_run_at = started;
         st.lock = Some(Lock {
             pid: 0,
@@ -347,13 +533,14 @@ impl Dream {
             run: Some(id.clone()),
         });
         st.shown_report = None;
-        store::write_state(&Self::state_path(), &st);
+        st.sessions_seen = recent.sessions;
+        store::write_state(&p, &st);
         self.changed();
-        Ok((id, sessions))
+        Ok((id, recent.sessions))
     }
 
     /// Resumes runs a previous process left unfinished (once each).
-    async fn resume_interrupted(&'static self, cwd: &str) {
+    async fn resume_interrupted(&'static self) {
         let cfg = self.cfg();
         for run in self.runs().into_iter().filter(|r| r.interrupted) {
             let meta = store::read_meta(&run.staging).unwrap_or_default();
@@ -361,6 +548,7 @@ impl Dream {
             if meta.resumes >= 1 || seed.is_none() {
                 store::patch_meta(&run.staging, |m| {
                     m.ended_at = Some(timers::now_ms());
+                    m.heartbeat_at = None;
                     m.exit_code = Some(1);
                     m.error = Some("interrupted (Oino exited during the dream)".into());
                 });
@@ -368,9 +556,16 @@ impl Dream {
             }
             store::patch_meta(&run.staging, |m| m.resumes += 1);
             let host = host_of(&run.staging);
+            let root = memory_root();
             let prompt = format!(
                 "The dream pass was interrupted. Continue from where you stopped.\n\n{}",
-                dream_prompt(&host, Self::memory_root(cwd).as_deref())
+                dream_prompt(&PromptInputs {
+                    staging: &host,
+                    memory_root: root.as_deref(),
+                    projects: &meta.projects,
+                    has_inventory: run.staging.join("memory/before.json").exists(),
+                    stale_days: cfg.stale_days,
+                })
             );
             if let Err(e) = self.launch(&cfg, &run.staging, seed, &prompt).await {
                 store::patch_meta(&run.staging, |m| {
@@ -390,9 +585,11 @@ impl Dream {
         let Some(run) = run else {
             return fail("No dream is running.");
         };
+        // The owner (this or another process) sees `stopped` on its next heartbeat.
         store::patch_meta(&run.staging, |m| {
             m.stopped = true;
             m.ended_at = Some(timers::now_ms());
+            m.heartbeat_at = None;
         });
         if let Some(a) = self.agents.borrow().get(&run.id) {
             a.abort();
@@ -407,16 +604,150 @@ impl Dream {
         ok("Dream stopped.")
     }
 
-    async fn run_now(&'static self, cwd: &str) -> Outcome {
+    async fn run_now(&'static self) -> Outcome {
         if self.runs().iter().any(|r| r.status == Status::Running) {
             return fail("A dream is already running.");
         }
-        match self.start(cwd, true).await {
+        match self.start("manual").await {
             Ok((_, sessions)) => ok(format!(
-                "Dream running in the background ({sessions} sessions digested)."
+                "Dream running in the background ({sessions} recent sessions to review)."
             )),
-            Err(_) => fail("Couldn't start the dream agent (see the dream state dir)."),
+            Err(e) => fail(format!("Couldn't start the dream agent: {e}")),
         }
+    }
+
+    fn record_check(trigger: &str, ran: bool, reason: &str) {
+        let p = Self::state_path();
+        let mut st = store::read_state(&p);
+        st.last_check = Some(LastCheck {
+            at: timers::now_ms(),
+            trigger: trigger.to_owned(),
+            ran,
+            reason: reason.to_owned(),
+        });
+        store::write_state(&p, &st);
+    }
+
+    /// A gated dream (`scheduled` from the host cron, `catch-up` from a session).
+    /// `wait` keeps the call alive until the agent ends (the headless cron process exits
+    /// when the command returns).
+    async fn run_gated(&'static self, trigger: &str, wait: bool) -> Outcome {
+        let cfg = self.cfg();
+        let st = Self::read_state();
+        let d = self.due(&st, &cfg);
+        if !d.due {
+            Self::record_check(trigger, false, &d.reason);
+            return ok(format!("Dream skipped: {}.", d.reason));
+        }
+        if self.runs().iter().any(|r| r.status == Status::Running) {
+            Self::record_check(trigger, false, "a dream is already running");
+            return ok("Dream skipped: a dream is already running.");
+        }
+        let (id, sessions) = match self.start(trigger).await {
+            Ok(v) => v,
+            Err(e) => {
+                Self::record_check(trigger, false, &format!("couldn't start: {e}"));
+                return fail(format!("Couldn't start the dream agent: {e}"));
+            }
+        };
+        Self::record_check(trigger, true, &d.reason);
+        if !wait {
+            return ok(format!("Dream running ({sessions} recent sessions)."));
+        }
+        while self.agents.borrow().contains_key(&id) || self.closing.borrow().contains(&id) {
+            timers::sleep(Duration::from_secs(2)).await;
+        }
+        let run = self.runs().into_iter().find(|r| r.id == id);
+        ok(match run {
+            Some(r) if r.status == Status::Finished => format!(
+                "Dream finished: {}.",
+                store::summarize_report(&store::read_report(&r.staging)).join(", ")
+            ),
+            Some(r) => format!(
+                "Dream ended {}{}.",
+                r.status.as_str(),
+                r.error.map(|e| format!(": {e}")).unwrap_or_default()
+            ),
+            None => "Dream ended.".to_owned(),
+        })
+    }
+
+    /// Writes / removes the host cron job to match the settings; `Err` = why it couldn't.
+    async fn sync_schedule(&self) -> std::result::Result<bool, String> {
+        let cfg = self.cfg();
+        let path = schedule::job_path();
+        let existing: Option<Value> = std::fs::read(&path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        let created = existing
+            .as_ref()
+            .and_then(|e| e.get("created"))
+            .and_then(Value::as_u64);
+        let cwd = agent_dir().unwrap_or_default();
+        let now = u64::try_from(timers::now_ms()).unwrap_or(0);
+        let result = match schedule::job_value(&cfg, &cwd, now, created) {
+            None => {
+                if existing.is_some() {
+                    std::fs::remove_file(&path)
+                        .map(|()| false)
+                        .map_err(|e| format!("couldn't remove the dream job: {e}"))
+                } else {
+                    Ok(false)
+                }
+            }
+            Some(job)
+                if existing
+                    .as_ref()
+                    .is_some_and(|e| schedule::same_job(e, &job)) =>
+            {
+                Ok(true)
+            }
+            Some(job) => {
+                if Path::new(schedule::JOBS_DIR).exists() {
+                    let _guard = oino_extension::fs::Lock::acquire(schedule::LOCK, true)
+                        .await
+                        .ok();
+                    oino_extension::fs::atomic_write(
+                        &path,
+                        &serde_json::to_vec_pretty(&job).unwrap_or_default(),
+                    )
+                    .map(|()| true)
+                    .map_err(|e| format!("couldn't write the dream job: {e}"))
+                } else {
+                    Err("the host cron folder (~/.oino/cron/jobs) is missing: start the Oino host once".to_owned())
+                }
+            }
+        };
+        *self.sched_error.borrow_mut() = result.as_ref().err().cloned();
+        result
+    }
+
+    /// The host scheduler's view of the dream job.
+    async fn scheduler_json(&self, cfg: &DreamSettings) -> Value {
+        let registered = self.sync_schedule().await;
+        let host = host_service::available("cron");
+        let mut v = json!({
+            "jobId": schedule::JOB_ID,
+            "registered": registered.as_ref().is_ok_and(|r| *r),
+            "hostRunning": host,
+            "cron": schedule::cron_expr(cfg),
+            "nextRun": Value::Null,
+        });
+        if let Err(e) = &registered {
+            v["error"] = json!(e);
+        }
+        if host
+            && registered.is_ok_and(|r| r)
+            && let Ok(show) =
+                host_service::call("cron", "show", &json!({"id": schedule::JOB_ID})).await
+        {
+            v["nextRun"] = show
+                .pointer("/job/next_fire")
+                .cloned()
+                .unwrap_or(Value::Null);
+            v["jobRunning"] = show.pointer("/job/running").cloned().unwrap_or(Value::Null);
+        }
+        v
     }
 
     fn find(&self, run_id: &str, proposal_id: &str) -> Option<(Run, store::Proposal)> {
@@ -496,45 +827,73 @@ impl Dream {
         ok("Dismissed.")
     }
 
-    fn status_json(&self, cwd: &str) -> Value {
+    async fn status_json(&self) -> Value {
         let cfg = self.cfg();
-        let st = store::read_state(&Self::state_path());
+        let st = Self::read_state();
         let runs = self.runs();
         let mut v = json!({
-            "v": 1,
+            "v": 2,
             "enabled": cfg.enabled,
+            "schedule": {
+                "mode": cfg.schedule.mode.as_str(),
+                "time": cfg.schedule.time_str(),
+                "intervalHours": cfg.schedule.interval_hours,
+            },
             "minSessions": cfg.min_sessions,
             "minGapHours": cfg.min_gap_hours,
+            "staleDays": cfg.stale_days,
+            "model": cfg.model,
+            "thinking": cfg.thinking,
+            "maxRuntimeMin": cfg.max_runtime_min,
             "lastRunAt": st.last_run_at,
+            "lastCheck": st.last_check,
             "running": runs.iter().any(|r| r.status == Status::Running),
             "runs": runs.iter().take(20).map(store::run_info).collect::<Vec<_>>(),
+            "scheduler": self.scheduler_json(&cfg).await,
         });
         if cfg.enabled {
-            let d = self.due(&st, &cfg, cwd);
-            v["due"] = json!({"due": d.due, "reason": d.reason});
+            let d = self.due(&st, &cfg);
+            v["due"] = json!({"due": d.due, "reason": d.reason, "newSessions": d.new_sessions});
         }
         v
     }
 
-    fn due(&self, st: &DreamState, cfg: &DreamSettings, cwd: &str) -> store::Due {
-        let n = digest::count_new_sessions(&Self::sessions_dir(cwd), st.last_run_at);
+    fn due(&self, st: &DreamState, cfg: &DreamSettings) -> store::Due {
+        let n = digest::count_recent(&Self::sessions_root(), st.last_run_at, &Self::skip());
         store::is_due(st, n, cfg, timers::now_ms(), &self.alive())
     }
 
-    fn status_text(&self, cwd: &str) -> String {
+    fn schedule_text(cfg: &DreamSettings) -> String {
+        if !cfg.enabled {
+            return "off (manual only)".into();
+        }
+        match cfg.schedule.mode {
+            Mode::Daily => format!("daily at {}", cfg.schedule.time_str()),
+            Mode::Interval => format!(
+                "every {}h (minute {:02})",
+                store::fmt_num(cfg.schedule.interval_hours.round()),
+                cfg.schedule.time.1
+            ),
+            Mode::Manual => "manual only".into(),
+        }
+    }
+
+    fn status_text(&self) -> String {
         let cfg = self.cfg();
-        let st = store::read_state(&Self::state_path());
+        let st = Self::read_state();
         let runs = self.runs();
         let latest = runs.iter().find(|r| r.has_report);
+        let sched_err = self.sched_error.borrow().clone();
         let mut lines = vec![
             if cfg.enabled {
-                let d = self.due(&st, &cfg, cwd);
+                let d = self.due(&st, &cfg);
                 format!(
-                    "dream: on · {}",
+                    "dream: {} · {}",
+                    Self::schedule_text(&cfg),
                     if d.due {
-                        "due at the next Oino open".to_owned()
+                        "gates pass".to_owned()
                     } else {
-                        format!("not due: {}", d.reason)
+                        format!("next one would skip: {}", d.reason)
                     }
                 )
             } else {
@@ -565,6 +924,17 @@ impl Dream {
                 },
             ),
         ];
+        if let Some(c) = &st.last_check {
+            lines.push(format!(
+                "last {} check {}: {}",
+                c.trigger,
+                unipi_kit::fmt::iso_from_ms(c.at),
+                if c.ran { "ran" } else { c.reason.as_str() }
+            ));
+        }
+        if let Some(e) = sched_err {
+            lines.push(format!("schedule: {e}"));
+        }
         if let Some(l) = latest {
             for (i, p) in l.proposals.iter().enumerate() {
                 lines.push(format!(
@@ -584,14 +954,17 @@ impl Dream {
 
     async fn on_session_start(&'static self, cx: &Ctx) {
         self.settings.refresh();
-        if cx.is_child() || self.checked.get() {
+        // Only interactive top-level sessions do upkeep: a headless `oino -p` (the scheduled
+        // dream itself, other cron jobs) exits right after its prompt.
+        if cx.is_child() || !cx.has_ui() {
             return;
         }
-        self.checked.set(true);
-        let cwd = cx.cwd().display().to_string();
-        self.resume_interrupted(&cwd).await;
+        let _ = self.sync_schedule().await;
+        if !self.resumed.replace(true) {
+            self.resume_interrupted().await;
+        }
         let p = Self::state_path();
-        let st = store::read_state(&p);
+        let st = Self::read_state();
         let latest = self.runs().into_iter().find(|r| r.has_report);
         if let Some(run) = latest
             && st.shown_report.as_deref() != Some(run.id.as_str())
@@ -608,18 +981,15 @@ impl Dream {
             store::write_state(&p, &st);
             return;
         }
+        // Catch-up: a scheduled dream was missed (no host scheduler was running then).
+        let now = timers::now_ms();
+        if now - self.last_auto.get() < AUTO_CHECK_MS {
+            return;
+        }
+        self.last_auto.set(now);
         let cfg = self.cfg();
-        if !cfg.enabled {
-            return;
-        }
-        let due = self.due(&st, &cfg, &cwd);
-        if !due.due {
-            return;
-        }
-        if self.start(&cwd, false).await.is_ok() {
-            let mut st = store::read_state(&p);
-            st.sessions_seen = due.new_sessions;
-            store::write_state(&p, &st);
+        if schedule::overdue(&cfg, st.last_run_at, now) {
+            let _ = self.run_gated("catch-up", false).await;
         }
     }
 
@@ -735,7 +1105,7 @@ impl Dream {
                     self.views.with(&sid, |v| v.report = !v.report);
                 }
             }
-            "run" => flash(self.run_now(&cwd).await.message),
+            "run" => flash(self.run_now().await.message),
             "stop" => flash(self.stop(view.open.as_deref()).message),
             "dismiss" => {
                 if let Some(run) = &current {
@@ -792,6 +1162,7 @@ impl Dream {
         }
     }
 
+    #[allow(clippy::too_many_lines, reason = "one arm per subcommand")]
     async fn command(&'static self, args: &str, cx: &CommandCtx) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         let sub = parts.first().copied().unwrap_or("status");
@@ -802,7 +1173,7 @@ impl Dream {
             }
         };
         match sub {
-            "status" => say(&self.status_text(&cwd), "info"),
+            "status" => say(&self.status_text(), "info"),
             "tray" | "open" => {
                 let opened = cx.has_ui()
                     && services::call(
@@ -816,7 +1187,7 @@ impl Dream {
                     .and_then(|v| v.get("opened").and_then(Value::as_bool))
                     .unwrap_or(false);
                 if !opened {
-                    say(&self.status_text(&cwd), "info");
+                    say(&self.status_text(), "info");
                 }
             }
             "report" => match self.runs().into_iter().find(|r| r.has_report) {
@@ -843,8 +1214,42 @@ impl Dream {
                 let r = self.decide(&latest.id, &p.id, sub == "approve", &cwd);
                 say(&r.message, if r.ok { "info" } else { "error" });
             }
+            "run" if parts.get(1) == Some(&"--scheduled") => {
+                // The host cron's headless fire: gates, then wait for the agent.
+                let r = self.run_gated("scheduled", true).await;
+                say(&r.message, if r.ok { "info" } else { "warning" });
+            }
+            "schedule" => {
+                let cfg = self.cfg();
+                let s = self.scheduler_json(&cfg).await;
+                let mut lines = vec![format!("dream schedule: {}", Self::schedule_text(&cfg))];
+                if let Some(c) = s.get("cron").and_then(Value::as_str) {
+                    lines.push(format!(
+                        "host cron job {} ({c}, local time)",
+                        schedule::JOB_ID
+                    ));
+                }
+                lines.push(if s["registered"] == true {
+                    format!(
+                        "registered{}",
+                        s.get("nextRun")
+                            .and_then(Value::as_str)
+                            .map(|n| format!(" · next {n}"))
+                            .unwrap_or_default()
+                    )
+                } else {
+                    "not registered".to_owned()
+                });
+                if s["hostRunning"] != true {
+                    lines.push("the Oino host is not reachable from here: scheduled dreams fire only while it runs".into());
+                }
+                if let Some(e) = s.get("error").and_then(Value::as_str) {
+                    lines.push(format!("error: {e}"));
+                }
+                say(&lines.join("\n"), "info");
+            }
             "run" => {
-                let r = self.run_now(&cwd).await;
+                let r = self.run_now().await;
                 if r.ok {
                     say(
                         &format!("{}\nWatch it in the work tray (Dream tab).", r.message),
@@ -904,6 +1309,7 @@ impl Extension for Dream {
         });
         cx.on(EventKind::OinoSettingsChanged, |ext, ev, _cx| async move {
             if ext.settings.on_changed(&ev.payload).is_some() {
+                let _ = ext.sync_schedule().await;
                 ext.changed();
             }
             Ok(())
@@ -960,23 +1366,38 @@ impl Extension for Dream {
                 Ok(json!(ext.tray_action(&a, &cx).await))
             },
         );
-        cx.service(point::DREAM_STATUS, |ext, _p, _caller, cx| async move {
-            Ok(ext.status_json(&cx.cwd().display().to_string()))
+        cx.service(point::DREAM_STATUS, |ext, _p, _caller, _cx| async move {
+            Ok(ext.status_json().await)
         });
-        cx.service(point::DREAM_RUN, |ext, _p, _caller, cx| async move {
-            Ok(outcome_json(
-                &ext.run_now(&cx.cwd().display().to_string()).await,
-            ))
+        cx.service("dream.runs", |ext, p, _caller, _cx| async move {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "small limits")]
+            let limit = p.get("limit").and_then(Value::as_f64).filter(|l| *l > 0.0).map_or(50, |l| l as usize);
+            Ok(json!({"runs": ext.runs().iter().take(limit).map(store::run_info).collect::<Vec<_>>()}))
+        });
+        cx.service(point::DREAM_RUN, |ext, _p, _caller, _cx| async move {
+            Ok(outcome_json(&ext.run_now().await))
         });
         cx.service(point::DREAM_STOP, |ext, p, _caller, _cx| async move {
             Ok(outcome_json(&ext.stop(p.get("id").and_then(Value::as_str))))
         });
         cx.service("dream.detail", |ext, p, _caller, _cx| async move {
             let id = p.get("id").and_then(Value::as_str).unwrap_or_default();
-            Ok(ext.runs().into_iter().find(|r| r.id == id).map_or(Value::Null, |r| {
-                let (steps, log) = store::run_trajectory(&r.staging, 200);
-                json!({"id": r.id, "report": store::read_report(&r.staging), "steps": steps, "log": log})
-            }))
+            Ok(ext
+                .runs()
+                .into_iter()
+                .find(|r| r.id == id)
+                .map_or(Value::Null, |r| {
+                    let (steps, log) = store::run_trajectory(&r.staging, 200);
+                    json!({
+                        "id": r.id,
+                        "run": store::run_info(&r),
+                        "report": store::read_report(&r.staging),
+                        "changes": store::read_changes(&r.staging),
+                        "actions": store::read_actions(&r.staging),
+                        "steps": steps,
+                        "log": log,
+                    })
+                }))
         });
         for (name, approve) in [("dream.approve", true), ("dream.reject", false)] {
             cx.service(name, move |ext, p, _caller, cx| async move {
@@ -1002,7 +1423,7 @@ impl Extension for Dream {
 
         cx.command(
             Command::<Self>::new("dream")
-                .description("Dream (background memory consolidation): /dream status|tray|report|run|stop|approve <n>|reject <n>")
+                .description("Dream (daily memory consolidation): /dream status|tray|report|run|stop|schedule|approve <n>|reject <n>")
                 .run(|ext, args, cx| async move {
                     ext.command(&args, &cx).await;
                     Ok(())
@@ -1015,6 +1436,7 @@ impl Extension for Dream {
                         ("report", "report", "the latest dream report"),
                         ("run", "run", "dream now (in the background)"),
                         ("stop", "stop", "stop the running dream"),
+                        ("schedule", "schedule", "the host schedule and the next dream"),
                         ("approve ", "approve <n>", "apply proposal n"),
                         ("reject ", "reject <n>", "drop proposal n"),
                     ]
@@ -1053,11 +1475,36 @@ mod tests {
 
     #[test]
     fn prompt_and_names() {
-        let p = dream_prompt("/s", Some("/m"));
+        let projects = vec!["oino".to_owned(), "web".to_owned()];
+        let p = dream_prompt(&PromptInputs {
+            staging: "/s",
+            memory_root: Some("/m"),
+            projects: &projects,
+            has_inventory: true,
+            stale_days: 30.0,
+        });
         assert!(p.contains("/s/digests/INDEX.json"));
-        assert!(p.contains("memory_store / memory_delete"));
+        assert!(p.contains("/s/memory/before.json"));
+        assert!(p.contains("for 30 days"));
+        assert!(p.contains("Projects covered: oino, web."));
+        assert!(p.contains("`merge_from`"), "consolidation");
+        assert!(p.contains("Remove transient details"));
+        assert!(p.contains("Find missed lessons"));
+        assert!(p.contains("Prune stale memories"));
+        assert!(p.contains("Never delete a `preference`"));
+        assert!(p.contains("always pass `project`"));
+        assert!(p.contains("[source: <session id>]"));
+        assert!(p.contains("/s/memory-changes.json"));
+        assert!(p.contains("under /m; read them, never edit them directly"));
         assert!(p.contains("/s/DREAM_REPORT.md exists with three sections"));
-        assert!(dream_prompt("/s", None).contains("edit the memory files directly"));
+        let off = dream_prompt(&PromptInputs {
+            staging: "/s",
+            stale_days: 0.0,
+            ..PromptInputs::default()
+        });
+        assert!(off.contains("inventory is unavailable"));
+        assert!(off.contains("Pruning is off this run"));
+        assert!(off.contains("Projects covered: (none"));
         assert_eq!(memory_project("/home/u/My Project!"), "my_project");
         assert_eq!(memory_project("/"), "unknown");
         assert_eq!(

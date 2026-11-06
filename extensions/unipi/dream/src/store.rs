@@ -1,11 +1,18 @@
 //! Dream state, runs, reports and proposals on disk (unipi `src/{schedule,runs,report}.ts`).
 //!
-//! Layout (guest paths): `/ext-workspace/<wsid>/state.json` holds the schedule state; every
-//! run has a staging dir `/ext-global/runs/<wsid>/staging-<ms>/` with `run.json`,
-//! `digests/`, `proposals/`, `PROMPT.md`, `DREAM_REPORT.md`, `trajectory.log` and the dream
-//! agent's session files under `sessions/`. Runs are nested agents in this process (D8): a run
-//! is `running` while its agent lives here; a run left without an end by a previous process is
-//! resumed once on the next start.
+//! Layout (guest paths, v3: one dream across every project): `/ext-global/state.json` holds
+//! the schedule state; every run has a staging dir `/ext-global/runs/all/staging-<ms>/` with
+//! `run.json`, `digests/`, `memory/before.json` + `memory/after.json` (the memory inventory
+//! around the run), `changes.json` (added / updated / merged / pruned memories),
+//! `memory-changes.json` (the agent's own account), `proposals/`, `PROMPT.md`,
+//! `DREAM_REPORT.md`, `trajectory.log` and the dream agent's session files under
+//! `sessions/`. Older per-workspace runs under `/ext-global/runs/<wsid>/` are still listed.
+//!
+//! Runs are nested agents (D8) in whichever process started them (an interactive session or
+//! the headless `oino -p "/dream run --scheduled"` the host cron fires). The owner writes a
+//! heartbeat into `run.json` every [`HEARTBEAT_MS`]; any process sees a run as `running` while
+//! its heartbeat is fresh, and stops it by setting `stopped` (the owner aborts its agent). A
+//! run left without an end and without a heartbeat is resumed once on the next start.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -17,6 +24,10 @@ use crate::settings::DreamSettings;
 
 /// Stale cap (2 h).
 pub const STALE_MS: i64 = 2 * 60 * 60 * 1000;
+/// How often the owning process refreshes a running run's heartbeat.
+pub const HEARTBEAT_MS: i64 = 20_000;
+/// A heartbeat younger than this means the run is alive in some process.
+pub const HEARTBEAT_FRESH_MS: i64 = 75_000;
 
 /// Schedule lock.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +63,39 @@ pub struct DreamState {
     /// Dismissed staging dir names.
     #[serde(default)]
     pub dismissed: Vec<String>,
+    /// The last scheduled/catch-up gate check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check: Option<LastCheck>,
+}
+
+/// One gate check of a scheduled (or catch-up) dream.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastCheck {
+    /// When (unix ms).
+    pub at: i64,
+    /// `scheduled | catch-up`.
+    pub trigger: String,
+    /// A dream started.
+    pub ran: bool,
+    /// Why (not).
+    pub reason: String,
+}
+
+impl DreamState {
+    /// Folds a legacy per-workspace state's decisions and dismissals in (v3 moved state to
+    /// the global dir).
+    pub fn absorb_legacy(&mut self, legacy: &Self) {
+        for (k, v) in &legacy.decisions {
+            self.decisions.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+        for d in &legacy.dismissed {
+            if !self.dismissed.contains(d) {
+                self.dismissed.push(d.clone());
+            }
+        }
+        self.last_run_at = self.last_run_at.max(legacy.last_run_at);
+    }
 }
 
 /// Reads `state.json` (defaults on any problem).
@@ -127,7 +171,7 @@ pub fn is_due(
             ),
         );
     }
-    let fresh = f64::from(new_sessions.saturating_sub(state.sessions_seen));
+    let fresh = f64::from(new_sessions);
     if fresh < cfg.min_sessions {
         return mk(
             false,
@@ -191,6 +235,34 @@ pub struct RunMeta {
     /// Last error text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// `manual | scheduled | catch-up` (absent on old runs: see `manual`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<String>,
+    /// Memory projects the run covered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projects: Vec<String>,
+    /// Owner heartbeat (unix ms) while the agent runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat_at: Option<i64>,
+}
+
+impl RunMeta {
+    /// The trigger, with old runs mapped from `manual`.
+    #[must_use]
+    pub fn trigger_name(&self) -> String {
+        self.trigger
+            .clone()
+            .unwrap_or_else(|| if self.manual { "manual" } else { "open" }.to_owned())
+    }
+
+    /// The owner's heartbeat is fresh.
+    #[must_use]
+    pub fn heartbeat_fresh(&self, now: i64) -> bool {
+        self.ended_at.is_none()
+            && self
+                .heartbeat_at
+                .is_some_and(|h| now - h < HEARTBEAT_FRESH_MS)
+    }
 }
 
 #[allow(
@@ -339,6 +411,10 @@ pub struct Run {
     pub error: Option<String>,
     /// Left unfinished by an earlier process.
     pub interrupted: bool,
+    /// `manual | scheduled | catch-up | open`.
+    pub trigger: String,
+    /// Memory projects covered.
+    pub projects: Vec<String>,
 }
 
 fn mtime_ms(p: &Path) -> Option<i64> {
@@ -392,7 +468,9 @@ pub fn run_from_staging(
     let report = staging.join("DREAM_REPORT.md");
     let has_report = report.exists();
     let ended = meta.as_ref().and_then(|m| m.ended_at);
-    let live = ended.is_none() && now - started_at < STALE_MS && alive(&id);
+    let live = ended.is_none()
+        && ((now - started_at < STALE_MS && alive(&id))
+            || meta.as_ref().is_some_and(|m| m.heartbeat_fresh(now)));
     let stopped = meta.as_ref().is_some_and(|m| m.stopped);
     let status = if live {
         Status::Running
@@ -453,7 +531,58 @@ pub fn run_from_staging(
         proposals,
         error,
         interrupted,
+        trigger: meta
+            .as_ref()
+            .map_or_else(|| "open".to_owned(), RunMeta::trigger_name),
+        projects: meta.map(|m| m.projects).unwrap_or_default(),
     })
+}
+
+/// Every run in every run dir under `runs_root` (`runs/all` + legacy `runs/<wsid>`),
+/// newest first, dismissed dropped.
+#[must_use]
+pub fn list_all_runs(
+    runs_root: &Path,
+    state: &DreamState,
+    now: i64,
+    alive: &dyn Fn(&str) -> bool,
+) -> Vec<Run> {
+    let Ok(rd) = std::fs::read_dir(runs_root) else {
+        return Vec::new();
+    };
+    let mut runs: Vec<Run> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .flat_map(|e| list_runs(&e.path(), state, now, alive))
+        .collect();
+    runs.sort_by_key(|r| std::cmp::Reverse(r.started_at));
+    runs
+}
+
+/// Ids of runs whose owner heartbeat is fresh (alive in some process).
+#[must_use]
+pub fn heartbeat_ids(runs_root: &Path, now: i64) -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(runs_root) else {
+        return out;
+    };
+    for sub in rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+    {
+        let Ok(inner) = std::fs::read_dir(sub.path()) else {
+            continue;
+        };
+        for e in inner.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("staging-")
+                && read_meta(&e.path()).is_some_and(|m| m.heartbeat_fresh(now))
+            {
+                out.push(name);
+            }
+        }
+    }
+    out
 }
 
 /// Every run under `root`, newest first, dismissed dropped.
@@ -879,6 +1008,7 @@ pub fn run_info(r: &Run) -> Value {
     };
     let mut v = json!({
         "id": r.id, "status": r.status.as_str(), "startedAt": r.started_at, "manual": r.manual,
+        "trigger": r.trigger, "projects": r.projects,
         "sessions": r.sessions, "events": r.events, "pending": r.pending, "hasReport": r.has_report,
         "proposals": r.proposals.iter().map(|p| json!({"id": p.id, "name": p.name, "kind": p.kind, "decision": p.decision})).collect::<Vec<_>>(),
     });
@@ -891,7 +1021,95 @@ pub fn run_info(r: &Run) -> Value {
     if let Some(e) = &r.error {
         v["error"] = json!(e);
     }
+    if let Some(c) = read_changes(&r.staging) {
+        v["memoryChanges"] = c.get("counts").cloned().unwrap_or(Value::Null);
+    }
     v
+}
+
+/// `changes.json` of a run.
+#[must_use]
+pub fn read_changes(staging: &Path) -> Option<Value> {
+    serde_json::from_slice(&std::fs::read(staging.join("changes.json")).ok()?).ok()
+}
+
+/// The agent's own `memory-changes.json` (an array; `[]` when missing or malformed).
+#[must_use]
+pub fn read_actions(staging: &Path) -> Vec<Value> {
+    std::fs::read(staging.join("memory-changes.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| match v {
+            Value::Array(a) => Some(a),
+            Value::Object(o) => o.get("changes").and_then(Value::as_array).cloned(),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn memory_key(m: &Value) -> Option<String> {
+    Some(format!(
+        "{}/{}",
+        m.get("project")?.as_str()?,
+        m.get("id")?.as_str()?
+    ))
+}
+
+fn brief(m: &Value) -> Value {
+    json!({
+        "project": m.get("project"), "id": m.get("id"), "title": m.get("title"), "type": m.get("type"),
+    })
+}
+
+/// The memory changes of a run from the inventories before and after it (ground truth;
+/// the agent's `memory-changes.json` only explains them):
+/// `added` (new, not a merge target), `updated` (rewritten in place), `merged` (a memory
+/// whose `mergedFrom` absorbed removed ones), `pruned` (removed, not merged anywhere).
+#[must_use]
+pub fn diff_inventory(before: &Value, after: &Value) -> Value {
+    let rows = |v: &Value| -> BTreeMap<String, Value> {
+        v.get("memories")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|m| memory_key(m).map(|k| (k, m.clone())))
+            .collect()
+    };
+    let (b, a) = (rows(before), rows(after));
+    let removed: Vec<&String> = b.keys().filter(|k| !a.contains_key(*k)).collect();
+    let mut merged_away: Vec<String> = Vec::new();
+    let (mut added, mut updated, mut merged) = (Vec::new(), Vec::new(), Vec::new());
+    for (k, m) in &a {
+        let from: Vec<&String> = m
+            .get("mergedFrom")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter_map(|f| removed.iter().copied().find(|r| r.as_str() == f))
+            .collect();
+        let old = b.get(k);
+        if !from.is_empty() {
+            let mut e = brief(m);
+            e["from"] = json!(from.iter().map(|f| brief(&b[*f])).collect::<Vec<_>>());
+            e["new"] = json!(old.is_none());
+            merged.push(e);
+            merged_away.extend(from.into_iter().cloned());
+        } else if old.is_none() {
+            added.push(brief(m));
+        } else if old.and_then(|o| o.get("updated")) != m.get("updated") {
+            updated.push(brief(m));
+        }
+    }
+    let pruned: Vec<Value> = removed
+        .iter()
+        .filter(|k| !merged_away.contains(k))
+        .map(|k| brief(&b[*k]))
+        .collect();
+    json!({
+        "counts": {"added": added.len(), "updated": updated.len(), "merged": merged.len(), "pruned": pruned.len()},
+        "added": added, "updated": updated, "merged": merged, "pruned": pruned,
+    })
 }
 
 #[cfg(test)]
@@ -919,6 +1137,8 @@ mod tests {
     fn cfg() -> DreamSettings {
         DreamSettings {
             enabled: true,
+            min_sessions: 5.0,
+            min_gap_hours: 12.0,
             ..DreamSettings::default()
         }
     }
@@ -960,7 +1180,7 @@ mod tests {
         assert!(!is_due(&st, 20, &cfg(), now, &live).due);
         let d = is_due(&st, 20, &cfg(), now, &dead);
         assert!(d.due);
-        assert_eq!(d.reason, "16 new sessions since last dream");
+        assert_eq!(d.reason, "20 new sessions since last dream");
         assert!(!lock_live(st.lock.as_ref(), now + 3 * H, &live));
         let p = tmp("state").join("state.json");
         write_state(&p, &st);
@@ -1096,5 +1316,129 @@ mod tests {
         assert!(!secret_like("TOKEN=short"));
         std::fs::write(d.join("SKILL.md"), "---\nname: a\n---\n").unwrap_or_default();
         assert!(craft_check(&d, "x").output.contains("FAIL: no description"));
+    }
+
+    #[test]
+    fn inventory_diff() {
+        let m = |p: &str, id: &str, updated: &str, merged: &[&str]| json!({"project": p, "id": id, "title": id.to_uppercase(), "type": "decision", "updated": updated, "mergedFrom": merged});
+        let before = json!({"memories": [
+            m("p", "a", "1", &[]), m("p", "b", "1", &[]), m("p", "c", "1", &[]),
+            m("p", "d", "1", &[]), m("p", "keep", "1", &[]), m("p", "edit", "1", &[]),
+        ]});
+        let after = json!({"memories": [
+            m("p", "ab", "2", &["p/a", "p/b"]),
+            m("p", "d", "2", &["p/c", "p/old-gone-long-ago"]),
+            m("p", "keep", "1", &[]), m("p", "edit", "2", &[]), m("p", "new", "2", &[]),
+        ]});
+        let c = diff_inventory(&before, &after);
+        assert_eq!(
+            c["counts"],
+            json!({"added": 1, "updated": 1, "merged": 2, "pruned": 0}),
+            "{c}"
+        );
+        let ab = c["merged"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["id"] == "ab")
+            .unwrap();
+        assert_eq!(ab["new"], true);
+        assert_eq!(ab["from"].as_array().unwrap().len(), 2);
+        let d = c["merged"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|x| x["id"] == "d")
+            .unwrap();
+        assert_eq!(d["new"], false);
+        assert_eq!(d["from"][0]["id"], "c");
+        assert_eq!(c["added"][0]["id"], "new");
+        assert_eq!(c["updated"][0]["id"], "edit");
+        let pruned = diff_inventory(&before, &json!({"memories": [m("p", "keep", "1", &[])]}));
+        assert_eq!(pruned["counts"]["pruned"], 5);
+        assert_eq!(
+            diff_inventory(&Value::Null, &Value::Null)["counts"]["added"],
+            0
+        );
+    }
+
+    #[test]
+    fn heartbeat_liveness_and_global_listing() {
+        let root = tmp("beat");
+        let all = root.join("all");
+        let legacy = root.join("abc123");
+        let s1 = all.join("staging-1000");
+        let s2 = legacy.join("staging-500");
+        std::fs::create_dir_all(&s1).unwrap();
+        std::fs::create_dir_all(&s2).unwrap();
+        let now = 1000 + 60_000;
+        write_meta(
+            &s1,
+            &RunMeta {
+                started_at: 1000,
+                heartbeat_at: Some(now - 10_000),
+                trigger: Some("scheduled".into()),
+                projects: vec!["oino".into()],
+                ..RunMeta::default()
+            },
+        );
+        write_meta(
+            &s2,
+            &RunMeta {
+                started_at: 500,
+                manual: true,
+                ended_at: Some(900),
+                ..RunMeta::default()
+            },
+        );
+        std::fs::write(s2.join("DREAM_REPORT.md"), "## Memory edits\n").unwrap();
+        std::fs::write(
+            s2.join("changes.json"),
+            json!({"counts": {"added": 1, "updated": 0, "merged": 2, "pruned": 3}}).to_string(),
+        )
+        .unwrap();
+        let st = DreamState::default();
+        let runs = list_all_runs(&root, &st, now, &|_| false);
+        assert_eq!(runs.len(), 2);
+        assert_eq!(
+            runs[0].status,
+            Status::Running,
+            "alive by heartbeat in another process"
+        );
+        assert!(!runs[0].interrupted);
+        assert_eq!(runs[0].trigger, "scheduled");
+        assert_eq!(runs[0].projects, ["oino"]);
+        assert_eq!(runs[1].trigger, "manual", "old runs map from `manual`");
+        assert_eq!(heartbeat_ids(&root, now), ["staging-1000"]);
+        let info = run_info(&runs[1]);
+        assert_eq!(info["memoryChanges"]["pruned"], 3);
+        assert_eq!(info["trigger"], "manual");
+        // The heartbeat goes stale: the run is interrupted (resumable).
+        let later = list_all_runs(&root, &st, now + HEARTBEAT_FRESH_MS + 1, &|_| false);
+        assert!(later[0].interrupted);
+        assert!(heartbeat_ids(&root, now + HEARTBEAT_FRESH_MS + 1).is_empty());
+    }
+
+    #[test]
+    fn legacy_state_folds_in() {
+        let mut g = DreamState {
+            last_run_at: 5,
+            ..DreamState::default()
+        };
+        g.decisions.insert("a".into(), "approved".into());
+        let mut l = DreamState {
+            last_run_at: 9,
+            dismissed: vec!["x".into()],
+            ..DreamState::default()
+        };
+        l.decisions.insert("a".into(), "rejected".into());
+        l.decisions.insert("b".into(), "rejected".into());
+        g.absorb_legacy(&l);
+        assert_eq!(g.decisions["a"], "approved", "global wins");
+        assert_eq!(g.decisions["b"], "rejected");
+        assert_eq!(g.dismissed, ["x"]);
+        assert_eq!(g.last_run_at, 9);
+        g.absorb_legacy(&l);
+        assert_eq!(g.dismissed.len(), 1, "idempotent");
     }
 }

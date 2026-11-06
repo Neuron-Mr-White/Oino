@@ -146,7 +146,7 @@ pub fn list_body(runs: &[Run], enabled: bool, view: &View, now: i64) -> Node {
         children.push(
             Empty::new()
                 .message(if enabled {
-                    "No dreams yet — one starts on its own when enough new sessions pile up. r runs one now."
+                    "No dreams yet — one runs at the scheduled time. r runs one now."
                 } else {
                     "Background dreaming is off (turn it on in /settings → Dream). r runs one now."
                 })
@@ -160,11 +160,7 @@ pub fn list_body(runs: &[Run], enabled: bool, view: &View, now: i64) -> Node {
                     Span::from_string(format!("{} ", glyph(r.status))).fg(color_of(r.status)),
                     Span::from("Dream ").fg(Color::Muted),
                     Span::from_string(day(r.started_at, now)).bold(),
-                    Span::from_string(format!(
-                        "  {}",
-                        if r.manual { "manual" } else { "scheduled" }
-                    ))
-                    .dim(),
+                    Span::from_string(format!("  {}", r.trigger)).dim(),
                 ]))
                 .key(r.id.clone())
                 .detail(Line::from(run_tags(r, now).join(" · ")))
@@ -211,7 +207,7 @@ pub fn detail_body(
     } else {
         run.status.as_str().into()
     });
-    meta.push(if run.manual { "manual" } else { "scheduled" }.into());
+    meta.push(run.trigger.clone());
     if view.report {
         meta.push("report".into());
     }
@@ -394,6 +390,8 @@ mod tests {
             pending: 0,
             error: None,
             interrupted: false,
+            trigger: "manual".into(),
+            projects: Vec::new(),
         }
     }
 

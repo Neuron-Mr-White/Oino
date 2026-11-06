@@ -388,3 +388,143 @@ async fn session_card_is_written_once_on_a_real_turn_never_on_view() {
     env.event(&ext, EventKind::BeforeAgentStart, turn).await;
     assert_eq!(env.cards(), 1, "re-opening a chat must not repeat the card");
 }
+
+impl Env {
+    /// One tool call in session `s1` (or a child session with `role`).
+    async fn tool(
+        &self,
+        ext: &Arc<dyn ExtensionInstance>,
+        name: &str,
+        args: Value,
+        role: Option<&str>,
+    ) -> Value {
+        let inv = ToolInvocation {
+            tool_call_id: format!("c-{name}"),
+            name: name.into(),
+            args: RawJson::from(args),
+            parent_tool_call_id: None,
+        };
+        let mut cx = self.cx(CallKind::Tool);
+        if let Some(r) = role {
+            cx.is_child = true;
+            cx.child_role = Some(r.into());
+        }
+        ext.run_tool(inv, CancellationToken::new(), cx)
+            .await
+            .unwrap()
+            .to_value()
+    }
+
+    async fn inventory(&self, ext: &Arc<dyn ExtensionInstance>, payload: Value) -> Value {
+        ext.handle_service(
+            "memory.inventory",
+            RawJson::from(payload),
+            &oino_extension_api::ExtensionId::new("unipi.dream").unwrap(),
+            self.cx(CallKind::Service),
+        )
+        .await
+        .unwrap()
+        .to_value()
+    }
+}
+
+fn row<'a>(inv: &'a Value, project: &str, id: &str) -> Option<&'a Value> {
+    inv["memories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["project"] == project && m["id"] == id)
+}
+
+/// v3 J2: per-memory usage for the dream pass — searches and reads count, dream-agent
+/// searches don't, stores record their source session, `merge_from` folds overlapping
+/// memories (usage carried over), `project` targets another bucket.
+#[tokio::test(flavor = "multi_thread")]
+async fn usage_tracking_inventory_merge_and_project_target() {
+    let env = Env::new();
+    let ext = env.load().await;
+    env.store(&ext, "Graph retries from its own session", "A transient node failure retries in place.")
+        .await;
+    env.store(&ext, "Graph retry keeps the session", "Retries reuse the node's session.")
+        .await;
+    env.store(&ext, "Prefers short reports", "Short reports with evidence.").await;
+
+    let inv = env.inventory(&ext, json!({"projects": ["unipi"]})).await;
+    assert_eq!(inv["memories"].as_array().unwrap().len(), 3, "{inv}");
+    let a = row(&inv, "unipi", "graph_retries_from_its_own_session").unwrap();
+    assert_eq!(a["useCount"], 0);
+    assert_eq!(a["sources"], json!(["s1"]), "the storing session is the source");
+    assert_eq!(a["stale"], false, "tracking just began");
+    assert!(inv["trackingSince"].as_i64().unwrap() > 0);
+
+    // A search hit is a use; the same search by the dream agent is not.
+    let r = env.tool(&ext, "memory_search", json!({"query": "graph"}), None).await;
+    assert!(r["content"][0]["text"].as_str().unwrap().contains("Found"), "{r}");
+    env.tool(&ext, "memory_search", json!({"query": "graph"}), Some("dream")).await;
+    let inv = env.inventory(&ext, json!({"projects": ["unipi"]})).await;
+    let a = row(&inv, "unipi", "graph_retries_from_its_own_session").unwrap();
+    assert_eq!(a["useCount"], 1, "{a}");
+    assert!(a["lastUsed"].as_i64().unwrap() > 0);
+    assert_eq!(a["sessions"], json!(["s1"]));
+    assert_eq!(row(&inv, "unipi", "prefers_short_reports").unwrap()["useCount"], 0);
+
+    // Reading the memory file directly is a use too.
+    let file = env
+        .memory_dir()
+        .join("decision/graph_retry_keeps_the_session.md")
+        .display()
+        .to_string();
+    env.event(
+        &ext,
+        EventKind::ToolCall,
+        json!({"type": "tool_call", "toolName": "read", "toolCallId": "r1", "input": {"file_path": file}}),
+    )
+    .await;
+    let inv = env.inventory(&ext, json!({"projects": ["unipi"]})).await;
+    assert_eq!(row(&inv, "unipi", "graph_retry_keeps_the_session").unwrap()["useCount"], 2);
+
+    // Consolidation: one memory replaces both graph notes; usage carries over.
+    let r = env
+        .tool(
+            &ext,
+            "memory_store",
+            json!({"title": "Graph retries in place", "content": "A transient failure retries in the node's own session.", "type": "pattern",
+                   "merge_from": ["Graph retries from its own session", "graph_retry_keeps_the_session"]}),
+            Some("dream"),
+        )
+        .await;
+    assert_eq!(r["details"]["action"], "merged", "{r}");
+    assert_eq!(r["details"]["merged"].as_array().unwrap().len(), 2, "{r}");
+    assert!(!env.memory_dir().join("decision/graph_retries_from_its_own_session.md").exists());
+    let inv = env.inventory(&ext, json!({"projects": ["unipi"]})).await;
+    assert_eq!(inv["memories"].as_array().unwrap().len(), 2, "{inv}");
+    let m = row(&inv, "unipi", "graph_retries_in_place").unwrap();
+    assert_eq!(m["useCount"], 3, "{m}");
+    assert_eq!(
+        m["mergedFrom"],
+        json!(["unipi/graph_retries_from_its_own_session", "unipi/graph_retry_keeps_the_session"])
+    );
+
+    // `project` files a memory under another bucket; delete with `project` forgets it.
+    let r = env
+        .tool(&ext, "memory_store", json!({"title": "Other lesson", "content": "x", "project": "Other Repo"}), None)
+        .await;
+    assert_eq!(r["details"]["project"], "other_repo", "{r}");
+    let inv = env.inventory(&ext, json!({"projects": ["other_repo"]})).await;
+    assert_eq!(inv["memories"].as_array().unwrap().len(), 1);
+    let listed = env
+        .tool(&ext, "memory_list", json!({"project": "other_repo"}), None)
+        .await;
+    assert!(listed["content"][0]["text"].as_str().unwrap().contains("Other lesson"));
+    let r = env
+        .tool(&ext, "memory_delete", json!({"title": "Other lesson", "project": "other_repo"}), None)
+        .await;
+    assert_eq!(r["details"]["deleted"], true, "{r}");
+    let inv = env.inventory(&ext, json!({})).await;
+    assert!(row(&inv, "other_repo", "other_lesson").is_none());
+    let usage: Value = serde_json::from_slice(
+        &std::fs::read(env.agent.path().join("state/unipi.memory/global/memory/.usage.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(usage["memories"].get("other_repo/other_lesson").is_none(), "{usage}");
+}

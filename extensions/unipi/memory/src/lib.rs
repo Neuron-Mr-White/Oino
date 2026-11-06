@@ -24,6 +24,7 @@ pub mod panel;
 pub mod reader;
 pub mod search;
 pub mod settings;
+pub mod usage;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -574,6 +575,7 @@ impl Memory {
 
     // ── tool bodies ──────────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_lines, reason = "one store pass: dedupe, write, merge, report")]
     async fn tool_store(&self, args: &Value, cx: &Ctx) -> ToolResult {
         let sid = cx.session_id().to_owned();
         self.sessions.with(&sid, |s| s.store_done = true);
@@ -587,7 +589,7 @@ impl Memory {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_owned();
-        let project = Self::project(cx);
+        let project = target_project(args, cx);
         let (exact, similar) = Self::peek(&project, &title);
         let want = args
             .get("type")
@@ -600,6 +602,10 @@ impl Memory {
         if let Some(e) = &exact
             && e.content.trim() == content.trim()
             && e.kind == kind
+            && args
+                .get("merge_from")
+                .and_then(Value::as_array)
+                .is_none_or(Vec::is_empty)
         {
             return text_result(
                 format!(
@@ -634,7 +640,24 @@ impl Memory {
             file: None,
         };
         let (outcome, _) = self.store_record(&rec).await;
-        let action = if exact.is_some() {
+        // Consolidation (dream J2): `merge_from` names memories of the same project folded
+        // into this one; they are deleted and their usage + sources carry over.
+        let merge_names: Vec<String> = args
+            .get("merge_from")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+        let merged = self
+            .merge_into(&project, &rec.id, &merge_names, cx.session_id())
+            .await;
+        let action = if !merged.is_empty() {
+            "merged"
+        } else if exact.is_some() {
             "updated"
         } else {
             "created"
@@ -649,29 +672,73 @@ impl Memory {
         if cx.child_role() == Some(SAVE_ROLE) {
             self.save_collect.borrow_mut().push(title.clone());
         }
-        let mut lines = vec![
-            format!(
-                "{} memory: {title}",
-                if exact.is_some() { "Updated" } else { "Stored" }
-            ),
-            format!(
-                "{project} › {kind} · {}",
-                match outcome {
-                    Outcome::Filed => "filed to the palace",
-                    Outcome::Queued => "queued — the palace will pick it up",
-                    Outcome::MarkdownOnly => "markdown only — daemon unreachable",
-                }
-            ),
-        ];
+        let mut lines = vec![format!(
+            "{} memory: {title}",
+            if exact.is_some() { "Updated" } else { "Stored" }
+        )];
+        if !merged.is_empty() {
+            lines.push(format!("Merged and removed: {}", merged.join(", ")));
+        }
+        lines.extend([format!(
+            "{project} › {kind} · {}",
+            match outcome {
+                Outcome::Filed => "filed to the palace",
+                Outcome::Queued => "queued — the palace will pick it up",
+                Outcome::MarkdownOnly => "markdown only — daemon unreachable",
+            }
+        )]);
         if !similar.is_empty() {
             lines.push(format!("Similar memories: {}", similar.join(", ")));
         }
         let mut details = json!({"action": action, "id": rec.id, "title": rec.title, "project": project, "type": kind, "outcome": outcome.as_str()});
+        if !merged.is_empty() {
+            details["merged"] = json!(merged);
+        }
         if !similar.is_empty() {
             details["similar"] = json!(similar);
         }
         spawn_replay_kick();
         text_result(lines.join("\n"), details)
+    }
+
+    /// Deletes `names` (titles or ids in `project`, never `into` itself), folds their usage
+    /// into `into` and records `session` as a source; returns the ids removed.
+    async fn merge_into(
+        &self,
+        project: &str,
+        into: &str,
+        names: &[String],
+        session: &str,
+    ) -> Vec<String> {
+        let mut merged: Vec<String> = Vec::new();
+        for name in names {
+            let Some(old) = files::scan_project(&root(), project)
+                .into_iter()
+                .find(|m| (m.id == *name || m.title == *name) && m.id != into)
+            else {
+                continue;
+            };
+            let (_, found) = self.delete(project, &old.id).await;
+            if found {
+                unipi_kit::bus::emit(&MemoryDeleted {
+                    id: old.id.clone(),
+                    title: old.title.clone(),
+                    project: project.to_owned(),
+                });
+                merged.push(old.id);
+            }
+        }
+        let k = usage::key(project, into);
+        let from: Vec<String> = merged.iter().map(|m| usage::key(project, m)).collect();
+        usage_update(|u| {
+            let now = timers::now_ms();
+            if !from.is_empty() {
+                u.merge(&k, &from, now);
+            }
+            u.record_source(&k, session, now);
+        })
+        .await;
+        merged
     }
 
     async fn tool_search(
@@ -692,6 +759,25 @@ impl Memory {
                 format!("No memories found for: \"{query}\""),
                 json!({"query": query, "hits": []}),
             );
+        }
+        if counts_usage(cx) {
+            let keys: Vec<String> = hits
+                .iter()
+                .filter(|h| h.is_pi_memory)
+                .filter_map(|h| h.source_file.as_deref())
+                .filter_map(usage::key_from_path)
+                .map(|(p, id)| usage::key(&p, &id))
+                .collect();
+            if !keys.is_empty() {
+                let sid = cx.session_id().to_owned();
+                usage_update(|u| {
+                    let now = timers::now_ms();
+                    for k in &keys {
+                        u.record_use(k, &sid, now, "search");
+                    }
+                })
+                .await;
+            }
         }
         let out = hits
             .iter()
@@ -732,9 +818,15 @@ impl Memory {
                 json!({"deleted": false}),
             );
         };
-        let project = Self::project(cx);
+        let project = target_project(args, cx);
+        let resolved = files::scan_project(&root(), &project)
+            .into_iter()
+            .find(|m| m.id == key || m.title == key)
+            .map(|m| m.id);
         let (outcome, found) = self.delete(&project, &key).await;
         if found {
+            let k = usage::key(&project, resolved.as_deref().unwrap_or(&key));
+            usage_update(|u| u.forget(&k)).await;
             unipi_kit::bus::emit(&MemoryDeleted {
                 id: key.clone(),
                 title: key.clone(),
@@ -752,10 +844,10 @@ impl Memory {
         )
     }
 
-    fn tool_list(&self, cx: &Ctx) -> ToolResult {
+    fn tool_list(&self, args: &Value, cx: &Ctx) -> ToolResult {
         self.sessions
             .with(cx.session_id(), |s| s.recall_done = true);
-        let project = Self::project(cx);
+        let project = target_project(args, cx);
         let mems = Self::list(&project);
         if mems.is_empty() {
             return text_result(
@@ -904,6 +996,24 @@ impl Memory {
                 let w = palace::wake_up(&places(), &bins, &project)
                     .await
                     .map(|t| t.chars().take(3500).collect::<String>());
+                // Usage (J2): memories whose text the wake-up injects count as used.
+                let ids = w.as_deref().map(usage::ids_in_wake_up).unwrap_or_default();
+                if !ids.is_empty() {
+                    let known: Vec<String> = files::scan_project(&root(), &project)
+                        .into_iter()
+                        .map(|r| r.id)
+                        .filter(|id| ids.contains(id))
+                        .collect();
+                    let s = sid.clone();
+                    let p = project.clone();
+                    usage_update(|u| {
+                        let now = timers::now_ms();
+                        for id in &known {
+                            u.record_use(&usage::key(&p, id), &s, now, "wake-up");
+                        }
+                    })
+                    .await;
+                }
                 self.sessions.with(&sid, |s| s.wake_up = Some(w));
             } else {
                 self.sessions.with(&sid, |s| s.wake_up = Some(None));
@@ -1049,6 +1159,10 @@ impl Memory {
             }
         }
         self.sessions.with(&sid, |s| s.recall_done = true);
+        if counts_usage(cx) {
+            let p = project.clone();
+            usage_update(|u| u.record_recall(&p, timers::now_ms())).await;
+        }
         Some(json!({"message": {
             "customType": RECALL_CUSTOM_TYPE,
             "content": recall_reminder(&project, &titles, can_search, can_store, wake.as_deref()),
@@ -1607,6 +1721,78 @@ fn spawn_replay_kick() {
     timers::set(PENDING_TIMER, Duration::from_millis(500), false);
 }
 
+/// The dream agent's child role (its memory reads are maintenance, not use).
+const DREAM_ROLE: &str = "dream";
+
+/// Whether this session's memory reads count as uses ([`usage`]).
+fn counts_usage(cx: &Ctx) -> bool {
+    !matches!(cx.child_role(), Some(DREAM_ROLE | SAVE_ROLE))
+}
+
+/// One locked read-modify-write of the usage sidecar (best-effort).
+async fn usage_update(f: impl FnOnce(&mut usage::UsageFile)) {
+    let dir = root();
+    let _ = std::fs::create_dir_all(&dir);
+    let _guard =
+        oino_extension::fs::Lock::acquire(&dir.join(usage::LOCK).display().to_string(), true)
+            .await
+            .ok();
+    let p = dir.join(usage::FILE);
+    let mut u = usage::UsageFile::read(&p);
+    f(&mut u);
+    let _ = u.write(&p);
+}
+
+/// The memory bucket a tool call targets: its `project` argument, else the session's.
+fn target_project(args: &Value, cx: &Ctx) -> String {
+    args.get("project")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map_or_else(|| Memory::project(cx), files::sanitize_project_name)
+}
+
+/// The `memory.inventory` reply: every memory of `projects` (all when empty) with its usage.
+fn inventory(projects: &[String], stale_days: f64) -> Value {
+    let now = timers::now_ms();
+    let u = usage::UsageFile::read(&root().join(usage::FILE));
+    let names: Vec<String> = if projects.is_empty() {
+        let mut v: Vec<String> = files::list_project_dirs(&root())
+            .into_iter()
+            .map(|(n, _)| files::sanitize_project_name(&n))
+            .collect();
+        v.dedup();
+        v
+    } else {
+        projects
+            .iter()
+            .map(|p| files::sanitize_project_name(p))
+            .collect()
+    };
+    let mut rows = Vec::new();
+    for p in &names {
+        for rec in Memory::list(p) {
+            let host = rec.file.as_deref().map(host_of);
+            rows.push(usage::inventory_entry(
+                &rec,
+                host.as_deref(),
+                &u,
+                now,
+                stale_days,
+            ));
+        }
+    }
+    json!({
+        "v": 1,
+        "now": now,
+        "trackingSince": u.tracking_since,
+        "staleDays": stale_days,
+        "memoryRoot": places().memory_root,
+        "projects": names,
+        "memories": rows,
+    })
+}
+
 // ── renderers (v2 memory cards) ──────────────────────────────────────────────
 
 /// A memory card: rounded block with the tone rail and a `Memory` bottom title.
@@ -1978,6 +2164,26 @@ impl Extension for Memory {
                     s.run_stored = true;
                 }
             });
+            // Usage (J2): the agent opened a memory file directly.
+            if tool == "read" && counts_usage(&cx) {
+                let path = ev
+                    .get("input")
+                    .and_then(|i| i.get("file_path").or_else(|| i.get("path")))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let in_root = places()
+                    .memory_root
+                    .is_some_and(|r| path.starts_with(&format!("{}/", r.trim_end_matches('/'))))
+                    || path.starts_with(&format!("{ROOT}/"));
+                if in_root && let Some((p, id)) = usage::key_from_path(&path) {
+                    let sid = cx.session_id().to_owned();
+                    usage_update(|u| {
+                        u.record_use(&usage::key(&p, &id), &sid, timers::now_ms(), "read");
+                    })
+                    .await;
+                }
+            }
             Ok(())
         });
         cx.on(EventKind::AgentEnd, |ext, _ev, cx| async move {
@@ -2187,6 +2393,20 @@ impl Extension for Memory {
         cx.service(fan::INFO_SCREEN_GROUPS, |ext, _p, _caller, cx| async move {
             Ok(ext.info_group(&cx))
         });
+        // J2: every memory with its usage (last used, use count, source sessions, stale),
+        // for the dream pass and the app. `{projects?: string[], staleDays?: number}`.
+        cx.service("memory.inventory", |_ext, p, _caller, _cx| async move {
+            let projects: Vec<String> = p
+                .get("projects")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            let stale_days = p
+                .get("staleDays")
+                .and_then(Value::as_f64)
+                .filter(|d| d.is_finite() && *d >= 0.0)
+                .unwrap_or(usage::DEFAULT_STALE_DAYS);
+            Ok(inventory(&projects, stale_days))
+        });
 
         let (search_desc, search_snip, search_guides): (&str, &str, Vec<&str>) = if neutral {
             (
@@ -2229,6 +2449,8 @@ impl Extension for Memory {
                 "content": {"type": "string", "description": "Full memory content (markdown supported)"},
                 "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
                 "type": {"type": "string", "description": "Memory type", "enum": MEMORY_TYPES},
+                "project": {"type": "string", "description": "Project bucket (default: the current project). Set it only to file the memory under another project."},
+                "merge_from": {"type": "array", "items": {"type": "string"}, "description": "Titles or ids of overlapping memories in the same project that this one replaces; they are deleted and their usage history carries over"},
             }}))
             .run(|ext, args: Value, cx| async move { Ok(ext.tool_store(&args, &cx.cx).await) });
         for g in store_guides {
@@ -2275,7 +2497,7 @@ impl Extension for Memory {
                 .description("Delete a memory by title or ID from the current project.")
                 .prompt_snippet("Delete a memory.")
                 .kind(ToolKind::Delete)
-                .parameters(&json!({"type": "object", "properties": {"title": {"type": "string", "description": "Memory title to delete"}, "id": {"type": "string", "description": "Memory ID to delete"}}}))
+                .parameters(&json!({"type": "object", "properties": {"title": {"type": "string", "description": "Memory title to delete"}, "id": {"type": "string", "description": "Memory ID to delete"}, "project": {"type": "string", "description": "Project bucket (default: the current project)"}}}))
                 .run(|ext, args: Value, cx| async move { Ok(ext.tool_delete(&args, &cx.cx).await) }),
         );
         cx.tool(
@@ -2284,7 +2506,8 @@ impl Extension for Memory {
                 .description("List all memories for the current project.")
                 .prompt_snippet("List all project memories.")
                 .kind(ToolKind::Read)
-                .run(|ext, _args: Value, cx| async move { Ok(ext.tool_list(&cx.cx)) }),
+                .parameters(&json!({"type": "object", "properties": {"project": {"type": "string", "description": "Project bucket to list (default: the current project)"}}}))
+                .run(|ext, args: Value, cx| async move { Ok(ext.tool_list(&args, &cx.cx)) }),
         );
         cx.tool(
             Tool::<Self>::new("global_memory_list")

@@ -49,6 +49,9 @@ pub struct SessionDigest {
     pub tool_calls: u32,
     /// Errors.
     pub errors: u32,
+    /// `memory_store` calls the session made itself (lessons it already captured).
+    #[serde(default)]
+    pub memory_stores: u32,
     /// Events.
     pub events: Vec<DigestEvent>,
 }
@@ -162,6 +165,37 @@ pub fn is_correction(text: &str) -> bool {
         || word("actually")
 }
 
+/// A user statement worth remembering as a preference (`I prefer`, `always`, `never`,
+/// `remember`, `from now on`, `please don't` …). Corrections are matched separately.
+#[must_use]
+pub fn is_preference(text: &str) -> bool {
+    let t = text.trim().to_lowercase();
+    if t.is_empty() || t.chars().count() > 600 {
+        return false;
+    }
+    [
+        "i prefer",
+        "i'd prefer",
+        "i like",
+        "i don't like",
+        "i want you to",
+        "always ",
+        "never ",
+        "remember ",
+        "remember:",
+        "from now on",
+        "in the future",
+        "going forward",
+        "please don't",
+        "please do not",
+        "please always",
+        "please never",
+        "make sure to always",
+    ]
+    .iter()
+    .any(|p| t.starts_with(p) || t.contains(&format!(". {p}")) || t.contains(&format!("\n{p}")))
+}
+
 /// pi/Oino session dir name for a cwd (`/home/u` → `--home-u--`).
 #[must_use]
 pub fn encode_session_dir_name(cwd: &str) -> String {
@@ -199,6 +233,7 @@ fn tail_chars(s: &str, n: usize) -> String {
 
 /// Digests one session's JSONL text; `None` without struggle events.
 #[must_use]
+#[allow(clippy::too_many_lines, reason = "one pass over the entries")]
 pub fn digest_session(name: &str, text: &str) -> Option<SessionDigest> {
     let mut calls: HashMap<String, (String, Value)> = HashMap::new();
     let mut d = SessionDigest {
@@ -236,6 +271,12 @@ pub fn digest_session(name: &str, text: &str) -> Option<SessionDigest> {
                         text: Some(clip(&text, 400)),
                         ..DigestEvent::default()
                     });
+                } else if is_preference(&text) {
+                    d.events.push(DigestEvent {
+                        kind: "user_preference".into(),
+                        text: Some(clip(&text, 400)),
+                        ..DigestEvent::default()
+                    });
                 }
             }
             Some("assistant") => {
@@ -247,6 +288,9 @@ pub fn digest_session(name: &str, text: &str) -> Option<SessionDigest> {
                 {
                     if c.get("type").and_then(Value::as_str) == Some("toolCall") {
                         d.tool_calls += 1;
+                        if c.get("name").and_then(Value::as_str) == Some("memory_store") {
+                            d.memory_stores += 1;
+                        }
                         let id = c.get("id").map(value_str).unwrap_or_default();
                         calls.insert(
                             id,
@@ -344,6 +388,207 @@ pub fn digest_sessions(sessions_dir: &Path, out_dir: &Path) -> (u32, u32) {
         serde_json::to_string_pretty(&index).unwrap_or_default(),
     );
     (count, events)
+}
+
+fn mtime_ms(e: &std::fs::DirEntry) -> i64 {
+    e.metadata()
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// Which session dirs a cross-project dream skips: the agent dir itself (where scheduled
+/// dreams run) and throwaway scratch chats.
+#[derive(Clone, Debug, Default)]
+pub struct Skip {
+    /// Encoded session dir names to skip (see [`encode_session_dir_name`]).
+    pub dirs: Vec<String>,
+    /// Dir-name substrings to skip.
+    pub contains: Vec<String>,
+}
+
+impl Skip {
+    /// The default skip list for an agent dir host path.
+    #[must_use]
+    pub fn for_agent_dir(agent_dir: Option<&str>) -> Self {
+        Self {
+            dirs: agent_dir.map(encode_session_dir_name).into_iter().collect(),
+            contains: vec!["-oino-scratch-".into()],
+        }
+    }
+
+    fn skips(&self, dir_name: &str) -> bool {
+        self.dirs.iter().any(|d| d == dir_name)
+            || self.contains.iter().any(|c| dir_name.contains(c.as_str()))
+    }
+}
+
+/// `(mtime, dir, file)` of every session file under `root` modified after `since_ms`, newest first.
+fn recent_files(root: &Path, since_ms: i64, skip: &Skip) -> Vec<(i64, String, String)> {
+    let mut out = Vec::new();
+    let Ok(dirs) = std::fs::read_dir(root) else {
+        return out;
+    };
+    for d in dirs.flatten() {
+        let dir = d.file_name().to_string_lossy().into_owned();
+        if skip.skips(&dir) || !d.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let Ok(files) = std::fs::read_dir(d.path()) else {
+            continue;
+        };
+        for f in files.flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            if !Path::new(&name)
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("jsonl"))
+            {
+                continue;
+            }
+            let m = mtime_ms(&f);
+            if m > since_ms {
+                out.push((m, dir.clone(), name));
+            }
+        }
+    }
+    out.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
+    out
+}
+
+/// Session files across every project modified after `since_ms`.
+#[must_use]
+pub fn count_recent(root: &Path, since_ms: i64, skip: &Skip) -> u32 {
+    u32::try_from(recent_files(root, since_ms, skip).len()).unwrap_or(u32::MAX)
+}
+
+/// One project a dream covers.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDigest {
+    /// Memory project name (the memory extension's bucket for `cwd`).
+    pub project: String,
+    /// Working directory.
+    pub cwd: String,
+    /// Recent sessions seen.
+    pub sessions: u32,
+    /// Sessions with struggle/correction/preference events.
+    pub digested: u32,
+}
+
+/// What [`digest_recent`] produced.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Recent {
+    /// Sessions looked at.
+    pub sessions: u32,
+    /// Sessions with events (digest files written).
+    pub digested: u32,
+    /// Events.
+    pub events: u32,
+    /// Projects, most sessions first.
+    pub projects: Vec<ProjectDigest>,
+}
+
+/// Cross-project digests (v3 J2): the newest `max_sessions` session files modified after
+/// `since_ms` under `root` (`/agent/sessions`), one `digests/<project>/<session>.json` per
+/// session with events, and `digests/INDEX.json` listing every looked-at session (with or
+/// without events: a quiet session that stored no memory may still hold a missed lesson).
+/// `project_of` maps a cwd to its memory project.
+#[must_use]
+pub fn digest_recent(
+    root: &Path,
+    since_ms: i64,
+    out_dir: &Path,
+    skip: &Skip,
+    max_sessions: usize,
+    project_of: &dyn Fn(&str) -> String,
+) -> Recent {
+    let _ = std::fs::create_dir_all(out_dir);
+    let mut r = Recent::default();
+    let mut index = Vec::new();
+    let mut projects: Vec<ProjectDigest> = Vec::new();
+    for (_, dir, file) in recent_files(root, since_ms, skip)
+        .into_iter()
+        .take(max_sessions)
+    {
+        let Ok(text) = std::fs::read_to_string(root.join(&dir).join(&file)) else {
+            continue;
+        };
+        let stem = file.trim_end_matches(".jsonl").to_owned();
+        let header_cwd = text
+            .lines()
+            .next()
+            .and_then(|l| serde_json::from_str::<Value>(l).ok())
+            .and_then(|h| h.get("cwd").and_then(Value::as_str).map(ToOwned::to_owned))
+            .unwrap_or_default();
+        let project = project_of(&header_cwd);
+        r.sessions += 1;
+        let slot = if let Some(i) = projects.iter().position(|p| p.project == project) {
+            i
+        } else {
+            projects.push(ProjectDigest {
+                project: project.clone(),
+                cwd: header_cwd.clone(),
+                ..ProjectDigest::default()
+            });
+            projects.len() - 1
+        };
+        projects[slot].sessions += 1;
+        let d = digest_session(&stem, &text);
+        let mut row = json!({"session": stem, "project": project, "cwd": header_cwd});
+        if let Some(d) = &d {
+            r.digested += 1;
+            projects[slot].digested += 1;
+            r.events += u32::try_from(d.events.len()).unwrap_or(u32::MAX);
+            let pdir = out_dir.join(&project);
+            let _ = std::fs::create_dir_all(&pdir);
+            let _ = std::fs::write(
+                pdir.join(format!("{stem}.json")),
+                serde_json::to_string_pretty(d).unwrap_or_default(),
+            );
+            row["digest"] = json!(format!("{project}/{stem}.json"));
+            row["firstRequest"] = json!(head_chars(&d.first_request, 160));
+            row["toolCalls"] = json!(d.tool_calls);
+            row["errors"] = json!(d.errors);
+            row["corrections"] = json!(
+                d.events
+                    .iter()
+                    .filter(|e| e.kind == "user_correction")
+                    .count()
+            );
+            row["preferences"] = json!(
+                d.events
+                    .iter()
+                    .filter(|e| e.kind == "user_preference")
+                    .count()
+            );
+            row["memoryStores"] = json!(d.memory_stores);
+        } else {
+            let first = text
+                .lines()
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .find(|e| {
+                    e.get("type").and_then(Value::as_str) == Some("message")
+                        && e.pointer("/message/role").and_then(Value::as_str) == Some("user")
+                })
+                .map(|e| clip(&content_text(e.pointer("/message/content")), 160))
+                .unwrap_or_default();
+            row["firstRequest"] = json!(first);
+        }
+        index.push(row);
+    }
+    projects.sort_by(|a, b| {
+        b.sessions
+            .cmp(&a.sessions)
+            .then_with(|| a.project.cmp(&b.project))
+    });
+    let _ = std::fs::write(
+        out_dir.join("INDEX.json"),
+        serde_json::to_string_pretty(&json!({"projects": projects, "sessions": index}))
+            .unwrap_or_default(),
+    );
+    r.projects = projects;
+    r
 }
 
 /// Session files modified after `since_ms`.
@@ -547,5 +792,117 @@ mod tests {
         assert!(is_correction("Actually, use X"));
         assert!(!is_correction("nothing wrong"));
         assert!(!is_correction("notable"));
+    }
+
+    #[test]
+    fn preferences() {
+        assert!(is_preference("I prefer bun over npm"));
+        assert!(is_preference("Always run the tests first"));
+        assert!(is_preference("ok. from now on use pnpm"));
+        assert!(is_preference("Please don't push to main"));
+        assert!(!is_preference("fix the build"));
+        assert!(
+            !is_preference(&"always ".repeat(200)),
+            "long pastes are not preferences"
+        );
+        let d = digest_session(
+            "s",
+            &lines(&[
+                sid(),
+                user("Never commit generated files"),
+                call("1", "memory_store", json!({})),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(d.events[0].kind, "user_preference");
+        assert_eq!(d.memory_stores, 1);
+    }
+
+    #[test]
+    fn recent_across_projects() {
+        let base = std::env::temp_dir().join(format!("dream-recent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, out) = (base.join("sessions"), base.join("o"));
+        let header = |cwd: &str| json!({"type": "session", "version": 3, "id": "x", "cwd": cwd});
+        let put = |dir: &str, name: &str, text: String| {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            std::fs::write(root.join(dir).join(format!("{name}.jsonl")), text).unwrap();
+        };
+        put(
+            "--w-oino--",
+            "a",
+            lines(&[
+                header("/w/oino"),
+                user("no, use cargo xtask"),
+                call("1", "bash", json!({})),
+            ]),
+        );
+        put(
+            "--w-oino--",
+            "b",
+            lines(&[header("/w/oino"), user("add a button")]),
+        );
+        put(
+            "--w-My-Web--",
+            "c",
+            lines(&[header("/w/My Web"), user("I prefer tabs")]),
+        );
+        put(
+            "--h-.oino--",
+            "d",
+            lines(&[header("/h/.oino"), user("/dream run --scheduled")]),
+        );
+        put(
+            "--h-.local-share-oino-scratch-1--",
+            "e",
+            lines(&[header("/h/s"), user("no")]),
+        );
+        let skip = Skip::for_agent_dir(Some("/h/.oino"));
+        assert_eq!(
+            count_recent(&root, 0, &skip),
+            3,
+            "agent dir and scratch skipped"
+        );
+        assert_eq!(count_recent(&root, i64::MAX, &skip), 0);
+        let project_of = |cwd: &str| {
+            cwd.rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_lowercase()
+                .replace(' ', "_")
+        };
+        let r = digest_recent(&root, 0, &out, &skip, 10, &project_of);
+        assert_eq!((r.sessions, r.digested, r.events), (3, 2, 2));
+        assert_eq!(r.projects[0].project, "oino");
+        assert_eq!((r.projects[0].sessions, r.projects[0].digested), (2, 1));
+        assert_eq!(r.projects[1].project, "my_web");
+        assert!(out.join("oino/a.json").exists());
+        assert!(out.join("my_web/c.json").exists());
+        assert!(
+            !out.join("oino/b.json").exists(),
+            "quiet sessions only in the index"
+        );
+        let index: Value =
+            serde_json::from_slice(&std::fs::read(out.join("INDEX.json")).unwrap()).unwrap();
+        assert_eq!(index["sessions"].as_array().unwrap().len(), 3);
+        let b = index["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["session"] == "b")
+            .unwrap();
+        assert_eq!(b["firstRequest"], "add a button");
+        assert!(b.get("digest").is_none());
+        let c = index["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["session"] == "c")
+            .unwrap();
+        assert_eq!(c["preferences"], 1);
+        assert_eq!(c["digest"], "my_web/c.json");
+        let capped = digest_recent(&root, 0, &base.join("o2"), &skip, 1, &project_of);
+        assert_eq!(capped.sessions, 1);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
