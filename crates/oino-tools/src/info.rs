@@ -4,7 +4,7 @@ use oino_agent::{ExecutionMode, ToolDefinitionMeta};
 use oino_ai::{ConstrainedSampling, ConstrainedSamplingConfig, JsonValue, StrictMode};
 use serde_json::json;
 
-use crate::truncate::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, GREP_MAX_LINE_LENGTH};
+use crate::truncate::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES};
 
 /// Built-in tool names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -21,6 +21,10 @@ pub enum BuiltinToolName {
     Grep,
     /// `find`
     Find,
+    /// `glob`
+    Glob,
+    /// Codex patch format.
+    ApplyPatch,
     /// `ls`
     Ls,
     /// `powershell` (Windows only)
@@ -35,7 +39,14 @@ impl BuiltinToolName {
         if cfg!(windows) {
             names.push(Self::Powershell);
         }
-        names.extend([Self::Edit, Self::Write, Self::Grep, Self::Find, Self::Ls]);
+        names.extend([
+            Self::Edit,
+            Self::Write,
+            Self::Grep,
+            Self::Glob,
+            Self::Ls,
+            Self::ApplyPatch,
+        ]);
         names
     }
 
@@ -49,6 +60,8 @@ impl BuiltinToolName {
             Self::Write => "write",
             Self::Grep => "grep",
             Self::Find => "find",
+            Self::Glob => "glob",
+            Self::ApplyPatch => "apply_patch",
             Self::Ls => "ls",
             Self::Powershell => "powershell",
         }
@@ -57,6 +70,9 @@ impl BuiltinToolName {
     /// Parses a model-facing name (only names available on this platform).
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {
+        if name == "find" {
+            return Some(Self::Find);
+        }
         Self::all()
             .into_iter()
             .find(|candidate| candidate.as_str() == name)
@@ -81,7 +97,7 @@ pub const DEFAULT_ACTIVE_TOOLS: [BuiltinToolName; 4] = [
 pub const READ_ONLY_TOOLS: [BuiltinToolName; 4] = [
     BuiltinToolName::Read,
     BuiltinToolName::Grep,
-    BuiltinToolName::Find,
+    BuiltinToolName::Glob,
     BuiltinToolName::Ls,
 ];
 
@@ -169,101 +185,34 @@ fn strings(items: &[&str]) -> Vec<String> {
 /// The read tool metadata.
 #[must_use]
 pub fn read_info() -> BuiltinToolInfo {
-    let mut info = info(
-        BuiltinToolName::Read,
-        format!(
-            "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to {DEFAULT_MAX_LINES} lines or {}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
-            kb(DEFAULT_MAX_BYTES)
-        ),
-        "Read file contents",
-        Some(strings(&[
-            "Use read to examine files instead of cat or sed.",
-        ])),
-        json!({
-            "type": "object",
-            "required": ["path"],
-            "properties": {
-                "path": {"type": "string", "description": "Path to the file to read (relative or absolute)"},
-                "offset": {"type": "number", "description": "Line number to start reading from (1-indexed)"},
-                "limit": {"type": "number", "description": "Maximum number of lines to read"}
-            }
-        }),
-    );
-    info.output_schema = Some(json!({
-        "anyOf": [
-            {"type": "string"},
-            {
-                "type": "object",
-                "required": ["type", "data", "mimeType", "note"],
-                "properties": {
-                    "type": {"type": "string", "const": "image"},
-                    "data": {"type": "string"},
-                    "mimeType": {"type": "string"},
-                    "note": {"type": "string"}
-                }
-            }
-        ]
-    }));
-    info.constrained_sampling = Some(strict_prefer());
-    info
+    let mut metadata = info(BuiltinToolName::Read,
+        "Read a file using an absolute file_path. Bare reads of long files show a numbered declaration outline; use offset and limit (up to 2400 lines) to page. line_numbers prefixes text with 12→text. Images up to 5 MB and PDFs up to 3 MB are supported; image_quality=high preserves more detail.".to_owned(),
+        "Read file contents", Some(strings(&["Use read instead of cat, nl or sed to read and number files."])),
+        json!({"type":"object","properties":{"file_path":{"type":"string"},"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"default":2400},"line_numbers":{"type":"boolean"},"image_quality":{"type":"string","enum":["default","high"],"default":"default"}},"required":["file_path"],"additionalProperties":false}));
+    metadata.constrained_sampling = Some(strict_prefer());
+    metadata
 }
 
 /// The write tool metadata.
 #[must_use]
 pub fn write_info() -> BuiltinToolInfo {
-    let mut info = info(
-        BuiltinToolName::Write,
-        "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.".to_owned(),
-        "Create or overwrite files",
-        Some(strings(&["Use write only for new files or complete rewrites."])),
-        json!({
-            "type": "object",
-            "required": ["path", "content"],
-            "properties": {
-                "path": {"type": "string", "description": "Path to the file to write (relative or absolute)"},
-                "content": {"type": "string", "description": "Content to write to the file"}
-            }
-        }),
-    );
-    info.constrained_sampling = Some(strict_prefer());
-    info
+    let mut metadata = info(BuiltinToolName::Write,
+        "Create or overwrite a file atomically, creating parent directories. Preserves existing encoding, BOM and line endings and ensures a trailing newline. Directory paths are refused.".to_owned(),
+        "Create or overwrite files", Some(strings(&["Use write for new files or complete rewrites."])),
+        json!({"type":"object","properties":{"file_path":{"type":"string"},"content":{"type":"string"}},"required":["file_path","content"],"additionalProperties":false}));
+    metadata.constrained_sampling = Some(strict_prefer());
+    metadata
 }
 
 /// The edit tool metadata.
 #[must_use]
 pub fn edit_info() -> BuiltinToolInfo {
-    let mut info = info(
-        BuiltinToolName::Edit,
-        "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.".to_owned(),
-        "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
-        Some(strings(&[
-            "Use edit for precise changes (edits[].oldText must match exactly)",
-            "When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls",
-            "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
-            "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
-        ])),
-        json!({
-            "type": "object",
-            "required": ["path", "edits"],
-            "properties": {
-                "path": {"type": "string", "description": "Path to the file to edit (relative or absolute)"},
-                "edits": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["oldText", "newText"],
-                        "properties": {
-                            "oldText": {"type": "string", "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},
-                            "newText": {"type": "string", "description": "Replacement text for this targeted edit."}
-                        }
-                    },
-                    "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
-                }
-            }
-        }),
-    );
-    info.constrained_sampling = Some(strict_prefer());
-    info
+    let mut metadata = info(BuiltinToolName::Edit,
+        "Edit a file with batched exact replacements. All edits match the original file and must not overlap. Each oldText must be unique unless its change_all is true. Refuses files changed externally since last read. Writes atomically preserving encoding, BOM and line endings, returning a diff summary.".to_owned(),
+        "Make precise batched file edits", Some(strings(&["Read files before editing. Merge overlapping or nearby changes into one edit."])),
+        json!({"type":"object","properties":{"file_path":{"type":"string"},"edits":{"type":"array","minItems":1,"items":{"type":"object","properties":{"oldText":{"type":"string"},"newText":{"type":"string"},"change_all":{"type":"boolean","default":false}},"required":["oldText","newText"],"additionalProperties":false}}},"required":["file_path","edits"],"additionalProperties":false}));
+    metadata.constrained_sampling = Some(strict_prefer());
+    metadata
 }
 
 /// Shell tool flavour.
@@ -358,72 +307,43 @@ pub(crate) const LS_DEFAULT_LIMIT: f64 = 500.0;
 /// The grep tool metadata.
 #[must_use]
 pub fn grep_info() -> BuiltinToolInfo {
-    info(
-        BuiltinToolName::Grep,
-        format!(
-            "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to {GREP_DEFAULT_LIMIT} matches or {}KB (whichever is hit first). Long lines are truncated to {GREP_MAX_LINE_LENGTH} chars.",
-            kb(DEFAULT_MAX_BYTES)
-        ),
-        "Search file contents for patterns (respects .gitignore)",
-        None,
-        json!({
-            "type": "object",
-            "required": ["pattern"],
-            "properties": {
-                "pattern": {"type": "string", "description": "Search pattern (regex or literal string)"},
-                "path": {"type": "string", "description": "Directory or file to search (default: current directory)"},
-                "glob": {"type": "string", "description": "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'"},
-                "ignoreCase": {"type": "boolean", "description": "Case-insensitive search (default: false)"},
-                "literal": {"type": "boolean", "description": "Treat pattern as literal string instead of regex (default: false)"},
-                "context": {"type": "number", "description": "Number of lines to show before and after each match (default: 0)"},
-                "limit": {"type": "number", "description": "Maximum number of matches to return (default: 100)"}
-            }
-        }),
-    )
+    info(BuiltinToolName::Grep,
+        "Search file contents using in-process ripgrep. Defaults to files_with_matches; content returns matching lines and optional context, count returns counts per file. Supports file types, globs, literal and multiline searches. Respects ignore files.".to_owned(),
+        "Search file contents", None,
+        json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob_pattern":{"type":"string"},"output_mode":{"type":"string","enum":["content","files_with_matches","count"],"default":"files_with_matches"},"case_insensitive":{"type":"boolean"},"type":{"type":"string"},"context_before":{"type":"integer","minimum":0},"context_after":{"type":"integer","minimum":0},"context":{"type":"integer","minimum":0},"line_numbers":{"type":"boolean"},"head_limit":{"type":"integer","minimum":0},"multiline":{"type":"boolean"},"fixed_string":{"type":"boolean"}},"required":["pattern"],"additionalProperties":false}))
 }
 
 /// The find tool metadata.
 #[must_use]
 pub fn find_info() -> BuiltinToolInfo {
-    info(
-        BuiltinToolName::Find,
-        format!(
-            "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to {FIND_DEFAULT_LIMIT} results or {}KB (whichever is hit first).",
-            kb(DEFAULT_MAX_BYTES)
-        ),
-        "Find files by glob pattern (respects .gitignore)",
-        None,
-        json!({
-            "type": "object",
-            "required": ["pattern"],
-            "properties": {
-                "pattern": {"type": "string", "description": "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'"},
-                "path": {"type": "string", "description": "Directory to search in (default: current directory)"},
-                "limit": {"type": "number", "description": "Maximum number of results (default: 1000)"}
-            }
-        }),
-    )
+    let mut metadata = glob_info();
+    metadata.name = BuiltinToolName::Find;
+    metadata.label = "find";
+    metadata
+}
+
+/// The glob tool metadata. The find alias is never advertised.
+#[must_use]
+pub fn glob_info() -> BuiltinToolInfo {
+    info(BuiltinToolName::Glob, "Find files by one or more glob patterns, excluding excludePatterns. Paths are relative to folder (default cwd). Respects ignore files.".to_owned(),
+        "Find files by glob patterns", None,
+        json!({"type":"object","properties":{"patterns":{"type":"array","items":{"type":"string"},"minItems":1},"excludePatterns":{"type":"array","items":{"type":"string"}},"folder":{"type":"string"}},"required":["patterns"],"additionalProperties":false}))
+}
+
+/// Codex patch metadata; registration is model-gated.
+#[must_use]
+pub fn apply_patch_info() -> BuiltinToolInfo {
+    info(BuiltinToolName::ApplyPatch, "Apply a Codex *** Begin Patch / *** End Patch patch. Supports Add File, Update File (with optional Move to), and Delete File operations.".to_owned(),
+        "Apply file patches", None,
+        json!({"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}))
 }
 
 /// The ls tool metadata.
 #[must_use]
 pub fn ls_info() -> BuiltinToolInfo {
-    info(
-        BuiltinToolName::Ls,
-        format!(
-            "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to {LS_DEFAULT_LIMIT} entries or {}KB (whichever is hit first).",
-            kb(DEFAULT_MAX_BYTES)
-        ),
-        "List directory contents",
-        None,
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Directory to list (default: current directory)"},
-                "limit": {"type": "number", "description": "Maximum number of entries to return (default: 500)"}
-            }
-        }),
-    )
+    info(BuiltinToolName::Ls, "List directory entries, sorted alphabetically, including dotfiles. Directories have a / suffix. Defaults to cwd; ignorePatterns excludes matching entries.".to_owned(),
+        "List directory contents", None,
+        json!({"type":"object","properties":{"directory_path":{"type":"string"},"ignorePatterns":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}))
 }
 
 /// Metadata of a built-in by name.
@@ -442,6 +362,8 @@ pub fn builtin_tool_info(
         BuiltinToolName::Write => write_info(),
         BuiltinToolName::Grep => grep_info(),
         BuiltinToolName::Find => find_info(),
+        BuiltinToolName::Glob => glob_info(),
+        BuiltinToolName::ApplyPatch => apply_patch_info(),
         BuiltinToolName::Ls => ls_info(),
     }
 }

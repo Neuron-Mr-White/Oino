@@ -56,6 +56,11 @@ impl AgentTool for GrepTool {
         &self.meta
     }
 
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        crate::legacy::normalize_call("grep", &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
+    }
+
     fn execute(
         &self,
         call: ToolInvocation,
@@ -94,6 +99,8 @@ struct SearchSpec {
     ignore_case: bool,
     literal: bool,
     limit: f64,
+    multiline: bool,
+    file_type: Option<String>,
 }
 
 struct SearchOutcome {
@@ -132,10 +139,14 @@ impl Sink for LineSink<'_> {
 
 /// Runs the search like `rg` would; errors are rendered as ripgrep prints them.
 fn search(spec: &SearchSpec, stop: &AtomicBool) -> Result<SearchOutcome, String> {
-    let matcher = RegexMatcherBuilder::new()
+    let mut builder = RegexMatcherBuilder::new();
+    builder.multi_line(spec.multiline);
+    if !spec.multiline {
+        builder.line_terminator(Some(b'\n'));
+    }
+    let matcher = builder
         .case_insensitive(spec.ignore_case)
         .fixed_strings(spec.literal)
-        .line_terminator(Some(b'\n'))
         .build(&spec.pattern)
         .map_err(|error| format!("rg: {error}"))?;
     let mut walker = WalkBuilder::new(&spec.root);
@@ -145,6 +156,12 @@ fn search(spec: &SearchSpec, stop: &AtomicBool) -> Result<SearchOutcome, String>
         .require_git(true)
         .add_custom_ignore_filename(".rgignore")
         .sort_by_file_name(Ord::cmp);
+    if let Some(file_type) = &spec.file_type {
+        let mut types = ignore::types::TypesBuilder::new();
+        types.add_defaults();
+        types.select(file_type);
+        walker.types(types.build().map_err(|error| format!("rg: {error}"))?);
+    }
     if let Some(glob) = &spec.glob {
         let mut overrides = OverrideBuilder::new(&spec.root);
         overrides
@@ -170,6 +187,7 @@ fn search(spec: &SearchSpec, stop: &AtomicBool) -> Result<SearchOutcome, String>
         }
         let explicit = entry.depth() == 0;
         let mut searcher = SearcherBuilder::new()
+            .multi_line(spec.multiline)
             .line_number(true)
             .binary_detection(if explicit {
                 BinaryDetection::convert(b'\x00')
@@ -211,7 +229,9 @@ fn search(spec: &SearchSpec, stop: &AtomicBool) -> Result<SearchOutcome, String>
 async fn format_matches(
     env: &dyn crate::env::ExecutionEnv,
     matches: &[Match],
-    context: f64,
+    before: f64,
+    after: f64,
+    numbered: bool,
     format_path: &(dyn Fn(&str) -> String + Sync),
 ) -> (Vec<String>, bool) {
     let mut cache: HashMap<String, Vec<String>> = HashMap::new();
@@ -219,12 +239,16 @@ async fn format_matches(
     let mut output_lines: Vec<String> = Vec::new();
     for found in matches {
         let relative = format_path(&found.path);
-        if let (true, Some(text)) = (context == 0.0, &found.text) {
+        if let (true, Some(text)) = (before == 0.0 && after == 0.0, &found.text) {
             let sanitized = text.replace("\r\n", "\n").replace('\r', "");
             let sanitized = sanitized.strip_suffix('\n').unwrap_or(&sanitized);
             let line = truncate_line(sanitized, GREP_MAX_LINE_LENGTH);
             lines_truncated |= line.was_truncated;
-            output_lines.push(format!("{relative}:{}: {}", found.line_number, line.text));
+            output_lines.push(if numbered {
+                format!("{relative}:{}: {}", found.line_number, line.text)
+            } else {
+                format!("{relative}: {}", line.text)
+            });
             continue;
         }
         if !cache.contains_key(&found.path) {
@@ -252,10 +276,10 @@ async fn format_matches(
             reason = "line numbers are far below 2^53"
         )]
         let (line_number, total) = (found.line_number as f64, lines.len() as f64);
-        let (start, end) = if context > 0.0 {
+        let (start, end) = if before > 0.0 || after > 0.0 {
             (
-                (line_number - context).max(1.0),
-                total.min(line_number + context),
+                (line_number - before).max(1.0),
+                total.min(line_number + after),
             )
         } else {
             (line_number, line_number)
@@ -276,7 +300,9 @@ async fn format_matches(
             let line = truncate_line(&text.replace('\r', ""), GREP_MAX_LINE_LENGTH);
             lines_truncated |= line.was_truncated;
             let shown = number_to_string(current);
-            if (current - line_number).abs() < f64::EPSILON {
+            if !numbered {
+                output_lines.push(format!("{relative}: {}", line.text));
+            } else if (current - line_number).abs() < f64::EPSILON {
                 output_lines.push(format!("{relative}:{shown}: {}", line.text));
             } else {
                 output_lines.push(format!("{relative}-{shown}- {}", line.text));
@@ -287,6 +313,7 @@ async fn format_matches(
     (output_lines, lines_truncated)
 }
 
+#[allow(clippy::too_many_lines, reason = "single tool execution flow")]
 async fn run(
     config: &ToolConfig,
     call: &ToolInvocation,
@@ -294,13 +321,31 @@ async fn run(
 ) -> Result<AgentToolResult, ToolError> {
     let pattern = args::required_str(&call.args, "pattern")?.to_owned();
     let search_dir = args::optional_str(&call.args, "path").filter(|path| !path.is_empty());
-    let glob = args::optional_str(&call.args, "glob").filter(|glob| !glob.is_empty());
+    let glob = args::optional_str(&call.args, "glob_pattern")
+        .or_else(|| args::optional_str(&call.args, "glob"))
+        .filter(|glob| !glob.is_empty());
     let context = args::optional_f64(&call.args, "context")
         .filter(|context| *context > 0.0)
         .unwrap_or(0.0);
-    let limit = args::optional_f64(&call.args, "limit")
-        .unwrap_or(GREP_DEFAULT_LIMIT)
-        .max(1.0);
+    let requested_limit = args::optional_f64(&call.args, "head_limit")
+        .or_else(|| args::optional_f64(&call.args, "limit"))
+        .unwrap_or(GREP_DEFAULT_LIMIT);
+    let legacy = ["glob", "ignoreCase", "literal", "limit"]
+        .iter()
+        .any(|key| call.args.contains_key(*key));
+    let mode = args::optional_str(&call.args, "output_mode").unwrap_or(if legacy {
+        "content"
+    } else {
+        "files_with_matches"
+    });
+    if !["content", "files_with_matches", "count"].contains(&mode) {
+        return Err(ToolError::new("Invalid output_mode"));
+    }
+    let limit = if requested_limit == 0.0 || mode != "content" {
+        f64::INFINITY
+    } else {
+        requested_limit.max(1.0)
+    };
     let env = config.env.as_ref();
     if !env.is_local() {
         return Err(ToolError::new(
@@ -318,8 +363,11 @@ async fn run(
         pattern,
         root: root.clone(),
         glob: glob.map(str::to_owned),
-        ignore_case: args::flag(&call.args, "ignoreCase"),
-        literal: args::flag(&call.args, "literal"),
+        ignore_case: args::flag(&call.args, "case_insensitive")
+            || args::flag(&call.args, "ignoreCase"),
+        literal: args::flag(&call.args, "fixed_string") || args::flag(&call.args, "literal"),
+        multiline: args::flag(&call.args, "multiline"),
+        file_type: args::optional_str(&call.args, "type").map(str::to_owned),
         limit,
     };
     let outcome = tokio::task::spawn_blocking(move || search(&spec, &stop))
@@ -338,8 +386,39 @@ async fn run(
         }
         node_path::basename(file)
     };
-    let (output_lines, lines_truncated) =
-        format_matches(env, &outcome.matches, context, &format_path).await;
+    let (mut output_lines, lines_truncated) = if mode == "content" {
+        format_matches(
+            env,
+            &outcome.matches,
+            args::optional_f64(&call.args, "context_before").unwrap_or(context),
+            args::optional_f64(&call.args, "context_after").unwrap_or(context),
+            args::flag(&call.args, "line_numbers") || legacy,
+            &format_path,
+        )
+        .await
+    } else {
+        let mut counts = std::collections::BTreeMap::<String, usize>::new();
+        for found in &outcome.matches {
+            *counts.entry(format_path(&found.path)).or_default() += 1;
+        }
+        (
+            counts
+                .into_iter()
+                .map(|(path, count)| {
+                    if mode == "count" {
+                        format!("{path}:{count}")
+                    } else {
+                        path
+                    }
+                })
+                .collect(),
+            false,
+        )
+    };
+    if requested_limit > 0.0 {
+        output_lines
+            .truncate(usize::try_from(args::to_count(requested_limit)).unwrap_or(usize::MAX));
+    }
     let truncation = truncate_head(&output_lines.join("\n"), TruncationOptions::bytes_only());
     let mut output = truncation.content.clone();
     let mut details = Map::new();

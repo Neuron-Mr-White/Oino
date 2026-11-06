@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::ToolConfig;
 use crate::env::path_exists;
-use crate::info::{FIND_DEFAULT_LIMIT, find_info};
+use crate::info::{FIND_DEFAULT_LIMIT, find_info, glob_info};
 use crate::js::number_to_string;
 use crate::path_utils::resolve_to_cwd;
 use crate::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
@@ -45,11 +45,24 @@ impl FindTool {
             config,
         }
     }
+    /// Canonical glob tool, with find retained only as a legacy execution alias.
+    #[must_use]
+    pub fn glob(config: ToolConfig) -> Self {
+        Self {
+            meta: glob_info().definition_meta(),
+            config,
+        }
+    }
 }
 
 impl AgentTool for FindTool {
     fn meta(&self) -> &ToolDefinitionMeta {
         &self.meta
+    }
+
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        crate::legacy::normalize_call(self.meta.name.as_str(), &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
     }
 
     fn execute(
@@ -76,8 +89,8 @@ impl AgentTool for FindTool {
 }
 
 struct FindSpec {
-    pattern: String,
-    full_path: bool,
+    patterns: Vec<String>,
+    exclusions: Vec<String>,
     root: String,
     require_git: bool,
     /// `0` means unlimited (fd `--max-results 0`).
@@ -90,13 +103,25 @@ fn has_uppercase(pattern: &str) -> bool {
 }
 
 fn walk(spec: &FindSpec, stop: &AtomicBool) -> Result<Vec<String>, String> {
-    let glob = GlobBuilder::new(&spec.pattern)
-        .literal_separator(true)
-        .case_insensitive(!has_uppercase(&spec.pattern))
-        .backslash_escape(!cfg!(windows))
-        .build()
-        .map_err(|error| format!("[fd error]: {error}"))?
-        .compile_matcher();
+    let compile = |pattern: &str| {
+        GlobBuilder::new(pattern)
+            .literal_separator(true)
+            .case_insensitive(!has_uppercase(pattern))
+            .backslash_escape(!cfg!(windows))
+            .build()
+            .map(|glob| glob.compile_matcher())
+            .map_err(|error| format!("[fd error]: {error}"))
+    };
+    let globs = spec
+        .patterns
+        .iter()
+        .map(|pattern| compile(pattern))
+        .collect::<Result<Vec<_>, _>>()?;
+    let exclusions = spec
+        .exclusions
+        .iter()
+        .map(|pattern| compile(pattern))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut walker = WalkBuilder::new(&spec.root);
     walker
         .hidden(false)
@@ -116,12 +141,15 @@ fn walk(spec: &FindSpec, stop: &AtomicBool) -> Result<Vec<String>, String> {
             continue;
         }
         let path = entry.path().to_string_lossy().into_owned();
-        let subject = if spec.full_path {
-            path.clone()
-        } else {
-            entry.file_name().to_string_lossy().into_owned()
-        };
-        if !glob.is_match(&subject) {
+        let relative = node_path::relative(&spec.root, &path).replace('\\', "/");
+        let basename = entry.file_name().to_string_lossy();
+        if !globs
+            .iter()
+            .any(|glob| glob.is_match(&relative) || glob.is_match(basename.as_ref()))
+            || exclusions
+                .iter()
+                .any(|glob| glob.is_match(&relative) || glob.is_match(basename.as_ref()))
+        {
             continue;
         }
         let is_dir = entry.file_type().is_some_and(|kind| kind.is_dir());
@@ -172,8 +200,37 @@ async fn run(
     call: &ToolInvocation,
     stop: Arc<AtomicBool>,
 ) -> Result<AgentToolResult, ToolError> {
-    let pattern = args::required_str(&call.args, "pattern")?;
-    let search_dir = args::optional_str(&call.args, "path").filter(|path| !path.is_empty());
+    let patterns = if let Some(values) = call.args.get("patterns").and_then(JsonValue::as_array) {
+        if values.is_empty() {
+            return Err(ToolError::new("patterns must not be empty"));
+        }
+        values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| ToolError::new("patterns must contain strings"))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        vec![args::required_str(&call.args, "pattern")?.to_owned()]
+    };
+    let exclusions = call
+        .args
+        .get("excludePatterns")
+        .and_then(JsonValue::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let search_dir = args::optional_str(&call.args, "folder")
+        .or_else(|| args::optional_str(&call.args, "path"))
+        .filter(|path| !path.is_empty());
     let limit = args::optional_f64(&call.args, "limit").unwrap_or(FIND_DEFAULT_LIMIT);
     if !config.env.is_local() {
         return Err(ToolError::new(
@@ -189,17 +246,9 @@ async fn run(
             "[fd error]: Search path '{root}' is not a directory.\n[fd error]: No valid search paths given."
         )));
     }
-    let full_path = pattern.contains('/');
-    let effective =
-        if full_path && !pattern.starts_with('/') && !pattern.starts_with("**/") && pattern != "**"
-        {
-            format!("**/{pattern}")
-        } else {
-            pattern.to_owned()
-        };
     let spec = FindSpec {
-        pattern: effective,
-        full_path,
+        patterns,
+        exclusions,
         root: root.clone(),
         require_git,
         max_results: args::to_count(limit),

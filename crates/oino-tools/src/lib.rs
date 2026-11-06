@@ -41,6 +41,8 @@
 )]
 
 mod args;
+pub mod apply_patch;
+pub mod legacy;
 pub mod bash;
 mod collate;
 pub mod config;

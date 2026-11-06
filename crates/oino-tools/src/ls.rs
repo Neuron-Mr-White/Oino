@@ -41,6 +41,11 @@ impl AgentTool for LsTool {
         &self.meta
     }
 
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        crate::legacy::normalize_call("ls", &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
+    }
+
     fn execute(
         &self,
         call: ToolInvocation,
@@ -62,7 +67,9 @@ impl AgentTool for LsTool {
 }
 
 async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResult, ToolError> {
-    let path = args::optional_str(&call.args, "path").filter(|path| !path.is_empty());
+    let path = args::optional_str(&call.args, "directory_path")
+        .or_else(|| args::optional_str(&call.args, "path"))
+        .filter(|path| !path.is_empty());
     let limit = args::optional_f64(&call.args, "limit").unwrap_or(LS_DEFAULT_LIMIT);
     let env = config.env.as_ref();
     let dir = resolve_to_cwd(path.unwrap_or("."), &config.effective_cwd())
@@ -81,6 +88,26 @@ async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResu
         .read_dir(&dir)
         .await
         .map_err(|error| ToolError::new(format!("Cannot read directory: {error}")))?;
+    let ignored = call
+        .args
+        .get("ignorePatterns")
+        .and_then(JsonValue::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .map(|value| {
+                    let pattern = value
+                        .as_str()
+                        .ok_or_else(|| ToolError::new("ignorePatterns must contain strings"))?;
+                    globset::Glob::new(pattern)
+                        .map(|glob| glob.compile_matcher())
+                        .map_err(|error| ToolError::new(error.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    entries.retain(|entry| !ignored.iter().any(|glob| glob.is_match(entry)));
     entries.sort_by(|a, b| locale_compare(&a.to_lowercase(), &b.to_lowercase()));
     let mut results: Vec<String> = Vec::new();
     let mut limit_reached = false;

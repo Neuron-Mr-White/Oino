@@ -2,6 +2,7 @@
 
 mod apply;
 mod diff;
+pub(crate) mod storage;
 
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -14,13 +15,13 @@ use tokio_util::sync::CancellationToken;
 
 pub use apply::{Edit, EditError};
 
+use crate::aborted;
 use crate::config::ToolConfig;
 use crate::env::AccessMode;
 use crate::info::edit_info;
 use crate::path_utils::resolve_to_cwd;
-use crate::{aborted, args};
 
-const BOM: char = '\u{feff}';
+use storage::{TextFile, atomic_write, check_observed, observe};
 
 /// The `edit` tool.
 #[derive(Debug)]
@@ -90,7 +91,8 @@ impl AgentTool for EditTool {
     }
 
     fn prepare_arguments(&self, raw: JsonObject) -> JsonObject {
-        prepare_edit_arguments(raw)
+        crate::legacy::normalize_call("edit", &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
     }
 
     fn execute(
@@ -138,7 +140,7 @@ async fn run(
     cancel: &CancellationToken,
 ) -> Result<AgentToolResult, ToolError> {
     let edits = parse_edits(&call.args)?;
-    let path = args::required_str(&call.args, "path")?;
+    let path = crate::legacy::file_path(&call.args)?;
     let absolute = resolve_to_cwd(path, &config.effective_cwd())
         .map_err(|error| ToolError::new(error.to_string()))?;
     let env = config.env.as_ref();
@@ -165,28 +167,38 @@ async fn run(
                 .read_file(&absolute)
                 .await
                 .map_err(|error| ToolError::new(error.to_string()))?;
-            let raw = String::from_utf8_lossy(&buffer);
+            check_observed(config, &absolute, &buffer)?;
+            let before = crate::write::diagnostics(config, &absolute);
+            let text = TextFile::decode(&buffer)?;
             check()?;
-            let (bom, content) = match raw.strip_prefix(BOM) {
-                Some(rest) => ("\u{feff}", rest),
-                None => ("", raw.as_ref()),
-            };
-            let ending = apply::detect_line_ending(content);
-            let normalized = apply::normalize_to_lf(content);
-            let applied = apply::apply_edits_to_normalized_content(&normalized, &edits, path)
+            let normalized = apply::normalize_to_lf(&text.text);
+            let change_all: Vec<bool> = call
+                .args
+                .get("edits")
+                .and_then(JsonValue::as_array)
+                .map(|edits| {
+                    edits
+                        .iter()
+                        .map(|edit| {
+                            edit.get("change_all")
+                                .and_then(JsonValue::as_bool)
+                                .unwrap_or(false)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let applied = apply::apply_edits_with_options(&normalized, &edits, &change_all, path)
                 .map_err(|error| ToolError::new(error.to_string()))?;
             check()?;
-            let final_content = format!(
-                "{bom}{}",
-                apply::restore_line_endings(&applied.new_content, ending)
-            );
-            env.write_file(&absolute, final_content.as_bytes())
-                .await
-                .map_err(|error| ToolError::new(error.to_string()))?;
+            let final_content = text.encode(&applied.new_content, false);
+            atomic_write(config, &absolute, &final_content, Some(&buffer)).await?;
+            observe(config, &absolute, &final_content)?;
             check()?;
             let display = diff::display_diff(&applied.base_content, &applied.new_content);
             let unified = diff::unified_patch(path, &applied.base_content, &applied.new_content);
-            let mut details = json!({"diff": display.diff, "patch": unified});
+            let diagnostics = crate::write::new_diagnostics(config, &absolute, &before);
+            let mut details =
+                json!({"diff": display.diff, "patch": unified, "new_diagnostics": diagnostics});
             if let (Some(line), Some(object)) =
                 (display.first_changed_line, details.as_object_mut())
             {
@@ -195,8 +207,9 @@ async fn run(
             Ok(AgentToolResult {
                 details: Some(details),
                 ..AgentToolResult::text(format!(
-                    "Successfully replaced {} block(s) in {path}.",
-                    edits.len()
+                    "Successfully replaced {} block(s) in {path}.{}",
+                    edits.len(),
+                    crate::write::diagnostics_reminder(&diagnostics)
                 ))
             })
         })

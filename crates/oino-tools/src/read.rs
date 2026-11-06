@@ -1,5 +1,7 @@
 //! `read`.
 
+use std::fmt::Write as _;
+
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use oino_agent::{
@@ -10,6 +12,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ToolConfig;
+use crate::edit::storage::{TextFile, observe};
 use crate::env::AccessMode;
 use crate::image::{
     IMAGE_TYPE_SNIFF_BYTES, ProcessedImage, detect_supported_image_mime_type, process_image,
@@ -47,6 +50,11 @@ impl ReadTool {
 impl AgentTool for ReadTool {
     fn meta(&self) -> &ToolDefinitionMeta {
         &self.meta
+    }
+
+    fn prepare_arguments(&self, raw: oino_ai::JsonObject) -> oino_ai::JsonObject {
+        crate::legacy::normalize_call("read", &raw, &self.config.effective_cwd())
+            .map_or(raw, |call| call.args)
     }
 
     fn execute(
@@ -97,8 +105,20 @@ fn js_slice<'a>(lines: &[&'a str], start: f64, end: f64) -> Vec<&'a str> {
     }
 }
 
+#[allow(clippy::too_many_lines, reason = "single tool execution flow")]
 async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResult, ToolError> {
-    let path = args::required_str(&call.args, "path")?;
+    let path = crate::legacy::file_path(&call.args)?;
+    let legacy = call.args.contains_key("path");
+    if !legacy && !crate::node_path::is_absolute(path) {
+        return Err(ToolError::new("file_path must be absolute"));
+    }
+    for key in ["offset", "limit"] {
+        if let Some(value) = call.args.get(key)
+            && value.as_u64().is_none_or(|number| number == 0)
+        {
+            return Err(ToolError::new(format!("{key} must be a positive integer")));
+        }
+    }
     let offset = args::optional_f64(&call.args, "offset");
     let limit = args::optional_f64(&call.args, "limit");
     let env = config.env.as_ref();
@@ -112,6 +132,17 @@ async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResu
         .read_prefix(&absolute, IMAGE_TYPE_SNIFF_BYTES)
         .await
         .map_err(|error| ToolError::new(error.to_string()))?;
+    let size = env
+        .stat(&absolute)
+        .await
+        .map_err(|error| ToolError::new(error.to_string()))?
+        .size;
+    if prefix.starts_with(b"%PDF-") && size > 3 * 1024 * 1024 {
+        return Err(ToolError::new("PDF exceeds the 3 MB limit"));
+    }
+    if detect_supported_image_mime_type(&prefix).is_some() && size > 5 * 1024 * 1024 {
+        return Err(ToolError::new("Image exceeds the 5 MB limit"));
+    }
     let model = config.context.model_images();
     let non_vision_note = model
         .as_ref()
@@ -121,11 +152,51 @@ async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResu
         .read_file(&absolute)
         .await
         .map_err(|error| ToolError::new(error.to_string()))?;
-    let (content, details) = if let Some(mime) = detect_supported_image_mime_type(&prefix) {
+    observe(config, &absolute, &buffer)?;
+    let (content, details) = if buffer.starts_with(b"%PDF-") {
+        if buffer.len() > 3 * 1024 * 1024 {
+            return Err(ToolError::new("PDF exceeds the 3 MB limit"));
+        }
+        if !env.is_local() {
+            return Err(ToolError::new(
+                "PDF extraction requires a local execution environment",
+            ));
+        }
+        let output = tokio::process::Command::new("pdftotext")
+            .args(["-layout", &absolute, "-"])
+            .kill_on_drop(true)
+            .output()
+            .await
+            .map_err(|error| {
+                ToolError::new(format!("PDF extraction requires pdftotext: {error}"))
+            })?;
+        if !output.status.success() {
+            return Err(ToolError::new("Could not extract PDF content"));
+        }
+        let (text, details) = paged_text(
+            &output.stdout,
+            path,
+            offset,
+            limit,
+            args::flag(&call.args, "line_numbers"),
+        )?;
+        (vec![UserContent::text(text)], details)
+    } else if let Some(mime) = detect_supported_image_mime_type(&prefix) {
+        if buffer.len() > 5 * 1024 * 1024 {
+            return Err(ToolError::new("Image exceeds the 5 MB limit"));
+        }
+        let high = args::optional_str(&call.args, "image_quality") == Some("high");
+        let quality = oino_ai::ImageResize {
+            max_width: Some(if high { 2048 } else { 1024 }),
+            max_height: Some(if high { 2048 } else { 1024 }),
+            max_bytes: Some(if high { 1024 * 1024 } else { 200 * 1024 }),
+            jpeg_quality: Some(if high { 90 } else { 75 }),
+        };
         let resize = model
             .as_ref()
             .and_then(|model| model.resize.clone())
-            .or_else(|| config.images.fallback_resize.clone());
+            .or_else(|| config.images.fallback_resize.clone())
+            .or(Some(quality));
         (
             image_content(
                 &buffer,
@@ -137,7 +208,17 @@ async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResu
             None,
         )
     } else {
-        let (text, details) = text_content(&buffer, path, offset, limit)?;
+        let (text, details) = if legacy {
+            text_content(&buffer, path, offset, limit)?
+        } else {
+            paged_text(
+                &buffer,
+                path,
+                offset,
+                limit,
+                args::flag(&call.args, "line_numbers"),
+            )?
+        };
         (vec![UserContent::text(text)], details)
     };
     let structured = structured_output(&content);
@@ -147,6 +228,81 @@ async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResu
         structured_content: Some(structured),
         ..AgentToolResult::default()
     })
+}
+
+fn paged_text(
+    buffer: &[u8],
+    path: &str,
+    offset: Option<f64>,
+    limit: Option<f64>,
+    numbered: bool,
+) -> Result<(String, Option<JsonValue>), ToolError> {
+    let decoded = TextFile::decode(buffer)?;
+    let text = decoded.text.replace("\r\n", "\n");
+    let lines: Vec<&str> = text.lines().collect();
+    let start = usize::try_from(args::to_count(offset.unwrap_or(1.0)))
+        .unwrap_or(usize::MAX)
+        .saturating_sub(1);
+    let count = usize::try_from(args::to_count(limit.unwrap_or(2400.0)))
+        .unwrap_or(2400)
+        .min(2400);
+    if start >= lines.len() && start > 0 {
+        return Err(ToolError::new(format!(
+            "Offset {} is beyond end of file ({} lines total)",
+            start + 1,
+            lines.len()
+        )));
+    }
+    if offset.is_none() && limit.is_none() && lines.len() > 2400 {
+        let declaration = regex::Regex::new(r"^\s*(?:(?:pub(?:\([^)]*\))?|export|async|static|abstract|public|private|protected)\s+)*(?:fn|struct|enum|trait|impl|mod|type|const|function|class|interface|def|async def)\b")
+            .map_err(|error| ToolError::new(error.to_string()))?;
+        let outline = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| declaration.is_match(line))
+            .map(|(index, line)| format!("{}→{line}", index + 1))
+            .collect::<Vec<_>>();
+        if !outline.is_empty() {
+            let truncated = truncate_head(&outline.join("\n"), TruncationOptions::bytes_only());
+            return Ok((
+                format!(
+                    "[Declaration outline of {path} ({} lines). Use offset and limit to read the body.]\n{}",
+                    lines.len(),
+                    truncated.content
+                ),
+                None,
+            ));
+        }
+    }
+    let end = start.saturating_add(count).min(lines.len());
+    let mut result = String::new();
+    let mut next = start;
+    for (index, line) in lines.iter().enumerate().take(end).skip(start) {
+        let shown = if numbered {
+            format!("{}→{line}", index + 1)
+        } else {
+            (*line).to_owned()
+        };
+        if result.len() + shown.len() > usize::try_from(DEFAULT_MAX_BYTES).unwrap_or(usize::MAX) {
+            break;
+        }
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&shown);
+        next = index + 1;
+    }
+    if next < lines.len() {
+        let _ = write!(
+            result,
+            "\n\n[Showing lines {}-{} of {}. Use offset={} to continue.]",
+            start + 1,
+            next,
+            lines.len(),
+            next + 1
+        );
+    }
+    Ok((result, None))
 }
 
 fn image_content(

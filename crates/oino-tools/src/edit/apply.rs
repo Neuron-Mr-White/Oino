@@ -13,32 +13,9 @@ pub struct Edit {
     pub new_text: String,
 }
 
-/// Line ending of a file.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LineEnding {
-    Lf,
-    Crlf,
-}
-
-/// CRLF when the first `\r\n` comes before the first bare `\n`.
-pub(crate) fn detect_line_ending(content: &str) -> LineEnding {
-    match (content.find("\r\n"), content.find('\n')) {
-        (Some(crlf), Some(lf)) if crlf < lf => LineEnding::Crlf,
-        _ => LineEnding::Lf,
-    }
-}
-
 /// N o r m a l i z e   T o   L F.
 pub(crate) fn normalize_to_lf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
-}
-
-/// R e s t o r e   L i n e   E n d i n g s.
-pub(crate) fn restore_line_endings(text: &str, ending: LineEnding) -> String {
-    match ending {
-        LineEnding::Crlf => text.replace('\n', "\r\n"),
-        LineEnding::Lf => text.to_owned(),
-    }
 }
 
 /// NFKC, trailing whitespace per line, smart quotes, Unicode
@@ -276,9 +253,19 @@ pub(crate) struct AppliedEdits {
 }
 
 /// A p p l y   E d i t s   T o   N o r m a l i z e d   C o n t e n t.
+#[cfg(test)]
 pub(crate) fn apply_edits_to_normalized_content(
     normalized: &str,
     edits: &[Edit],
+    path: &str,
+) -> Result<AppliedEdits, EditError> {
+    apply_edits_with_options(normalized, edits, &[], path)
+}
+
+pub(crate) fn apply_edits_with_options(
+    normalized: &str,
+    edits: &[Edit],
+    change_all: &[bool],
     path: &str,
 ) -> Result<AppliedEdits, EditError> {
     let total = edits.len();
@@ -315,7 +302,8 @@ pub(crate) fn apply_edits_to_normalized_content(
             });
         };
         let occurrences = count_occurrences(&base, &edit.old_text);
-        if occurrences > 1 {
+        let all = change_all.get(index).copied().unwrap_or(false);
+        if occurrences > 1 && !all {
             return Err(EditError::Duplicate {
                 path: path.to_owned(),
                 index,
@@ -323,12 +311,26 @@ pub(crate) fn apply_edits_to_normalized_content(
                 occurrences,
             });
         }
-        matched.push(Replacement {
-            edit_index: index,
-            start,
-            len: found.len,
-            new_text: edit.new_text.clone(),
-        });
+        let starts = if all {
+            let needle = if used_fuzzy {
+                normalize_for_fuzzy_match(&edit.old_text)
+            } else {
+                edit.old_text.clone()
+            };
+            base.match_indices(&needle)
+                .map(|(start, _)| start)
+                .collect::<Vec<_>>()
+        } else {
+            vec![start]
+        };
+        for start in starts {
+            matched.push(Replacement {
+                edit_index: index,
+                start,
+                len: found.len,
+                new_text: edit.new_text.clone(),
+            });
+        }
     }
     matched.sort_by_key(|replacement| replacement.start);
     for pair in matched.windows(2) {
@@ -408,8 +410,6 @@ mod tests {
 
     #[test]
     fn line_endings() {
-        assert_eq!(detect_line_ending("a\r\nb\n"), LineEnding::Crlf);
-        assert_eq!(detect_line_ending("a\nb\r\n"), LineEnding::Lf);
         assert_eq!(normalize_to_lf("a\r\nb\rc"), "a\nb\nc");
     }
 }
