@@ -16,6 +16,7 @@ import { resetHostCollapse } from './HostGroup';
 import { resetListViews, setListView } from '../../lib/session/listView';
 import type { SessionCard } from '../../lib/host/client';
 import { SessionList } from './SessionList';
+import { sessions } from '../../lib/session/store';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
@@ -65,6 +66,18 @@ afterEach(() => {
   setHostClientFactory(undefined);
   resetHubs();
   resetListViews();
+});
+
+describe('the idle indicator (owner 2026-11-06)', () => {
+  it('an open idle chat shows a muted ring; a chat that is not loaded shows none', async () => {
+    boot([card('live'), card('cold')]);
+    await waitFor(() => expect(screen.getByTestId('srow-cold')).toBeTruthy());
+    expect(screen.queryByTestId('srow-idle-live')).toBeNull();
+    sessions().ensure('this-pc', 'live');
+    await waitFor(() => expect(screen.getByTestId('srow-idle-live')).toBeTruthy());
+    expect(screen.queryByTestId('srow-idle-cold')).toBeNull();
+    sessions().close('this-pc', 'live');
+  });
 });
 
 describe('the row stats (owner-fix-8)', () => {

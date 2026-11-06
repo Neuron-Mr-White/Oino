@@ -14,7 +14,7 @@
  * like "Working" takes its place). Compact view only tightens the row height.
  */
 import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
-import { Archive, CircleAlert, CircleDashed, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
+import { Archive, Circle, CircleAlert, CircleDashed, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
 import { LONG_PRESS_MS } from '../../lib/gestures';
@@ -307,6 +307,11 @@ export function SessionRow(props: {
           </Match>
           <Match when={cron()}>
             <Clock size={13} />
+          </Match>
+          {/* Owner 2026-11-06: a live (open) chat that is idle shows a muted ring where the
+              Working spinner would be; a chat that isn't loaded shows nothing. */}
+          <Match when={status() === 'idle' && open()}>
+            <Circle size={11} class="srow-idle" data-testid={`srow-idle-${props.card.session_id}`} />
           </Match>
         </Switch>
       </span>
