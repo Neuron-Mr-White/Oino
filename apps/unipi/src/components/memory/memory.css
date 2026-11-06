@@ -42,15 +42,33 @@
 .dream-intro { display: flex; gap: 10px; align-items: flex-start; }
 .dream-intro p { margin: 0; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: normal; }
 .dream-ic { flex: none; margin-top: 2px; color: #c084fc; }
-.dream-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: calc(12.5px * var(--ui-font-scale)); }
+.dream-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-2); font-size: calc(12.5px * var(--ui-font-scale)); }
+.dream-status[data-tone='warn'] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-amber) 45%, transparent); }
+.dream-status-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; flex: 1 1 240px; }
+.dream-status-line { font-weight: 600; white-space: normal; }
+.dream-status[data-tone='warn'] .dream-status-line { color: var(--color-amber); }
+.dream-status-actions { display: flex; gap: 8px; flex: none; }
+.dream-sub { padding-left: 0; padding-right: 0; margin-top: 4px; }
 .dream-status .settings-btn { display: inline-flex; align-items: center; gap: 6px; }
 .dream-pill { padding: 1px 8px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text-dim); font-size: calc(11px * var(--ui-font-scale)); font-weight: 650; }
 .dream-pill[data-on] { background: color-mix(in srgb, #c084fc 18%, transparent); color: #c084fc; }
 .dream-dim { color: var(--color-text-dim); display: inline-flex; align-items: center; gap: 5px; white-space: normal; }
 .dream-note { margin: 0; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); white-space: normal; }
 .dream-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.dream-run { padding: 8px 10px; border-radius: 10px; background: var(--color-surface-2); display: flex; flex-direction: column; gap: 6px; }
-.dream-run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: calc(12.5px * var(--ui-font-scale)); }
+.dream-run { border-radius: 10px; background: var(--color-surface-2); display: flex; flex-direction: column; }
+.dream-run-body { display: flex; flex-direction: column; gap: 8px; padding: 0 10px 10px 30px; }
+.dream-run-actions { display: flex; align-items: center; gap: 10px; }
+.dream-run-actions .settings-btn { height: 28px; }
+.dream-run-status { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text-dim); font-size: calc(11px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+.dream-run-status[data-status='done'] { color: var(--color-green, #4ade80); }
+.dream-run-status[data-status='failed'], .dream-run-status[data-status='error'] { color: var(--color-amber); }
+.dream-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dream-chip { padding: 0 7px; border-radius: 6px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(11px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+.dream-chip[data-kind='added'] { color: var(--color-green, #4ade80); }
+.dream-chip[data-kind='pruned'] { color: var(--color-amber); }
+.dream-chip[data-kind='proposal'] { background: color-mix(in srgb, #c084fc 18%, transparent); color: #c084fc; }
+.dream-run-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; width: 100%; padding: 9px 10px; text-align: left; background: none; border: 0; color: inherit; cursor: pointer; border-radius: 10px; font-size: calc(12.5px * var(--ui-font-scale)); }
+.dream-run-head:hover { background: var(--color-surface-3); }
 .dream-run-when { font-weight: 600; }
 .dream-err { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--color-amber); font-size: calc(12px * var(--ui-font-scale)); white-space: normal; }
 .dream-summary { margin: 0; padding-left: 18px; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: normal; }

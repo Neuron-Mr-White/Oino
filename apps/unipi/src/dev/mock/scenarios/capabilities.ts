@@ -368,6 +368,73 @@ function capSession(session = SESSION) {
   return base;
 }
 
+/** The `unipi.dream` namespace, as `extensions/unipi/dream/src/settings.rs` declares it. */
+const DREAM_NAMESPACE: MockNamespace = {
+  namespace: 'dream',
+  title: 'Dream',
+  description: 'Daily memory consolidation',
+  extensionId: 'unipi.dream',
+  order: 31,
+  defaults: { enabled: true, schedule: { mode: 'daily', time: '03:00', intervalHours: 24 }, staleDays: 30, model: '', thinking: 'medium', maxRuntimeMin: 40 },
+  sections: [
+    {
+      id: 'schedule',
+      title: 'Schedule',
+      fields: [
+        { key: 'enabled', type: 'boolean', label: 'Dream on a schedule', description: 'On: the Oino host runs a dream at the scheduled time, even when no chat is open.', default: false },
+        { key: 'schedule.mode', type: 'enum', label: 'Schedule', default: 'daily', options: [{ value: 'daily', label: 'Daily' }, { value: 'interval', label: 'Every N hours' }, { value: 'manual', label: 'Manual only' }] },
+        { key: 'schedule.time', type: 'string', label: 'Time of day', description: 'Local HH:MM', default: '03:00', placeholder: '03:00' },
+      ],
+    },
+    {
+      id: 'agent',
+      title: 'Dream agent',
+      fields: [
+        { key: 'model', type: 'model', label: 'Dream model', default: '', placeholder: 'session default' },
+        { key: 'thinking', type: 'enum', label: 'Thinking', default: 'medium', options: ['off', 'low', 'medium', 'high'].map((v) => ({ value: v, label: v })) },
+        { key: 'maxRuntimeMin', type: 'number', label: 'Max runtime', default: 40, min: 5, max: 240, unit: 'min', integer: true },
+        { key: 'staleDays', type: 'number', label: 'Prune unused after', default: 30, min: 0, max: 365, unit: 'days', integer: true },
+      ],
+    },
+  ],
+};
+
+const DREAM_T = Date.now() - 20 * 3600_000;
+const DREAM_STATUS = {
+  v: 2,
+  enabled: true,
+  schedule: { mode: 'daily', time: '03:00', intervalHours: 24 },
+  minSessions: 1,
+  minGapHours: 6,
+  staleDays: 30,
+  lastRunAt: DREAM_T,
+  running: false,
+  scheduler: { registered: true, hostRunning: true, nextRun: new Date(Date.now() + 7 * 3600_000).toISOString() },
+  runs: [
+    {
+      id: 'd3', status: 'done', startedAt: DREAM_T, endedAt: DREAM_T + 228_000, manual: false, sessions: 6, events: 41, hasReport: true,
+      memoryChanges: { added: 3, updated: 1, merged: 4, pruned: 2 },
+      proposals: [{ id: 'p1', name: 'cargo-check-before-commit', kind: 'skill', decision: 'pending' }, { id: 'p2', name: 'no-unwrap-in-lib', kind: 'check', decision: 'approved' }],
+      summary: ['Merged 4 overlapping notes about the release flow', 'Pruned 2 memories unused for 30+ days'],
+    },
+    { id: 'd2', status: 'done', startedAt: DREAM_T - 86_400_000, endedAt: DREAM_T - 86_400_000 + 95_000, manual: true, sessions: 2, events: 12, hasReport: true, memoryChanges: { added: 1, updated: 0, merged: 0, pruned: 0 }, proposals: [] },
+    { id: 'd1', status: 'failed', startedAt: DREAM_T - 2 * 86_400_000, endedAt: DREAM_T - 2 * 86_400_000 + 2_400_000, manual: false, sessions: 0, events: 0, proposals: [], error: 'Stopped after the 40 minute runtime cap' },
+  ],
+};
+
+function dreamSession() {
+  const base = capSession();
+  base.cmd = {
+    '_oino/service_call': (cmd) => {
+      const name = String((cmd as { name?: string }).name);
+      if (name === 'dream.status') return DREAM_STATUS;
+      if (name === 'dream.detail') return { report: '## Memory edits\n- merged 4 release-flow notes into one\n- pruned 2 stale notes' };
+      return { ok: true, message: 'Done.' };
+    },
+  };
+  return base;
+}
+
 /** A memory store the size of the owner's (~7,000), built on the first `memory_browse`. */
 function memoryStore(): MockMemory[] {
   const projects = ['oino', 'unipi', 'cloud_agent', 'tally', 'heartpick', 'zmstudio_migration'];
@@ -447,6 +514,16 @@ export const capMemory: MockScenario = {
   name: 'cap-memory',
   hosts: [host()],
   setup: () => openChat(),
+};
+
+/** Settings › Memory › Dream: visible settings, status line, recent dreams. */
+export const capDream: MockScenario = {
+  name: 'cap-dream',
+  hosts: [host({ sessions: { [SESSION]: dreamSession() }, settings: { pi: { defaultModel: 'glm-4.7', enabledModels: ['anthropic/claude-opus-5-5', 'openai/gpt-5'] }, namespaces: [MCP_NAMESPACE, MEMORY_NAMESPACE, DREAM_NAMESPACE, SKILLS_NAMESPACE, SUBAGENTS_NAMESPACE], extensions: [...EXTENSIONS, { id: 'unipi.dream', enabled: true, loaded: true, path: '~/.oino/extensions/unipi.dream' }] } })],
+  setup: () => {
+    openChat();
+    location.hash = '#/settings/memory';
+  },
 };
 
 export const capSkills: MockScenario = {
