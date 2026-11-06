@@ -1,0 +1,41 @@
+# Oino v3 implementation spec (draft)
+
+Status: **incomplete; not ready for implementation or review**. Binding source: `00-owner-decisions.md` A–L. Reference examples are subordinate to those decisions. Existing sessions must remain readable, including their original tool calls and results; argument migration is only for re-executing legacy calls, never a rewrite of the stored transcript.
+
+## A. Frozen system prompt
+
+**Current:** `crates/oino-resources/src/system_prompt.rs:263` builds sections, including skills at :316; `crates/oino-core/src/session/tools.rs:397` rebuilds the prompt and :519 computes section diffs. `crates/oino-core/src/session/prompt.rs:679` permits per-turn extension changes. `crates/oino-ai/src/transcript.rs:195` collapses system messages. These paths cannot all remain authoritative in v3.
+
+**Target:** build one Oino-specific system prompt when a session starts and persist its exact bytes. Follow `ref-droid-prompts.md` §1 structure, retuned to Oino and lowercase tools, omitting Factory-only material. Identify `<system-reminder>` as trusted harness context; distinguish it from ordinary user text. No skill catalog or mutable workspace state in this prompt. On resume and `/reload`, use the persisted bytes, not a fresh render; reload can update catalogs only by appending reminders. Provider adaptation must not fold later changes into the frozen system message. See C for the second immutable slot and change delivery.
+
+**Migration:** a pre-v3 session continues with its existing initial system bytes; establish its immutable snapshot on first v3 resume without altering prior entries. Keep provider-specific serialization separate from stored messages. Settings for existing custom prompts remain session-start inputs, not mid-session mutations.
+
+**Tests:** compare provider-bound prefix bytes across changes to tools, model, MCP, skills, reload and compaction; resume a legacy fixture and confirm no history mutation.
+
+## B. Tools and execution
+
+**Current:** lowercase registrations and `find` are at `crates/oino-tools/src/info.rs:33` and :44; current schemas start at :171, :213, :234, :317, :360, :387 and :410. They differ from the v3 contracts below. `crates/oino-core/src/session/tools.rs:371` currently rebuilds the prompt on tool changes.
+
+**Input schema conventions:** JSON Schema draft-07; every object below has `additionalProperties:false`. Integers are nonnegative unless explicitly constrained. Paths are absolute where required below. Fields absent from `required` are optional; omitted booleans are false unless stated. Result data and validation errors must not mutate historical records.
+
+```json
+{"name":"read","parameters":{"type":"object","properties":{"file_path":{"type":"string"},"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"default":2400},"line_numbers":{"type":"boolean"},"image_quality":{"type":"string","enum":["default","high"],"default":"default"}},"required":["file_path"],"additionalProperties":false}}
+{"name":"ls","parameters":{"type":"object","properties":{"directory_path":{"type":"string"},"ignorePatterns":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}}
+{"name":"glob","parameters":{"type":"object","properties":{"patterns":{"type":"array","items":{"type":"string"},"minItems":1},"excludePatterns":{"type":"array","items":{"type":"string"}},"folder":{"type":"string"}},"required":["patterns"],"additionalProperties":false}}
+{"name":"grep","parameters":{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob_pattern":{"type":"string"},"output_mode":{"type":"string","enum":["content","files_with_matches","count"],"default":"files_with_matches"},"case_insensitive":{"type":"boolean"},"type":{"type":"string"},"context_before":{"type":"integer","minimum":0},"context_after":{"type":"integer","minimum":0},"context":{"type":"integer","minimum":0},"line_numbers":{"type":"boolean"},"head_limit":{"type":"integer","minimum":0},"multiline":{"type":"boolean"},"fixed_string":{"type":"boolean"}},"required":["pattern"],"additionalProperties":false}}
+{"name":"write","parameters":{"type":"object","properties":{"file_path":{"type":"string"},"content":{"type":"string"}},"required":["file_path","content"],"additionalProperties":false}}
+{"name":"edit","parameters":{"type":"object","properties":{"file_path":{"type":"string"},"edits":{"type":"array","minItems":1,"items":{"type":"object","properties":{"oldText":{"type":"string"},"newText":{"type":"string"},"change_all":{"type":"boolean","default":false}},"required":["oldText","newText"],"additionalProperties":false}}},"required":["file_path","edits"],"additionalProperties":false}}
+{"name":"apply_patch","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"],"additionalProperties":false}}
+{"name":"bash / powershell","parameters":{"type":"object","properties":{"command":{"type":"string"},"summary":{"type":"string"},"riskLevel":{"type":"string","enum":["low","medium","high"]},"timeout":{"type":"number","exclusiveMinimum":0,"default":60},"fireAndForget":{"type":"boolean","default":false}},"required":["command","summary","riskLevel"],"additionalProperties":false}}
+{"name":"task_output","parameters":{"type":"object","properties":{"task_id":{"type":"string"},"block":{"type":"boolean","default":true},"timeout":{"type":"integer","minimum":0,"maximum":1200000,"default":30000}},"required":["task_id"],"additionalProperties":false}}
+{"name":"task_stop","parameters":{"type":"object","properties":{"task_id":{"type":"string"}},"required":["task_id"],"additionalProperties":false}}
+{"name":"tool_search","parameters":{"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":["integer","null"],"minimum":1}},"required":["query"],"additionalProperties":false}}
+```
+
+`read` requires an absolute path; bare long reads show a numbered declaration outline, short reads the full file; explicit ranges are 1-based. Text line numbering is `12→text`; images limited to 5 MB, PDFs to 3 MB. `ls` and `glob` default to cwd. `grep` defaults to in-process ripgrep; semantic search is addressed in I. `write` creates or overwrites atomically, preserving existing encoding, BOM and line endings, ensuring a trailing newline, rejecting a directory with `Cannot create file at "X" because a directory already exists there.`, and returning `{success,file_path}` with only new diagnostics. `edit` checks the last observed file state before all batched edits, tracks an untouched file automatically, fails on external modification with the owner-specified stale-read message, commits atomically preserving encoding/BOM/line endings, and returns a diff summary and only new diagnostics. `change_all` applies only to its edit; otherwise a match must be unique. `apply_patch` accepts Codex `*** Begin Patch` create/update/delete/move syntax and is exposed alongside write/edit only for matching GPT, Codex and o-series models.
+
+Each shell invocation starts a new shell, defaults to 60 seconds, and returns at most 32 KiB head+tail inline with the remainder in a log. `fireAndForget` returns a task id and log path and delivers the exit result automatically, without required polling. Shell tasks and background subagents share an id namespace; `task_output` and `task_stop` address either. Preserve mid-run detach and the work tray's complete arguments and live status. Remove watchdog Decision-model judging; session caps may remain. Risk enforcement is specified in E.
+
+**Migration:** register `find` as a legacy alias of `glob` for old sessions; normalize legacy argument names at execution boundaries, not in persisted calls. Similarly retain replay adapters for `bg_run`, `bg_status`, `bg_logs`, and `bg_kill` and prior shell/read/edit arguments. Do not expose legacy aliases in the new default model tool list. Record precise old-to-new mappings before implementation; see open work below.
+
+**Tests:** schema snapshots, old transcript replay, text/image/PDF size limits, declaration outline and paging, ripgrep modes, atomic write and metadata preservation, external edit race, ambiguous edits, patch operations and model gating, Windows PowerShell parity, timeout/background completion/detach/stop and mixed task IDs.
