@@ -205,7 +205,9 @@ async fn tool_calls_go_through_client_fs_with_diffs() {
     assert_eq!(writes.len(), 1);
     assert_eq!(writes[0]["params"]["path"], json!(path));
     assert_eq!(writes[0]["params"]["content"], json!("new text\n"));
-    assert_eq!(client.requests("fs/read_text_file").len(), 1);
+    // Encoding preservation reads the previous content, mutation checks the snapshot,
+    // and the explicit read tool observes the committed content. All use client routing.
+    assert_eq!(client.requests("fs/read_text_file").len(), 3);
 
     let calls = client.updates_of("tool_call");
     assert_eq!(calls[0]["toolCallId"], json!("call-1"));
@@ -251,6 +253,61 @@ async fn tool_calls_go_through_client_fs_with_diffs() {
             .iter()
             .all(|u| u["size"] == json!(128_000))
     );
+    client.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn canonical_file_path_calls_use_client_fs_with_diffs() {
+    let fixture = Fixture::new(vec![
+        tool_call(
+            "write-canonical",
+            "write",
+            json!({"file_path": "notes.txt", "content": "new text\n"}),
+        ),
+        tool_call(
+            "edit-canonical",
+            "edit",
+            json!({"file_path": "notes.txt", "edits": [{"oldText":"new", "newText":"edited"}]}),
+        ),
+        FauxResponse::Text("done".into()),
+    ]);
+    let path = fixture.cwd().join("notes.txt");
+    std::fs::write(&path, "old text\n").unwrap();
+    let client = fixture.connect(ClientPolicy {
+        caps: fs_caps(),
+        ..ClientPolicy::default()
+    });
+    client.initialize().await;
+    let id = session_id(&client.new_session(&fixture.cwd()).await);
+    client.ok("session/prompt", prompt(&id, "edit it")).await;
+    let writes = client.requests("fs/write_text_file");
+    assert_eq!(writes.len(), 2);
+    assert!(
+        writes
+            .iter()
+            .all(|write| write["params"]["path"] == json!(path))
+    );
+    assert_eq!(writes[1]["params"]["content"], json!("edited text\n"));
+    let updates = client.updates_of("tool_call_update");
+    for id in ["write-canonical", "edit-canonical"] {
+        let done = updates
+            .iter()
+            .rfind(|update| update["toolCallId"] == id)
+            .unwrap();
+        assert_eq!(done["status"], "completed", "{done}");
+        assert!(
+            done["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|content| content["type"] == "diff" && content["path"] == json!(path))
+        );
+        assert!(
+            done["content"]
+                .to_string()
+                .contains("does not guarantee atomic replacement")
+        );
+    }
     client.close().await;
 }
 
@@ -302,7 +359,11 @@ async fn approval_dialogs_become_permission_requests() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn bash_runs_in_client_terminal() {
     let fixture = Fixture::new(vec![
-        tool_call("sh-1", "bash", json!({"command": "echo from-terminal"})),
+        tool_call(
+            "sh-1",
+            "bash",
+            json!({"command": "echo from-terminal", "summary":"Print terminal output", "riskLevel":"low"}),
+        ),
         FauxResponse::Text("ran".into()),
     ]);
     let client = fixture.connect(ClientPolicy {
@@ -769,4 +830,40 @@ async fn sdk_client_interop() {
             .any(|u| matches!(u, SessionUpdate::AvailableCommandsUpdate(_)))
     );
     server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn client_write_failure_does_not_fall_back_to_host_disk() {
+    let fixture = Fixture::new(vec![
+        tool_call(
+            "denied-write",
+            "write",
+            json!({"file_path":"notes.txt", "content":"replacement\n"}),
+        ),
+        FauxResponse::Text("done".into()),
+    ]);
+    let path = fixture.cwd().join("notes.txt");
+    std::fs::write(&path, "original\n").unwrap();
+    let client = fixture.connect(ClientPolicy {
+        caps: fs_caps(),
+        reject_writes: true,
+        ..ClientPolicy::default()
+    });
+    client.initialize().await;
+    let id = session_id(&client.new_session(&fixture.cwd()).await);
+    client.ok("session/prompt", prompt(&id, "edit it")).await;
+    assert_eq!(client.requests("fs/write_text_file").len(), 1);
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "original\n");
+    let updates = client.updates_of("tool_call_update");
+    let done = updates
+        .iter()
+        .rfind(|update| update["toolCallId"] == "denied-write")
+        .unwrap();
+    assert_eq!(done["status"], "failed");
+    assert!(
+        done["content"]
+            .to_string()
+            .contains("ACP client write failed")
+    );
+    client.close().await;
 }

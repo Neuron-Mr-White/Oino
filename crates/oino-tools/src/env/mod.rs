@@ -5,12 +5,14 @@
 //! [`LocalEnv`] is the default. Errors carry Node's `code`/`syscall`/`path` so the texts the
 //! model sees match the host's (`ENOENT: no such file or directory, open '/x'`).
 
+mod atomic;
 mod error;
 mod local;
 
 use futures::future::BoxFuture;
 use tokio::sync::mpsc;
 
+pub use atomic::{AtomicFileMutation, MutationGuarantee};
 pub use error::{FsError, SpawnError};
 pub use local::LocalEnv;
 
@@ -105,7 +107,7 @@ impl std::fmt::Debug for SpawnedProcess {
 }
 
 /// The file system and process host used by the tools.
-pub trait ExecutionEnv: Send + Sync {
+pub trait ExecutionEnv: AtomicFileMutation {
     /// Node `fs.access(path, mode)`.
     fn access<'a>(&'a self, path: &'a str, mode: AccessMode) -> BoxFuture<'a, Result<(), FsError>>;
 

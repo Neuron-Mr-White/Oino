@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
-use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use oino_agent::ToolError;
@@ -156,105 +154,16 @@ pub(crate) fn check_observed(
     Ok(())
 }
 
-/// Local mutation is deliberately refused on environments without an atomic replace API.
-/// Never silently degrade a remote edit to a truncating write.
+/// Delegate mutation to the environment; locality never authorizes bypassing routing.
 pub(crate) async fn atomic_write(
     config: &ToolConfig,
     path: &str,
     bytes: &[u8],
     expected: Option<&[u8]>,
-) -> Result<(), ToolError> {
-    if !config.env.is_local() {
-        return Err(ToolError::new(
-            "Atomic writes are not supported by this execution environment",
-        ));
-    }
-    let path = path.to_owned();
-    let bytes = bytes.to_vec();
-    let expected = expected.map(<[u8]>::to_vec);
-    tokio::task::spawn_blocking(move || {
-        atomic_write_sync(Path::new(&path), &bytes, expected.as_deref())
-    })
-    .await
-    .map_err(|error| ToolError::new(error.to_string()))?
-    .map_err(|error| ToolError::new(error.to_string()))
-}
-
-fn atomic_write_sync(path: &Path, bytes: &[u8], expected: Option<&[u8]>) -> std::io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("File has no parent directory"))?;
-    std::fs::create_dir_all(parent)?;
-    // Follow symlinks to preserve the link itself, like ordinary file writes.
-    let target = if path.exists() {
-        std::fs::canonicalize(path)?
-    } else {
-        path.to_owned()
-    };
-    let parent = target
-        .parent()
-        .ok_or_else(|| std::io::Error::other("File has no parent directory"))?;
-    let temp = parent.join(format!(".oino-{}.tmp", uuid::Uuid::new_v4()));
-    let result = (|| {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)?;
-        if let Ok(metadata) = std::fs::metadata(&target) {
-            file.set_permissions(metadata.permissions())?;
-        }
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        if let Some(expected) = expected
-            && std::fs::read(&target)? != expected
-        {
-            return Err(std::io::Error::other(format!(
-                "File \"{}\" has been modified externally since it was last read. Please use the Read tool to read the file before editing it again.",
-                path.display()
-            )));
-        }
-        replace(&temp, &target)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    result
-}
-
-#[cfg(not(windows))]
-fn replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    std::fs::rename(source, target)
-}
-
-#[cfg(windows)]
-fn replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    // Rust's Windows rename uses MoveFileExW(MOVEFILE_REPLACE_EXISTING). Retry only
-    // sharing/lock violations, never remove the destination first.
-    for attempt in 0..8_u32 {
-        match std::fs::rename(source, target) {
-            Ok(()) => return Ok(()),
-            Err(error) if matches!(error.raw_os_error(), Some(32 | 33)) && attempt < 7 => {
-                std::thread::sleep(std::time::Duration::from_millis(10 * (1 << attempt)));
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::other("Atomic replace retry exhausted"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn atomic_replace_refuses_changed_snapshot_and_cleans_temp() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("file");
-        std::fs::write(&path, b"external change").unwrap();
-        let error = atomic_write_sync(&path, b"replacement", Some(b"previous read")).unwrap_err();
-        assert!(error.to_string().contains("modified externally"));
-        assert_eq!(std::fs::read(&path).unwrap(), b"external change");
-        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
-    }
+) -> Result<crate::env::MutationGuarantee, ToolError> {
+    config
+        .env
+        .write_file_atomic(path, bytes, expected)
+        .await
+        .map_err(|error| ToolError::new(error.to_string()))
 }

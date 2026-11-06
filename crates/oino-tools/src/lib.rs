@@ -41,6 +41,7 @@
 )]
 
 mod args;
+mod canonical;
 pub mod apply_patch;
 pub mod legacy;
 pub mod bash;
@@ -68,6 +69,7 @@ pub use bash::{
 pub use config::{
     ImageOptions, ModelImageInfo, NoContext, SessionEnv, ShellOptions, ToolConfig, ToolContext,
 };
+pub use canonical::canonical_args;
 pub use edit::EditTool;
 pub use env::{ExecutionEnv, FsError, LocalEnv, SpawnedProcess};
 pub use find::FindTool;

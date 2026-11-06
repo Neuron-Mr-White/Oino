@@ -57,7 +57,8 @@ async fn run(
     call: &ToolInvocation,
     cancel: &CancellationToken,
 ) -> Result<AgentToolResult, ToolError> {
-    let path = crate::legacy::file_path(&call.args)?;
+    let canonical = crate::canonical_args("write", &call.args)?;
+    let path = crate::legacy::file_path(&canonical)?;
     let content = args::required_str(&call.args, "content")?;
     let absolute = resolve_to_cwd(path, &config.effective_cwd())
         .map_err(|error| ToolError::new(error.to_string()))?;
@@ -93,15 +94,15 @@ async fn run(
             let before = diagnostics(config, &absolute);
             let text = TextFile::decode(previous.as_deref().unwrap_or(content.as_bytes()))?;
             let bytes = text.encode(content.trim_start_matches('\u{feff}'), true);
-            atomic_write(config, &absolute, &bytes, previous.as_deref()).await?;
+            let guarantee = atomic_write(config, &absolute, &bytes, previous.as_deref()).await?;
             observe(config, &absolute, &bytes)?;
             check()?;
             let diagnostics = new_diagnostics(config, &absolute, &before);
             let result = serde_json::json!({"success": true, "file_path": absolute});
             Ok(AgentToolResult {
                 structured_content: Some(result.clone()),
-                details: Some(serde_json::json!({"new_diagnostics": diagnostics})),
-                ..AgentToolResult::text(format!("{result}{}", diagnostics_reminder(&diagnostics)))
+                details: Some(serde_json::json!({"new_diagnostics": diagnostics, "atomicity": format!("{guarantee:?}")})),
+                ..AgentToolResult::text(format!("{result}{}{}", diagnostics_reminder(&diagnostics), guarantee.notice()))
             })
         })
         .await

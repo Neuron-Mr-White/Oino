@@ -19,8 +19,8 @@ use std::time::Duration;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use oino_tools::env::{
-    AccessMode, ExecutionEnv, ExitStatus, FileStat, FsError, LocalEnv, ProcessControl, SpawnError,
-    SpawnRequest, SpawnedProcess,
+    AccessMode, AtomicFileMutation, ExecutionEnv, ExitStatus, FileStat, FsError, LocalEnv,
+    MutationGuarantee, ProcessControl, SpawnError, SpawnRequest, SpawnedProcess,
 };
 use serde_json::json;
 use tokio::sync::{mpsc, watch};
@@ -99,8 +99,9 @@ impl AcpEnv {
         match self.link.write_text_file(path, text).await {
             Ok(()) => Ok(()),
             Err(error) => {
-                tracing::debug!("fs/write_text_file failed, writing locally: {error}");
-                self.local.write_file(path, data).await
+                let mut failure = FsError::new("EIO", "fs/write_text_file", Some(path));
+                failure.description = format!("ACP client write failed: {error}");
+                Err(failure)
             }
         }
     }
@@ -130,6 +131,34 @@ impl AcpEnv {
             })?;
         self.observer.terminal_started(&request, &terminal_id);
         Ok(ClientTerminal::start(self.link.clone(), terminal_id))
+    }
+}
+
+impl AtomicFileMutation for AcpEnv {
+    fn write_file_atomic<'a>(
+        &'a self,
+        path: &'a str,
+        data: &'a [u8],
+        expected: Option<&'a [u8]>,
+    ) -> BoxFuture<'a, Result<MutationGuarantee, FsError>> {
+        async move {
+            if !self.link.caps().write_text_file {
+                return self.local.write_file_atomic(path, data, expected).await;
+            }
+            if std::str::from_utf8(data).is_err() {
+                let mut error = FsError::new("ENOTSUP", "fs/write_text_file", Some(path));
+                "ACP text filesystem cannot preserve this file encoding atomically".clone_into(&mut error.description);
+                return Err(error);
+            }
+            if let Some(expected) = expected
+                && self.read_file(path).await? != expected {
+                let mut error = FsError::new("ESTALE", "atomic_write", Some(path));
+                error.description = format!("File \"{path}\" has been modified externally since it was last read. Please use the Read tool to read the file before editing it again.");
+                return Err(error);
+            }
+            self.write_file(path, data).await?;
+            Ok(MutationGuarantee::ClientManaged)
+        }.boxed()
     }
 }
 

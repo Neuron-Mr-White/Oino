@@ -43,7 +43,10 @@ pub fn resolve_path(cwd: &Path, path: &str) -> PathBuf {
 #[must_use]
 pub fn file_path(name: &str, args: &JsonObject, cwd: &Path) -> Option<PathBuf> {
     match name {
-        "read" | "write" | "edit" => arg(args, "path").map(|p| resolve_path(cwd, p)),
+        "read" | "write" | "edit" => {
+            let args = oino_tools::canonical_args(name, args).ok()?;
+            arg(&args, "file_path").map(|p| resolve_path(cwd, p))
+        }
         _ => None,
     }
 }
@@ -51,7 +54,13 @@ pub fn file_path(name: &str, args: &JsonObject, cwd: &Path) -> Option<PathBuf> {
 /// Human title of a call (`Read src/main.rs`, `` `cargo test` ``, …).
 #[must_use]
 pub fn tool_title(name: &str, args: &JsonObject) -> String {
-    let path = arg(args, "path");
+    let canonical = oino_tools::canonical_args(name, args).ok();
+    let args = canonical.as_ref().unwrap_or(args);
+    let path = if matches!(name, "read" | "write" | "edit") {
+        arg(args, "file_path")
+    } else {
+        arg(args, "path")
+    };
     match (name, path) {
         ("read", Some(path)) => format!("Read {path}"),
         ("write", Some(path)) => format!("Write {path}"),

@@ -107,7 +107,8 @@ fn js_slice<'a>(lines: &[&'a str], start: f64, end: f64) -> Vec<&'a str> {
 
 #[allow(clippy::too_many_lines, reason = "single tool execution flow")]
 async fn run(config: &ToolConfig, call: &ToolInvocation) -> Result<AgentToolResult, ToolError> {
-    let path = crate::legacy::file_path(&call.args)?;
+    let canonical = crate::canonical_args("read", &call.args)?;
+    let path = crate::legacy::file_path(&canonical)?;
     let legacy = call.args.contains_key("path");
     if !legacy && !crate::node_path::is_absolute(path) {
         return Err(ToolError::new("file_path must be absolute"));

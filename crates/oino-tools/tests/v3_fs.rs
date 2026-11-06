@@ -556,3 +556,53 @@ async fn atomic_metadata_and_failed_edits_do_not_touch_destination() {
     assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "through link\n");
 }
+
+#[test]
+fn canonical_args_preserve_actual_permission_destination() {
+    // Audit P1-3: a deny rule for /outside/* must receive this actual destination.
+    for name in ["write", "read", "edit"] {
+        for value in [
+            json!({"file_path":"/outside/secret","content":"new"}),
+            json!({"path":"/outside/secret","content":"new"}),
+        ] {
+            let source = value.as_object().unwrap().clone();
+            let canonical = oino_tools::canonical_args(name, &source).unwrap();
+            assert_eq!(canonical["file_path"], "/outside/secret");
+            assert!(!canonical.contains_key("path"));
+            assert_eq!(source, *value.as_object().unwrap());
+        }
+        let canonical = oino_tools::canonical_args(
+            name,
+            json!({"file_path":"/outside/secret","path":"/safe"})
+                .as_object()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(canonical["file_path"], "/outside/secret");
+        for invalid in [
+            json!({}),
+            json!({"file_path":""}),
+            json!({"file_path":null,"path":"/safe"}),
+            json!({"path":123}),
+        ] {
+            assert!(oino_tools::canonical_args(name, invalid.as_object().unwrap()).is_err());
+        }
+    }
+}
+
+#[tokio::test]
+async fn unsupported_atomic_environment_fails_explicitly() {
+    use oino_tools::env::AtomicFileMutation;
+    struct Unsupported;
+    impl AtomicFileMutation for Unsupported {}
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("unchanged");
+    std::fs::write(&path, "original").unwrap();
+    let error = Unsupported
+        .write_file_atomic(path.to_str().unwrap(), b"replacement", Some(b"original"))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "ENOTSUP");
+    assert!(error.description.contains("cannot guarantee atomic"));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "original");
+}

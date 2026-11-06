@@ -83,9 +83,9 @@ impl AgentTool for ApplyPatchTool {
                                 }
                                 let text_file = TextFile::decode(text.as_bytes())?;
                                 let bytes = text_file.encode(&text, true);
-                                atomic_write(&config, &path, &bytes, None).await?;
+                                let guarantee = atomic_write(&config, &path, &bytes, None).await?;
                                 observe(&config, &path, &bytes)?;
-                                summary.push(format!("A {path}"));
+                                summary.push(format!("A {path}{}", guarantee.notice()));
                             }
                             Kind::Delete => {
                                 if !env.is_local() {
@@ -123,7 +123,7 @@ impl AgentTool for ApplyPatchTool {
                                         "Patch move destination already exists",
                                     ));
                                 }
-                                atomic_write(
+                                let guarantee = atomic_write(
                                     &config,
                                     &target,
                                     &encoded,
@@ -146,7 +146,7 @@ impl AgentTool for ApplyPatchTool {
                                         .map_err(|error| ToolError::new(error.to_string()))?;
                                 }
                                 observe(&config, &target, &encoded)?;
-                                summary.push(format!("M {target}"));
+                                summary.push(format!("M {target}{}", guarantee.notice()));
                             }
                         }
                         Ok(())

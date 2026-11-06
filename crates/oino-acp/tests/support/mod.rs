@@ -269,6 +269,8 @@ impl Fixture {
 pub struct ClientPolicy {
     /// `clientCapabilities` sent in `initialize`.
     pub caps: JsonValue,
+    /// Reject client writes to verify that routing never falls back to host disk.
+    pub reject_writes: bool,
     /// Permission option ids to select, in order (then `cancelled`).
     pub permissions: Vec<String>,
     /// Elicitation answers (`content.value`), in order (then `cancel`).
@@ -319,6 +321,9 @@ fn answer(inbox: &Mutex<Inbox>, method: &str, params: &JsonValue) -> JsonValue {
             json!({"result": {"content": content}})
         }
         "fs/write_text_file" => {
+            if inbox.policy.reject_writes {
+                return json!({"error": {"code": -32603, "message": "client denied write"}});
+            }
             std::fs::write(
                 params["path"].as_str().unwrap(),
                 params["content"].as_str().unwrap(),

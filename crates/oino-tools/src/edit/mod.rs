@@ -140,7 +140,8 @@ async fn run(
     cancel: &CancellationToken,
 ) -> Result<AgentToolResult, ToolError> {
     let edits = parse_edits(&call.args)?;
-    let path = crate::legacy::file_path(&call.args)?;
+    let canonical = crate::canonical_args("edit", &call.args)?;
+    let path = crate::legacy::file_path(&canonical)?;
     let absolute = resolve_to_cwd(path, &config.effective_cwd())
         .map_err(|error| ToolError::new(error.to_string()))?;
     let env = config.env.as_ref();
@@ -191,14 +192,14 @@ async fn run(
                 .map_err(|error| ToolError::new(error.to_string()))?;
             check()?;
             let final_content = text.encode(&applied.new_content, false);
-            atomic_write(config, &absolute, &final_content, Some(&buffer)).await?;
+            let guarantee = atomic_write(config, &absolute, &final_content, Some(&buffer)).await?;
             observe(config, &absolute, &final_content)?;
             check()?;
             let display = diff::display_diff(&applied.base_content, &applied.new_content);
             let unified = diff::unified_patch(path, &applied.base_content, &applied.new_content);
             let diagnostics = crate::write::new_diagnostics(config, &absolute, &before);
             let mut details =
-                json!({"diff": display.diff, "patch": unified, "new_diagnostics": diagnostics});
+                json!({"diff": display.diff, "patch": unified, "new_diagnostics": diagnostics, "atomicity": format!("{guarantee:?}")});
             if let (Some(line), Some(object)) =
                 (display.first_changed_line, details.as_object_mut())
             {
@@ -207,9 +208,9 @@ async fn run(
             Ok(AgentToolResult {
                 details: Some(details),
                 ..AgentToolResult::text(format!(
-                    "Successfully replaced {} block(s) in {path}.{}",
+                    "Successfully replaced {} block(s) in {path}.{}{}",
                     edits.len(),
-                    crate::write::diagnostics_reminder(&diagnostics)
+                    crate::write::diagnostics_reminder(&diagnostics), guarantee.notice()
                 ))
             })
         })
