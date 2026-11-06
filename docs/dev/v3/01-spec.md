@@ -141,3 +141,27 @@ Host watcher runs independently of chat while enabled. It atomically claims an e
 **Host operations (draft):** `superagent.status {}` → watcher config, workers and needs-you; `superagent.configure {enabled,concurrencyCap}` → effective config; `superagent.start {projectId,taskId}` → session id or actionable refusal; `superagent.stop {projectId,taskId}` → stopped state; `superagent.relay {projectId,taskId,text}` → delivery result. Each operation validates project/task identity and host authorization. Relay finds the current `Run.session`, records a ticket comment and sends a follow-up with author metadata; failures must be reported, not treated as delivered. Host/agent messages display their author and never receive a user Steer chip; only actual user follow-ups do. Board comments do not auto-relay in this version.
 
 **Migration/settings/tests:** task autonomy is an optional persisted field for legacy boards; preserve runs and comments. Add watcher enabled/cap settings and ticket level. Test concurrent claims, project exclusion, dependency transitions, crash/restart, off/manual start, relay and author rendering, in_review and blocked visibility, and unattended risk denial.
+
+## Work packages
+
+**Planning draft only:** ownership and tests below are starting boundaries, not approved execution contracts. Before dispatch, enumerate all shared integration files, verify commands and legacy mappings, and resolve the questions below. Dependencies do not authorize parallel edits of an unlisted shared file. Shared integration edits must be serialized in this order: wp-cache → wp-tools-fs → wp-exec-bg → wp-ext-reminders → wp-loop-guards → wp-compaction → wp-codemode → wp-autonomy → wp-autonomy-ui → wp-zvec → sa-backend → sa-ui. This order applies only when packages actually touch the same file; independent owned files can proceed in parallel after dependencies.
+
+| Package | Initial owned files | Depends on | Candidate acceptance commands (not yet verified) |
+|---|---|---|---|
+| wp-cache | `crates/oino-ai/src/transcript.rs`, `crates/oino-core/src/session/{prompt,tools}.rs`, `crates/oino-resources/src/system_prompt.rs`, `extensions/sdk/oino-provider-kit/src/{anthropic,completions}.rs` | none | `CARGO_BUILD_JOBS=8 cargo test -p oino-ai`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
+| wp-tools-fs | `crates/oino-tools/src/{read,write,find,grep,ls,info}.rs`, `crates/oino-tools/src/edit/` | wp-cache | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
+| wp-exec-bg | `crates/oino-tools/src/bash/`, `extensions/unipi/background-tasks/`, `extensions/unipi/watchdog/` | wp-tools-fs | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools`; `cargo xtask wasm` |
+| wp-ext-reminders | `extensions/unipi/{skill-registry,long-horizon,subagents,fusion,browser}/` | wp-cache | `cargo xtask wasm`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
+| wp-loop-guards | `crates/oino-agent/src/agent_loop.rs` | wp-cache | `CARGO_BUILD_JOBS=8 cargo test -p oino-agent` |
+| wp-compaction | `crates/oino-core/src/compaction/`, `crates/oino-core/src/session/compaction_flow.rs`, `extensions/unipi/compactor/` | wp-cache, wp-ext-reminders | `CARGO_BUILD_JOBS=8 cargo test -p oino-core`; `cargo xtask wasm` |
+| wp-codemode | `crates/oino-tools/src/js.rs` | wp-cache, wp-tools-fs, wp-ext-reminders | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
+| wp-autonomy | `extensions/unipi/workflow/` | wp-exec-bg, wp-codemode | `cargo xtask wasm`; `CARGO_BUILD_JOBS=8 cargo test -p oino-core` |
+| wp-autonomy-ui | `apps/unipi/src/components/composer/PermissionControl.tsx`, `apps/unipi/src/components/phone/Sheet.tsx`, `apps/unipi/src/components/board/BoardSheet.tsx` | wp-autonomy | `cd apps/unipi && npx tsc --noEmit && npx vitest run src/components/composer/PermissionControl.test.tsx src/components/phone/SheetSelect.test.tsx` |
+| wp-zvec | new zvec integration under `crates/oino-tools/src/` | wp-tools-fs | `CARGO_BUILD_JOBS=8 cargo test -p oino-tools` |
+| sa-backend | `apps/unipi/crates/unipi-kanboard/`, new dispatcher under `apps/unipi/crates/unipi-host/src/`, `extensions/unipi/kanboard/` | wp-autonomy | `CARGO_BUILD_JOBS=8 cargo test -p unipi-kanboard`; `CARGO_BUILD_JOBS=8 cargo test -p unipi-host` |
+| sa-ui | `apps/unipi/src/components/shell/`, `apps/unipi/src/lib/session/turns.ts`, `apps/unipi/src/components/memory/DreamPanel.tsx`, `extensions/unipi/{dream,memory}/` | sa-backend, wp-autonomy-ui | `cd apps/unipi && npx tsc --noEmit && npx vitest run src/components/memory/DreamPanel.test.tsx` |
+
+### Open owner questions
+
+1. When an above-ceiling interactive call is approved with “always”, should that choice raise the session/ticket autonomy ceiling, or authorize a scoped exception without raising it? E1 says the ceiling is enforced while E3 offers always; this affects both UI wording and unattended safety.
+2. What is the default autonomy for legacy tasks without a per-ticket value, and for newly created tickets when none is specified? A safe migration must not silently grant High.
