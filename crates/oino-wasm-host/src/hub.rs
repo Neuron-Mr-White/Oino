@@ -670,6 +670,15 @@ impl Composite {
 }
 
 impl HostServices for Composite {
+    fn check_process(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        command: &str,
+        args: &[String],
+    ) -> Result<(), HostError> {
+        self.inner.check_process(ext, cx, command, args)
+    }
     fn subscribe(&self, ext: &ExtensionId, events: &[EventKind]) {
         if let Some(hub) = self.hub() {
             lock(&hub.exts)

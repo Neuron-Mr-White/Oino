@@ -796,6 +796,10 @@ where
             tracing::info!(op = "events_open", "request");
             pump_events(&hub, read, write).await
         }
+        Request::SuperagentSession => {
+            let session = hub.create_superagent().await.map_err(hub_error)?;
+            open_stream(service, Arc::new(session), None, read, write).await
+        }
         Request::SessionNew { cwd, name } => {
             tracing::info!(op = "session_new", "request");
             let cwd = match cwd {
@@ -825,7 +829,7 @@ where
                 "request"
             );
             let started = std::time::Instant::now();
-            if let Some((card, file, page)) = file_open(&hub, session.as_str()).await {
+            if let Some((card, file, page)) = if crate::superagent_session::runtime(session.as_str()).is_some() { None } else { file_open(&hub, session.as_str()).await } {
                 tracing::info!(
                     session = %card.session_id,
                     entries = page.entries.len(),
@@ -833,7 +837,9 @@ where
                     took_ms = started.elapsed().as_millis() as u64,
                     "session open: tail page read from the file"
                 );
-                return open_cold(service, card, file, page, read, write).await;
+                if !crate::superagent_session::is_superagent_file(&file.path) {
+                    return open_cold(service, card, file, page, read, write).await;
+                }
             }
             let opened = hub.open(session.as_str()).await.map_err(hub_error)?;
             tracing::info!(

@@ -26,8 +26,7 @@ pub const HELP: &str = "Kanboard commands
   /kanboard show [<lane>] [--all] the board, in chat (lanes + claim order)
   /kanboard doctor                check the setup
   /kanboard-add [-p 1-5] <title>  add a task; lines below the title are the description (paste images there)
-  /kanboard-do <request>          grant the agent task slots + a write budget
-  /kanboard-autowork start|stop   work every ready task in this session; stop just turns the offers off
+  Superagent                    manage boards and dispatch workers across projects
 Priority -p: 1 none · 2 low · 3 medium · 4 high · 5 urgent";
 
 fn plural(n: u64) -> &'static str {

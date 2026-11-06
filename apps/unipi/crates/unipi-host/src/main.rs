@@ -698,6 +698,9 @@ async fn main() -> anyhow::Result<()> {
             // provider model probes never block an open (they refresh in the
             // background inside `Services::create`).
             hub.warm_recent_projects(true);
+            if let Err(error) = unipi_host::superagent::install(std::sync::Arc::clone(&hub), &paths_for_cleanup.config()).await {
+                tracing::warn!(%error, "superagent dispatcher not installed");
+            }
             // H4 (host.md §7.3–7.5): the protocol handler reaches the hub and its per-session
             // event feeds through this one service (`events_open`, the session streams).
             let _sessions =

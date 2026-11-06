@@ -38,3 +38,7 @@ pub mod term;
 pub mod ui_panels;
 pub mod update;
 pub mod usage_stats;
+
+pub mod superagent;
+
+pub mod superagent_session;

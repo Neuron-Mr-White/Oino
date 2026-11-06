@@ -141,6 +141,11 @@ fn validate(key: &str, merged: &Value) -> Result<(), AppErrorDto> {
         serde_json::from_value::<crate::update::UpdateConfig>(update.clone())
             .map_err(|e| bad(format!("update: {e}")))?;
     }
+    if let Some(value) = object.get("superagent") {
+        let config: crate::superagent::Config = serde_json::from_value(value.clone())
+            .map_err(|e| bad(format!("superagent: {e}")))?;
+        config.validate().map_err(|e| bad(e.to_string()))?;
+    }
     for block in ["browser", "sharing", "cron"] {
         if let Some(value) = object.get(block) {
             if !value.is_object() {

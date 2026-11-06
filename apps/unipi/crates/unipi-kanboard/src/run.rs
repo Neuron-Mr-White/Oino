@@ -125,6 +125,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
             attach_existing,
             status,
             priority,
+            autonomy,
             after,
             labels,
             new_label,
@@ -151,7 +152,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
                 })?),
                 None => read_body(body.as_deref(), exec)?,
             };
-            commands::add(
+            commands::add_with_autonomy(
                 &layout,
                 project,
                 &common,
@@ -163,6 +164,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
                 &attach,
                 labels,
                 *new_label,
+                autonomy.as_deref().map(str::parse).transpose()?,
             )
         }
 
@@ -250,6 +252,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
         }
 
         Command::Edit {
+            autonomy,
             id,
             title,
             body,
@@ -275,6 +278,7 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
                 &common,
                 id,
                 EditArgs {
+                    autonomy: autonomy.as_deref().map(str::parse).transpose()?,
                     title: title.as_deref(),
                     body: body.as_deref(),
                     priority,

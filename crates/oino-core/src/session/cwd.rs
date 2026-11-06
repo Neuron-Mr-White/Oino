@@ -42,6 +42,10 @@ impl AgentSession {
     /// A run is in progress (move between turns), `cwd` is not an absolute existing
     /// directory, or it is already the working directory.
     pub async fn change_cwd(&self, cwd: PathBuf) -> Result<(), SessionOpError> {
+        if self.cwd().as_os_str().is_empty() || self.with_manager(|m| m.branch(None).iter().any(|e|
+            matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent"))) {
+            return Err(SessionOpError::Failed("Superagent sessions have no workspace".into()));
+        }
         if self.is_streaming() || self.is_compacting() {
             return Err(SessionOpError::Failed(
                 "The agent is working — move the chat once it has finished".to_owned(),

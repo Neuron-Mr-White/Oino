@@ -64,6 +64,7 @@ pub struct RecordingHostServices {
     hung_agents: Mutex<u32>,
     /// The session's active tool list (`control › active_tools`); empty = none granted.
     active_tools: Mutex<Vec<String>>,
+    process_commands: Mutex<Vec<String>>,
 }
 
 /// Sets dot path `key` in `target` (`None` removes it).
@@ -128,6 +129,11 @@ impl RecordingHostServices {
     /// profile grant a child worker runs with).
     pub fn set_active_tools(&self, names: &[&str]) {
         *guard(&self.active_tools) = names.iter().map(|n| (*n).to_owned()).collect();
+    }
+
+    /// Explicit process authorization for real-binary harnesses. Default remains deny.
+    pub fn allow_process_command(&self, command: &str) {
+        guard(&self.process_commands).push(command.to_owned());
     }
 
     fn record(&self, method: &str, ext: Option<&ExtensionId>, detail: Value) {
@@ -237,6 +243,22 @@ fn to_json<T: serde::Serialize>(v: &T) -> Value {
 }
 
 impl HostServices for RecordingHostServices {
+    fn check_process(
+        &self,
+        _ext: &ExtensionId,
+        _cx: &CallContext,
+        command: &str,
+        _args: &[String],
+    ) -> Result<(), HostError> {
+        if guard(&self.process_commands)
+            .iter()
+            .any(|allowed| allowed == command)
+        {
+            Ok(())
+        } else {
+            Err(HostError::Failed("needs Autonomy High".into()))
+        }
+    }
     fn subscribe(&self, ext: &ExtensionId, events: &[EventKind]) {
         self.record("subscribe", Some(ext), to_json(&events));
     }

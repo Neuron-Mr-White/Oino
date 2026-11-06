@@ -1,0 +1,49 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.kanboard",
+  "name": "Kanboard",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "A persistent task board per project: /kanboard (open the board panel, onboard, status, show, doctor), -add and host-dispatched Superagent workers; a write guard on the agent's unipi-kanboard calls, a settle monitor that nudges unfinished claims, progress reminders and transcript badges.",
+  "license": "MIT",
+  "ui": {
+    "reserved": [
+      "unipi.kanboard/board"
+    ]
+  },
+  "binaries": [
+    "unipi-kanboard"
+  ],
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "sessionControl": true,
+    "process": {
+      "spawn": true,
+      "allow": [
+        "unipi-kanboard",
+        "tailscale"
+      ],
+      "detached": true
+    },
+    "network": {
+      "hosts": [
+        "127.0.0.1",
+        "localhost"
+      ]
+    },
+    "env": [
+      "UNIPI_KANBOARD_BIN",
+      "UNIPI_KANBOARD_CHILD",
+      "UNIPI_KANBOARD_HOME"
+    ]
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:45b911fbe24422d31acaf7fef392e13ddcca0a0450cb5c92575a6427a60dcae1",
+    "bin/unipi-kanboard": "sha256:140b500b3f7d5574a1b9e8ae00c1b176100fed9c72926b9da5785006f23dc04f"
+  }
+}

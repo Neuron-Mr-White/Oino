@@ -170,6 +170,7 @@ async fn shutdown_requested(runtime: &AgentSessionRuntime) {
 
 /// Runs print/JSON mode; returns the exit code.
 pub async fn run(runtime: Arc<AgentSessionRuntime>, output: PrintOutput, input: PrintInput) -> i32 {
+    runtime.session().set_unattended();
     let mut stdout = tokio::io::stdout();
     if output == PrintOutput::Json {
         let header = runtime

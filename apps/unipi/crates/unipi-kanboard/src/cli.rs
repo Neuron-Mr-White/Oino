@@ -68,6 +68,9 @@ pub enum Command {
         /// Landing lane.
         #[arg(long, value_name = "backlog|todo")]
         status: Option<String>,
+        /// Ticket execution ceiling (default medium).
+        #[arg(long)]
+        autonomy: Option<String>,
         /// Priority.
         #[arg(long, value_name = "none|low|medium|high|urgent")]
         priority: Option<String>,
@@ -163,6 +166,9 @@ pub enum Command {
         /// New body, or `-` to read stdin.
         #[arg(long)]
         body: Option<String>,
+        /// Ticket execution ceiling.
+        #[arg(long)]
+        autonomy: Option<String>,
         /// New priority: none, low, medium, high or urgent.
         #[arg(long, value_name = "PRIORITY")]
         priority: Option<String>,

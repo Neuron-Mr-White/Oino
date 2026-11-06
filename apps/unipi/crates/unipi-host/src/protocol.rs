@@ -1100,6 +1100,16 @@ impl Handler {
                     .await
                     .map_err(internal)?;
             }
+            Request::SuperagentStatus
+            | Request::SuperagentConfigure { .. }
+            | Request::SuperagentStart { .. }
+            | Request::SuperagentStop { .. }
+            | Request::SuperagentRelay { .. } => {
+                let result = crate::superagent::request(req).await.map_err(|e| {
+                    error(AppErrorCode::E_BOARD_REJECTED, e.message).with_detail(serde_json::json!({"code":e.code}))
+                })?;
+                write_control(write, &Control::Ok { data: Some(result) }).await.map_err(internal)?;
+            }
             Request::CronList
             | Request::CronShow { .. }
             | Request::CronRuns { .. }
@@ -1131,7 +1141,8 @@ impl Handler {
             // event stream and the one-shot session ops. The hub is the process's one
             // session owner (`serve` installs it); a handler without one (tests, a CLI
             // path) says so instead of silently succeeding.
-            Request::SessionsList { .. }
+            Request::SuperagentSession
+            | Request::SessionsList { .. }
             | Request::SessionSearch { .. }
             | Request::MemoryBrowse { .. }
             | Request::UsageStats { .. }

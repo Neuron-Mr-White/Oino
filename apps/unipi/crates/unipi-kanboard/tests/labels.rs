@@ -233,6 +233,7 @@ fn edit_labels_follow_the_same_rule() {
         &agent_common,
         &task.id,
         EditArgs {
+            autonomy: None,
             title: None,
             body: None,
             priority: None,
@@ -252,6 +253,7 @@ fn edit_labels_follow_the_same_rule() {
         &agent_common,
         &task.id,
         EditArgs {
+            autonomy: None,
             title: None,
             body: None,
             priority: None,
@@ -268,6 +270,7 @@ fn edit_labels_follow_the_same_rule() {
         &agent_common,
         &task.id,
         EditArgs {
+            autonomy: None,
             title: None,
             body: None,
             priority: None,

@@ -8,7 +8,9 @@ use crate::board::Board;
 use crate::deps;
 use crate::error::{Error, Result};
 use crate::format;
-use crate::model::{Actor, ChainGate, Priority, Run, RunMode, RunOwner, Staleness, Status, Task};
+use crate::model::{
+    Actor, Autonomy, ChainGate, Priority, Run, RunMode, RunOwner, Staleness, Status, Task,
+};
 use crate::order;
 use crate::store::{self, Layout, Project};
 use crate::transitions;
@@ -54,6 +56,7 @@ pub fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) 
     let blocked = deps::blocked_by(task, &by_id, gate);
     let mut value = serde_json::to_value(task).unwrap_or(Value::Null);
     if let Value::Object(ref mut map) = value {
+        map.insert("autonomy".into(), json!(task.autonomy.unwrap_or_default()));
         map.insert(
             "path".into(),
             json!(board.task_path(&task.id).to_string_lossy()),
@@ -288,12 +291,8 @@ fn resolve_labels(labels: &[String], existing: &[String], allow_new: bool) -> Re
     Ok(out)
 }
 
-/// `add`: create a task in Backlog or Todo.
+/// Backward-compatible create with the default ticket ceiling.
 #[allow(clippy::too_many_arguments)]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "uniform command signature: every board command takes the Project by value"
-)]
 pub fn add(
     layout: &Layout,
     project: Project,
@@ -306,6 +305,32 @@ pub fn add(
     attach: &[std::path::PathBuf],
     labels: &[String],
     new_label: bool,
+) -> Result<Value> {
+    add_with_autonomy(
+        layout, project, common, title, body, status, priority, after, attach, labels, new_label,
+        None,
+    )
+}
+
+/// `add`: create a task in Backlog or Todo.
+#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "uniform command signature: every board command takes the Project by value"
+)]
+pub fn add_with_autonomy(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    title: &str,
+    body: Option<&str>,
+    status: Option<Status>,
+    priority: Priority,
+    after: &[String],
+    attach: &[std::path::PathBuf],
+    labels: &[String],
+    new_label: bool,
+    autonomy: Option<Autonomy>,
 ) -> Result<Value> {
     let status = status.unwrap_or(Status::Backlog);
     if !matches!(status, Status::Backlog | Status::Todo) {
@@ -345,6 +370,7 @@ pub fn add(
         order::bottom_of(&lane),
         common.now,
     );
+    task.autonomy = autonomy;
     let mut body = body.unwrap_or("").trim().to_string();
     for file in attach {
         let bytes = std::fs::read(file)
@@ -623,6 +649,8 @@ pub fn upload(
 
 /// Fields `edit` may change (`None` = unchanged).
 pub struct EditArgs<'a> {
+    /// New execution ceiling.
+    pub autonomy: Option<Autonomy>,
     /// New title.
     pub title: Option<&'a str>,
     /// New body.
@@ -659,6 +687,10 @@ pub fn edit(
         }
     }
     let mut changed = Vec::new();
+    if let Some(autonomy) = args.autonomy {
+        task.autonomy = Some(autonomy);
+        changed.push("autonomy");
+    }
     if let Some(title) = args.title {
         task.title = title.trim().to_string();
         changed.push("title");
@@ -886,6 +918,9 @@ fn reap_dead(
         let Some(run) = task.run.clone() else {
             continue;
         };
+        if run.owner == RunOwner::Dispatcher {
+            continue;
+        }
         if run.host != host {
             unknown.push(task.id.clone());
             continue;
@@ -1003,15 +1038,22 @@ pub fn start(
     if task.status == Status::InProgress {
         let owner = task.run.as_ref();
         if owner.is_some_and(|run| run.session == args.session) {
-            return Err(Error::rule(format!(
-                "start {id}: already in progress for this session — `finish {id} --comment \"…\"` when done"
-            )));
+            return Ok(task_json(&board, task, &tasks, gate));
         }
         return Err(Error::rule(format!(
             "start {id}: already claimed by {} {}",
             owner.map_or("nobody", |run| run.owner.as_str()),
             owner.map_or("?", |run| run.session.as_str()),
         )));
+    }
+    if tasks.iter().any(|t| {
+        t.run
+            .as_ref()
+            .is_some_and(|r| r.owner == RunOwner::Dispatcher)
+    }) {
+        return Err(Error::rule(
+            "Project has a dispatcher worker; finish or stop it before claiming another task",
+        ));
     }
     // UNI-105: `start` also resumes a task the agent itself blocked — same
     // claim and session-cap rules as a fresh todo claim.
@@ -1174,6 +1216,16 @@ pub fn release(
     let lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
     let mut task = board.get(id)?;
+    if to == Status::Todo
+        && task
+            .run
+            .as_ref()
+            .is_some_and(|r| r.owner == RunOwner::Dispatcher)
+    {
+        return Err(Error::rule(
+            "Dispatcher workers cannot be requeued automatically; block the ticket, then explicitly move to todo to retry",
+        ));
+    }
     let from = task.status;
     transitions::check(from, to, Actor::System, Some(comment), Staleness::Running)?;
     task.status = to;

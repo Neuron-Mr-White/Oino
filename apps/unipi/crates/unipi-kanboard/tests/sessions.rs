@@ -202,6 +202,7 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &user_made.id,
         EditArgs {
+            autonomy: None,
             title: Some("new title"),
             body: None,
             priority: None,
@@ -235,6 +236,7 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &mine.id,
         EditArgs {
+            autonomy: None,
             title: None,
             body: Some("revised"),
             priority: None,
@@ -279,6 +281,7 @@ fn agents_edit_only_their_own_drafts() {
         &agent_common,
         &reviewed.id,
         EditArgs {
+            autonomy: None,
             title: Some("late edit"),
             body: None,
             priority: None,

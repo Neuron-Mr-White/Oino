@@ -593,6 +593,19 @@ pub enum Request {
     CronResumeAll,
     /// UNI-317: next fire, running jobs, paused. → `CronStatusData`.
     CronStatus,
+    /// Machine-wide worker dispatcher operations (authenticated clients only).
+    #[serde(rename = "superagent.status")]
+    SuperagentStatus,
+    #[serde(rename = "superagent.session")]
+    SuperagentSession,
+    #[serde(rename = "superagent.configure", rename_all = "camelCase")]
+    SuperagentConfigure { enabled: bool, concurrency_cap: usize },
+    #[serde(rename = "superagent.start", rename_all = "camelCase")]
+    SuperagentStart { project_id: String, task_id: String },
+    #[serde(rename = "superagent.stop", rename_all = "camelCase")]
+    SuperagentStop { project_id: String, task_id: String },
+    #[serde(rename = "superagent.relay", rename_all = "camelCase")]
+    SuperagentRelay { project_id: String, task_id: String, text: String },
     /// UNI-317: the add/edit form's live preview — resolves plain
     /// language or a machine schedule to its 6-field cron (or `at:`) form
     /// plus the next [`crate::cron::CRON_PARSE_PREVIEW`] fires.

@@ -205,6 +205,9 @@ impl Project {
 
     /// Loads `project.json`.
     pub fn load(layout: &Layout, slug: &str) -> Result<Project> {
+        if slug.is_empty() || slug == "." || slug == ".." || slug.contains(['/', '\\']) {
+            return Err(Error::usage("project id must be a registered project slug"));
+        }
         let path = layout.project_meta_path(slug);
         let text = fs::read_to_string(&path).map_err(|_| {
             Error::not_found(format!(
@@ -258,6 +261,9 @@ pub fn write_atomic(path: &Path, contents: &str) -> Result<()> {
         let _ = fs::remove_file(&tmp);
         Error::Io(format!("cannot replace {}: {err}", path.display()))
     })?;
+    // Persist the rename as well as the file contents before a dispatcher launches.
+    #[cfg(unix)]
+    File::open(dir)?.sync_all()?;
     Ok(())
 }
 

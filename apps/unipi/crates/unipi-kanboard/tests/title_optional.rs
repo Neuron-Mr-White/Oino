@@ -94,6 +94,7 @@ fn edit_may_clear_the_title_while_the_body_remains() {
         &fixture.common,
         &task.id,
         commands::EditArgs {
+            autonomy: None,
             title: Some(""),
             body: None,
             priority: None,
@@ -116,6 +117,7 @@ fn edit_may_clear_the_body_while_the_title_remains() {
         &fixture.common,
         &task.id,
         commands::EditArgs {
+            autonomy: None,
             title: None,
             body: Some(""),
             priority: None,
@@ -139,6 +141,7 @@ fn edit_refuses_to_leave_neither_title_nor_body() {
         &fixture.common,
         &task.id,
         commands::EditArgs {
+            autonomy: None,
             title: Some(" "),
             body: Some(""),
             priority: None,

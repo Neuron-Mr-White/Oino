@@ -36,7 +36,7 @@ be on `PATH`):
 ```
 
 There is **no queue and no runner** — the session works tasks itself
-(`/kanboard-autowork` just keeps offering the next ready task).
+(Superagent dispatches separate unattended workers).
 `queue`, `unqueue`, `claim-next`, `set-run` and `edit --strategy/--plan` are
 removed and refused.
 
@@ -54,8 +54,8 @@ and `rotate-token` are user-only — the agent is refused.
 | Move | Who |
 |---|---|
 | backlog ↔ todo | user, agent |
-| todo → in progress | the agent with `start <ID>` (claims it for its session; costs a `-do` slot) |
-| blocked → in progress | the agent with `start <ID>`, to resume a task it blocked — same claim/session-cap rules, same `-do` slot cost |
+| todo → in progress | the agent with `start <ID>` (claims it for its session; is idempotent for the same session) |
+| blocked → in progress | the agent with `start <ID>`, to resume a task it blocked — same claim/session-cap rules, same dependency rules |
 | edit a task | agent — only tasks it created, and only in backlog/todo |
 | in progress → in review | the agent with `finish <ID> --comment` — only a task its own session `start`ed |
 | in progress → blocked | agent, system — **comment required** (what you need) |
@@ -81,11 +81,8 @@ lists them — read the files there directly if you need one.
    — `start <ID>` before your first edit, `finish <ID> --comment "<what you
    did>"` before your turn ends (or `move <ID> blocked --comment "<what you
    need>"` if you cannot). `finish` and own-claim `blocked`/`note` are always
-   free; **`start` costs one of your `-do` task slots** — count the tasks a
-   request needs BEFORE starting anything, and if that is more than your
-   remaining slots, start none of them: say what you can do now and ask whether
-   to raise `kanboard.doTasks` or work in batches. In Review means "the agent
-   did the work, a human reviews" — never leave a task you started In Progress
+   free. Dispatcher workers have a preallocated claim and exact session identity supplied by
+   the host's `kanboard` tool. In Review means a human reviews the completed work
    (the board monitor will nudge you back to it). **Never move a task to
    `done`.**
 3. **Never cancel.** If a task should be dropped, block it with
@@ -97,7 +94,7 @@ lists them — read the files there directly if you need one.
    have what you needed, you may unblock it yourself — `move <ID> todo` (a
    comment is optional, unlike blocking) — and resume it with `start <ID>`
    (blocked → in progress; the same claim and session-cap rules as a fresh
-   `start`, and it still costs a `-do` slot). You do not have to wait for the
+   `start`, and it still is idempotent for the same session). You do not have to wait for the
    user to answer in the board if you already have the answer.
 5. **Work only on the task you were given.** Follow-up work goes to the board as
    a new task in Backlog (`add "<title>"`), optionally `link <new> --after <ID>`.
@@ -109,8 +106,7 @@ lists them — read the files there directly if you need one.
 6. **Sidekicks and subagents can read the board but never write it** — every
    write is refused with "board writes are the lead's job". Brief them with the
    task, then update the board yourself from their reports. (The lead session
-   works tasks itself; `/kanboard-autowork` just keeps offering the next
-   ready task in the same session — there is no separate worker.)
+   works tasks itself; Superagent dispatches distinct unattended worker sessions.)
 7. Use `note <ID> "<text>"` for progress worth remembering (decisions, what you
    verified, what you left undone) — it is the activity log the next reader sees.
 8. **Write the `finish` / `blocked` comment as the report the user reads.** It
@@ -130,10 +126,7 @@ lists them — read the files there directly if you need one.
 The board panel (`/kanboard open`) and the daemon's JSON API can create,
 edit, reorder, link and move tasks, but they **never run a task** — there is no
 run button. Work starts only from a terminal: the session
-itself, driven by `/kanboard-do` (a task-slot + write budget for one
-request) or `/kanboard-autowork` (the monitor keeps offering the next
-ready task in this session — no separate worker exists). (The daemon's
-"Summarize & archive" action does run `oino` once, but only to write a summary.)
+itself. Use Superagent to dispatch ready todo tickets through the host watcher.
 
 ## Attachments
 
@@ -146,3 +139,18 @@ or `note`, or use `attach <ID> <file> --note "…"`: the file is stored beside t
 board and the comment embeds it, so the user sees the image or file inline. A
 file's path written in the comment is replaced by the embed; otherwise the
 embed is appended. Attaching to a task you started is free.
+
+
+## Superagent workers (v3)
+
+`/kanboard-do` and `/kanboard-autowork` are retired. Superagent has no workspace
+or shell access. It resolves an explicit registered project, manages boards across
+projects and dispatches through `superagent.start`, `superagent.stop` and
+`superagent.relay`. Watcher and manual starts share one host dispatcher. Legacy
+transcript cards remain readable.
+
+Set ticket ceilings with `add --autonomy low|medium|high` or
+`edit <ID> --autonomy low|medium|high` (default Medium). Workers are unattended.
+Dispatcher claims persist the exact worker session id before launch, allow one
+worker per project and never return interrupted work to todo automatically.
+Interrupted work becomes blocked. Explicitly move it to todo to retry.

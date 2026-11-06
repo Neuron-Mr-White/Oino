@@ -7,13 +7,16 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use std::fmt::Write as _;
 
 use crate::error::{Problem, Result};
-use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, RunOwner, Status, Task};
+use crate::model::{
+    ActivityEntry, Actor, Autonomy, Priority, Run, RunMode, RunOwner, Status, Task,
+};
 
 /// Heading of the append-only activity section.
 pub const ACTIVITY_HEADING: &str = "## Activity";
 
-const FRONTMATTER_KEYS: [&str; 10] = [
-    "id", "title", "status", "priority", "order", "deps", "labels", "creator", "created", "updated",
+const FRONTMATTER_KEYS: [&str; 11] = [
+    "autonomy", "id", "title", "status", "priority", "order", "deps", "labels", "creator",
+    "created", "updated",
 ];
 
 /// Render a task to its canonical file text.
@@ -23,6 +26,9 @@ pub fn render(task: &Task) -> String {
     let _ = writeln!(out, "id: {}", task.id);
     let _ = writeln!(out, "title: {}", yaml_scalar(&task.title));
     let _ = writeln!(out, "status: {}", task.status.as_str());
+    if let Some(autonomy) = task.autonomy {
+        let _ = writeln!(out, "autonomy: {}", autonomy.as_str());
+    }
     let _ = writeln!(out, "priority: {}", task.priority.as_str());
     let _ = writeln!(out, "order: {}", task.order);
     let _ = writeln!(out, "deps: {}", flow_list(&task.deps));
@@ -307,6 +313,15 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         None => None,
     };
     let created = parse_date(file, get("created"), "created", &mut problems);
+    let autonomy = get("autonomy").and_then(|(line, value)| {
+        value
+            .trim()
+            .parse::<Autonomy>()
+            .map_err(|err| {
+                problems.push(Problem::new(file, line, err.to_string()));
+            })
+            .ok()
+    });
     let updated = parse_date(file, get("updated"), "updated", &mut problems);
 
     let run = if run_fields.is_empty() {
@@ -326,7 +341,7 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         return (
             Some(build(
                 id, title, status, priority, order, deps, labels, creator, created, updated, run,
-                body, activity,
+                autonomy, body, activity,
             )),
             problems,
         );
@@ -337,8 +352,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     }
 
     let task = Some(build(
-        id, title, status, priority, order, deps, labels, creator, created, updated, run, body,
-        activity,
+        id, title, status, priority, order, deps, labels, creator, created, updated, run, autonomy,
+        body, activity,
     ));
     (task, problems)
 }
@@ -356,10 +371,12 @@ fn build(
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
     run: Option<Run>,
+    autonomy: Option<Autonomy>,
     body: String,
     activity: Vec<ActivityEntry>,
 ) -> Task {
     Task {
+        autonomy,
         id,
         title,
         status: status.unwrap_or(Status::Backlog),
@@ -621,11 +638,12 @@ fn parse_run(
         None => RunOwner::Agent,
         Some((line, _, value)) => match value.trim() {
             "" | "agent" => RunOwner::Agent,
+            "dispatcher" => RunOwner::Dispatcher,
             other => {
                 problems.push(Problem::new(
                     file,
                     *line,
-                    format!("unknown run.owner \"{other}\" (expected agent)"),
+                    format!("unknown run.owner \"{other}\" (expected agent|dispatcher)"),
                 ));
                 return None;
             }

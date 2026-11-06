@@ -935,51 +935,61 @@ impl AgentSession {
         }
         let text = self.system_prompt();
         let options = self.system_prompt_options();
+        let workspace_free = self.cwd().as_os_str().is_empty() || self.with_manager(|m| m.branch(None).iter().any(|e|
+            matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent")));
         let cwd = self.work_cwd();
         let mut blocks = vec![reminder(&self.tool_catalog())];
-        blocks.push(reminder(&format!(
-            "Available subagents:\n{}",
-            self.agents_list()
-        )));
-        blocks.push(reminder(&format!(
-            "User system info ({}/{})\nSession working directory: {}",
-            std::env::consts::OS,
-            std::env::consts::ARCH,
-            cwd.display()
-        )));
+        if !workspace_free {
+            blocks.push(reminder(&format!(
+                "Available subagents:\n{}",
+                self.agents_list()
+            )));
+        }
+        if workspace_free {
+            blocks.push(reminder("Superagent session: no workspace or cwd. Resolve an explicit project before board changes; ask the user when ambiguous. No filesystem or shell tools."));
+        } else {
+            blocks.push(reminder(&format!(
+                "User system info ({}/{})\nSession working directory: {}",
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+                cwd.display()
+            )));
+        }
         let date = oino_session::IsoTimestamp::now().to_string();
         blocks.push(reminder(&format!(
             "Current date: {}",
             date.get(..10).unwrap_or(&date)
         )));
-        let mut listing = std::fs::read_dir(&cwd)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        listing.sort();
-        let git = std::process::Command::new("git")
-            .args(["status", "--short", "--branch"])
-            .current_dir(&cwd)
-            .output()
-            .map_or_else(
-                |e| e.to_string(),
-                |o| {
-                    format!(
-                        "{}{}",
-                        String::from_utf8_lossy(&o.stdout),
-                        String::from_utf8_lossy(&o.stderr)
-                    )
-                },
-            );
-        blocks.push(reminder(&format!("Workspace snapshot captured once at session start:\n% ls\n{}\n% git status --short --branch\n{git}", listing.join("\n"))));
-        if !options.context_files.is_empty() {
-            blocks.push(reminder(
-                &oino_resources::system_prompt::render_project_context(&options.context_files),
-            ));
+        if !workspace_free {
+            let mut listing = std::fs::read_dir(&cwd)
+                .map(|entries| {
+                    entries
+                        .filter_map(Result::ok)
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            listing.sort();
+            let git = std::process::Command::new("git")
+                .args(["status", "--short", "--branch"])
+                .current_dir(&cwd)
+                .output()
+                .map_or_else(
+                    |e| e.to_string(),
+                    |o| {
+                        format!(
+                            "{}{}",
+                            String::from_utf8_lossy(&o.stdout),
+                            String::from_utf8_lossy(&o.stderr)
+                        )
+                    },
+                );
+            blocks.push(reminder(&format!("Workspace snapshot captured once at session start:\n% ls\n{}\n% git status --short --branch\n{git}", listing.join("\n"))));
+            if !options.context_files.is_empty() {
+                blocks.push(reminder(
+                    &oino_resources::system_prompt::render_project_context(&options.context_files),
+                ));
+            }
         }
         let mut manager = lock(&self.inner.manager);
         // Complete a partially persisted prefix without ever replacing its bytes.

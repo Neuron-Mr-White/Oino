@@ -4,7 +4,7 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | `/kanboard [open\|close\|onboard\|status\|show\|doctor]`, `-add`, `-do`, `-autowork` | commands on [`Kanboard`] (see [`args`] for texts and parsing) |
+//! | `/kanboard [open\|close\|onboard\|status\|show\|doctor]`, `-add` | commands on [`Kanboard`] (see [`args`] for texts and parsing) |
 //! | runners open / stop-daemon / rotate-token | hidden commands [`settings::ACTION_OPEN`] … |
 //! | bash write guard (`tool_call`) | [`guard`] + `tool_call` handler (also exports the session env, see below) |
 //! | arbiter monitor (claims 50 / autowork 40) | [`monitor`] behind `propose-nudge` |
@@ -47,7 +47,6 @@ pub mod shell;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
 use oino_extension::wit::registry::RendererTarget;
@@ -55,7 +54,7 @@ use unipi_kit::services::{
     CompactionContext, EvidenceContribution, MoveReport, MoveRequest, fanout as fan, point,
 };
 use unipi_kit::settings::Store;
-use unipi_kit::topics::{self, KanboardStatus, LhOwnerChanged, LhState, ModuleReady, SkillsReveal};
+use unipi_kit::topics::{self, KanboardStatus, LhOwnerChanged, LhState, ModuleReady};
 
 use crate::args::{AddCompletion, DOCTOR_CUSTOM_TYPE, HELP, HELP_CUSTOM_TYPE, SHOW_CUSTOM_TYPE};
 use crate::cli::CliError;
@@ -66,7 +65,7 @@ use crate::render::{BADGE_ENTRY, NOTICE_ENTRY, PROGRESS_ENTRY};
 use crate::settings::{ACTION_OPEN, KanboardSettings, NAMESPACE};
 use crate::shapes::Task;
 
-/// The skill utility reveals on `-do`/autowork.
+/// Historical kanboard skill name (retained for transcript compatibility).
 pub const KANBOARD_SKILL: &str = "kanboard";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -307,31 +306,6 @@ impl Kanboard {
         });
     }
 
-    fn reveal_skill() {
-        unipi_kit::bus::emit(&SkillsReveal {
-            names: vec![KANBOARD_SKILL.to_owned()],
-        });
-    }
-
-    async fn send_harness_user(text: &str, title: &str, synopsis: &str) {
-        let busy = !oino_extension::control::is_idle();
-        let opts = oino_extension::wit::session::UserMessageOptions {
-            deliver_as: busy.then_some(oino_extension::session::Delivery::FollowUp),
-            expand_prompt_templates: false,
-            provenance: Some(oino_extension::session::Provenance {
-                source: "Kanboard".into(),
-                title: Some(title.to_owned()),
-                synopsis: Some(synopsis.to_owned()),
-                severity: None,
-            }),
-        };
-        let _ = oino_extension::wit::session::send_user_message(
-            Value::String(text.to_owned()).to_string(),
-            opts,
-        )
-        .await;
-    }
-
     async fn display_message(custom_type: &str, content: String, details: Option<Value>) {
         let msg = oino_extension::session::CustomMessage {
             custom_type: custom_type.to_owned(),
@@ -372,9 +346,7 @@ impl Kanboard {
                     &[
                         format!("kanboard: {} ({}) registered", project.name, project.slug),
                         "  /kanboard-add <title>     — capture a task into Backlog".into(),
-                        "  /kanboard-do <request>    — let the agent use the board for a turn"
-                            .into(),
-                        "  /kanboard-autowork start  — work ready tasks one by one".into(),
+                        "  Superagent               — manage and dispatch tasks across projects".into(),
                         "  /kanboard open            — open the board panel".into(),
                     ]
                     .join("\n"),
@@ -813,11 +785,11 @@ impl Kanboard {
                 "info",
             ),
             "work" => notify(
-                "kanboard: use /kanboard-autowork start to work every ready task in this session",
+                "kanboard: use Superagent to dispatch ready tickets",
                 "info",
             ),
             "stop" => notify(
-                "kanboard: use /kanboard-autowork stop to turn autowork offers off",
+                "kanboard: use Superagent to stop a worker",
                 "info",
             ),
             "onboard" => {
@@ -847,87 +819,6 @@ impl Kanboard {
         }
     }
 
-    async fn do_command(&self, args: &str, cx: &Ctx) {
-        let request = args.trim();
-        if request.eq_ignore_ascii_case("off") {
-            self.sessions.with(cx.session_id(), |s| s.guard.revoke());
-            notify("kanboard: -do budget revoked — reads stay free", "info");
-            return;
-        }
-        if request.is_empty() {
-            notify(
-                "kanboard: -do needs a request — /kanboard-do <what the agent may do on the board>",
-                "warning",
-            );
-            return;
-        }
-        if let Some(why) = self.unavailable(cx).await {
-            notify(&format!("kanboard: {why}"), "warning");
-            return;
-        }
-        let Some(slug) = self.ensure_onboarded(cx).await else {
-            return;
-        };
-        Self::reveal_skill();
-        let cfg = self.config();
-        let budget = self.sessions.with(cx.session_id(), |s| {
-            s.guard.open(cfg.do_tasks, cfg.do_writes);
-            s.monitor.arm();
-            s.tracker.on_prompt(request);
-            s.guard.remaining()
-        });
-        let text = args::do_text(&slug, &self.binary(), request, budget.slots, budget.writes);
-        Self::send_harness_user(
-            &text,
-            "Task budget",
-            &format!(
-                "slots {} · writes {} · user request included",
-                budget.slots, budget.writes
-            ),
-        )
-        .await;
-        self.sessions
-            .with(cx.session_id(), |s| s.guard.note_sent(timers::now_ms()));
-    }
-
-    async fn set_autowork(&self, cx: &Ctx, on: bool) {
-        self.sessions.with(cx.session_id(), |s| {
-            s.guard.set_autowork(on);
-            s.monitor.set_autowork(on);
-            if on {
-                s.monitor.arm();
-            }
-        });
-        self.refresh_holder(cx).await;
-    }
-
-    async fn autowork_command(&self, args: &str, cx: &Ctx) {
-        match args.trim().to_lowercase().as_str() {
-            "start" => {
-                let Some(slug) = self.ensure_onboarded(cx).await else {
-                    return;
-                };
-                if let Some(why) = self.unavailable(cx).await {
-                    notify(&format!("kanboard: {why}"), "warning");
-                    return;
-                }
-                Self::reveal_skill();
-                self.set_autowork(cx, true).await;
-                Self::send_harness_user(
-                    &args::autowork_text(&slug, &self.binary()),
-                    "Autowork",
-                    "no budget limits · user request included",
-                )
-                .await;
-            }
-            "stop" => {
-                self.set_autowork(cx, false).await;
-                notify("kanboard: autowork off", "info");
-            }
-            _ => notify("kanboard: /kanboard-autowork start|stop", "warning"),
-        }
-    }
-
     async fn cached_tasks(&self, cx: &Ctx) -> Vec<Task> {
         let now = timers::now_ms();
         if let Some(tasks) = self.sessions.with(cx.session_id(), |s| {
@@ -943,8 +834,6 @@ impl Kanboard {
             .with(cx.session_id(), |s| s.cache = Some((now, tasks.clone())));
         tasks
     }
-
-    // ── panel ───────────────────────────────────────────────────────────
 
     /// Opens the native board tab (round-5 #7): `unipi.kanboard/board` is a reserved
     /// entry (ui-protocol §8) — the app renders the board component itself, other
@@ -1372,31 +1261,6 @@ fn register_commands(cx: &mut Init<Kanboard>) {
                     AddCompletion::Tasks(p, before) => args::task_completions(&ext.cached_tasks(&cx).await, &p, &before, true, false),
                 }
             }),
-    );
-    cx.command(
-        Command::<Kanboard>::new("kanboard-do")
-            .description("Grant the agent kanboard task slots and a write budget (/kanboard-do <request>; off revokes)")
-            .argument_hint("<request>|off")
-            .run(|ext, args, cx| async move {
-                ext.do_command(&args, &cx.cx).await;
-                Ok(())
-            })
-            .complete(|ext, prefix, cx| async move {
-                let Some((token, before, title_search)) = args::do_completion_target(&prefix) else {
-                    return Vec::<CompletionItem>::new();
-                };
-                args::task_completions(&ext.cached_tasks(&cx).await, &token, &before, title_search, true)
-            }),
-    );
-    cx.command(
-        Command::<Kanboard>::new("kanboard-autowork")
-            .description("Work ready board tasks one by one — start | stop (stop finishes the current task first)")
-            .argument_hint("start|stop")
-            .run(|ext, args, cx| async move {
-                ext.autowork_command(&args, &cx.cx).await;
-                Ok(())
-            })
-            .complete(|_ext, prefix, _cx| async move { args::autowork_completions(&prefix) }),
     );
     cx.command(
         Command::<Kanboard>::new(ACTION_OPEN)

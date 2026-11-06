@@ -11,6 +11,7 @@ name = "unipi-host"
 path = "src/main.rs"
 
 [dependencies]
+oino-agent = { path = "../../../../crates/oino-agent", version = "1.0.2" }
 unipi-proto = { path = "../unipi-proto" }
 # H3 (host.md §4.2): the host links oino-core in-process and runs every session through the
 # wave-1 lazy client hub; extensions load on the process-shared wasm engine.
@@ -82,7 +83,7 @@ zip = { version = "2", default-features = false, features = ["flate2", "deflate-
 semver = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 # UNI-294: Chrome cookie import — a private sqlite copy, Linux v10/v11 decryption.
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
 aes = "0.9"
 cbc = "0.2"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }

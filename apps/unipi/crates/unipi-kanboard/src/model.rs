@@ -363,6 +363,41 @@ impl FromStr for ChainGate {
     }
 }
 
+/// Ticket execution ceiling. Legacy tickets use Medium.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Autonomy {
+    /// Read-only shell commands.
+    Low,
+    /// Builds, tests and local changes.
+    #[default]
+    Medium,
+    /// All commands.
+    High,
+}
+impl Autonomy {
+    /// Wire name.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+impl FromStr for Autonomy {
+    type Err = Error;
+    fn from_str(value: &str) -> Result<Self> {
+        match value {
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            _ => Err(Error::usage("autonomy must be low|medium|high")),
+        }
+    }
+}
+
 /// The run block, present only while a task is claimed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Run {
@@ -391,6 +426,8 @@ pub struct Run {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOwner {
+    /// Host dispatcher owns reconciliation; the reaper must never release this run.
+    Dispatcher,
     /// The agent self-claimed it (`start`); it moves it on with `finish`.
     #[default]
     Agent,
@@ -402,6 +439,7 @@ impl RunOwner {
     pub fn as_str(self) -> &'static str {
         match self {
             RunOwner::Agent => "agent",
+            RunOwner::Dispatcher => "dispatcher",
         }
     }
 }
@@ -448,6 +486,9 @@ pub struct ActivityEntry {
 /// A task file: frontmatter, body and activity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
+    /// Optional persisted ceiling; absent legacy values execute at Medium.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autonomy: Option<Autonomy>,
     /// Id (`<PREFIX>-<n>`).
     pub id: String,
     /// Title (may be empty; see `display_title`).
@@ -496,6 +537,7 @@ impl Task {
         now: DateTime<Utc>,
     ) -> Self {
         Task {
+            autonomy: None,
             id,
             title,
             status,

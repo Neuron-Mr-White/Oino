@@ -720,6 +720,20 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Persist a draft's header and host metadata before it has a conversation.
+    /// Embedders use this for durable restricted-session identity and reservations.
+    ///
+    /// # Errors
+    /// I/O or serialization failures. Existing records are only synced, never rewritten.
+    pub fn materialize(&mut self) -> Result<(), SessionError> {
+        if !self.flushed
+            && let Some(path) = self.session_file.clone().filter(|_| self.persist)
+        {
+            self.flush_initial(&path)?;
+        }
+        self.sync()
+    }
+
     /// Generic append at the leaf (used by boundary drafts).
     ///
     /// # Errors

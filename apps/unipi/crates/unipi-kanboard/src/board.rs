@@ -165,6 +165,9 @@ impl<'a> Board<'a> {
 
     /// Reads one task; unreadable files are rule errors naming `validate --fix`.
     pub fn get(&self, id: &str) -> Result<Task> {
+        if id.is_empty() || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+            return Err(Error::usage("task id must name a ticket on this project board"));
+        }
         let path = self.task_path(id);
         let cold = self.cold_path(id);
         let text = fs::read_to_string(&path).map_err(|_| {

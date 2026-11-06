@@ -1052,6 +1052,15 @@ impl SessionHub {
         self.inner.create_session(cwd, name, None).await
     }
 
+    /// Workspace-free restricted orchestration chat, sharing the host's stream protocol.
+    ///
+    /// # Errors
+    /// Isolated services or session creation failed.
+    pub async fn create_superagent(self: &Arc<Self>) -> Result<HubSession, HubError> {
+        let runtime = crate::superagent_session::create(Arc::clone(self)).await.map_err(HubError::failed)?;
+        self.open(&runtime.session().session_id()).await
+    }
+
     /// `session_new{name?}` without a `cwd` — a "No workspace" chat: a new session whose
     /// cwd is its own private scratch folder `<scratch root>/<session id>`, created here.
     /// Never the user's home (the agent could read and write all of it).
@@ -1595,6 +1604,24 @@ impl Inner {
     /// another host is asked to close (core D-TAKEOVER), reloaded here, and the runner it
     /// came from is attached to the result for the stream's `taken_over` notice.
     async fn open(self: &Arc<Self>, target: &str) -> Result<HubSession, HubError> {
+        if let Some(runtime) = crate::superagent_session::runtime(target) {
+            let cwd = runtime.session().cwd().to_path_buf();
+            let backend: Arc<dyn SessionBackend> = Arc::new(oino_client::in_process::InProcessBackend::new(runtime));
+            let card = self.card_for(&backend, &cwd).await;
+            return Ok(HubSession::new(Arc::downgrade(self), backend, card, None));
+        }
+        if let Ok(Some(card)) = oino_session::SessionManager::find_card(&self.sessions_root, target) {
+            if crate::superagent_session::is_superagent_file(&card.path) {
+                let runtime = crate::superagent_session::create_from(
+                    // The public wrapper owns the Arc required by the restricted factory.
+                    Arc::new(SessionHub { inner: Arc::clone(self) }), Some(card.path)
+                ).await.map_err(HubError::failed)?;
+                let cwd = runtime.session().cwd().to_path_buf();
+                let backend: Arc<dyn SessionBackend> = Arc::new(oino_client::in_process::InProcessBackend::new(runtime));
+                let card = self.card_for(&backend, &cwd).await;
+                return Ok(HubSession::new(Arc::downgrade(self), backend, card, None));
+            }
+        }
         // E-03: a session created in this hub (`session_new`) has no record until its
         // first conversation entry writes the file, so `resolve` fails while the live
         // runtime is still wakeable by exact id. Wake it instead of failing the open —

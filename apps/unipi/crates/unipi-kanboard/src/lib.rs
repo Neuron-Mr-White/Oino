@@ -37,3 +37,5 @@ pub mod transitions;
 pub use error::{Error, Problem, Result};
 pub use model::{Actor, ChainGate, Priority, RunMode, Status, Task};
 pub use store::{Layout, Project};
+
+pub mod dispatcher;

@@ -118,12 +118,7 @@ fn start_refuses_non_todo_claimed_and_unready_tasks() {
 
     // Already started by this session / by another session.
     start(&fixture, &dep.id, "s", alive()).unwrap();
-    let err = start(&fixture, &dep.id, "s", alive()).unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("already in progress for this session"),
-        "{err}"
-    );
+    start(&fixture, &dep.id, "s", alive()).expect("same-session claim is idempotent");
     let err = start(&fixture, &dep.id, "other", alive()).unwrap_err();
     assert!(
         err.to_string().contains("already claimed by agent s"),

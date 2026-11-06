@@ -99,9 +99,12 @@ impl Env {
         let project = tempfile::tempdir().unwrap();
         let mut options = WasmRuntimeOptions::new(HostConfig::new(agent.path(), project.path()));
         options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
+        let host = RecordingHostServices::new();
+        host.allow_process_command(bin.to_str().unwrap());
+        host.allow_process_command("unipi-kanboard");
         Self {
             runtime: WasmRuntime::new(options).unwrap(),
-            host: RecordingHostServices::new(),
+            host,
             _agent: agent,
             project,
             _home: home,
@@ -209,8 +212,6 @@ async fn registration() {
         [
             ("kanboard", false),
             ("kanboard-add", false),
-            ("kanboard-do", false),
-            ("kanboard-autowork", false),
             ("kanboard-open", true),
         ]
     );
@@ -292,20 +293,8 @@ async fn board_flow_guard_and_env() {
         .await
         .is_none());
 
-    // -do grants a budget and sends the harness prompt.
-    env.command(&ext, "kanboard-do", "triage the board").await;
-    let sent = env.writes("sendUserMessage");
-    let text = sent[0]["sendUserMessage"].as_str().unwrap();
-    assert!(
-        text.starts_with("[kanboard] For this request you may use the kanboard skill on project "),
-        "{text}"
-    );
-    assert!(text.ends_with("Request: triage the board"));
-    let allowed = env
-        .event(&ext, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "c4", "input": {"command": "unipi-kanboard --actor agent add x"}}))
-        .await
-        .unwrap();
-    assert!(allowed.get("block").is_none(), "{allowed}");
+    // Retired commands are absent; historical badge/render records remain supported.
+    assert!(!env.writes("sendUserMessage").iter().any(|v| v.to_string().contains("For this request")));
 
     // Badge on a successful start.
     env.event(&ext, EventKind::ToolResult, json!({"type": "tool_result", "toolName": "bash", "toolCallId": "c5", "input": {"command": format!("unipi-kanboard start {id}")}, "content": [], "isError": false})).await;
@@ -467,6 +456,7 @@ async fn spawn_resolves_the_package_bin_without_the_env_override() {
         root: Some(pkg.path().to_path_buf()),
         bundled: true,
     };
+    env.host.allow_process_command(pkg.path().join("bin/unipi-kanboard").to_str().unwrap());
     let host: Arc<dyn HostServices> = Arc::clone(&env.host) as Arc<dyn HostServices>;
     let ext = env.runtime.load(package, host).await.unwrap();
     ext.init(InitInput::default(), env.cx(CallKind::Init))
