@@ -218,6 +218,8 @@ impl Default for ShellOptions {
 /// Everything the built-in tools are constructed with.
 #[derive(Clone)]
 pub struct ToolConfig {
+    /// Frozen semantic-search setting for this session.
+    pub search: crate::zvec::SearchConfig,
     /// Default working directory (absolute).
     pub cwd: String,
     /// Agent directory (`~/.oino`): temp files go to `<agent_dir>/tmp`, `<agent_dir>/bin` is
@@ -256,6 +258,7 @@ impl ToolConfig {
     #[must_use]
     pub fn new(cwd: impl Into<String>, agent_dir: impl Into<String>) -> Self {
         Self {
+            search: crate::zvec::SearchConfig::default(),
             cwd: cwd.into(),
             agent_dir: agent_dir.into(),
             env: Arc::new(LocalEnv::new()),

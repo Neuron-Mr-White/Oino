@@ -82,7 +82,13 @@ pub fn tool_by_name(name: &str, config: ToolConfig) -> Option<Arc<dyn AgentTool>
 pub fn builtin_tool_infos(config: &ToolConfig) -> Vec<BuiltinToolInfo> {
     available_names(config)
         .into_iter()
-        .map(|name| builtin_tool_info(name, config.shell.expose_session_environment))
+        .map(|name| {
+            if name == BuiltinToolName::Grep {
+                crate::zvec::grep_info(config.search.enabled)
+            } else {
+                builtin_tool_info(name, config.shell.expose_session_environment)
+            }
+        })
         .collect()
 }
 

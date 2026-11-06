@@ -53,6 +53,7 @@ pub mod secrets;
 pub mod storage;
 pub mod tools;
 pub mod types;
+pub mod v3_search;
 pub mod view;
 
 pub use error::{InvalidSettingError, SettingsError, SettingsErrorKind, SettingsScope};

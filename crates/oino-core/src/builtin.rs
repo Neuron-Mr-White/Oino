@@ -191,7 +191,26 @@ pub fn builtin_tool_entries(
     settings: &oino_settings::Settings,
     context: Arc<SessionToolContext>,
 ) -> Vec<ToolEntry> {
+    builtin_tool_entries_with_search(
+        cwd,
+        agent_dir,
+        settings,
+        context,
+        settings.semantic_search_enabled(),
+    )
+}
+
+/// Construct built-ins from the persisted semantic-search session snapshot.
+#[must_use]
+pub fn builtin_tool_entries_with_search(
+    cwd: &std::path::Path,
+    agent_dir: &std::path::Path,
+    settings: &oino_settings::Settings,
+    context: Arc<SessionToolContext>,
+    semantic_enabled: bool,
+) -> Vec<ToolEntry> {
     let mut config = ToolConfig::new(cwd.display().to_string(), agent_dir.display().to_string());
+    config.search.enabled = semantic_enabled;
     config.bash_detach = context.bash_detach.clone();
     config.context = context;
     config.images = ImageOptions {
@@ -215,4 +234,40 @@ pub fn builtin_tool_entries(
             )
         })
         .collect()
+}
+
+/// Settings-only entry point. Not registered in any model or session command catalog.
+/// # Errors
+/// Returns consent, engine availability, and indexing errors.
+pub async fn build_search_index(
+    root: &std::path::Path,
+    agent_dir: &std::path::Path,
+    consent: bool,
+) -> Result<(), String> {
+    oino_tools::zvec::build_index(root, agent_dir, consent).await
+}
+
+/// Freeze the feature for reloads. Legacy sessions without a snapshot remain exact.
+/// # Errors
+/// Returns session persistence errors.
+pub fn search_snapshot(
+    manager: &mut oino_session::SessionManager,
+    enabled: bool,
+) -> Result<bool, oino_session::SessionError> {
+    for entry in manager.entries() {
+        if let oino_session::EntryKind::Custom { custom_type, data } = &entry.kind
+            && custom_type == "oino.search-snapshot"
+        {
+            return Ok(data
+                .as_ref()
+                .and_then(|v| v["semanticEnabled"].as_bool())
+                .unwrap_or(false));
+        }
+    }
+    let enabled = enabled && manager.build_session_context().messages.is_empty();
+    manager.append_custom_entry(
+        "oino.search-snapshot",
+        Some(serde_json::json!({"semanticEnabled": enabled})),
+    )?;
+    Ok(enabled)
 }

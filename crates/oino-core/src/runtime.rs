@@ -540,6 +540,9 @@ async fn install(
             .map_err(op_error)?;
     }
     let settings = lock(&services.settings).snapshot();
+    let semantic_enabled =
+        crate::builtin::search_snapshot(&mut manager, settings.semantic_search_enabled())
+            .map_err(op_error)?;
     let (initial, allowed) = tool_names(options, &settings);
     let excluded = &options.exclude_tools;
     let initial: Vec<String> = initial
@@ -557,11 +560,12 @@ async fn install(
         Vec::new()
     } else if options.builtin_tools.is_empty() {
         let context = Arc::new(crate::builtin::SessionToolContext::default());
-        let entries = crate::builtin::builtin_tool_entries(
+        let entries = crate::builtin::builtin_tool_entries_with_search(
             options.session_cwd(services),
             &services.agent_dir,
             &settings,
             Arc::clone(&context),
+            semantic_enabled,
         );
         own_context = Some(context);
         entries

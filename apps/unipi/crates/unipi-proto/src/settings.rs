@@ -171,6 +171,8 @@ pub struct HostSettingsSetRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HostCmd {
+    /// User-only Settings action, deliberately absent from session/model commands.
+    BuildSearchIndex { cwd: String, consent: bool },
     /// `_oino/get_settings`: the merged pi settings object, or one dot-path
     /// value → `{settings}` / `{value}`.
     GetSettings {
@@ -293,6 +295,7 @@ impl HostCmd {
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::BuildSearchIndex { .. } => "build_search_index",
             Self::GetSettings { .. } => "get_settings",
             Self::SetSetting { .. } => "set_setting",
             Self::GetSettingsSchema => "get_settings_schema",

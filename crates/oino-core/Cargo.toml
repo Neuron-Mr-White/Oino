@@ -13,6 +13,8 @@ categories = ["asynchronous", "development-tools"]
 [features]
 ## Test doubles: faux provider component, fake extensions, in-memory session builder.
 testing = []
+## Optional embedded CPU semantic search; default builds do not link the engine.
+zvec = ["oino-tools/zvec"]
 
 [dependencies]
 futures.workspace = true

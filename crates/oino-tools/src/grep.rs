@@ -24,7 +24,7 @@ use serde_json::{Map, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::ToolConfig;
-use crate::info::{GREP_DEFAULT_LIMIT, grep_info};
+use crate::info::GREP_DEFAULT_LIMIT;
 use crate::js::number_to_string;
 use crate::path_utils::resolve_to_cwd;
 use crate::truncate::{
@@ -45,7 +45,7 @@ impl GrepTool {
     #[must_use]
     pub fn new(config: ToolConfig) -> Self {
         Self {
-            meta: grep_info().definition_meta(),
+            meta: crate::zvec::grep_info(config.search.enabled).definition_meta(),
             config,
         }
     }
@@ -71,6 +71,24 @@ impl AgentTool for GrepTool {
         async move {
             if cancel.is_cancelled() {
                 return Err(aborted());
+            }
+            let mode = call.args.get("search_mode").and_then(JsonValue::as_str).unwrap_or("exact");
+            if !["exact", "semantic", "hybrid"].contains(&mode) {
+                return Err(ToolError::new("Invalid search_mode"));
+            }
+            if mode != "exact" {
+                if !config.search.enabled {
+                    return Err(ToolError::new("Semantic search is disabled for this session. Enable it in Settings › Search and start a new session."));
+                }
+                if !config.env.is_local() {
+                    return Err(ToolError::new("Semantic search requires a local project"));
+                }
+                return crate::zvec::query(
+                    std::path::Path::new(&config.cwd),
+                    std::path::Path::new(&config.agent_dir),
+                    &call.args,
+                    cancel,
+                ).await;
             }
             let stop = Arc::new(AtomicBool::new(false));
             let result = tokio::select! {

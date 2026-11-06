@@ -81,6 +81,16 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     // Package installs are file operations on the agent dir: no services needed (and a
     // broken extension set must not keep the user from removing the culprit).
     match cmd {
+        HostCmd::BuildSearchIndex { cwd, consent } => {
+            let root = std::path::Path::new(&cwd);
+            if !root.is_absolute() || !root.is_dir() {
+                return Err(invalid("Choose an existing project folder"));
+            }
+            oino_core::builtin::build_search_index(root, hub.agent_dir(), consent)
+                .await
+                .map_err(failed)?;
+            return Ok(json!({ "success": true }));
+        }
         HostCmd::InstallExtension { path, replace } => {
             return install_extension(hub, path, replace.unwrap_or(false)).await;
         }
@@ -408,7 +418,8 @@ async fn dispatch(
         }
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
         // Served before the services spin up (`run`).
-        HostCmd::InstallExtension { .. }
+        HostCmd::BuildSearchIndex { .. }
+        | HostCmd::InstallExtension { .. }
         | HostCmd::RemoveExtension { .. }
         | HostCmd::ReloadExtensions
         | HostCmd::Reload => Err(unsupported(

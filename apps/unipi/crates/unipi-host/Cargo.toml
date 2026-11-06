@@ -10,6 +10,10 @@ license = "MIT"
 name = "unipi-host"
 path = "src/main.rs"
 
+[features]
+default = []
+zvec = ["oino-core/zvec"]
+
 [dependencies]
 oino-agent = { path = "../../../../crates/oino-agent", version = "1.0.2" }
 unipi-proto = { path = "../unipi-proto" }

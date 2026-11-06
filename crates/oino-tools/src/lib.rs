@@ -62,6 +62,7 @@ pub mod read;
 pub mod registry;
 pub mod truncate;
 pub mod write;
+pub mod zvec;
 
 pub use apply_patch::patch_paths;
 pub use bash::{

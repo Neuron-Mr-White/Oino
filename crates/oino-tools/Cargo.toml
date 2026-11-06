@@ -10,7 +10,12 @@ readme = "README.md"
 keywords = ["agent", "tools", "cli", "editor", "filesystem"]
 categories = ["development-tools"]
 
+[features]
+default = []
+zvec = ["dep:zg-engine"]
+
 [dependencies]
+zg-engine = { git = "https://github.com/zvec-ai/zvec-grep", rev = "407a38512bb0b778819e38035d87fb6ac229a4eb", optional = true, default-features = false }
 base64.workspace = true
 futures.workspace = true
 globset.workspace = true
