@@ -106,7 +106,7 @@ async fn run_with_updates(
 }
 
 #[test]
-fn registry_matches_pi() {
+fn registry_matches_v3() {
     let root = temp_root("registry");
     let names: Vec<String> = builtin_tools(&config(&root))
         .iter()
@@ -120,11 +120,23 @@ fn registry_matches_pi() {
             "edit",
             "write",
             "grep",
-            "find",
+            "glob",
             "ls",
+            "codemode",
+            "tool_search",
         ]
     } else {
-        vec!["read", "bash", "edit", "write", "grep", "find", "ls"]
+        vec![
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "grep",
+            "glob",
+            "ls",
+            "codemode",
+            "tool_search",
+        ]
     };
     assert_eq!(names, expected);
     assert_eq!(
@@ -239,7 +251,7 @@ async fn bash_truncation_writes_private_temp_file() {
     let tool = tool_by_name("bash", config(&root)).unwrap();
     let result = tool
         .execute(
-            call("t1", json!({"command": "seq 1 5000"})),
+            call("t1", json!({"command": "seq 1 10000"})),
             UpdateSink::discard(),
             CancellationToken::new(),
         )
@@ -264,7 +276,7 @@ async fn bash_truncation_writes_private_temp_file() {
             && name.len() == "oino-bash-".len() + 16 + 4
     );
     let full = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(full.lines().count(), 5000);
+    assert_eq!(full.lines().count(), 10000);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -273,8 +285,10 @@ async fn bash_truncation_writes_private_temp_file() {
             0o600
         );
     }
+    assert!(text(&result).starts_with("1\n2\n"));
+    assert!(text(&result).contains("9999\n10000\n"));
     assert!(text(&result).ends_with(&format!(
-        "[Showing lines 3001-5000 of 5000. Full output: {path}]"
+        "[Output truncated to 32 KiB head+tail. Full output: {path}]"
     )));
 }
 

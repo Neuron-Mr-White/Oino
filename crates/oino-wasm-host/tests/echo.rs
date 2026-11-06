@@ -119,6 +119,9 @@ async fn init_tool_command_events() {
 #[tokio::test(flavor = "multi_thread")]
 async fn imports_allowed() {
     let h = Harness::new().unwrap();
+    // Decision E: these import tests explicitly authorize their harmless processes.
+    h.host.allow_process_command("sh");
+    h.host.allow_process_command("cat");
     let ext = h.load("echo", None).await.unwrap();
     ext.init(InitInput::default(), h.cx("s1", CallKind::Init))
         .await
@@ -248,6 +251,9 @@ async fn imports_allowed() {
 #[tokio::test(flavor = "multi_thread")]
 async fn imports_denied_without_grants() {
     let h = Harness::new().unwrap();
+    // Host consent must never substitute for absent manifest capabilities.
+    h.host.allow_process_command("sh");
+    h.host.allow_process_command("cat");
     let ext = h.load("echo", Some(json!({}))).await.unwrap();
     ext.init(InitInput::default(), h.cx("s1", CallKind::Init))
         .await

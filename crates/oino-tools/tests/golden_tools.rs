@@ -1,7 +1,8 @@
-//! Golden tests: every built-in tool against reference outputs.
+//! Golden tests: legacy pi cases with decision B v3 reference outputs.
 //!
 //! Cases: `tests/fixtures/cases.json`; reference results:
-//! `tests/fixtures/tools.json` (regenerate with `node run.mjs` in that directory). Both sides
+//! `tests/fixtures/tools.json` (review v3 expectations against decision B; `node run.mjs`
+//! only regenerates the legacy pi oracle). Both sides
 //! normalise the case directory to `$CWD`, temp logs to `$TMPLOG`, wall time to `0`, image
 //! bytes to `$SOURCE`/`$ENCODED` (+ decoded dimensions) and long strings to a digest.
 
@@ -278,7 +279,17 @@ async fn run_case(case: &Value, golden: &Value, root: &Path) -> Value {
     let tool = tool_by_name(case["tool"].as_str().unwrap(), config.clone()).unwrap();
     let raw: JsonObject =
         serde_json::from_str(&case["args"].to_string().replace("$CWD", &dir_str)).unwrap();
-    let args = tool.prepare_arguments(raw);
+    let normalized = oino_tools::legacy::normalize_call(
+        case["tool"].as_str().unwrap(),
+        &raw,
+        &config.effective_cwd(),
+    )
+    .unwrap();
+    let mut args = tool.prepare_arguments(raw);
+    // Direct-tool fixtures have no core dispatcher to apply the legacy output cap.
+    if let Some(limit) = normalized.result_limit {
+        args.insert("limit".into(), json!(limit));
+    }
     let cancel = CancellationToken::new();
     if case["abort"] == "before" {
         cancel.cancel();
@@ -355,7 +366,7 @@ fn mark_images(record: &mut Value, config: &ToolConfig, args: &JsonObject) {
     if !has_image {
         return;
     }
-    let path = args["path"].as_str().unwrap().trim_start_matches('@');
+    let path = args["file_path"].as_str().unwrap().trim_start_matches('@');
     let cwd = config.context.cwd().unwrap();
     let source = BASE64.encode(std::fs::read(Path::new(&cwd).join(path)).unwrap());
     let marker = |data: &mut Value| {
@@ -412,7 +423,7 @@ fn root_dir() -> PathBuf {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn tools_match_pi() {
+async fn tools_match_v3_reference() {
     let cases: Vec<Value> = serde_json::from_str(CASES).unwrap();
     let golden: Vec<Value> = serde_json::from_str(GOLDEN).unwrap();
     assert_eq!(cases.len(), golden.len(), "regenerate tools.json");

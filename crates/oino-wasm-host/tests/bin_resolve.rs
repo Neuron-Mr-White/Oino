@@ -48,6 +48,10 @@ async fn loaded(
         root,
         bundled: false,
     };
+    // Decision E: manifest capability is independent of explicit host consent.
+    for command in allow {
+        h.host.allow_process_command(command);
+    }
     let host: Arc<dyn HostServices> = Arc::clone(&h.host) as Arc<dyn HostServices>;
     let ext = h.runtime.load(package, host).await.unwrap();
     ext.init(InitInput::default(), h.cx("s1", CallKind::Init))
@@ -84,6 +88,8 @@ async fn package_bin_resolves_declared_binaries_before_path() {
         Some(pkg.path().into()),
     )
     .await;
+    h.host
+        .allow_process_command(&pkg.path().join("bin/kb-probe-bin").to_string_lossy());
     let out = exec_program(&*ext, &h, "kb-probe-bin").await;
     assert_eq!(out["ok"]["stdout"].as_str().unwrap().trim(), "package-bin");
     assert_eq!(out["ok"]["code"], 0);
@@ -124,6 +130,8 @@ async fn ext_bin_dir_overrides_the_package_and_searches_in_order() {
         Some(pkg.path().into()),
     )
     .await;
+    h.host
+        .allow_process_command(&dev.path().join("kb-override-bin").to_string_lossy());
     let out = exec_program(&*ext, &h, "kb-override-bin").await;
     assert_eq!(
         out["ok"]["stdout"].as_str().unwrap_or_default().trim(),
@@ -139,6 +147,8 @@ async fn ext_bin_dir_overrides_the_package_and_searches_in_order() {
     unsafe {
         std::env::set_var("OINO_EXT_BIN_DIR", list);
     }
+    h.host
+        .allow_process_command(&second.path().join("kb-order-bin").to_string_lossy());
     let out = exec_program(&*ext, &h, "kb-order-bin").await;
     // SAFETY: restore before any assertion can early-return.
     unsafe {
@@ -162,6 +172,7 @@ async fn absolute_paths_pass_through_unchanged() {
     let path = script(&pkg.path().join("bin"), "kb-abs-bin", "absolute");
     // No package root and no declaration: only the path itself can answer.
     let ext = loaded(&h, &[], &["kb-abs-bin"], None).await;
+    h.host.allow_process_command(&path.to_string_lossy());
     let out = exec_program(&*ext, &h, &path.to_string_lossy()).await;
     assert_eq!(out["ok"]["stdout"].as_str().unwrap().trim(), "absolute");
 }
