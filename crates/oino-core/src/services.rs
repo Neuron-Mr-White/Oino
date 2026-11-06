@@ -434,6 +434,19 @@ impl HostApi for HostRouter {
             if op.is_settings_op() {
                 return self.settings_call(extension, op);
             }
+            if let HostOp::BusPublish { topic, data, .. } = &op
+                && topic == "oino:permission:background"
+                && let Some(session) = self.session(&cx.session_id)
+                && let Some(id) = data.get("agentId").and_then(JsonValue::as_str)
+            {
+                for child in lock(&session.inner.agents.children).iter() {
+                    if child.id() == id
+                        && let Some(child) = child.session()
+                    {
+                        child.set_unattended();
+                    }
+                }
+            }
             if op.is_bus_op() {
                 return self.bus_call(extension, op);
             }

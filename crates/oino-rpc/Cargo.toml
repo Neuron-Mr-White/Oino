@@ -24,6 +24,7 @@ tokio = { workspace = true, features = ["io-util", "process", "sync", "macros", 
 tracing.workspace = true
 
 [dev-dependencies]
+oino-core = { path = "../oino-core", features = ["testing"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]

@@ -52,6 +52,14 @@ impl AgentSession {
         exclude_from_context: bool,
         id: Option<String>,
     ) -> Result<BashResult, SessionOpError> {
+        let shell = if cfg!(windows) { "powershell" } else { "bash" };
+        let args = json!({"command": command, "summary": "user shell", "riskLevel": "high"})
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        self.check_permission(shell, &args)
+            .await
+            .map_err(SessionOpError::Failed)?;
         let runner = self.runner();
         if runner.has_handlers("user_bash") {
             let payload = json!({"type": "user_bash", "command": command, "excludeFromContext": exclude_from_context, "cwd": self.work_cwd().display().to_string()});

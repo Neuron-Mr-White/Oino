@@ -410,6 +410,12 @@ pub enum ExtensionDisabledReason {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OinoEvent {
+    /// Host-generated permission request before a side effect.
+    ApprovalRequest {
+        /// Exact pending invocation.
+        #[serde(flatten)]
+        request: crate::session::permission::ApprovalRequest,
+    },
     /// The runtime replaced the session; clients reset view state.
     #[serde(rename_all = "camelCase")]
     SessionReplaced {

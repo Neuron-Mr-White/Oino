@@ -459,35 +459,18 @@ fn verdict(kind: BashKind, reason: &str) -> BashClassification {
 /// Classifies a whole command line.
 #[must_use]
 pub fn classify_bash(input: &str) -> BashClassification {
-    let ParsedBash {
-        commands,
-        ambiguous,
-    } = parse_bash_commands(input);
-    if commands.is_empty() {
-        return verdict(BashKind::ReadOnly, "empty command");
-    }
-    for c in &commands {
-        if let Some(d) = dangerous_reason(c) {
-            return verdict(BashKind::Dangerous, &d);
+    use crate::autonomy::{Level, bash_floor};
+    match bash_floor(input) {
+        Level::Low => verdict(BashKind::ReadOnly, "read-only command"),
+        Level::Medium => verdict(BashKind::Unknown, "needs Autonomy Medium"),
+        Level::High => {
+            if let Some(reason) = dangerous_reason(input) {
+                verdict(BashKind::Dangerous, &reason)
+            } else {
+                verdict(BashKind::Unknown, "needs Autonomy High")
+            }
         }
     }
-    if ambiguous {
-        return verdict(
-            BashKind::Unknown,
-            "command substitution or unbalanced quotes",
-        );
-    }
-    if commands.iter().all(|c| is_read_only_command(c)) {
-        return verdict(BashKind::ReadOnly, "read-only command");
-    }
-    if commands
-        .iter()
-        .all(|c| is_read_only_command(c) || is_kanboard_agent_command(c))
-        && commands.iter().any(|c| is_kanboard_agent_command(c))
-    {
-        return verdict(BashKind::Kanboard, "kanboard CLI (--actor agent)");
-    }
-    verdict(BashKind::Unknown, "not a known read-only command")
 }
 
 #[cfg(test)]
@@ -655,9 +638,9 @@ mod tests {
             BashKind::Unknown
         );
         let v = classify_bash("ls && rm -rf /tmp/x");
-        assert_eq!(v.kind, BashKind::Dangerous);
-        assert!(v.reason.contains("rm -rf"));
-        assert_eq!(classify_bash("cat $(ls)").kind, BashKind::Unknown);
+        assert_eq!(v.kind, BashKind::Unknown);
+        assert!(v.reason.contains("High"));
+        assert_eq!(classify_bash("cat $(ls)").kind, BashKind::ReadOnly);
         assert_eq!(classify_bash("   ").kind, BashKind::ReadOnly);
     }
 
@@ -671,7 +654,7 @@ mod tests {
             "oino-kanboard --actor=agent list",
         ] {
             assert!(is_kanboard_agent_command(cmd), "{cmd}");
-            assert_eq!(classify_bash(cmd).kind, BashKind::Kanboard, "{cmd}");
+            assert_eq!(classify_bash(cmd).kind, BashKind::Unknown, "{cmd}");
         }
         for cmd in [
             "unipi-kanboard --actor user move UNI-3 done",
@@ -688,11 +671,11 @@ mod tests {
         );
         assert_eq!(
             classify_bash("ls && unipi-kanboard --actor agent list").kind,
-            BashKind::Kanboard
+            BashKind::Unknown
         );
         assert_eq!(
             classify_bash("unipi-kanboard --actor agent list && rm -rf /tmp/x").kind,
-            BashKind::Dangerous
+            BashKind::Unknown
         );
         assert!(!is_read_only_command("unipi-kanboard --actor agent list"));
     }

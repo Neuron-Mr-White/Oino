@@ -538,3 +538,25 @@ mod tests {
         assert_eq!(fire_update(&request("setStatus", json!({}))), None);
     }
 }
+
+/// ACP options for the host autonomy protocol.
+#[must_use]
+pub fn autonomy_options() -> JsonValue {
+    json!([
+        {"optionId":"allow_once","name":"Allow once","kind":"allow_once"},
+        {"optionId":"always","name":"Always (this exact command, this project)","kind":"allow_always"},
+        {"optionId":"deny","name":"Deny","kind":"reject_once"}
+    ])
+}
+/// Cancelled, unknown and rejected ACP permission outcomes fail closed.
+#[must_use]
+pub fn autonomy_decision(
+    selected: Option<&str>,
+) -> oino_core::session::permission::ApprovalDecision {
+    use oino_core::session::permission::ApprovalDecision;
+    match selected {
+        Some("allow_once") => ApprovalDecision::AllowOnce,
+        Some("always") => ApprovalDecision::Always,
+        _ => ApprovalDecision::Deny,
+    }
+}

@@ -255,6 +255,21 @@ macro_rules! unsupported {
 /// hosts can grow coverage additively; `testing::RecordingHostServices` (feature `testing`) records all.
 #[allow(unused_variables, reason = "default bodies ignore their arguments")]
 pub trait HostServices: Send + Sync {
+    /// Authorize a process invocation before spawn or output-file creation.
+    /// Manifest process grants are capabilities, never user consent.
+    ///
+    /// # Errors
+    /// Unsupported host, denied policy or unavailable approval surface.
+    fn check_process(
+        &self,
+        _ext: &ExtensionId,
+        _cx: &CallContext,
+        _command: &str,
+        _args: &[String],
+    ) -> Result<(), HostError> {
+        Err(HostError::Failed("needs Autonomy High".into()))
+    }
+
     // ── registry ──
     /// `registry.subscribe`.
     fn subscribe(&self, ext: &ExtensionId, events: &[EventKind]) {}

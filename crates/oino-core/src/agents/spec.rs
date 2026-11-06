@@ -111,6 +111,8 @@ pub enum UiPolicy {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AgentSpec {
+    /// Optional child ceiling, bounded by the parent.
+    pub autonomy: Option<oino_settings::autonomy::Level>,
     /// Shown in run state, UI prefixes and `child:<label>` usage entries.
     pub label: String,
     /// `provider/id` (default: the parent's model).

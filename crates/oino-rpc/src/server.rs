@@ -71,6 +71,10 @@ impl Shared {
         let _ = self.replies.send(Reply { response, prompt }).await;
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "wire parsing and reply framing in protocol order"
+    )]
     async fn handle_line(self: Arc<Self>, line: String) {
         let value: JsonValue = match serde_json::from_str(&line) {
             Ok(value) => value,
@@ -84,6 +88,45 @@ impl Shared {
                 return;
             }
         };
+        if value.get("type").and_then(JsonValue::as_str) == Some("set_autonomy") {
+            let id = value.get("id").cloned();
+            let result = serde_json::from_value::<oino_core::session::permission::Level>(
+                value.get("level").cloned().unwrap_or(JsonValue::Null),
+            )
+            .map_err(|e| ClientError::Protocol(e.to_string()))
+            .and_then(|level| self.backend.set_autonomy(level));
+            self.reply(
+                match result {
+                    Ok(()) => RpcResponse::success(id, "set_autonomy", None),
+                    Err(error) => {
+                        RpcResponse::error(id, Some("set_autonomy".into()), error.to_string())
+                    }
+                },
+                false,
+            )
+            .await;
+            return;
+        }
+        if value.get("type").and_then(JsonValue::as_str) == Some("approval_response") {
+            let id = value.get("id").cloned();
+            let response = serde_json::from_value::<oino_core::session::permission::ApprovalResponse>(
+                json_approval_response(value),
+            );
+            let result = response
+                .map_err(|e| ClientError::Protocol(e.to_string()))
+                .and_then(|response| self.backend.approval_response(response));
+            self.reply(
+                match result {
+                    Ok(()) => RpcResponse::success(id, "approval_response", None),
+                    Err(error) => {
+                        RpcResponse::error(id, Some("approval_response".into()), error.to_string())
+                    }
+                },
+                false,
+            )
+            .await;
+            return;
+        }
         if value.get("type").and_then(JsonValue::as_str) == Some("extension_ui_response") {
             if let Ok(response) = serde_json::from_value::<UiResponse>(value) {
                 self.backend.ui_respond(response);
@@ -97,6 +140,15 @@ impl Shared {
                 self.reply(response, false).await;
                 return;
             }
+        };
+        let approval_capability = match &request.command {
+            RpcCommand::Oino(OinoCommand::Hello { ui, .. }) => Some(
+                ui.as_ref()
+                    .and_then(|v| v.get("approvals"))
+                    .and_then(JsonValue::as_bool)
+                    == Some(true),
+            ),
+            _ => None,
         };
         let kind = request.command.kind();
         let prompt = matches!(
@@ -113,6 +165,8 @@ impl Shared {
         let request_id = request.id.as_ref().map(id_text);
         let result = self.backend.send_with_id(request_id, request.command).await;
         if let (Some(connection), true) = (hello, result.is_ok()) {
+            self.backend
+                .set_approval_ui(approval_capability.unwrap_or(false));
             *lock(&self.connection) = Arc::new(connection);
         }
         let response = match result {
@@ -320,9 +374,18 @@ impl RpcServer {
             }
         };
         drop(pending);
+        self.backend.set_approval_ui(false);
         self.backend.shutdown().await;
         drop(shared);
         let _ = writer.await;
         result
     }
+}
+
+fn json_approval_response(mut value: JsonValue) -> JsonValue {
+    if let Some(object) = value.as_object_mut() {
+        object.remove("type");
+        object.remove("id");
+    }
+    value
 }

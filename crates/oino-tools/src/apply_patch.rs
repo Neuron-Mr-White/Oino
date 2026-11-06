@@ -162,6 +162,28 @@ impl AgentTool for ApplyPatchTool {
     }
 }
 
+/// All patch source and destination paths, parsed by the execution parser.
+///
+/// # Errors
+/// Invalid patch syntax, or an empty source/destination path.
+pub fn patch_paths(input: &str) -> Result<Vec<String>, ToolError> {
+    let mut paths = Vec::new();
+    for operation in parse(input)? {
+        paths.push(operation.path);
+        if let Kind::Update {
+            destination: Some(destination),
+            ..
+        } = operation.kind
+        {
+            paths.push(destination);
+        }
+    }
+    if paths.is_empty() || paths.iter().any(|p| p.trim().is_empty()) {
+        return Err(ToolError::new("patch destination must be nonempty"));
+    }
+    Ok(paths)
+}
+
 struct Operation {
     path: String,
     kind: Kind,

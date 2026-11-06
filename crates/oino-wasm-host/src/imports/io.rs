@@ -122,6 +122,8 @@ fn spawn(
     cx: &CallContext,
     spec: wp::SpawnSpec,
 ) -> Result<Arc<process::ChildHandle>, HostError> {
+    ext.host
+        .check_process(&ext.id, cx, &spec.command, &spec.args)?;
     let perms = ext.perms();
     ExtShared::require(
         perms.allows_program(&spec.command, ext.bundled),
@@ -291,6 +293,9 @@ impl<T: Send> wp::HostWithStore<T> for HostState {
             &format!("process.allow:{command}"),
         ) {
             Ok(()) => {
+                if let Err(error) = ext.host.check_process(&ext.id, &cx, &command, &args) {
+                    return Ok(Err(convert::host_error(error)));
+                }
                 let cwd = host_path(&cx, options.cwd);
                 let resolved = resolve_program(&ext, &command);
                 process::exec(

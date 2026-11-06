@@ -17,6 +17,7 @@ mod host;
 mod listener;
 mod model;
 mod nested;
+pub mod permission;
 mod prompt;
 mod queue;
 mod retry;
@@ -302,6 +303,7 @@ pub(crate) struct Inner {
     pub(crate) editor_text: Mutex<String>,
     /// Topics, frontends, running bash calls, checkpoints, runtime handle.
     pub(crate) frontend: feeds::FrontendState,
+    pub(crate) permission: Mutex<permission::PermissionState>,
 }
 
 /// One live session. Cheap to clone.
@@ -492,6 +494,7 @@ impl AgentSession {
             runtime: std::sync::OnceLock::new(),
             editor_text: Mutex::new(String::new()),
             frontend: feeds::FrontendState::new(),
+            permission: Mutex::new(permission::PermissionState::default()),
         });
         let _ = session_stream.inner.set(Arc::downgrade(&inner));
         let session = Self { inner };
@@ -1043,6 +1046,7 @@ impl AgentSession {
         self.abort_compaction();
         self.abort_branch_summary();
         self.abort_bash();
+        self.cancel_approvals();
         self.inner.ui.cancel_all();
         self.inner.agent.abort();
         if tokio::time::timeout(ABORT_IDLE_BOUND, self.wait_for_idle())
@@ -1096,6 +1100,7 @@ impl AgentSession {
         self.abort_bash();
         self.inner.agent.abort();
         self.runner().invalidate(None);
+        self.cancel_approvals();
         self.inner.ui.cancel_all();
         {
             let mut registry = lock(&self.inner.registry);

@@ -995,6 +995,10 @@ impl AgentSession {
                 router: agents.router.get().cloned(),
             }),
         });
+        session.set_autonomy(spec.autonomy.unwrap_or_default().min(self.autonomy()));
+        if !matches!(spec.ui, super::UiPolicy::Forward) {
+            session.set_unattended();
+        }
         context.bind(&session);
         Ok((session, lease, file))
     }

@@ -1,0 +1,34 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.workflow",
+  "name": "Workflow",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Read-only Plan mode and historical workflow rendering. Autonomy and approvals are enforced by the host.",
+  "license": "MIT",
+  "permissions": {
+    "fs": {
+      "project": "write"
+    },
+    "sessionControl": true,
+    "network": {
+      "hosts": [
+        "openrouter.ai",
+        "api.typesafe.ai"
+      ]
+    },
+    "env": [
+      "TMPDIR",
+      "TYPESAFE_API_KEY",
+      "OPENROUTER_API_KEY"
+    ],
+    "secrets": true,
+    "credentials": [
+      "openrouter"
+    ]
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:5e2f54024d8c46b0b3b24dde23efd9dc37819c549d76a894aa4740569fb88549"
+  }
+}

@@ -17,6 +17,8 @@
     reason = "`Extension::init` is async in the SDK; this init registers synchronously"
 )]
 
+#[path = "../../../../crates/oino-settings/src/autonomy.rs"]
+pub mod autonomy;
 pub mod bash;
 pub mod decide;
 pub mod pathx;
@@ -31,15 +33,16 @@ use oino_extension::prelude::*;
 use oino_extension::session::{Delivery, Provenance};
 use oino_extension::sync::SessionMap;
 use oino_extension::wit::session as ws;
-use unipi_kit::jev;
 use unipi_kit::settings::Store;
 use unipi_kit::topics::{
     self, ModuleReady, PermissionModeChanged, PlanModeChanged, WorkflowStatus,
 };
 
-use crate::decide::{Decision, Deps, JevRisk, Mode, Step};
+use crate::decide::Mode;
 use crate::plan::{DISCARD, KEEP, PLAN_MESSAGE_TYPE, PLAN_STATE_ENTRY, PLAN_TOOL, PlanState};
-use crate::rules::{PermissionRule, RuleDecision, RuleScope, suggest_pattern};
+use crate::rules::RuleScope;
+#[cfg(test)]
+use crate::rules::suggest_pattern;
 use crate::settings::{CLEAR_RULES, NAMESPACE};
 
 const STATUS_KEY: &str = "unipi-workflow";
@@ -113,7 +116,12 @@ pub fn describe_tool_call(tool: &str, input: &Value) -> String {
     };
     match tool {
         "bash" | "powershell" => field("command"),
-        "write" | "edit" => field("path"),
+        "write" | "edit" => input
+            .get("file_path")
+            .or_else(|| input.get("path"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
         _ => input.to_string().chars().take(300).collect(),
     }
 }
@@ -237,37 +245,6 @@ impl Workflow {
         let _ = oino_extension::wit::registry::register_settings(&ns.to_string());
     }
 
-    // ── permission mode ──────────────────────────────────────────────────────
-
-    /// Sets THIS chat's mode (E-18): session state, persisted as a `unipi:permission-mode`
-    /// entry so it survives restarts (G-02 — a safety choice must not reset to the
-    /// default when the app restarts; an Ask chat must never come back as auto).
-    fn set_mode(&self, mode: Mode, session_id: &str) {
-        self.modes.with(session_id, |m| mode.as_str().clone_into(m));
-        let _ = session::append_entry(
-            PERMISSION_STATE_ENTRY,
-            Some(&json!({"mode": mode.as_str()})),
-        );
-        self.update_status(session_id, None, Some(mode.as_str()));
-        unipi_kit::bus::emit(&PermissionModeChanged {
-            mode: mode.as_str().into(),
-        });
-        self.debug(
-            session_id,
-            &format!("mode set to {} (session)", mode.as_str()),
-        );
-    }
-
-    /// "Make default" (E-18): the one explicit way to change the PC default — the global
-    /// `defaultMode` in the agent dir. Never touches a repo.
-    fn make_default(&self, mode: Mode, session_id: &str) {
-        settings::persist_default_mode(&self.settings, mode.as_str());
-        self.debug(
-            session_id,
-            &format!("default mode set to {}", mode.as_str()),
-        );
-    }
-
     fn clear_rules(&self) -> usize {
         let count = self.resolved("clear-rules").rules.len();
         settings::clear_rules(&self.settings);
@@ -275,109 +252,8 @@ impl Workflow {
         count
     }
 
-    async fn ask_jev(&self, state: &str) -> Option<JevRisk> {
-        let all = control::settings()
-            .ok()
-            .and_then(|s| s.get("extensionSettings").cloned())
-            .unwrap_or_else(|| json!({NAMESPACE: self.settings.get(NAMESPACE).0}));
-        let js = jev::Settings::resolve(&all, Some(NAMESPACE));
-        let questions = json!({"risk": {
-            "type": "choice",
-            "instructions": "Would running this shell command be safe without asking the user first?",
-            "criteria": {
-                "safe": "Routine development command with no destructive or external side effects beyond the project (build, test, lint, install deps, run scripts, git add/commit)",
-                "needs_approval": "Could modify things outside the project, publish/deploy, delete data, change system/global config, or spend money",
-                "dangerous": "Destructive, irreversible, exfiltrates secrets, or escalates privileges",
-            },
-        }});
-        let answers = jev::ask(&js, state, &questions).await?;
-        let a = answers.get("risk")?;
-        Some(JevRisk {
-            choice: a.choice.clone()?,
-            confidence: a.confidence.unwrap_or(0.0),
-        })
-    }
-
-    /// The approval prompt → `Err(reason)` when denied.
-    async fn approve(
-        &self,
-        cx: &Ctx,
-        tool: &str,
-        summary: &str,
-        reason: &str,
-        subject: &str,
-    ) -> std::result::Result<(), String> {
-        let pattern = suggest_pattern(tool, subject);
-        let answer = ui::dialog(&approval_request(tool, summary, reason, &pattern))
-            .await
-            .unwrap_or(Value::Null);
-        let value = answer.get("value").unwrap_or(&answer);
-        let option = value
-            .get("optionId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let feedback = value
-            .get("feedback")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|f| !f.is_empty())
-            .map(ToOwned::to_owned);
-        match option {
-            "allow_once" => {
-                self.debug(cx.session_id(), &format!("approved tool={tool} rule=-"));
-                Ok(())
-            }
-            "allow_always" => {
-                settings::persist_rule(
-                    &self.settings,
-                    PermissionRule {
-                        tool: tool.to_owned(),
-                        pattern: pattern.clone(),
-                        decision: RuleDecision::Allow,
-                        scope: RuleScope::Project,
-                    },
-                );
-                self.register_namespace();
-                if cx.has_ui() {
-                    let _ = ui::notify(
-                        &format!("Permission rule saved: allow {tool} `{pattern}`"),
-                        "info",
-                    );
-                }
-                self.debug(
-                    cx.session_id(),
-                    &format!("approved tool={tool} rule={pattern}"),
-                );
-                Ok(())
-            }
-            other => {
-                let note = if other == "deny_note" && feedback.is_none() {
-                    ui::input("Why deny? (sent to the agent)", Some(""))
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|n| n.trim().to_owned())
-                        .filter(|n| !n.is_empty())
-                } else {
-                    feedback
-                };
-                self.debug(
-                    cx.session_id(),
-                    &format!(
-                        "denied tool={tool} note={}",
-                        serde_json::to_string(note.as_deref().unwrap_or("")).unwrap_or_default()
-                    ),
-                );
-                Err(match note {
-                    Some(n) => format!("Blocked by permission (user denied): {n}"),
-                    None => "Blocked by permission (user denied)".to_owned(),
-                })
-            }
-        }
-    }
-
     /// The `tool_call` gate.
-    async fn gate(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+    fn gate(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
         let tool = ev
             .get("toolName")
             .and_then(Value::as_str)
@@ -385,77 +261,16 @@ impl Workflow {
             .to_owned();
         let input = ev.get("input").cloned().unwrap_or(Value::Null);
         let subject = describe_tool_call(&tool, &input);
-        let summary = clip(&subject, usize::MAX >> 1);
         let cwd = cx.cwd().display().to_string();
         let tmp = Self::tmpdir();
-        let block = |reason: String| Some(json!({"block": true, "reason": reason}));
-        let r = self.resolved(cx.session_id());
         let state = self.plans.with(cx.session_id(), |s| s.clone());
+        // Permissions and approvals are host-owned. Plan is an independent
+        // restriction and neither legacy Full nor a saved allow can override it.
         match plan::enforce(&tool, &subject, &state, &cwd, &tmp) {
-            Some(plan::Enforcement::Block(reason)) => return block(reason),
-            Some(plan::Enforcement::Ask(reason)) if r.mode != Mode::Full => {
-                if !cx.has_ui() {
-                    return block(reason);
-                }
-                return self
-                    .approve(cx, &tool, &summary, &reason, &subject)
-                    .await
-                    .err()
-                    .and_then(block);
+            Some(plan::Enforcement::Block(reason) | plan::Enforcement::Ask(reason)) => {
+                Some(json!({"block": true, "reason": reason}))
             }
-            _ => {}
-        }
-        let deps = Deps {
-            mode: r.mode,
-            jev_confidence: r.jev_confidence,
-            rules: &r.rules,
-            cwd: &cwd,
-            tmpdir: &tmp,
-            has_ui: cx.has_ui(),
-        };
-        let decision = match decide::decide(&tool, &subject, &deps) {
-            Step::Done(d) => d,
-            Step::NeedsJev { state, subject } => {
-                let risk = self.ask_jev(&state).await;
-                decide::after_jev(risk.as_ref(), &subject, &deps)
-            }
-        };
-        // F-06: child workers get the tools their profile grants. A background child has
-        // no one to ask (its dialogs auto-deny), so an ask would always be a denial —
-        // the profile's grant is the consent. Saved deny rules already decided above.
-        let decision = if cx.is_child()
-            && matches!(&decision, Decision::Ask(_, _))
-            && oino_extension::control::active_tools()
-                .iter()
-                .any(|t| t == &tool)
-        {
-            Decision::Allow(format!("granted by the child's profile ({tool})"))
-        } else {
-            decision
-        };
-        let (action, reason) = match &decision {
-            Decision::Allow(r) => ("allow", r.clone()),
-            Decision::Ask(r, _) => ("ask", r.clone()),
-            Decision::Block(r) => ("block", r.clone()),
-        };
-        self.debug(
-            cx.session_id(),
-            &format!(
-                "decision tool={tool} mode={} action={action} reason={} subject={}",
-                r.mode.as_str(),
-                serde_json::to_string(&reason).unwrap_or_default(),
-                serde_json::to_string(&subject.chars().take(200).collect::<String>())
-                    .unwrap_or_default()
-            ),
-        );
-        match decision {
-            Decision::Allow(_) => None,
-            Decision::Block(reason) => block(reason),
-            Decision::Ask(reason, subj) => self
-                .approve(cx, &tool, &summary, &reason, &subj)
-                .await
-                .err()
-                .and_then(block),
+            None => None,
         }
     }
 
@@ -703,64 +518,6 @@ impl Workflow {
         }
     }
 
-    fn permission_command(&self, args: &str, cx: &Ctx) {
-        let req = args.trim().to_lowercase();
-        let notify = |m: &str, k: &str| {
-            if cx.has_ui() {
-                let _ = ui::notify(m, k);
-            }
-        };
-        if req.is_empty() || req == "status" {
-            // G-10: re-read the settings files first — another chat's "make default"
-            // wrote the global default and this session's in-memory store is stale.
-            self.settings.refresh();
-            let r = self.resolved(cx.session_id());
-            notify(
-                &format!(
-                    "Permission mode: {} (this chat: {} · default for new chats: {})",
-                    r.mode.as_str(),
-                    r.session_mode.as_deref().unwrap_or("-"),
-                    r.default_mode.as_str()
-                ),
-                "info",
-            );
-            return;
-        }
-        // E-18: "make default" is the only persisted change — the GLOBAL default in the
-        // agent dir. Everything else stays in this chat.
-        if let Some(rest) = req.strip_prefix("make-default") {
-            let mode = match Mode::parse(rest.trim()) {
-                Some(mode) => mode,
-                None if rest.trim().is_empty() => self.resolved(cx.session_id()).mode,
-                None => {
-                    notify(
-                        &format!(
-                            "Unknown permission mode \"{}\" — use ask, auto or full",
-                            rest.trim()
-                        ),
-                        "warning",
-                    );
-                    return;
-                }
-            };
-            self.make_default(mode, cx.session_id());
-            notify(
-                &format!("Default permission mode: {} (new chats)", mode.as_str()),
-                "info",
-            );
-            return;
-        }
-        let Some(mode) = Mode::parse(&req) else {
-            notify(
-                &format!("Unknown permission mode \"{req}\" — use ask, auto, full or make-default"),
-                "warning",
-            );
-            return;
-        };
-        self.set_mode(mode, cx.session_id());
-        notify(&format!("Permission mode: {req} (this chat only)"), "info");
-    }
-
     async fn plan_submit(&self, cx: &ToolCtx) -> ToolResult {
         let err = |t: String| ToolResult::error(t).with_details(json!({}));
         let (active, file, kept) = self.plans.with(cx.session_id(), |s| {
@@ -911,7 +668,7 @@ impl Extension for Workflow {
         cx.settings_namespace(&settings::namespace(0).to_json());
 
         cx.on(EventKind::ToolCall, |ext, ev, cx| async move {
-            Ok(ext.gate(&ev, &cx).await)
+            Ok(ext.gate(&ev, &cx))
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.on_session_start(&cx);
@@ -946,32 +703,8 @@ impl Extension for Workflow {
             Ok(())
         });
 
-        cx.command(
-            Command::<Self>::new("permission")
-                .description("Permission mode — ask · auto (jev-judged) · full · make-default")
-                .run(|ext, args, cx| async move {
-                    ext.permission_command(&args, &cx.cx);
-                    Ok(())
-                })
-                .complete(|_ext, prefix, _cx| async move {
-                    completions(
-                        &prefix,
-                        &[
-                            ("ask", "Prompt before every write, bash call and other tool (this chat)"),
-                            (
-                                "auto",
-                                "Read-only and workspace writes run; jev judges ambiguous bash (this chat)",
-                            ),
-                            ("full", "Run everything — only saved deny rules block (this chat)"),
-                            ("make-default", "Set the default mode new chats start with (this PC)"),
-                            ("make-default ask", "Default: prompt before every tool call"),
-                            ("make-default auto", "Default: jev judges ambiguous bash"),
-                            ("make-default full", "Default: run everything but deny rules"),
-                            ("status", "Show this chat's mode and the default"),
-                        ],
-                    )
-                }),
-        );
+        // Historical permission entries remain readable. Only the host frontend
+        // may change autonomy; old extension commands no longer grant consent.
         cx.command(
             Command::<Self>::new("plan")
                 .description("Plan mode — plan with the user, then approve a plan")
@@ -1052,23 +785,6 @@ impl Extension for Workflow {
                 .description("Toggle plan mode")
                 .run(|ext, cx| async move {
                     ext.toggle_plan(&cx.cx);
-                    Ok(())
-                }),
-        );
-        cx.shortcut(
-            Shortcut::<Self>::new("unipi.permission.cycle", &["alt+m"])
-                .description("Cycle permission mode (ask → auto → full)")
-                .run(|ext, cx| async move {
-                    let next = ext.resolved(cx.session_id()).mode.next();
-                    ext.set_mode(next, cx.session_id());
-                    if cx.has_ui() {
-                        let label = match next {
-                            Mode::Ask => "ask (always prompt)",
-                            Mode::Auto => "auto (jev judges ambiguous bash)",
-                            Mode::Full => "full (only deny rules block)",
-                        };
-                        let _ = ui::notify(&format!("Permission mode: {label}"), "info");
-                    }
                     Ok(())
                 }),
         );

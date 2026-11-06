@@ -854,6 +854,13 @@ impl Subagents {
     }
 
     fn set_background(&self, sid: &str, id: &str, background: bool) {
+        if background && let Some(run) = self.run(sid, id) {
+            let _ = oino_extension::bus::publish(
+                "oino:permission:background",
+                &json!({"agentId": run.agent.id()}),
+                false,
+            );
+        }
         self.update(sid, id, |r| r.background = background);
         self.persist(sid);
         self.publish(sid);

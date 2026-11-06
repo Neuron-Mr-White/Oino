@@ -63,6 +63,7 @@ pub mod registry;
 pub mod truncate;
 pub mod write;
 
+pub use apply_patch::patch_paths;
 pub use bash::{
     BashDetachRegistry, BashOutcome, DetachedProcess, ShellRunOptions, ShellTool, run_shell_command,
 };
@@ -80,6 +81,7 @@ pub use info::{
 pub use js::{CodemodeTool, ToolSearchTool};
 pub use ls::LsTool;
 pub use mutation_queue::FileMutationQueue;
+pub use path_utils::resolve_to_cwd as canonical_path;
 pub use read::ReadTool;
 pub use registry::{
     builtin_tool_infos, builtin_tools, coding_tools, create_tool, read_only_tools, tool_by_name,

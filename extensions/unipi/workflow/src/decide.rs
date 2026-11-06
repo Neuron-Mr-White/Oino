@@ -1,8 +1,7 @@
 //! The permission decision matrix (unipi `src/permission/decide.ts`), pure. The jev step is
 //! split out: [`decide`] returns [`Step::NeedsJev`] and [`after_jev`] finishes the decision.
 
-use crate::bash::{BashKind, classify_bash};
-use crate::pathx::{basename, is_inside, resolve};
+use crate::pathx::{basename, resolve};
 use crate::rules::{PermissionRule, RuleDecision, match_rule};
 
 /// Tools that cannot mutate anything — always allowed (unipi `READ_ONLY_TOOLS`).
@@ -161,101 +160,49 @@ fn ask(r: impl Into<String>, s: impl Into<String>) -> Step {
 /// Classifies one tool call (plan mode is enforced before this, by the caller).
 #[must_use]
 pub fn decide(tool: &str, raw_subject: &str, d: &Deps<'_>) -> Step {
-    let is_write = tool == "write" || tool == "edit";
+    let is_write = matches!(tool, "write" | "edit");
+    if is_write && raw_subject.trim().is_empty() {
+        return Step::Done(Decision::Block("file_path must be nonempty".into()));
+    }
     let subject = if is_write {
         resolve(d.cwd, raw_subject)
     } else {
         raw_subject.to_owned()
     };
-    if let Some(rule) = match_rule(d.rules, tool, &subject) {
-        return match rule.decision {
-            RuleDecision::Deny => Step::Done(Decision::Block(format!(
-                "Blocked by permission (saved deny rule: {})",
-                rule.pattern
-            ))),
-            RuleDecision::Allow => allow(format!("saved allow rule: {}", rule.pattern)),
+    if let Some(rule) = match_rule(d.rules, tool, &subject)
+        && rule.decision == RuleDecision::Deny
+    {
+        return Step::Done(Decision::Block(format!(
+            "Blocked by permission (saved deny rule: {})",
+            rule.pattern
+        )));
+    }
+    if matches!(tool, "bash" | "powershell" | "bg_run") {
+        use crate::autonomy::{Level, bash_floor, powershell_floor};
+        let floor = if tool == "powershell" {
+            powershell_floor(raw_subject)
+        } else {
+            bash_floor(raw_subject)
         };
-    }
-    if READ_ONLY_TOOLS.contains(&tool) {
-        return allow("read-only tool");
-    }
-    if is_write {
-        let inside = is_inside(&subject, d.cwd) || is_inside(&subject, d.tmpdir);
-        if inside && d.mode != Mode::Ask {
-            return allow("inside the workspace");
-        }
-        if d.mode == Mode::Full {
-            return allow("full mode · outside the workspace");
-        }
-        if !d.has_ui {
-            return allow("no UI — full behaviour");
-        }
-        return ask(
-            if inside {
-                "ask mode"
+        if floor > Level::Medium || tool == "bg_run" {
+            return if d.has_ui {
+                ask("needs Autonomy High", subject)
             } else {
-                "writes outside the workspace"
-            },
-            subject,
-        );
+                Step::Done(Decision::Block("needs Autonomy High".into()))
+            };
+        }
     }
-    if tool == "bash" {
-        let v = classify_bash(&subject);
-        return match v.kind {
-            BashKind::Dangerous => {
-                if !d.has_ui {
-                    Step::Done(Decision::Block(format!(
-                        "Blocked by permission (dangerous, no UI to confirm): {}",
-                        v.reason
-                    )))
-                } else if d.mode == Mode::Full {
-                    allow(format!("full mode · {}", v.reason))
-                } else {
-                    ask(format!("dangerous: {}", v.reason), subject)
-                }
-            }
-            BashKind::Kanboard | BashKind::ReadOnly => {
-                if d.mode == Mode::Ask && d.has_ui {
-                    ask("ask mode", subject)
-                } else {
-                    allow(v.reason)
-                }
-            }
-            BashKind::Unknown => match d.mode {
-                Mode::Full => allow("full mode"),
-                Mode::Auto => Step::NeedsJev {
-                    state: jev_risk_state(d.cwd, &subject),
-                    subject,
-                },
-                Mode::Ask if !d.has_ui => allow("no UI — full behaviour"),
-                Mode::Ask => ask("ask mode", subject),
-            },
-        };
-    }
-    if d.mode == Mode::Ask && d.has_ui {
-        let clipped: String = raw_subject.chars().take(120).collect();
-        return ask("ask mode", clipped);
-    }
-    allow(format!("{} mode", d.mode.as_str()))
+    allow("host permission gate enforces ceiling and rules")
 }
 
 /// Finishes an auto-mode bash decision with jev's verdict (`None` = unavailable).
 #[must_use]
 pub fn after_jev(risk: Option<&JevRisk>, subject: &str, d: &Deps<'_>) -> Decision {
-    if let Some(r) = risk
-        && r.choice == "safe"
-        && r.confidence >= d.jev_confidence
-    {
-        return Decision::Allow(format!("jev: safe {:.2}", r.confidence));
-    }
-    let label = risk.map_or_else(
-        || "jev: unavailable".to_owned(),
-        |r| format!("jev: {} {:.2}", r.choice, r.confidence),
-    );
+    let _ = risk;
     if !d.has_ui {
-        return Decision::Allow(format!("no UI — full behaviour ({label})"));
+        return Decision::Block("needs Autonomy High".into());
     }
-    Decision::Ask(label, subject.to_owned())
+    Decision::Ask("needs Autonomy High".into(), subject.to_owned())
 }
 
 #[cfg(test)]
@@ -297,21 +244,34 @@ mod tests {
     fn is_allow(d: &Decision) -> bool {
         matches!(d, Decision::Allow(_))
     }
-    fn is_ask(d: &Decision) -> bool {
-        matches!(d, Decision::Ask(..))
-    }
 
-    fn safe() -> Option<JevRisk> {
-        Some(JevRisk {
-            choice: "safe".into(),
-            confidence: 0.95,
-        })
-    }
-    fn risky() -> Option<JevRisk> {
-        Some(JevRisk {
-            choice: "needs_approval".into(),
-            confidence: 0.82,
-        })
+    #[test]
+    fn audit_unattended_and_saved_allow_never_bypass_floor() {
+        let rules = [PermissionRule {
+            tool: "bash".into(),
+            pattern: "npm run *".into(),
+            decision: RuleDecision::Allow,
+            scope: RuleScope::Project,
+        }];
+        for (tool, command) in [
+            ("powershell", "Remove-Item -Recurse -Force x"),
+            ("bg_run", "rm -rf x"),
+            ("bash", "npm run build; rm -rf x"),
+            ("bash", "echo \"$(rm -rf x)\""),
+        ] {
+            assert_eq!(
+                run(tool, command, &deps(Mode::Auto, &rules, false), None),
+                Decision::Block("needs Autonomy High".into())
+            );
+        }
+        assert_eq!(
+            after_jev(None, "git push", &deps(Mode::Auto, &[], false)),
+            Decision::Block("needs Autonomy High".into())
+        );
+        assert!(matches!(
+            run("write", "", &deps(Mode::Auto, &[], false), None),
+            Decision::Block(_)
+        ));
     }
 
     #[test]
@@ -332,202 +292,6 @@ mod tests {
                 assert!(is_allow(&run(tool, "", &deps(mode, &[], true), None)));
             }
         }
-    }
-
-    #[test]
-    fn writes() {
-        for tool in ["write", "edit"] {
-            for mode in [Mode::Auto, Mode::Full] {
-                assert!(is_allow(&run(
-                    tool,
-                    "src/a.ts",
-                    &deps(mode, &[], true),
-                    None
-                )));
-            }
-            assert!(is_ask(&run(
-                tool,
-                "src/a.ts",
-                &deps(Mode::Ask, &[], true),
-                None
-            )));
-            for mode in [Mode::Auto, Mode::Ask] {
-                let d = run(tool, "/etc/hosts", &deps(mode, &[], true), None);
-                assert!(matches!(&d, Decision::Ask(r, _) if r.contains("outside the workspace")));
-            }
-            assert!(is_allow(&run(
-                tool,
-                "/etc/hosts",
-                &deps(Mode::Full, &[], true),
-                None
-            )));
-            assert!(is_allow(&run(
-                tool,
-                "/tmp/scratch.ts",
-                &deps(Mode::Auto, &[], true),
-                None
-            )));
-            assert!(is_allow(&run(
-                tool,
-                "/etc/hosts",
-                &deps(Mode::Auto, &[], false),
-                None
-            )));
-        }
-    }
-
-    #[test]
-    fn bash_matrix() {
-        for mode in [Mode::Auto, Mode::Full] {
-            assert!(is_allow(&run(
-                "bash",
-                "git status && ls",
-                &deps(mode, &[], true),
-                None
-            )));
-        }
-        assert!(is_ask(&run(
-            "bash",
-            "ls",
-            &deps(Mode::Ask, &[], true),
-            None
-        )));
-        assert_eq!(
-            run(
-                "bash",
-                "rm -rf /tmp/wd-test",
-                &deps(Mode::Auto, &[], true),
-                None
-            ),
-            Decision::Ask("dangerous: rm -rf".into(), "rm -rf /tmp/wd-test".into())
-        );
-        assert!(is_allow(&run(
-            "bash",
-            "rm -rf /tmp/wd-test",
-            &deps(Mode::Full, &[], true),
-            None
-        )));
-        assert_eq!(
-            run(
-                "bash",
-                "npm install left-pad",
-                &deps(Mode::Auto, &[], true),
-                safe()
-            ),
-            Decision::Allow("jev: safe 0.95".into())
-        );
-        assert!(
-            matches!(run("bash", "npm publish", &deps(Mode::Auto, &[], true), risky()), Decision::Ask(r, _) if r == "jev: needs_approval 0.82")
-        );
-        let mut strict = deps(Mode::Auto, &[], true);
-        strict.jev_confidence = 0.99;
-        assert!(is_ask(&run(
-            "bash",
-            "npm install left-pad",
-            &strict,
-            safe()
-        )));
-        assert!(
-            matches!(run("bash", "npm install x", &deps(Mode::Auto, &[], true), None), Decision::Ask(r, _) if r == "jev: unavailable")
-        );
-        let board =
-            "unipi-kanboard --actor agent --project p-1 move UNI-3 blocked --comment 'need format'";
-        for mode in [Mode::Auto, Mode::Full] {
-            assert!(
-                matches!(run("bash", board, &deps(mode, &[], true), None), Decision::Allow(r) if r.contains("kanboard CLI"))
-            );
-        }
-        assert!(is_ask(&run(
-            "bash",
-            board,
-            &deps(Mode::Ask, &[], true),
-            None
-        )));
-        assert!(is_allow(&run(
-            "bash",
-            "npm publish",
-            &deps(Mode::Full, &[], true),
-            None
-        )));
-    }
-
-    #[test]
-    fn other_tools_and_rules() {
-        for mode in [Mode::Auto, Mode::Full] {
-            assert!(is_allow(&run(
-                "spawn_helper",
-                "{}",
-                &deps(mode, &[], true),
-                None
-            )));
-        }
-        assert!(is_ask(&run(
-            "spawn_helper",
-            "{}",
-            &deps(Mode::Ask, &[], true),
-            None
-        )));
-        let allow_rule = [PermissionRule {
-            tool: "bash".into(),
-            pattern: "npm install *".into(),
-            decision: RuleDecision::Allow,
-            scope: RuleScope::Project,
-        }];
-        assert!(is_allow(&run(
-            "bash",
-            "npm install left-pad",
-            &deps(Mode::Ask, &allow_rule, true),
-            None
-        )));
-        let deny = [PermissionRule {
-            tool: "*".into(),
-            pattern: "*publish*".into(),
-            decision: RuleDecision::Deny,
-            scope: RuleScope::Project,
-        }];
-        assert!(
-            matches!(run("bash", "npm publish --access public", &deps(Mode::Full, &deny, true), None), Decision::Block(r) if r.contains("saved deny rule"))
-        );
-        let read_deny = [PermissionRule {
-            tool: "read".into(),
-            pattern: "secret*".into(),
-            decision: RuleDecision::Deny,
-            scope: RuleScope::Project,
-        }];
-        assert!(matches!(
-            run(
-                "read",
-                "secret.txt",
-                &deps(Mode::Auto, &read_deny, true),
-                None
-            ),
-            Decision::Block(_)
-        ));
-        let path_rule = [PermissionRule {
-            tool: "write".into(),
-            pattern: format!("{CWD}/docs/plans/*"),
-            decision: RuleDecision::Allow,
-            scope: RuleScope::Project,
-        }];
-        assert!(is_allow(&run(
-            "write",
-            "docs/plans/p.md",
-            &deps(Mode::Ask, &path_rule, true),
-            None
-        )));
-    }
-
-    #[test]
-    fn no_ui() {
-        assert!(is_allow(&run(
-            "bash",
-            "npm install left-pad",
-            &deps(Mode::Auto, &[], false),
-            risky()
-        )));
-        assert!(
-            matches!(run("bash", "rm -rf /", &deps(Mode::Auto, &[], false), None), Decision::Block(r) if r.contains("no UI to confirm"))
-        );
     }
 
     #[test]

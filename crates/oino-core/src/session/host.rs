@@ -138,6 +138,24 @@ impl AgentSession {
             HostOp::RegisterShortcut(_) | HostOp::UnregisterShortcut(_)
         );
         let result = match op {
+            HostOp::CheckProcess { command, args } => {
+                // argv is not shell source. Quote each token to avoid interpreting
+                // semicolons within arguments as separate commands during policy.
+                let quote = |s: &str| format!("'{}'", s.replace('\'', "'\"'\"'"));
+                let source = std::iter::once(quote(&command))
+                    .chain(args.iter().map(|a| quote(a)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let args =
+                    json!({"command":source,"summary":"extension process","riskLevel":"high"})
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default();
+                self.check_permission("bash", &args)
+                    .await
+                    .map_err(HostError::Failed)?;
+                Ok(JsonValue::Null)
+            }
             HostOp::Subscribe(kinds) => {
                 let loaded = loaded
                     .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;

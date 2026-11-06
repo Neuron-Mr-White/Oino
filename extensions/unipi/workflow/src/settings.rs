@@ -14,10 +14,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use unipi_kit::jev;
-use unipi_kit::settings::{
-    Field, Kind, Namespace, Scope, Section, Store, Values, WriteScope, choice,
-};
+use unipi_kit::settings::{Field, Namespace, Section, Store, Values, WriteScope};
 
 use crate::decide::Mode;
 use crate::rules::{PermissionRule, RuleScope, normalize_rules};
@@ -35,23 +32,9 @@ pub const CLEAR_RULES: &str = "permission-clear-rules";
 pub fn defaults() -> Value {
     json!({
         "defaultMode": "auto",
-        "jevConfidence": 0.7,
         "rules": [],
         "debug": false,
-        "decisionModel": jev::consumer_defaults(),
     })
-}
-
-fn mode_options() -> Vec<unipi_kit::settings::Choice> {
-    vec![
-        choice("ask", "ask", "prompt for everything not explicitly allowed"),
-        choice(
-            "auto",
-            "auto",
-            "allow safe calls; jev judges ambiguous bash",
-        ),
-        choice("full", "full", "allow everything except saved deny rules"),
-    ]
 }
 
 /// The hub schema; the clear action names the rule count.
@@ -69,25 +52,7 @@ pub fn namespace(rule_count: usize) -> Namespace {
         .defaults(defaults())
         .section(
             Section::new("permissions", "Permissions")
-                .description("Tool-call gate: ask, auto (jev judges ambiguous bash), or full.")
-                // E-18/F-09: no per-project `mode` field here — the mode is per chat
-                // (session state); writing one into a repo's settings.json is refused by
-                // the host. `defaultMode` is the global fallback new chats start from.
-                .field(
-                    Field::enumeration("defaultMode", "Default mode", mode_options())
-                        .description("Mode for chats that set none of their own (this PC).")
-                        .scope(Scope::Global),
-                )
-                .field(
-                    Field::number("jevConfidence", "Minimum jev confidence")
-                        .description("Auto mode accepts a 'safe' jev verdict at or above this confidence; below it, the call prompts.")
-                        .with_kind(|k| {
-                            if let Kind::Number { min, max, .. } = k {
-                                *min = Some(0.0);
-                                *max = Some(1.0);
-                            }
-                        }),
-                )
+                .description("Autonomy and approvals are enforced by the host. Historical denies remain in effect.")
                 .field(
                     Field::action("rulesCount", &label, CLEAR_RULES)
                         .description("Forget every allow/deny rule saved for this project."),
@@ -98,10 +63,6 @@ pub fn namespace(rule_count: usize) -> Namespace {
                         .advanced(),
                 ),
         )
-        .section(jev::consumer_section(
-            Some("Auto mode — Decision model"),
-            false,
-        ))
 }
 
 /// What the gate stored itself.
@@ -490,10 +451,10 @@ mod tests {
             fields.iter().all(|f| f["key"] != "mode"),
             "no `mode` field in the schema: {fields:?}"
         );
-        let default_mode = fields
-            .iter()
-            .find(|f| f["key"] == "defaultMode")
-            .expect("defaultMode stays configurable");
-        assert_eq!(default_mode["scope"], "global");
+        assert!(
+            fields
+                .iter()
+                .all(|f| f["key"] != "defaultMode" && f["key"] != "jevConfidence")
+        );
     }
 }

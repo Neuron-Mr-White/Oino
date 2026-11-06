@@ -44,6 +44,7 @@
     )
 )]
 
+pub mod autonomy;
 pub mod error;
 pub mod json;
 pub mod manager;

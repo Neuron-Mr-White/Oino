@@ -254,6 +254,43 @@ impl SettingsManager {
             .map_err(|kind| self.error(scope, kind))
     }
 
+    /// Atomically append one project exact-command grant under the settings file lock.
+    /// The view changes only after durable persistence succeeds.
+    ///
+    /// # Errors
+    /// Untrusted project, malformed envelope, or failed locked write.
+    pub fn append_permission_grant(&mut self, rule: crate::autonomy::Rule) -> Result<(), String> {
+        if !self.project_trusted || self.project_load_failed {
+            return Err("cannot save permission grant: project settings unavailable".into());
+        }
+        let mut committed = None;
+        self.storage
+            .update(SettingsScope::Project, |current| {
+                let mut layer = match current {
+                    Some(content) if !content.is_empty() => parse_layer(content)?,
+                    _ => JsonObject::new(),
+                };
+                let mut envelope: crate::autonomy::Permissions = match layer.get("permissions") {
+                    Some(value) => serde_json::from_value(value.clone())
+                        .map_err(|e| SettingsErrorKind::Write(e.to_string()))?,
+                    None => crate::autonomy::Permissions::default(),
+                };
+                envelope.validate().map_err(SettingsErrorKind::Write)?;
+                envelope.rules.push(rule);
+                envelope.validate().map_err(SettingsErrorKind::Write)?;
+                layer.insert("permissions".into(), serde_json::json!(envelope));
+                let text = serde_json::to_string_pretty(&Value::Object(layer.clone()))
+                    .map_err(|e| SettingsErrorKind::Write(e.to_string()))?;
+                committed = Some(layer);
+                Ok(text)
+            })
+            .map_err(|e| format!("cannot save permission grant: {e:?}"))?;
+        if let Some(layer) = committed {
+            self.rebuild(None, Some(layer));
+        }
+        Ok(())
+    }
+
     /// `defaultProvider` (global).
     ///
     /// # Errors
@@ -720,4 +757,41 @@ fn parse_layer(content: &str) -> Result<JsonObject, SettingsErrorKind> {
 
 fn to_value<T: serde::Serialize>(value: T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+#[cfg(test)]
+mod permission_grant_tests {
+    use super::*;
+    use crate::autonomy::{Effect, Permissions, Rule, Scope};
+    #[test]
+    fn exact_grants_append_under_lock_without_lost_updates() {
+        let dir = tempfile::tempdir().unwrap();
+        let cwd = dir.path().join("project");
+        let agent = dir.path().join("agent");
+        let mut a = SettingsManager::create(&cwd, &agent, true);
+        let mut b = SettingsManager::create(&cwd, &agent, true);
+        for (manager, id, command) in [
+            (&mut a, "a", "git push"),
+            (&mut b, "b", "npm run build --watch"),
+        ] {
+            manager
+                .append_permission_grant(Rule {
+                    id: id.into(),
+                    scope: Scope::Project {
+                        project_id: "project".into(),
+                    },
+                    tool: "bash".into(),
+                    pattern: command.into(),
+                    effect: Effect::Allow,
+                    interactive_above_ceiling: true,
+                })
+                .unwrap();
+        }
+        a.reload();
+        let permissions: Permissions =
+            serde_json::from_value(a.snapshot().project()["permissions"].clone()).unwrap();
+        assert_eq!(permissions.rules.len(), 2);
+        assert_eq!(permissions.rules[0].pattern, "git push");
+        assert_eq!(permissions.rules[1].pattern, "npm run build --watch");
+    }
 }

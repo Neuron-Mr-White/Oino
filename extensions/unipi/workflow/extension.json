@@ -4,7 +4,7 @@
   "name": "Workflow",
   "version": "3.0.0",
   "kind": "extension",
-  "description": "Permission modes (ask · auto · full) gating every tool call, and a read-only plan mode with a review screen.",
+  "description": "Read-only Plan mode and historical workflow rendering. Autonomy and approvals are enforced by the host.",
   "license": "MIT",
   "permissions": {
     "fs": { "project": "write" },

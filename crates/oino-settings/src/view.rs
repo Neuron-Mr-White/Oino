@@ -57,6 +57,12 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// Global-only autonomy default for interactive sessions and cron.
+    #[must_use]
+    pub fn autonomy_default_level(&self) -> crate::autonomy::Level {
+        crate::autonomy::default_level(self.global())
+    }
+
     /// Build a view from raw layers (`project` overrides `global`, then `overrides`).
     #[must_use]
     pub fn from_layers(

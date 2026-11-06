@@ -47,6 +47,33 @@ pub trait SessionBackend: Send + Sync {
     /// Answers a dialog (`extension_ui_response`); idempotent, first answer wins.
     fn ui_respond(&self, response: UiResponse);
 
+    /// Change the session ceiling from an authenticated frontend or dispatcher.
+    ///
+    /// # Errors
+    /// Backend does not implement autonomy control.
+    fn set_autonomy(
+        &self,
+        _level: oino_core::session::permission::Level,
+    ) -> Result<(), ClientError> {
+        Err(ClientError::Command("autonomy control unsupported".into()))
+    }
+
+    /// Opt in only when this transport implements approval request/response UI.
+    fn set_approval_ui(&self, _available: bool) {}
+
+    /// Correlated host approval response.
+    ///
+    /// # Errors
+    /// Unsupported transport, stale or wrong-session response.
+    fn approval_response(
+        &self,
+        _response: oino_core::session::permission::ApprovalResponse,
+    ) -> Result<(), ClientError> {
+        Err(ClientError::Command(
+            "approval responses unsupported".into(),
+        ))
+    }
+
     /// Current session id.
     fn session_id(&self) -> String;
 

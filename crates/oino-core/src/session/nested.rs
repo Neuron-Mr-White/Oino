@@ -135,12 +135,14 @@ impl BeforeToolCall for NestedHooks {
     fn before<'a>(
         &'a self,
         cx: BeforeToolCallContext<'a>,
-        _cancel: &'a CancellationToken,
+        cancel: &'a CancellationToken,
     ) -> futures::future::BoxFuture<'a, Result<Option<BeforeToolCallResult>, HookError>> {
         Box::pin(async move {
-            self.session
-                .before_tool_call(cx.tool_call, cx.args, Some(&self.parent))
-                .await
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => Err(HookError::new("permission request cancelled")),
+                result = self.session.before_tool_call(cx.tool_call, cx.args, Some(&self.parent)) => result,
+            }
         })
     }
 }

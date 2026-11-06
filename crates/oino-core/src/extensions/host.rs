@@ -84,6 +84,13 @@ pub enum SessionQuery {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum HostOp {
+    /// Check a process invocation before any native process or redirect side effect.
+    CheckProcess {
+        /// Executable.
+        command: String,
+        /// Exact argument vector.
+        args: Vec<String>,
+    },
     /// Subscribe to event kinds.
     Subscribe(Vec<String>),
     /// Unsubscribe from event kinds.

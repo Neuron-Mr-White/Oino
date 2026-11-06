@@ -41,3 +41,9 @@ pub mod wire;
 pub use backend::RpcBackend;
 pub use client::{ChildCommand, RpcClient, Transport};
 pub use server::{RpcServer, RpcServerError};
+
+/// Host-owned autonomy wire records. `approval_request` is an Oino event;
+/// `approval_response` is a session-bound, single-use client record.
+pub use oino_core::session::permission::{
+    ApprovalDecision, ApprovalRequest, ApprovalResponse, Level,
+};

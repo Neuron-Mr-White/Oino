@@ -263,6 +263,7 @@ impl AcpSession {
 
     /// Sends the updates that follow `session/new` / `session/load` responses.
     pub(crate) fn announce(&self) {
+        self.backend.set_approval_ui(true);
         self.shared.update(available_commands(&self.session()));
     }
 
@@ -608,9 +609,30 @@ fn on_settled(aborted: bool, session: &AgentSession, shared: &Shared) {
     }
 }
 
-fn on_oino_event(event: &OinoEvent, backend: &InProcessBackend, shared: &Shared) {
+fn on_oino_event(event: &OinoEvent, backend: &Arc<InProcessBackend>, shared: &Arc<Shared>) {
     let session = backend.runtime().session();
     match event {
+        OinoEvent::ApprovalRequest { request } => {
+            let request = request.clone();
+            let backend = Arc::clone(backend);
+            let shared = Arc::clone(shared);
+            tokio::spawn(async move {
+                let tool_call = json!({"toolCallId": request.request_id, "title": request.reason,
+                    "kind": "execute", "status": "pending", "rawInput": request.arguments});
+                let selected = shared
+                    .link
+                    .request_permission(tool_call, crate::ui::autonomy_options())
+                    .await
+                    .ok()
+                    .flatten();
+                let decision = crate::ui::autonomy_decision(selected.as_deref());
+                let _ =
+                    backend.approval_response(oino_core::session::permission::ApprovalResponse {
+                        request_id: request.request_id,
+                        decision,
+                    });
+            });
+        }
         OinoEvent::ModelChanged { .. } => shared.update(config_update(&session)),
         OinoEvent::CommandsChanged => shared.update(available_commands(&session)),
         OinoEvent::SessionReplaced { .. } => {

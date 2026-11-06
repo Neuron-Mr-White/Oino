@@ -991,6 +991,28 @@ impl SessionBackend for InProcessBackend {
         self.shared.session().ui().respond(response);
     }
 
+    fn set_autonomy(
+        &self,
+        level: oino_core::session::permission::Level,
+    ) -> Result<(), ClientError> {
+        self.shared.session().set_autonomy(level);
+        Ok(())
+    }
+
+    fn set_approval_ui(&self, available: bool) {
+        self.shared.session().set_approval_ui(available);
+    }
+
+    fn approval_response(
+        &self,
+        response: oino_core::session::permission::ApprovalResponse,
+    ) -> Result<(), ClientError> {
+        self.shared
+            .session()
+            .approval_response(response)
+            .map_err(ClientError::Command)
+    }
+
     fn session_id(&self) -> String {
         self.shared.session().session_id()
     }

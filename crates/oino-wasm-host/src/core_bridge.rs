@@ -453,6 +453,24 @@ fn cancelled_reply(v: JsonValue) -> ControlReply {
 }
 
 impl HostServices for CoreHost {
+    fn check_process(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        command: &str,
+        args: &[String],
+    ) -> Result<(), HostError> {
+        self.call_sync(
+            ext,
+            cx,
+            HostOp::CheckProcess {
+                command: command.into(),
+                args: args.to_vec(),
+            },
+        )
+        .map(|_| ())
+    }
+
     fn subscribe(&self, ext: &ExtensionId, events: &[EventKind]) {
         let _ = self.registry(ext, HostOp::Subscribe(wires(events)));
     }

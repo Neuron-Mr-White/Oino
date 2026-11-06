@@ -867,3 +867,36 @@ async fn client_write_failure_does_not_fall_back_to_host_disk() {
     );
     client.close().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn autonomy_acp_request_permission() {
+    let fixture = Fixture::new(vec![
+        tool_call(
+            "risk-1",
+            "bash",
+            json!({"command":"git push","summary":"audit","riskLevel":"low"}),
+        ),
+        FauxResponse::Text("blocked".into()),
+    ]);
+    let client = fixture.connect(ClientPolicy {
+        permissions: vec!["deny".into()],
+        ..Default::default()
+    });
+    client.initialize().await;
+    let id = session_id(&client.new_session(&fixture.cwd()).await);
+    client
+        .ok("session/prompt", prompt(&id, "try high command"))
+        .await;
+    let requests = client.requests("session/request_permission");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0]["params"]["options"][0]["optionId"],
+        "allow_once"
+    );
+    assert_eq!(requests[0]["params"]["options"][1]["optionId"], "always");
+    assert_eq!(
+        requests[0]["params"]["toolCall"]["title"],
+        "needs Autonomy High"
+    );
+    client.close().await;
+}

@@ -84,13 +84,15 @@ impl BeforeToolCall for SessionHooks {
     fn before<'a>(
         &'a self,
         cx: BeforeToolCallContext<'a>,
-        _cancel: &'a CancellationToken,
+        cancel: &'a CancellationToken,
     ) -> BoxFuture<'a, Result<Option<BeforeToolCallResult>, HookError>> {
         Box::pin(async move {
             let session = self.session()?;
-            let result = session
-                .before_tool_call(cx.tool_call, cx.args, None)
-                .await?;
+            let result = tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(HookError::new("permission request cancelled")),
+                result = session.before_tool_call(cx.tool_call, cx.args, None) => result?,
+            };
             if !result.as_ref().is_some_and(|r| r.block) {
                 let args = result
                     .as_ref()
@@ -261,6 +263,11 @@ impl AgentSession {
             &self.work_cwd().to_string_lossy(),
         )
         .map_err(|error| HookError::new(error.to_string()))?;
+        let canonical = oino_tools::canonical_args(&normalized.name, &normalized.args)
+            .map_err(|error| HookError::new(error.to_string()))?;
+        self.check_permission(&normalized.name, &canonical)
+            .await
+            .map_err(HookError::new)?;
         let runner = self.runner();
         if !runner.has_handlers("tool_call") {
             return Ok(None);
@@ -277,6 +284,21 @@ impl AgentSession {
         let Some(result) = runner.emit_tool_call(payload).await else {
             return Ok(None);
         };
+        if result.get("block") != Some(&JsonValue::Bool(true))
+            && let Some(input) = result.get("input").and_then(JsonValue::as_object)
+        {
+            let changed = oino_tools::legacy::normalize_call(
+                &call.name,
+                input,
+                &self.work_cwd().to_string_lossy(),
+            )
+            .map_err(|error| HookError::new(error.to_string()))?;
+            if changed.args != normalized.args {
+                self.check_permission(&changed.name, &changed.args)
+                    .await
+                    .map_err(HookError::new)?;
+            }
+        }
         Ok(Some(BeforeToolCallResult {
             block: result.get("block") == Some(&JsonValue::Bool(true)),
             reason: result
