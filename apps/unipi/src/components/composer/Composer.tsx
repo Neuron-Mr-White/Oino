@@ -810,6 +810,14 @@ export function Composer(props: ComposerProps) {
           })
           .catch(failed('Could not set the thinking level'));
       },
+      reload: () => {
+        // Settings, models + keys, extension packages, skills / prompts / context files:
+        // the host re-reads them and publishes `commands_changed`, so the `/` list follows.
+        void s.cmd<unknown>({ type: 'reload' }).then(
+          () => showActionNotice('Reloaded settings, models, extensions, skills and context files'),
+          failed('Could not reload'),
+        );
+      },
       compact: (focus) => {
         void s.cmd({ type: 'compact', ...(focus ? { customInstructions: focus } : {}) }).then(
           () => showActionNotice('Compacted'),

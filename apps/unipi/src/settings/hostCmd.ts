@@ -62,6 +62,7 @@ export type HostCmdOp =
   | { kind: 'install_extension'; path: string; replace?: boolean }
   | { kind: 'remove_extension'; id: string }
   | { kind: 'reload_extensions' }
+  | { kind: 'reload' }
   | { kind: 'auth_providers'; validate?: boolean }
   | { kind: 'default_model' }
   | { kind: 'available_models' }
@@ -96,6 +97,16 @@ export function reloadExtensions(hostId = settingsHostId()): Promise<HostResult<
   return hostCmd({ kind: 'reload_extensions' }, ExtensionsSchema, hostId).then((r) =>
     r.ok ? { ok: true as const, value: r.value.extensions } : r,
   );
+}
+
+/**
+ * `_oino/reload`: the host re-reads `models.json` and the provider credentials and
+ * rediscovers the extension packages — the Settings "Reload" button, for a model, key
+ * or package changed outside the app. A chat re-reads its own settings, skills and
+ * context files with `/reload` (`reload` on the session stream).
+ */
+export function reloadHost(hostId = settingsHostId()): Promise<HostResult<{ extensions: ExtensionInfo[]; models: unknown[] }>> {
+  return hostCmd({ kind: 'reload' }, z.object({ extensions: z.array(ExtensionInfoSchema), models: z.array(z.unknown()) }), hostId);
 }
 
 /**

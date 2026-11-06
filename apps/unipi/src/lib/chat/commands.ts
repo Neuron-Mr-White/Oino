@@ -17,13 +17,15 @@ export function sourceOf(c: CommandInfo): CommandSource {
  * to (`lib/composer/builtins.ts`: `SESSION_BUILTINS` acts on the chat,
  * `BUILTIN_ROUTES` opens an app surface). A built-in with neither is not
  * listed — nothing typed as a command ever reaches the model as text.
- * (`/reload` is absent: oino has no reload RPC; extensions reload from
- * Settings › Extensions.)
+ * `/reload` re-reads settings, extension packages, skills / prompts / context files,
+ * `models.json` and the credentials of the chat it runs in (the host refuses it while
+ * the chat is working); Settings › General has the host-wide one.
  */
 export const PI_BUILTINS: readonly CommandInfo[] = [
   { name: 'model', description: 'Pick the model (or /model <name>)', source: 'builtin' },
   { name: 'thinking', description: 'Thinking level (or /thinking <level>)', source: 'builtin' },
   { name: 'compact', description: 'Compact the conversation now (optional focus text)', source: 'builtin' },
+  { name: 'reload', description: 'Re-read settings, models, extensions, skills and context files', source: 'builtin' },
   { name: 'new', description: 'Start a new chat in this folder', source: 'builtin' },
   { name: 'resume', description: 'Open another chat', source: 'builtin' },
   { name: 'fork', description: 'Fork this chat into a new one', source: 'builtin' },
@@ -53,7 +55,7 @@ export const PI_BUILTINS: readonly CommandInfo[] = [
  * they cover exactly `PI_BUILTINS` (asserted by a test): none silently
  * becomes a prompt.
  */
-export const APP_HANDLED_BUILTINS = new Set(['model', 'thinking', 'compact', 'new', 'resume', 'fork', 'tree', 'name', 'copy', 'session']);
+export const APP_HANDLED_BUILTINS = new Set(['model', 'thinking', 'compact', 'reload', 'new', 'resume', 'fork', 'tree', 'name', 'copy', 'session']);
 
 /** pi's built-ins by name (the rows a bare `/` lists after the session's own). */
 const PI_ONLY = new Set(PI_BUILTINS.map((c) => c.name));

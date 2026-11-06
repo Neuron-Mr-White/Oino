@@ -580,9 +580,9 @@ describe('P0-02: engine built-ins run, never reach the model as text', () => {
     expect(prompted()).toBe(false);
   });
 
-  it('/reload is not a command (no reload RPC) and is never sent', async () => {
+  it('/reload sends `reload` (settings, models, extensions, skills) and never prompts', async () => {
     await sendCommand('/reload');
-    await waitFor(() => expect(actionNotice() ?? '').toMatch(/Unknown command \/reload/));
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'reload')).toBe(true));
     expect(prompted()).toBe(false);
   });
 

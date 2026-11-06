@@ -129,8 +129,8 @@ describe('UNI-308: isKnownCommand', () => {
   it('a pi built-in is known (routed or app-handled)', async () => {
     const { isKnownCommand } = await import('./commands');
     expect(isKnownCommand('compact', cmds)).toBe(true);
-    // No reload RPC: /reload is not a command the app offers.
-    expect(isKnownCommand('reload', cmds)).toBe(false);
+    // `/reload` reads everything back from disk (`reload` on the session stream).
+    expect(isKnownCommand('reload', cmds)).toBe(true);
     expect(isKnownCommand('settings', cmds)).toBe(true);
   });
   it('anything else is unknown', async () => {

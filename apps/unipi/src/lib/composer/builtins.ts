@@ -232,6 +232,7 @@ export const DUPLICATE_LABEL = 'Duplicate';
  *   /model [name]      → the model picker, or `set_model` for a named model
  *   /thinking [level]  → the thinking menu, or `set_thinking_level`
  *   /compact [focus]   → `compact{customInstructions}`
+ *   /reload            → `reload` (settings, models, extensions, skills, context)
  *   /new               → a new chat in this folder (the draft route)
  *   /resume            → the command center on Sessions
  *   /fork              → the ⋯ Fork action (`session_fork`)
@@ -246,6 +247,7 @@ export const SESSION_BUILTINS: Record<string, { chat: boolean }> = {
   model: { chat: false },
   thinking: { chat: false },
   compact: { chat: true },
+  reload: { chat: true },
   new: { chat: false },
   resume: { chat: false },
   fork: { chat: true },
@@ -260,6 +262,7 @@ export type SessionBuiltinDeps = {
   model: (query?: string) => void;
   thinking: (level?: string) => void;
   compact: (focus?: string) => void;
+  reload: () => void;
   newChat: () => void;
   resume: () => void;
   fork: () => void;
@@ -289,6 +292,9 @@ export function runSessionBuiltin(name: string, arg: string | undefined, deps: S
       return true;
     case 'compact':
       deps.compact(a);
+      return true;
+    case 'reload':
+      deps.reload();
       return true;
     case 'new':
       deps.newChat();

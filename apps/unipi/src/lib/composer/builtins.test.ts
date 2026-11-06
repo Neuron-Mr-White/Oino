@@ -134,6 +134,7 @@ describe('P0-02: the chat built-ins run an action', () => {
     model: vi.fn(),
     thinking: vi.fn(),
     compact: vi.fn(),
+    reload: vi.fn(),
     newChat: vi.fn(),
     resume: vi.fn(),
     fork: vi.fn(),

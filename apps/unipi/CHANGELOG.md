@@ -4,6 +4,10 @@ What changed in each Unipi app release (desktop and phone), newest first.
 
 ## Unreleased
 
+- `/reload` in the app, like the terminal has: the chat re-reads its settings, the installed
+  extension packages, skills, prompt templates, context files, `models.json` and your API keys
+  from disk and the `/` list follows — no app restart. Settings › General has a Reload button for
+  the host-wide half (models, keys, extension packages).
 - A chat whose runtime was retired (the services cap, an idle disposal, a host restart) reopens
   by itself instead of staying blank until the app is restarted: the host now ends that chat's
   stream, so the app reconnects and wakes it, and a chat that ended without an error also counts
