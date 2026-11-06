@@ -82,6 +82,8 @@ export function PhoneField(props: {
   chipThumb?: (chip: Chip) => string | undefined;
   /** A chip token removed as a whole. */
   onChipRemoved?: (chip: Chip) => void;
+  /** A tap on an image / file chip (an image opens the editor, a failed file retries). */
+  onChipClick?: (chip: Chip) => void;
   disabled?: boolean;
   placeholder?: string;
   class?: string;
@@ -89,6 +91,7 @@ export function PhoneField(props: {
   ariaLabel?: string;
 }) {
   let el!: HTMLTextAreaElement;
+  let mirror: HTMLDivElement | undefined;
   let composing = false;
   let kind: EditKind = 'other';
   /** The text the field showed before the current input event (the repair's baseline). */
@@ -202,7 +205,7 @@ export function PhoneField(props: {
   return (
     <div class="ph-field-box" data-chips={hasChips() ? '' : undefined}>
       <Show when={hasChips()}>
-        <div class="ph-field-mirror" aria-hidden="true" data-testid="phone-field-mirror">
+        <div class="ph-field-mirror" aria-hidden="true" data-testid="phone-field-mirror" ref={mirror}>
           <div class="ph-field-mirror-in" style={{ transform: `translateY(${-scroll()}px)` }}>
             <For each={segs()}>
               {(seg) => {
@@ -210,7 +213,7 @@ export function PhoneField(props: {
                 const chip = seg.chip;
                 const covered = chip.kind === 'image' || chip.kind === 'file';
                 return (
-                  <span class="phf-chip" data-kind={chip.kind} data-mode={chip.kind === 'command' && chip.mode ? '' : undefined} data-covered={covered ? '' : undefined}>
+                  <span class="phf-chip" data-chip-at={String(segs().indexOf(seg))} data-kind={chip.kind} data-mode={chip.kind === 'command' && chip.mode ? '' : undefined} data-covered={covered ? '' : undefined}>
                     {chip.raw}
                     <Show when={covered}>
                       <span class="phf-chip-label">
@@ -302,7 +305,21 @@ export function PhoneField(props: {
         }}
         onKeyDown={(e) => props.onKeyDown?.(e)}
         onKeyUp={() => props.onCaret?.(caret())}
-        onClick={() => {
+        onClick={(e) => {
+          // The chips are drawn in the mirror under the textarea: a tap over an image / file chip
+          // is that chip's (owner 2026-11-06: tap an image to edit it).
+          if (props.onChipClick && mirror) {
+            for (const node of mirror.querySelectorAll<HTMLElement>('.phf-chip[data-covered]')) {
+              const r = node.getBoundingClientRect();
+              if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+              const seg = segs()[Number(node.dataset.chipAt)];
+              if (seg && 'chip' in seg) {
+                el.blur();
+                props.onChipClick(seg.chip);
+                return;
+              }
+            }
+          }
           if (hasChips()) snapCaret();
           props.onCaret?.(caret());
         }}

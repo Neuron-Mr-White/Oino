@@ -76,7 +76,10 @@ export type PendingAttachment = {
 export type AttachmentsGate = { ok: boolean; uploading: number; failed: number };
 
 let seq = 0;
-const nextId = (kind: PendingAttachment['kind']) => `${kind}${Date.now().toString(36)}${(++seq).toString(36)}`;
+/** Short ids (owner 2026-11-06): the id is part of the draft's chip token, and the phone field
+ *  lays a chip over its token's text — a long id made a long chip. A per-run counter plus a
+ *  random tail keeps them unique within a chat. */
+const nextId = (kind: PendingAttachment['kind']) => `${kind === 'image' ? 'i' : 'f'}${(++seq).toString(36)}${Math.floor(Math.random() * 1296).toString(36).padStart(2, '0')}`;
 
 /* ── the per-chat store (D-6) ────────────────────────────────────────── */
 
@@ -277,7 +280,7 @@ export function attach(chatKey: string, hostId: string, files: readonly File[]):
       const attachment: PendingAttachment = {
         id,
         kind: 'image',
-        name: file.name || `image ${id.slice(-3)}`,
+        name: file.name || `image ${id.slice(1)}`,
         mime: file.type || 'image/png',
         size: file.size,
         status: 'queued',
@@ -371,7 +374,7 @@ export function addReadyImage(
   const attachment: PendingAttachment = {
     id,
     kind: 'image',
-    name: image.name ?? `image ${id.slice(-3)}.${(image.mime.split('/')[1] ?? 'png').replace(/[^a-z0-9]/gi, '') || 'png'}`,
+    name: image.name ?? `image ${id.slice(1)}.${(image.mime.split('/')[1] ?? 'png').replace(/[^a-z0-9]/gi, '') || 'png'}`,
     mime: image.mime,
     size: Math.round((image.data.length * 3) / 4),
     status: 'ready',

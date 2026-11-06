@@ -24,6 +24,7 @@ import { resetFileSummaries } from '../../lib/fileSummary';
 import { resetSessions, sessions } from '../../lib/session/store';
 import { installUiSinks, resetUiRegistries } from '../../ui/registries';
 import { resetReservedGates, setOwnerGates } from '../../ui/slots/reserved';
+import { setDesktopOverride } from '../../lib/layout';
 import { setPlatformOverride } from '../../lib/platform';
 import roundtrip from '../../lib/session/fixtures/roundtrip.json';
 
@@ -373,6 +374,8 @@ describe('Timeline · A27 turn file footer', () => {
   beforeEach(() => {
     installUiSinks();
     setPlatformOverride('tauri-desktop');
+    // The file summary is a desktop footer (the phone hides it, owner 2026-11-06).
+    setDesktopOverride(true);
     resetReservedGates();
     resetFileSummaries();
     setOwnerGates('h1', [{ id: 'unipi.file-summary', enabled: true }]);
@@ -383,6 +386,7 @@ describe('Timeline · A27 turn file footer', () => {
     resetSessions();
     resetFileSummaries();
     setPlatformOverride(undefined);
+    setDesktopOverride(undefined);
   });
 
   /** A session the footer can find in the app store (`sessions().peek`), over this file's mock. */
@@ -394,6 +398,17 @@ describe('Timeline · A27 turn file footer', () => {
     await new Promise((r) => setTimeout(r, 0));
     return s;
   }
+
+  it('the phone shows no file summary under a turn (owner 2026-11-06)', async () => {
+    setDesktopOverride(false);
+    const asked: string[] = [];
+    const s = await openRegistered(6, asked);
+    const r = render(() => <Timeline ctx={ctx(s)} dock={dock} />);
+    await L.frames();
+    await new Promise((res) => setTimeout(res, 50));
+    expect(r.container.querySelector('[data-testid="turn-files"]')).toBeNull();
+    expect(asked).toEqual([]);
+  });
 
   it('asks the extension only for the turns the window mounts (visible ± one screen), never the whole list', async () => {
     const asked: string[] = [];

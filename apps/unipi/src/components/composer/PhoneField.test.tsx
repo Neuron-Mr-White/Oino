@@ -19,6 +19,7 @@ const opts = { commands: new Set(['skill:review', 'graph']), requireTrailingSpac
 function mount(initial: string) {
   const [value, setValue] = createSignal(initial);
   const removed: string[] = [];
+  const clicked: string[] = [];
   const view = render(() => (
     <PhoneField
       value={value()}
@@ -27,10 +28,11 @@ function mount(initial: string) {
       chipLabel={(c) => (c.kind === 'image' ? 'image 1' : undefined)}
       chipThumb={(c) => (c.kind === 'image' ? 'data:image/png;base64,QQ' : undefined)}
       onChipRemoved={(c) => removed.push(c.raw)}
+      onChipClick={(c) => clicked.push(c.raw)}
     />
   ));
   const ta = view.container.querySelector('textarea') as HTMLTextAreaElement;
-  return { view, ta, value, setValue, removed };
+  return { view, ta, value, setValue, removed, clicked };
 }
 const beforeInput = (el: Element, inputType: string, extra: Record<string, unknown> = {}) => {
   const ev = new InputEvent('beforeinput', { inputType, bubbles: true, cancelable: true, ...extra });
@@ -151,5 +153,18 @@ describe('PhoneField chip repair after a composition', () => {
     fireEvent.compositionEnd(ta);
     expect(value()).toBe('compare please');
     expect(ta.value).toBe('compare please');
+  });
+});
+
+describe('tap an image chip (owner 2026-11-06)', () => {
+  it('a tap over an image chip is that chip (the editor opens); a tap elsewhere is the caret', () => {
+    const token = imageToken('i1ab');
+    const { view, ta, clicked } = mount(`look ${token} here`);
+    const chip = view.container.querySelector('.phf-chip[data-covered]') as HTMLElement;
+    chip.getBoundingClientRect = () => ({ left: 40, right: 120, top: 0, bottom: 20, width: 80, height: 20, x: 40, y: 0, toJSON: () => ({}) });
+    fireEvent.click(ta, { clientX: 60, clientY: 10 });
+    expect(clicked).toEqual([token]);
+    fireEvent.click(ta, { clientX: 200, clientY: 10 });
+    expect(clicked).toEqual([token]);
   });
 });

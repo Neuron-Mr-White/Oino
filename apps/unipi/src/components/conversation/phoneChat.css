@@ -56,8 +56,10 @@ html[data-shell=phone] .tl-bubble { max-width: 85%; border-radius: 20px; }
 .ph-error-list { margin: 0 0 4px 32px; padding-left: 18px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .ph-error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
-/* ── Tool rows (§3.7, PH-27): 48 px rows, failures as a pill, detail in a sheet ── */
-html[data-shell=phone] .conv-tl .tl :is(.proc-head, .tool-row) { min-height: 48px; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); gap: 10px; }
+/* ── Tool rows (§3.7, PH-27): 40 px rows (34 inside a work fold), failures as a pill, detail in a sheet ── */
+html[data-shell=phone] .conv-tl .tl :is(.proc-head, .tool-row) { min-height: 40px; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); gap: 10px; }
+/* Rows inside a work fold sit closer together (owner 2026-11-06: the gaps were too big). */
+html[data-shell=phone] .conv-tl .tl .tl-fold-body .tool-row { min-height: 34px; }
 html[data-shell=phone] .conv-tl .tl .tool-row .tool-subject { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html[data-shell=phone] .conv-tl .tl .tool-row .tool-dur { font-size: calc(12px * var(--ui-font-scale)); }
 html[data-shell=phone] .conv-tl .tl .tool-row .tool-status { font-size: calc(12px * var(--ui-font-scale)); padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; }

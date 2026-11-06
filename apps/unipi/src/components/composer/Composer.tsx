@@ -1254,6 +1254,7 @@ export function Composer(props: ComposerProps) {
             opts={tokenOpts}
             chipLabel={chipLabel}
             chipThumb={chipThumb}
+            onChipClick={onChipClick}
             onPasteFiles={(files) => attachPicked(files)}
             api={(api) => (editor = api)}
             onHistory={travel}

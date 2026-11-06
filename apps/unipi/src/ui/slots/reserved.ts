@@ -152,6 +152,11 @@ export function registerReservedBody(component: ReservedComponent, body: Compone
   };
 }
 
+/** The registered native body of a component (no owner gate: the caller has the owner's entry). */
+export function reservedBodyOf(component: ReservedComponent): Component<ReservedBodyProps> | undefined {
+  return bodies.get(component);
+}
+
 /** The inline body of an entry's row, when one is registered and the gate is on. */
 export function reservedBodyFor(entry: Pick<UiEntry, 'id' | 'view'>): Component<ReservedBodyProps> | undefined {
   const row = reservedRowFor(entry);

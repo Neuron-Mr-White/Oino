@@ -14,7 +14,8 @@ import { sessionRenderCache, widthClassOf } from '../../lib/session/renderCache'
 import { NodeView } from '../NodeView';
 import { EntryView } from '../NodeView';
 import { sessionUi } from '../registries';
-import { isReservedEntry } from './reserved';
+import { isReservedEntry, reservedBodyOf, reservedRowFor } from './reserved';
+import { layout } from '../../lib/layout';
 import { footerRev } from './effects';
 import type { TimelineCtx } from '../../components/timeline/context';
 import type { UiEntry } from '../types';
@@ -25,9 +26,14 @@ function rendererKey(entry: UiEntry): string {
   return entry.view.kind === 'renderer' ? entry.view.key : entry.id;
 }
 
+/** `unipi.file-summary` registers only its terminal-style `files` renderer; the app draws its own
+ *  file summary for it (owner 2026-11-06: the node tree looked wrong in a chat). */
+const isFileSummary = (entry: UiEntry) => entry.extensionId === 'unipi.file-summary' && rendererKey(entry) === 'files';
+
 export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
   const registry = () => sessionUi(props.ctx.hostId, props.ctx.sessionId());
-  const entries = () => registry().entriesFor('turnFooter')();
+  // The phone shows no file summary under a turn (owner 2026-11-06): the Git view has it.
+  const entries = () => registry().entriesFor('turnFooter')().filter((e) => layout().desktop() || (!isFileSummary(e) && reservedRowFor(e)?.component !== 'turnFiles'));
   const [tick, setTick] = createSignal(0);
 
   // The running turn re-requests at most every 500 ms while it changes (§6.7).
@@ -58,11 +64,26 @@ export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
                   />
                 </div>
               );
-            const node = () =>
-              cache().node(
+            if (isFileSummary(entry)) {
+              const Native = reservedBodyOf('turnFiles');
+              if (Native)
+                return (
+                  <div class="ui-turnfooter" data-entry={entry.id}>
+                    <Native entry={entry} target={{ scope: 'session', hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), turnEntryId: props.turn.turnId }} />
+                  </div>
+                );
+            }
+            // The running turn re-asks every 500 ms under a new cache key: keep showing the last
+            // answer until the next one lands, or the footer blinks out on every tick.
+            let last: ReturnType<ReturnType<ReturnType<typeof cache>['node']>> = undefined;
+            const node = () => {
+              const fresh = cache().node(
                 { target: 'turnFooter', key: rendererKey(entry), entryId: entry.id, rev: (entry.rev ?? 0) + footerRev(entry.id) + tick(), width: width() },
                 { turnEntryId: props.turn.turnId, running: props.turn.live, density: 'regular', data: null },
               )();
+              if (fresh !== undefined) last = fresh;
+              return fresh ?? last;
+            };
             return (
               <Show when={node()} keyed>
                 {(n) => (
