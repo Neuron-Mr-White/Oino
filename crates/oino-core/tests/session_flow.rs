@@ -62,8 +62,6 @@ async fn prompt_runs_and_persists_pi_event_sequence() {
         "message_start",
         "message_end",
         "message_start",
-        "message_end",
-        "message_start",
         "message_update",
         "message_update",
         "message_update",
@@ -85,15 +83,16 @@ async fn prompt_runs_and_persists_pi_event_sequence() {
         .filter_map(|e| e.message())
         .map(oino_core::extensions::runner::role_of)
         .collect();
-    assert_eq!(roles, vec!["system", "user", "assistant"]);
+    assert_eq!(roles, vec!["user", "assistant"]);
     let request = &provider.requests()[0];
     assert_eq!(request["context"]["messages"][0]["role"], json!("system"));
     assert!(
-        request["context"]["messages"][0]["sections"]["preamble"]
+        request["context"]["messages"][0]["content"]
             .as_str()
             .unwrap()
             .contains("Oino")
     );
+    assert!(request["context"]["messages"][0]["sections"].is_null());
     assert_eq!(request["apiKey"], json!("test-key"));
     let stats = session.session_stats();
     assert_eq!((stats.user_messages, stats.assistant_messages), (1, 1));
@@ -168,10 +167,11 @@ async fn extension_tools_hooks_and_results() {
     let tools = provider.requests()[0]["context"]["messages"][0]["toolsAdded"].clone();
     assert_eq!(tools.as_array().unwrap().len(), 2);
     assert!(
-        provider.requests()[0]["context"]["messages"][0]["sections"]["tools"]
-            .as_str()
+        tools
+            .as_array()
             .unwrap()
-            .contains("greet things")
+            .iter()
+            .any(|t| t["description"].as_str().unwrap().contains("greet tool"))
     );
 }
 
@@ -302,8 +302,8 @@ async fn input_handlers_and_extension_commands() {
         .filter(|m| m["role"] == "user")
         .map(|m| m["content"].to_string())
         .collect();
-    assert!(texts[0].contains("hi!"), "{texts:?}");
-    assert!(texts[1].contains("injected"), "{texts:?}");
+    assert!(texts[1].contains("hi!"), "{texts:?}");
+    assert!(texts[2].contains("injected"), "{texts:?}");
     let echo = session.entries().into_iter().any(|e| {
         matches!(&e.kind, EntryKind::Custom { custom_type, .. } if custom_type == "oino.command-echo")
     });
@@ -569,11 +569,9 @@ async fn manual_compaction_and_tree_navigation() {
     let result = session.compact(None).await.unwrap();
     assert!(result.summary.starts_with("## Goal"));
     let messages = session.messages();
-    assert!(
-        messages
-            .iter()
-            .any(|m| matches!(m, AgentMessage::CompactionSummary(_)))
-    );
+    assert!(messages.iter().any(
+        |m| matches!(m, AgentMessage::User(u) if u.content.text("").contains(&result.summary))
+    ));
     let forks = session.user_messages_for_forking();
     assert_eq!(forks.len(), 4);
     let target = oino_session::EntryId::new(forks[1].entry_id.clone());

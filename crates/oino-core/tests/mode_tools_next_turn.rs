@@ -1,8 +1,6 @@
-//! [graph-mode] P0: a mode switch mid-chat (`/graph`, `/goal`, `/ralph`, `/swarm`, `/regular`)
-//! toggles the long-horizon tools through `control.update-active-tools`; the NEXT turn's
-//! provider request must carry them (declared by a mid-conversation system message), and a
-//! switch back removes them again. The provider then decides how to declare them (inline or at
-//! request level, `oino-provider-kit` tests/anthropic_tool_changes.rs).
+//! C: mode changes and re-registration keep previously advertised declaration bytes
+//! stable on the next request. Tools are declared at startup in registry order and
+//! later catalog changes must not replace that prefix.
 
 #![allow(
     clippy::unwrap_used,
@@ -98,7 +96,7 @@ async fn runtime(dir: &std::path::Path, provider: Arc<FauxProvider>) -> AgentSes
     .unwrap()
 }
 
-/// The tools a provider request declares (system messages replayed in order).
+/// The frozen tools a provider request declares.
 fn declared(request: &Value) -> Vec<String> {
     let messages = request
         .pointer("/context/messages")
@@ -132,12 +130,9 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
         }
     };
     turn("plan it").await;
-    assert!(
-        !declared(&provider.requests()[0])
-            .iter()
-            .any(|t| t == "update_agent_graph"),
-        "plain chat declares no graph tools"
-    );
+    let initial = declared(&provider.requests()[0]);
+    assert!(initial.iter().any(|t| t == "update_agent_graph"));
+    let prefix = provider.requests()[0]["context"]["messages"][0].clone();
     // `/graph <task>` (a command call) switches the tools before its prompt runs.
     let cx = session.runner().call_context().with_kind(CallKind::Command);
     let names = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
@@ -160,23 +155,8 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
             "{name} missing from turn 2: {tools:?}"
         );
     }
-    // The update arrived as a mid-conversation system message (what a provider must
-    // declare, inline or at request level).
-    let mid_added = provider.requests()[1]
-        .pointer("/context/messages")
-        .and_then(Value::as_array)
-        .unwrap()
-        .iter()
-        .skip(1)
-        .filter(|m| m["role"] == "system")
-        .flat_map(|m| m["toolsAdded"].as_array().cloned().unwrap_or_default())
-        .filter_map(|t| t["name"].as_str().map(str::to_owned))
-        .collect::<Vec<_>>();
-    assert!(
-        mid_added.iter().any(|t| t == "update_agent_graph"),
-        "{mid_added:?}"
-    );
-    // `/regular`: the graph tools leave before the next turn.
+    assert_eq!(provider.requests()[1]["context"]["messages"][0], prefix);
+    // C: `/regular` must not remove the frozen graph declarations.
     session
         .host_call(
             "unipi.long-horizon",
@@ -190,10 +170,7 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
         .unwrap();
     turn("thanks").await;
     let tools = declared(&provider.requests()[2]);
-    assert!(
-        !tools.iter().any(|t| t.contains("agent_graph")),
-        "{tools:?}"
-    );
+    assert!(tools == initial, "{tools:?}");
 }
 
 /// The tool definitions (name → description) a provider request declares.
@@ -211,9 +188,7 @@ fn declared_descriptions(request: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// agent-disable: a guest re-registering one of its tools after init (wasm guests' registry
-/// calls carry no session — `subagents` rewrites `run_subagent`'s profile list when a profile
-/// is disabled) reaches the live session's next request.
+/// C: re-registering a tool updates the registry without replacing its declaration.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
     let dir = tempfile::tempdir().unwrap();
@@ -242,8 +217,10 @@ async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
     session.wait_for_idle().await;
     let before = declared_descriptions(&provider.requests()[0]);
     assert!(
-        before.contains(&("view_agent_graph".into(), "view_agent_graph tool".into())),
-        "{before:?}"
+        before
+            .iter()
+            .any(|(name, description)| name == "view_agent_graph"
+                && description.starts_with("view_agent_graph tool"))
     );
     let mut changed = tool("view_agent_graph");
     changed.description = "view the graph (profiles: a, b)".into();
@@ -263,11 +240,8 @@ async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
         .unwrap();
     session.wait_for_idle().await;
     let after = declared_descriptions(&provider.requests()[1]);
-    assert!(
-        after.contains(&(
-            "view_agent_graph".into(),
-            "view the graph (profiles: a, b)".into()
-        )),
-        "{after:?}"
+    assert_eq!(
+        after, before,
+        "C: previously declared schema bytes are immutable"
     );
 }

@@ -25,7 +25,7 @@ fn fixture(name: &str) -> JsonValue {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
 
-const VOLATILE: [&str; 8] = [
+const VOLATILE: [&str; 9] = [
     "timestamp",
     "durationMs",
     "partial",
@@ -34,6 +34,7 @@ const VOLATILE: [&str; 8] = [
     "parentId",
     "targetId",
     "responseId",
+    "entryId",
 ];
 
 /// `message_update.message` is a shallow copy whose content keeps mutating after the event
@@ -64,6 +65,15 @@ fn normalize_event(event: &JsonValue) -> JsonValue {
 }
 
 fn normalize(value: &JsonValue) -> JsonValue {
+    if value["customType"] == "oino.session-start" {
+        let mut value = value.clone();
+        value["content"] = JsonValue::String("<session-start context>".into());
+        return normalize_object(&value);
+    }
+    normalize_object(value)
+}
+
+fn normalize_object(value: &JsonValue) -> JsonValue {
     match value {
         JsonValue::Array(items) => JsonValue::Array(items.iter().map(normalize).collect()),
         JsonValue::Object(map) => {

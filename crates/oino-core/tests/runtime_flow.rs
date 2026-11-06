@@ -95,7 +95,17 @@ async fn runtime_runs_builtin_tools_and_bash() {
     context.bind(&session);
     assert_eq!(
         session.active_tool_names(),
-        vec!["read", "bash", "edit", "write"]
+        vec![
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "grep",
+            "glob",
+            "ls",
+            "codemode",
+            "tool_search"
+        ]
     );
     session
         .prompt("read notes".into(), PromptOptions::default())
@@ -115,15 +125,12 @@ async fn runtime_runs_builtin_tools_and_bash() {
     assert!(!result.is_error, "{result:?}");
     assert_eq!(
         result.content,
-        vec![oino_ai::UserContent::text("line one\nline two\n")]
+        vec![oino_ai::UserContent::text("line one\nline two")]
     );
     let system = &provider.requests()[0]["context"]["messages"][0];
-    assert!(
-        system["sections"]["tools"]
-            .as_str()
-            .unwrap()
-            .contains("- read:")
-    );
+    assert!(system["content"].as_str().unwrap().contains("Oino"));
+    assert!(system["sections"].is_null());
+    session.set_autonomy(oino_core::session::permission::Level::High);
 
     let bash = session
         .execute_bash("echo hello".into(), false, None)
@@ -312,7 +319,7 @@ async fn package_skills_and_opt_in_skills() {
         "{commands:?}"
     );
     let prompt = session.system_prompt();
-    assert!(prompt.contains("<name>plain-skill</name>"), "{prompt}");
+    assert!(!prompt.contains("plain-skill"), "{prompt}");
     assert!(!prompt.contains("acme-migrate"), "{prompt}");
 
     let run = |text: &str| {
@@ -329,9 +336,9 @@ async fn package_skills_and_opt_in_skills() {
         }
     };
     run("hello").await;
-    let first = provider.requests()[0]["context"]["messages"][0]["sections"].to_string();
+    let first = provider.requests()[0]["context"]["messages"][0]["content"].as_str().unwrap().to_owned();
     assert!(
-        first.contains("plain-skill") && !first.contains("acme-migrate"),
+        !first.contains("plain-skill") && !first.contains("acme-migrate"),
         "{first}"
     );
 
@@ -352,7 +359,16 @@ async fn package_skills_and_opt_in_skills() {
         .unwrap();
     run("again").await;
     let enabled = provider.requests()[2]["context"]["messages"].to_string();
-    assert!(enabled.contains("<name>acme-migrate</name>"), "{enabled}");
+    assert!(
+        !session.system_prompt().contains("acme-migrate"),
+        "{enabled}"
+    );
+    assert!(
+        session
+            .commands()
+            .iter()
+            .any(|c| c.name == "skill:acme-migrate")
+    );
 }
 
 /// An embedder that passes no built-ins (the desktop hub) still gets the default ones.
@@ -372,7 +388,17 @@ async fn runtime_defaults_builtin_tools_when_the_embedder_passes_none() {
     .unwrap();
     assert_eq!(
         runtime.session().active_tool_names(),
-        vec!["read", "bash", "edit", "write"]
+        vec![
+            "read",
+            "bash",
+            "edit",
+            "write",
+            "grep",
+            "glob",
+            "ls",
+            "codemode",
+            "tool_search"
+        ]
     );
 }
 
@@ -513,9 +539,14 @@ async fn extension_whole_list_write_never_drops_builtin_tools() {
     let active = session.active_tool_names();
     has_core_tools(&active);
     assert!(active.iter().any(|a| a == "view_agent_graph"), "{active:?}");
-    // A user/frontend whole-list write still can narrow the set.
+    // C: a whole-list write cannot remove already advertised declarations.
+    let declared = session.active_tool_names();
     session.set_active_tools_by_name(&["read".to_owned()]);
-    assert_eq!(session.active_tool_names(), vec!["read"]);
+    assert_eq!(
+        session.active_tool_names(),
+        declared,
+        "C: declarations remain frozen"
+    );
 }
 
 /// The atomic `update-active-tools`: adds/removes only the named tools relative to the
@@ -572,7 +603,7 @@ async fn update_active_tools_toggles_only_named_tools() {
         }
     }
     assert_eq!(changes, 0, "an unchanged set publishes nothing");
-    // Graph mode off: only its tools leave.
+    // C: disabling a mode preserves the previously advertised declarations.
     session
         .host_call(
             "unipi.long-horizon",
@@ -585,15 +616,15 @@ async fn update_active_tools_toggles_only_named_tools() {
     has_core_tools(&active);
     assert!(active.iter().any(|a| a == "memory_store"), "{active:?}");
     assert!(
-        !active.iter().any(|a| a.contains("agent_graph")),
+        active.iter().any(|a| a.contains("agent_graph")),
         "{active:?}"
     );
-    // A built-in leaves when named explicitly.
+    // C: built-in declaration bytes also remain frozen until compaction.
     session
         .host_call("unipi.long-horizon", &cx, update(&[], &["bash"]))
         .await
         .unwrap();
-    assert!(!session.active_tool_names().iter().any(|a| a == "bash"));
+    assert!(session.active_tool_names().iter().any(|a| a == "bash"));
 }
 
 /// Services evicted and re-created (hub maxServices / idle disposal) and the session woken
