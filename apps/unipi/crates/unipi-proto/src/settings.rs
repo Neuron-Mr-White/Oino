@@ -392,6 +392,7 @@ mod tests {
             (HostCmd::Extensions, "extensions"),
             (HostCmd::AuthProviders { validate: None }, "auth_providers"),
             (HostCmd::GetShortcuts, "get_shortcuts"),
+            (HostCmd::Reload, "reload"),
             (
                 HostCmd::RemoveExtension {
                     id: "acme.x".into(),
@@ -412,7 +413,7 @@ mod tests {
             }
         );
         assert_eq!(install.kind(), "install_extension");
-        for (cmd, name) in [(install, "install_extension")] {
+        for (cmd, name) in [(install.clone(), "install_extension")] {
             assert_eq!(cmd.kind(), name);
             assert_eq!(serde_json::to_value(&cmd).unwrap()["kind"], name);
         }
