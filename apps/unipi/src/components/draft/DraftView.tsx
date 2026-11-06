@@ -57,6 +57,10 @@ export function DraftView(props: { hostId: string; cwd?: string }) {
   dropForeignFailedDraft(draftKey(hostId()), props.cwd);
   createEffect(on(() => [hostId(), props.cwd] as const, ([h, c]) => dropForeignFailedDraft(draftKey(h), c), { defer: true }));
   const [folder, setFolder] = createSignal<string | undefined>(props.cwd);
+  // The route's folder can change while the draft stays mounted (a sidebar "New chat
+  // in <project>" from another draft): follow it, or the header says the project while
+  // the first prompt starts the chat in a scratch folder (owner 2026-11-06).
+  createEffect(on(() => props.cwd, (c) => setFolder(c), { defer: true }));
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<{ text: string; hint?: string } | undefined>();
 

@@ -7,7 +7,7 @@
  * session keeps the permission / Plan / thinking choices for that start.
  */
 import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
-import { createRoot } from 'solid-js';
+import { createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HashRouter, Route } from '@solidjs/router';
 import { HostsProvider } from '../../hosts/context';
@@ -162,6 +162,34 @@ describe('DraftView (Z-19)', () => {
     await waitFor(() => expect(document.querySelector('.fb-foot-path')?.textContent).toBe('~/p/oino'));
     fireEvent.click(screen.getByTestId('workspace-use'));
     await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
+  });
+
+  it('follows a route folder that changes while the draft stays mounted (owner 2026-11-06)', async () => {
+    start.mockResolvedValue({ ok: true, sessionId: 's-new-2' });
+    const world = createMockHost({
+      name: 't',
+      hosts: [{ id: 'this-pc', name: 'workstation', transport: 'local', conn: { state: 'connected' }, cards: [card('a', '/home/you/p/oino')], settings: { pi: { defaultProvider: 'oino', defaultModel: 'deepseek-flash' }, providers: [{ id: 'oino', configured: true }] } }],
+    });
+    setHostClientFactory(world.client);
+    location.hash = '#/new/this-pc';
+    const [cwd, setCwd] = createRoot(() => createSignal<string | undefined>(undefined));
+    render(() => (
+      <SettingsProvider>
+        <HostsProvider>
+          <HashRouter>
+            <Route path="/new/:host" component={() => <DraftView hostId="this-pc" cwd={cwd()} />} />
+            <Route path="/s/:host/:id" component={() => <div data-testid="chat-route" />} />
+          </HashRouter>
+        </HostsProvider>
+      </SettingsProvider>
+    ));
+    await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('No workspace'));
+    setCwd('/home/you/p/oino');
+    await waitFor(() => expect(screen.getByTestId('workspace-chip').textContent).toContain('oino'));
+    typeInto('Run in the project');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0]![1].cwd).toBe('/home/you/p/oino');
   });
 
   it('the first prompt starts the session in the workspace and routes to it', async () => {
