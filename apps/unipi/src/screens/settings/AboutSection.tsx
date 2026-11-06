@@ -9,20 +9,18 @@
  * updater extension's changelog browser, P1-08) and **Report a bug**
  * (`/bug`: the repository's issue form in the system browser).
  */
-import { Show, createResource, createSignal, onMount } from 'solid-js';
-import { useNavigate } from '@solidjs/router';
+import { For, Show, createResource, createSignal, onMount } from 'solid-js';
 import { Bug, Info, Sparkles } from 'lucide-solid';
 import { z } from 'zod';
 import { call } from '../../lib/ipc';
 import { platform } from '../../lib/platform';
 import { updateState } from '../../lib/update';
 import { checkDesktopUpdate, desktopUpdateState, type DesktopUpdateState } from '../../lib/desktopUpdate';
-import { CHANGELOG_ACTION, runManageActionAnywhere } from '../../lib/settings/manage';
-import { LOCAL_HOST } from '../../lib/host/client';
-import { useHostsOptional } from '../../hosts/context';
-import { can } from '../../lib/platform';
 import { openExternal } from '../../lib/board/share';
 import { UpdateCard } from '../../components/UpdateCard';
+import { Markdown } from '../../components/board/Markdown';
+import { Sheet } from '../../components/phone/Sheet';
+import { changelog, notesFor } from '../../lib/changelog';
 import { ComponentsCard } from '../../components/ComponentsCard';
 import { ABOUT_ANCHORS } from './anchors';
 import { Row, Section } from './rows';
@@ -78,21 +76,18 @@ function noNotesText(): string {
 
 export function AboutSection() {
   const [info] = createResource(async () => call('app_info', {}, AppInfoSchema));
-  const navigate = useNavigate();
-  const hosts = useHostsOptional();
   const [browsing, setBrowsing] = createSignal(false);
-  const [browseNote, setBrowseNote] = createSignal<string | undefined>();
+  /** The feed's notes for a newer build, else this build's own (the bundled changelog). */
+  const notes = (): { version?: string; notes: string } | undefined => {
+    const feed = whatsNew();
+    if (feed) return feed;
+    const own = notesFor(valueOf(info(), 'version'));
+    return own ? { version: own.version, notes: own.notes } : undefined;
+  };
   onMount(() => {
     // The desktop feed is first checked 8 s after start; About asks now (quietly, rate-limited).
     if (platform().mode === 'tauri-desktop' && desktopUpdateState().kind === 'idle') void checkDesktopUpdate();
   });
-  const browse = async () => {
-    setBrowsing(true);
-    setBrowseNote(undefined);
-    const hostId = hosts?.hosts().find((h) => h.transport === 'local')?.id ?? LOCAL_HOST;
-    const outcome = await runManageActionAnywhere(CHANGELOG_ACTION, { navigate, hostId }).finally(() => setBrowsing(false));
-    if (outcome !== 'sent') setBrowseNote('The changelog browser needs the Updater extension (Settings › Extensions)');
-  };
   return (
     <Section title="About" id="sec-about" icon={<Info size={14} />}>
       <div class="p-4 pb-0">
@@ -125,23 +120,37 @@ export function AboutSection() {
       <div id={ABOUT_ANCHORS['whats-new']} class="settings-anchored">
         <Row
           label="What’s new"
-          description={whatsNew() ? (whatsNew()!.version ? `Release notes of ${whatsNew()!.version}` : 'Release notes of the newest build') : noNotesText()}
+          description={notes() ? (notes()!.version ? `Release notes of ${notes()!.version}` : 'Release notes of the newest build') : noNotesText()}
           icon={<Sparkles size={18} />}
         >
-          <Show when={!whatsNew() && can('hosts')}>
-            <button type="button" class="btn-secondary settings-btn" data-testid="about-browse-changelog" disabled={browsing()} onClick={() => void browse()}>
-              {browsing() ? 'Opening…' : 'Browse changelog'}
-            </button>
-          </Show>
+          <button type="button" class="btn-secondary settings-btn" data-testid="about-browse-changelog" onClick={() => setBrowsing(true)}>
+            Browse changelog
+          </button>
         </Row>
-        <Show when={whatsNew() || browseNote()}>
-          <div class="about-whats-new" data-testid="about-whats-new">
-            <Show when={whatsNew()}>{(n) => <p class="about-notes">{n().notes}</p>}</Show>
-            <Show when={browseNote()}>
-              <p class="settings-field-hint settings-field-hint-bad" role="status">{browseNote()}</p>
-            </Show>
-          </div>
+        <Show when={notes()}>
+          {(n) => (
+            <div class="about-whats-new" data-testid="about-whats-new">
+              <Markdown text={n().notes} class="about-notes" />
+            </div>
+          )}
         </Show>
+        <Sheet open={browsing()} onClose={() => setBrowsing(false)} label="Changelog" title="Changelog" detents={['full']} testId="about-changelog">
+          <div class="about-changelog" data-testid="about-changelog-list">
+            <For each={changelog()}>
+              {(e) => (
+                <section class="about-changelog-entry">
+                  <h3 class="about-changelog-version">
+                    {e.version}
+                    <Show when={e.date}>
+                      <span class="about-changelog-date"> · {e.date}</span>
+                    </Show>
+                  </h3>
+                  <Markdown text={e.notes} />
+                </section>
+              )}
+            </For>
+          </div>
+        </Sheet>
       </div>
       <div id={ABOUT_ANCHORS['report-bug']} class="settings-anchored">
         <Row label="Report a bug" description="Opens the project’s issue form in your browser" icon={<Bug size={18} />}>
