@@ -10,7 +10,7 @@
  */
 import { createSignal, For, Show, type Component } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
-import { Clock, Columns3, Settings as SettingsIcon } from 'lucide-solid';
+import { Bot, Clock, Columns3, Settings as SettingsIcon } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
 import type { IconComponent } from '../../lib/panes/kinds';
 import { reservedGate } from '../../ui/slots/reserved';
@@ -27,6 +27,7 @@ export type RailItem = {
 };
 
 export const BUILTIN_RAIL: RailItem[] = [
+  { id: 'superagent', label: 'Superagent', href: '/superagent', icon: Bot, cap: 'chat', order: 5 },
   { id: 'board', label: 'Board', href: '/board', icon: Columns3, cap: 'board', reserved: 'unipi.kanboard/board', order: 10 },
   { id: 'cron', label: 'Automations', href: '/cron', icon: Clock, reserved: 'unipi.cron/jobs', order: 20 },
 ];

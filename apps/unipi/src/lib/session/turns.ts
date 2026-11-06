@@ -304,8 +304,19 @@ const doneOf = (e: SessionEntry, at: number | undefined): number | undefined => 
 
 const isUser = (e: SessionEntry | undefined): boolean => e?.type === 'message' && e.message?.role === 'user';
 
-/** A user message delivered while the run continued (after a tool result or a `toolUse` stop). */
-function isSteer(prevMessage: AgentMessage | undefined): boolean {
+/** Explicit non-user authors and legacy harness provenance never become user steering. */
+export function messageAuthor(message: AgentMessage | undefined): string | undefined {
+  if (!message) return undefined;
+  const details = message.details as Record<string, unknown> | undefined;
+  const raw = message.author ?? details?.author;
+  if (typeof raw === 'string' && raw && raw.toLowerCase() !== 'user') return raw;
+  if (message.oinoProvenance || message.unipiHarness || details?.oinoProvenance || details?.unipiHarness) return 'Host';
+  return undefined;
+}
+
+/** Actual user follow-up delivered while the run continued. */
+function isSteer(prevMessage: AgentMessage | undefined, message: AgentMessage): boolean {
+  if (messageAuthor(message)) return false;
   if (!prevMessage) return false;
   if (prevMessage.role === 'toolResult') return true;
   return prevMessage.role === 'assistant' && prevMessage.stopReason === 'toolUse';
@@ -355,7 +366,7 @@ function scanStarts(branch: readonly SessionEntry[], from: number, firstKind?: T
       continue;
     }
     if (e.type === 'message' && e.message) {
-      if (e.message.role === 'user' && !isSteer(prev)) starts.push({ at: i, kind: 'turn' });
+      if (e.message.role === 'user' && !isSteer(prev, e.message)) starts.push({ at: i, kind: 'turn' });
       prev = e.message;
     } else if ((e.type === 'compaction' || e.type === 'compaction_state') && isMarkerCompaction(prev)) {
       starts.push({ at: i, kind: 'compaction' });
@@ -523,7 +534,7 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       turn.command = echoCommand(branch[start.at - 1]) ?? commandOf(text, e.id);
       if (turn.command && isHiddenCommandText(text)) turn.command.hidden = true;
       const hasProvenance = !!(m.unipiHarness || (m.details as { oinoProvenance?: unknown; unipiHarness?: unknown } | undefined)?.oinoProvenance || (m.details as { unipiHarness?: unknown } | undefined)?.unipiHarness);
-      turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : hasProvenance ? 'harness' : 'user';
+      turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : hasProvenance || messageAuthor(m) ? 'harness' : 'user';
       continue;
     }
     if (i === 0 && start.kind === 'compaction') {

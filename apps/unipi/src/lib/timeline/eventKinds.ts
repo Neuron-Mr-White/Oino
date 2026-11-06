@@ -528,7 +528,7 @@ function describeCustom(e: SessionEntry): EventView | null | undefined {
   return {
     kind: 'custom',
     icon: iconOfSource(h.source),
-    source: h.source ?? humanType(ct),
+    source: str(det.author) ?? h.source ?? humanType(ct),
     title: h.title && h.title !== h.source ? join(h.title, h.synopsis)! : firstLine(text) || h.synopsis || ct.split(/[:/]/).pop()!.replace(/[-_]+/g, ' '),
     ...(h.warning ? { tone: 'warning' as const } : {}),
     body: notif ? plain(text) : (md(text) ?? json(det)),

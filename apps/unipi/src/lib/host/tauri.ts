@@ -70,7 +70,8 @@ export function createTauriHost(hostId: string): HostClient {
   const [conn, setConn] = createSignal<HostConn>({ state: hostId === APP_HOST ? 'connected' : 'connecting' });
   const request = async <T,>(op: string, args?: Record<string, unknown>): Promise<T> => {
     try {
-      const value = (await (hostId === APP_HOST ? invoke(op, args) : withWireId(hostId, (id) => invoke(op, { hostId: id, ...(args ?? {}) })))) as T;
+      const command = op.startsWith('superagent.') ? op.replace('.', '_') : op;
+      const value = (await (hostId === APP_HOST ? invoke(command, args) : withWireId(hostId, (id) => invoke(command, { hostId: id, ...(args ?? {}) })))) as T;
       if (conn().state !== 'connected') setConn({ state: 'connected' });
       return value;
     } catch (error) {
@@ -140,6 +141,7 @@ export function channelError(msg: { message: string; code?: string }): AppError 
 
 /** The `invoke` command + args that open a session stream (host.md §7.3). */
 export function openArgs(hostId: string, req: OpenSessionRequest): { command: string; args: Record<string, unknown> } {
+  if (req.kind === 'superagent') return { command: 'superagent_session', args: { hostId } };
   if (req.kind === 'new') return { command: 'session_new', args: { hostId, ...(req.cwd ? { cwd: req.cwd } : {}), ...(req.name ? { name: req.name } : {}) } };
   if (req.kind === 'fork') {
     return {

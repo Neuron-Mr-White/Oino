@@ -20,7 +20,7 @@ export const TAB_ROOT: Record<PhoneTab, string> = {
 
 /** Pure: which tab a route belongs to (undefined: none, e.g. `/`). */
 export function tabOf(pathname: string): PhoneTab | undefined {
-  if (pathname === '/chat' || pathname.startsWith('/chat/') || pathname.startsWith('/s/') || pathname.startsWith('/new/')) return 'chat';
+  if (pathname === '/superagent' || pathname === '/chat' || pathname.startsWith('/chat/') || pathname.startsWith('/s/') || pathname.startsWith('/new/')) return 'chat';
   if (pathname === '/board' || pathname.startsWith('/board/')) return 'board';
   if (pathname === '/cron' || pathname.startsWith('/cron/')) return 'cron';
   if (pathname === '/files' || pathname.startsWith('/files/')) return 'files';
@@ -37,6 +37,7 @@ export function isTabRoot(pathname: string, search = ''): boolean {
 /** Pure: a workspace page hides the tab bar (chat, new chat, editor, task detail…, §1.2). */
 export function isWorkspace(pathname: string): boolean {
   return (
+    pathname === '/superagent' ||
     pathname.startsWith('/s/') ||
     pathname.startsWith('/new/') ||
     pathname === '/files/edit' ||

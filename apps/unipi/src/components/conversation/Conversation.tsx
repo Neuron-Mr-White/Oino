@@ -101,7 +101,7 @@ function Banners(props: { session: SessionHandle; hostOffline?: boolean }) {
   );
 }
 
-export function Conversation(props: { hostId: string; sessionId?: string; cwd?: string }) {
+export function Conversation(props: { hostId: string; sessionId?: string; cwd?: string; superagent?: boolean }) {
   const navigate = useNavigate();
   const hosts = useHostsOptional();
   /** A paired PC's name for the empty state's hint (Z-87); This computer has none. */
@@ -132,6 +132,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     return h;
   });
   const isArchived = () => !!archivedCard();
+  const restricted = () => !!props.superagent || !!session()?.state.entries.some((e) => e.type === 'custom' && e.customType === 'oino:superagent');
   /** chat-vanish: bumped by the self-heal to re-ensure the handle / re-mount the timeline. */
   const [handleGen, setHandleGen] = createSignal(0);
   const [timelineGen, setTimelineGen] = createSignal(0);
@@ -361,7 +362,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                       {(_sid) => (
                         <Timeline
                           ctx={c()}
-                          empty={<EmptyChat cwd={cwd()} hostName={hostName()} />}
+                          empty={<Show when={!restricted()} fallback={<div class="sa-chat-empty"><h2>What needs doing?</h2><p>Manage project boards, dispatch workers, and follow up here.</p></div>}><EmptyChat cwd={cwd()} hostName={hostName()} /></Show>}
                           header={<HeaderBand entries={headerEntries()} target={target()} />}
                           overlay={<SlotModal stack={overlayStack()} target={target()} phone={!layout().desktop()} />}
                           dock={
@@ -378,6 +379,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               composer={
                                 <Composer
                                   session={s()}
+                                  superagent={restricted()}
                                   cwd={cwd}
                                   readOnly={isArchived() || isTakenOverReadOnly(s().state) || phoneOffline()}
                                   placeholder={isArchived() ? 'Archived chat — restore to reply' : phoneOffline() ? `Reconnect to ${hostName() ?? 'your PC'} to send` : undefined}

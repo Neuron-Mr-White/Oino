@@ -267,6 +267,9 @@ function TaskPage(props: { id: string }) {
                     {PRIORITY_LABEL[current().priority] ?? current().priority}
                     <ChevronDown size={15} class="text-text-dim" />
                   </button>
+                  <span class="prop-chip" aria-label={`Autonomy: ${current().autonomy ?? 'medium'}`}>
+                    Autonomy: {current().autonomy === 'low' ? 'Low' : current().autonomy === 'high' ? 'High' : 'Medium'}
+                  </span>
                   <For each={current().labels ?? []}>
                     {(label) => (
                       <button type="button" class="prop-chip label-chip" style={{ '--label-hue': hue(label) }} aria-label={`Label ${label} — edit labels`} onClick={() => setSheet('labels')}>

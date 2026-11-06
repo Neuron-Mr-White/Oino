@@ -146,6 +146,8 @@ const errorText = (error: unknown): string => String(toAppError(error).message |
 const MAX_LOCAL_READ = 200 * 1024 * 1024;
 
 export type ComposerProps = {
+  /** Restricted workspace-free board manager. */
+  superagent?: boolean;
   session: SessionHandle;
   cwd?: () => string | undefined;
   readOnly?: boolean;
@@ -1314,12 +1316,12 @@ export function Composer(props: ComposerProps) {
           }
         >
           <ToolbarSlot slot="permission">
-            <PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} phone={props.phone} />
+            <Show when={!props.superagent}><PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} phone={props.phone} /></Show>
           </ToolbarSlot>
           {/* Phone (§3.5): Plan lives in the Mode sheet, thinking in the model sheet's footer. */}
           <Show when={!props.phone}>
             <ToolbarSlot slot="plan">
-              <PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} />
+              <Show when={!props.superagent}><PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} /></Show>
             </ToolbarSlot>
             <ToolbarSlot slot="think">
               <ThinkingChip session={props.session} disabled={props.readOnly} />
@@ -1331,7 +1333,7 @@ export function Composer(props: ComposerProps) {
             {props.modelSlot ?? <ModelCapsule session={props.session} disabled={props.readOnly} />}
           </ToolbarSlot>
           <ToolbarItem>
-            <PlugMenu session={props.session} cwd={cwd() || undefined} disabled={props.readOnly} draft={props.draft} />
+            <Show when={!props.superagent}><PlugMenu session={props.session} cwd={cwd() || undefined} disabled={props.readOnly} draft={props.draft} /></Show>
           </ToolbarItem>
         </Toolbar>
       </div>

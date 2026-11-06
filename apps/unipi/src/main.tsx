@@ -23,6 +23,7 @@ import { Puzzle } from 'lucide-solid';
 import Board from './screens/Board';
 import Chat, { ArchivedChats } from './screens/Chat';
 import Cron from './screens/Cron';
+import SuperagentPage from './components/superagent/SuperagentPage';
 import Settings from './screens/Settings';
 import { FilesLayer } from './components/files/FilesTab';
 import { PageHeader } from './components/PageHeader';
@@ -158,6 +159,7 @@ export function Root() {
         <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chats'))} />
         <Route path="/chat/archived" component={phoneOnly(gated('chat', ArchivedChats, 'Archived chats'))} />
         <Route path="/board" component={railPage(Board)} />
+        <Route path="/superagent" component={railPage(gated('chat', SuperagentPage, 'Superagent'))} />
         <Route path="/cron" component={railPage(Cron)} />
         {/* Phone spec §1.2: a job's detail + runs (Cron reads the :id); the desktop opens the Cron page. */}
         <Route path="/cron/job/:id" component={phoneOnly(Cron, '/cron')} />

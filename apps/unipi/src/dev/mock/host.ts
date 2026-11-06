@@ -980,7 +980,7 @@ export class MockHost implements HostClient {
     this.world.record({ host: this.hostId, kind: 'open', op: `session_${req.kind}`, args: req });
     const timers: ReturnType<typeof setTimeout>[] = [];
     let open = true;
-    const fromNew = req.kind === 'new' && !req.session ? this.spec.newSessionFrom : undefined;
+    const fromNew = (req.kind === 'new' || req.kind === 'superagent') && !req.session ? this.spec.newSessionFrom : undefined;
     const id = req.session ?? fromNew ?? '';
     const session = id ? this.spec.sessions?.[id] : undefined;
     const key = `${this.hostId}/${id}`;

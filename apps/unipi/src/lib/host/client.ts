@@ -40,7 +40,7 @@ export interface Closable {
 
 /** `session_open|new|fork` (host.md §7.3). */
 export type OpenSessionRequest = {
-  kind: 'open' | 'new' | 'fork';
+  kind: 'open' | 'new' | 'fork' | 'superagent';
   session?: string;
   sinceSeq?: number;
   cwd?: string;

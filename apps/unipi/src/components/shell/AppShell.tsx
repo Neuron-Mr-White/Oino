@@ -19,7 +19,7 @@ import { ArchivedModalLayer } from '../sidebar/ArchivedModal';
 import { SkillsManagerLayer } from '../../screens/settings/SkillsPage';
 import { createEffect, createSignal, onCleanup, onMount, Show, type ParentProps } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
-import { Columns3, Keyboard, PanelBottom, PanelLeft, PanelRight, Maximize2, Settings as SettingsIcon, SquarePen, Clock, History } from 'lucide-solid';
+import { Bot, Columns3, Keyboard, PanelBottom, PanelLeft, PanelRight, Maximize2, Settings as SettingsIcon, SquarePen, Clock, History } from 'lucide-solid';
 import { RelaySettings } from '../RelaySettings';
 import { HostsProvider, useHostsOptional } from '../../hosts/context';
 import { SettingsProvider, useSettings } from '../../settings/context';
@@ -233,6 +233,7 @@ function DesktopFrame(props: ParentProps) {
     registerCommands([
       { id: 'chat.new', title: 'New chat', group: 'Go to', keywords: 'start session folder project', icon: () => <SquarePen size={16} />, run: () => navigate(`/new/${encodeURIComponent(newChatHost())}`) },
       { id: 'go.board', title: 'Go to Board', group: 'Go to', keywords: 'kanban tasks', icon: () => <Columns3 size={16} />, when: () => reservedGate('unipi.kanboard/board'), run: () => navigate('/board') },
+      { id: 'go.superagent', title: 'Go to Superagent', group: 'Go to', keywords: 'workers tasks projects', icon: () => <Bot size={16} />, run: () => navigate('/superagent') },
       { id: 'go.cron', title: 'Go to Automations', group: 'Go to', keywords: 'schedule jobs', icon: () => <Clock size={16} />, run: () => navigate('/cron') },
       { id: 'go.settings', title: 'Go to Settings', group: 'Go to', keywords: 'preferences', icon: () => <SettingsIcon size={16} />, keys: `${modKey()} ,`, run: () => navigate('/settings') },
       { id: 'view.sidebar', title: 'Toggle sidebar', group: 'View', keys: `${modKey()} B`, icon: () => <PanelLeft size={16} />, run: () => L.toggleSidebar() },

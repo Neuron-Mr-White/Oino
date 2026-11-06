@@ -99,7 +99,8 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
   };
   const host = () => hosts?.hosts().find((h) => h.id === props.hostId);
   const localHost = () => host()?.transport === 'local';
-  const cwd = () => (props.sessionId ? sessionCwd(card(), liveState()) : (props.cwd ?? ''));
+  const superagent = () => !!openSession()?.state.entries.some((e) => e.type === 'custom' && e.customType === 'oino:superagent');
+  const cwd = () => superagent() ? '' : (props.sessionId ? sessionCwd(card(), liveState()) : (props.cwd ?? ''));
   const scope = createMemo<PaneScope>((prev) => {
     const next = { hostId: props.hostId, projectKey: projectKeyOf(cwd()) };
     return prev && prev.hostId === next.hostId && prev.projectKey === next.projectKey ? prev : next;
@@ -215,7 +216,7 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
                 {(sessionId) => (
                   <>
                     <CronChip hostId={props.hostId} sessionId={sessionId()} />
-                    <ModeChip hostId={props.hostId} sessionId={sessionId()} cwd={cwd() || undefined} />
+                    <Show when={!superagent()}><ModeChip hostId={props.hostId} sessionId={sessionId()} cwd={cwd() || undefined} /></Show>
                   </>
                 )}
               </Show>

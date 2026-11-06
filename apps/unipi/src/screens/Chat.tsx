@@ -10,7 +10,7 @@
  */
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Archive, ArchiveRestore, ArrowDownAZ, CheckSquare, Clock, Ellipsis, MessageSquare, SquarePen, Trash2, WifiOff } from 'lucide-solid';
+import { Archive, ArchiveRestore, ArrowDownAZ, Bot, CheckSquare, Clock, Ellipsis, MessageSquare, SquarePen, Trash2, WifiOff } from 'lucide-solid';
 import { can } from '../lib/platform';
 import { useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
@@ -123,6 +123,7 @@ export default function Chat() {
             }
           >
             <Show when={can('hosts')}>
+              <button type="button" class="ph-icon-btn" aria-label="Superagent" onClick={() => navigate('/superagent')}><Bot size={22} /></button>
               <NeedsYouButton />
             </Show>
             <button type="button" class="ph-icon-btn" aria-label="More options" data-testid="chats-menu" onClick={() => setMenu(true)}>

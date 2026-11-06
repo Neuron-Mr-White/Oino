@@ -56,7 +56,7 @@ export function PhoneShell(props: ParentProps) {
   const onEditor = () => location.pathname === '/files/edit';
   // Routes whose screen draws its own header (all tab pages and workspaces); the rest get PageHeader.
   const bare = () =>
-    ['/', '/board', '/chat', '/files', '/preview', '/cron'].includes(location.pathname) ||
+    ['/', '/board', '/chat', '/files', '/preview', '/cron', '/superagent'].includes(location.pathname) ||
     location.pathname.startsWith('/chat/') ||
     location.pathname.startsWith('/cron/') ||
     location.pathname.startsWith('/board/') ||

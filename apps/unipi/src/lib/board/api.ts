@@ -35,7 +35,7 @@ export interface Run {
   host?: string;
   mode?: string;
   /** "agent" when a session claimed it with `start`; "runner" only on old claims. */
-  owner?: 'runner' | 'agent';
+  owner?: 'runner' | 'agent' | 'dispatcher';
   goal?: string | null;
   started?: string;
 }
@@ -60,6 +60,7 @@ export interface Attachment {
 }
 
 export interface Task {
+  autonomy?: 'low' | 'medium' | 'high';
   id: string;
   title: string;
   /** Title derived from the first body line when `title` is empty. */

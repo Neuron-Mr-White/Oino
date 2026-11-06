@@ -10,7 +10,7 @@ import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
 import { ChevronDown, Sparkles, SquareSlash } from 'lucide-solid';
 import { injectedBody, textOf, type Part } from '../../lib/chat/model';
 import { renderBlocks } from '../../lib/chat/markdown';
-import type { Turn } from '../../lib/session/turns';
+import { messageAuthor, type Turn } from '../../lib/session/turns';
 import { AUDIENCE_LABEL, AUDIENCE_TITLE } from '../../lib/timeline/eventKinds';
 import { MdBlock } from '../chat/MdBlock';
 import type { TimelineCtx } from './context';
@@ -46,7 +46,7 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
     if (!e) return undefined;
     return injectedBody(sent(), e.args) || undefined;
   };
-  const tag = () => tagOf(harness().source, harness().title);
+  const tag = () => tagOf(harness().source, harness().title) ?? messageAuthor(m());
   return (
     <div class="chat-user tl-user tl-harness" data-testid="tl-harness">
       <div class="chat-bubble tl-harness-typed">{echo()?.text ?? sent()}</div>
