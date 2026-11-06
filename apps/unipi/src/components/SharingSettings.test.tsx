@@ -2,7 +2,7 @@
 /** UNI-248: Settings → Sharing with phones / This computer, and the owner's request dialog. */
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SharingRequestsRunner, SharingSettings } from './SharingSettings';
+import { PendingSchema, SharingRequestsRunner, SharingSettings } from './SharingSettings';
 import { setPlatformOverride } from '../lib/platform';
 import { call } from '../lib/ipc';
 import { pairPhoneOpen, resetPairPhone, setPairPhoneTransport } from '../lib/pairPhone';
@@ -233,6 +233,15 @@ describe('Settings → Sharing with phones (desktop app)', () => {
 });
 
 describe('owner dialog (desktop app on the PC)', () => {
+  it('a scheduled-runs (cron) request parses; an item it cannot read is skipped, not the batch (owner 2026-11-06)', () => {
+    const now = Date.now();
+    const out = PendingSchema.parse([
+      { id: 'r1', feature: 'cron', device_name: 'Xiaomi', status: 'pending', created_at: now },
+      { id: 'r2', feature: 'teleport', device_name: 'Future', status: 'pending', created_at: now },
+      { id: 'r3', feature: 'desktop', device_name: 'Pixel', status: 'pending', created_at: now },
+    ]);
+    expect(out.map((r) => r.id)).toEqual(['r1', 'r3']);
+  });
   it('a new pending request opens the dialog once; answering closes it', async () => {
     const pending = [{ id: 'r9', feature: 'forward', scope: { any_port: true }, device_name: 'Pixel', device_id: 'a', status: 'pending', created_at: Date.now() }];
     vi.mocked(call).mockImplementation(async (cmd: string) => (cmd === 'local_requests' ? { ok: true, value: pending } : { ok: true, value: null }) as never);

@@ -11,7 +11,7 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Clock, Globe, Hand, HardDrive, Monitor, MonitorSmartphone, Plug, Power, QrCode, RefreshCw, Send, ShieldCheck, Smartphone, Terminal } from 'lucide-solid';
 import { MODE_LABEL, refreshThisComputer, revokeDevice, seenText, thisComputer } from '../lib/thisComputer';
-import type { DeviceItem } from '@unipi/protocol';
+import { FeatureKindSchema, type DeviceItem } from '@unipi/protocol';
 import { z } from 'zod';
 import type { AppError } from '@unipi/protocol';
 import { SwitchField } from './Switch';
@@ -551,7 +551,14 @@ function HostLogRow(props: { busy: boolean }) {
 
 // ------------------------------------------------------------- owner dialog
 
-const PendingSchema = z.array(z.object({ id: z.string(), feature: z.enum(['forward', 'browser', 'desktop', 'push']), device_name: z.string(), device_id: z.string().default(''), status: z.literal('pending'), created_at: z.number(), note: z.string().optional(), scope: z.record(z.string(), z.unknown()).default({}) }).passthrough());
+/** One pending request; the feature list is the protocol's (owner 2026-11-06: a `cron` ask
+ *  failed this schema, so the whole poll was dropped and no dialog ever opened). */
+const PendingItemSchema = z.object({ id: z.string(), feature: FeatureKindSchema, device_name: z.string(), device_id: z.string().default(''), status: z.literal('pending'), created_at: z.number(), note: z.string().optional(), scope: z.record(z.string(), z.unknown()).default({}) }).passthrough();
+/** The poll, leniently: an item this build does not understand is skipped, never the batch. */
+export const PendingSchema = z.array(z.unknown()).transform((items) => items.flatMap((item) => {
+  const r = PendingItemSchema.safeParse(item);
+  return r.success ? [r.data] : [];
+}));
 
 /**
  * Desktop app on the PC: polls this PC's pending requests; a new one opens

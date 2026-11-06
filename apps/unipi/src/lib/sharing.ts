@@ -366,5 +366,5 @@ export function leaveScopes(feature: FeatureKind, allowed: boolean): { scope: Fe
 
 /** Poll interval while a request is pending (ms). */
 export const ASK_POLL_MS = 4000;
-/** The desktop app's owner-side poll (ms). */
-export const OWNER_POLL_MS = 6000;
+/** The desktop app's owner-side poll (ms): a local file read, so a request pops up within ~2 s. */
+export const OWNER_POLL_MS = 2000;
