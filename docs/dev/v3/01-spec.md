@@ -59,3 +59,33 @@ Each shell invocation starts a new shell, defaults to 60 seconds, and returns at
 **Target:** never include skills in A's system prompt or C's initial slot. The existing skill Decision model selects relevant skills per turn; emit selected skill metadata/instructions as C reminders or a tool-result hint. Persist announced and loaded names in session state, dedupe repeat announcements, retain them across compaction and reload. Restore selected skills after compaction as required by F without re-running the decision engine for already retained skills. Keep long-horizon routing and session renaming unchanged. Remove Decision-model uses only from workflow and watchdog, not the shared jev transport or skill judge.
 
 **Migration/settings/tests:** interpret existing registry reveal entries as prior announcements and preserve current skill settings. Test no skill text in the immutable prompt, per-turn selection, no duplicates, tool hint, reload and compaction retention; verify workflow/watchdog no longer invoke jev.
+
+## E. Autonomy and permission rules
+
+**Current:** `extensions/unipi/workflow/src/decide.rs:121` configures jev confidence and :138 sends ambiguous commands to jev. `extensions/unipi/workflow/src/bash.rs:1` classifies shell commands. The composer currently has `apps/unipi/src/components/composer/PermissionControl.tsx`.
+
+**Target:** enforce the declared risk at the host execution boundary, including calls through codemode and background tasks. Low < medium < high. Chains take their maximum risk; file redirects are at least medium (except `/dev/null`); authorization does not reduce risk. Unknown or malformed risk fails closed. The model must classify according to the full rubric in `ref-droid-prompts.md` §3 Execute, adapted to Oino. Preserve Plan as a separate read-only mode. Replace workflow ask/auto/full and its jev risk judgement with declarative rules and the three-level ceiling.
+
+**Proposed permission envelope:** `{version:1,rules:[{id,scope,tool,pattern,effect}],legacyDeny:[...],default:"ask"}`. Effects are `deny|ask|allow`; scopes are global, project or session. Resolve all applicable explicit denies first, then migrated legacy denies, then asks, then allows, then default. A rule allow never overrides the risk ceiling. Above ceiling, interactive execution suspends before side effects and sends an approval card; unattended execution blocks with `needs Autonomy <level>` and no tool side effect. An approval is specific to its pending call; allow-once consumes once, always persists an appropriately scoped rule, deny fails the call. Session cancellation/restart invalidates pending cards and cannot turn missing replies into approval.
+
+**Approval protocol (draft):** host emits `approval_request` with `{requestId,sessionId,tool,arguments,riskLevel,ceiling,reason}`; app replies `approval_response` with `{requestId,decision:"allow_once"|"always"|"deny"}`. Correlate request/session, reject duplicate or stale responses and disallow unattended approval. Final persistent rule scope and how always interacts with ceiling need explicit resolution below; do not implement an allow path that silently bypasses the ceiling.
+
+**Migration/settings/tests:** migrate old deny rules without weakening them; keep legacy session entries readable. New level selection belongs to session and ticket, with a global default. Test rule precedence, chained commands and redirects, nested codemode, unattended runs, stale card replies, scope isolation, and PowerShell parity.
+
+## F. Compaction
+
+**Current:** `crates/oino-core/src/session/compaction_flow.rs:68` resolves existing settings, :145 calls the compactor, :184 invokes hooks and :233 appends a compaction entry. Existing settings are in `crates/oino-core/src/compaction/settings.rs:8`.
+
+**Target record:** append to the same session stream under its existing single-writer lock:
+
+```json
+{"type":"compaction_state","id":"string","timestamp":"RFC3339","summaryText":"string","summaryTokens":0,"summaryKind":"llm_summary|vcc_summary","anchorMessage":{"id":"string","index":0},"removedCount":0,"retainedSkills":["string"],"retainedImages":[{"path":"string","excerpt":"string","imageIndex":0,"imageCount":1}],"loadedDeferredToolNames":["string"]}
+```
+
+Each subsequent message has `meta.compactionSummaryId` equal to the active record id. A committed state and its anchor must refer to existing messages on the same branch. Reload selects the newest valid state on that branch, forms the model view as immutable slots 1–2, injected summary, then messages after the anchor; preserve the entire raw transcript for human scrolling. If the anchor is missing, reject the state and surface a recoverable error rather than discard history. Import legacy compaction entries as legacy records; do not rewrite them. Never append a partial compaction state on failure.
+
+The LLM summarizer uses the adaptive prompt in `ref-droid-prompts.md` §5.1 verbatim, substituting only the reference's conditional interpolation; the injected summary wrapper names Oino. Summarize the previous summary plus messages after its anchor, stripping the previous TODO block and appending current todos. Keep vcc/llm selection, both using the same persistence, trigger and recovery machinery. Clamp custom instructions to 25% of summarizer context; reserve 4k tokens, pin the recent tail and insert the omitted-message marker. Retry context failures on the 0.9 → 0.75 → 0.5 shrink ladder; resample empty/degenerate responses then escalate. Preserve original data if every attempt fails.
+
+Post-turn threshold uses actual provider input usage including cache reads; resolution is session override → model/family → global → model default → 250k, clamped to max input. Suppress repeated threshold compaction for the same session/model/limit until usage falls below the limit; failed threshold compaction is nonfatal. On in-turn overflow compact with `requireProgress` and retry the same turn; if no messages are removed, return the original failure. `/compact` accepts custom instructions; PreCompact may block only manual compaction. Reset the cache snapshot after success, then re-announce retained skills and loaded deferred tools without altering slots 1–2.
+
+**Settings:** preserve existing vcc/llm toggle; add `compactionTokenLimit`, `compactionTokenLimitPerModel`, `compactionModel`, `compactionThresholdCheckEnabled` and session override. **Tests:** legacy and epoch reload, branch anchor validation, crash before commit, no data loss, retained images/skills, iterative delta/TODO replacement, all trigger and failure paths, provider usage accounting, cache-prefix byte identity.
