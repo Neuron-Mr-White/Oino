@@ -1,0 +1,45 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.skill-registry",
+  "name": "Skill registry",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Controls which skills the model sees: per-skill on/off and must-show, a skill vault, and jev-judged exposure with a stable listed set.",
+  "license": "MIT",
+  "permissions": {
+    "fs": {
+      "agentDir": "read",
+      "project": "read",
+      "paths": [
+        {
+          "path": "~/.oino/skill-vault",
+          "access": "read",
+          "alias": "skill-vault"
+        }
+      ]
+    },
+    "network": {
+      "hosts": [
+        "openrouter.ai",
+        "api.typesafe.ai"
+      ]
+    },
+    "env": [
+      "TYPESAFE_API_KEY",
+      "OPENROUTER_API_KEY"
+    ],
+    "secrets": true,
+    "credentials": [
+      "openrouter"
+    ],
+    "services": {
+      "call": [
+        "*/skill-condition.check"
+      ]
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:2b452f4a693ebd280a1cbb099ef61aa349f6f4645dab7cceb202590792d53e3d"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.long-horizon",
+  "name": "Long-horizon",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Multi-turn autonomous work: goal, ralph checklist loops, swarm and graph owners with an independent verifier.",
+  "license": "MIT",
+  "ui": {
+    "reserved": [
+      "unipi.long-horizon/visualize"
+    ]
+  },
+  "limits": {
+    "hookTimeoutMs": 90000
+  },
+  "permissions": {
+    "sessionControl": true,
+    "models": {
+      "complete": true
+    },
+    "credentials": [
+      "*"
+    ],
+    "fs": {
+      "project": "write"
+    },
+    "network": {
+      "hosts": [
+        "openrouter.ai",
+        "api.typesafe.ai"
+      ]
+    },
+    "env": [
+      "TYPESAFE_API_KEY",
+      "OPENROUTER_API_KEY"
+    ],
+    "secrets": true,
+    "osNotify": true,
+    "services": {
+      "call": [
+        "unipi.subagents/*",
+        "*/evidence.contribute"
+      ]
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:27e265730cbdea5c0e4b22ebb15dfef64c1a557c3599d5c4ccfc0236ebcb6ef8"
+  }
+}
