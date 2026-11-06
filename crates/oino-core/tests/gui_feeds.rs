@@ -347,7 +347,7 @@ async fn checkpoints_restore_files_and_rewind_forks() {
             (
                 "w2".into(),
                 "write".into(),
-                args(json!({"path": "notes.txt", "content": "v2"})),
+                args(json!({"file_path": file.display().to_string(), "content": "v2"})),
             ),
             (
                 "w3".into(),
@@ -373,7 +373,7 @@ async fn checkpoints_restore_files_and_rewind_forks() {
         .await
         .unwrap();
     idle(&session).await;
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2\n");
     let checkpoints = session.checkpoints();
     assert_eq!(checkpoints.len(), 2, "{checkpoints:?}");
     assert_eq!(checkpoints[1].files.len(), 2);
@@ -390,7 +390,7 @@ async fn checkpoints_restore_files_and_rewind_forks() {
     // Undo the last turn's files, then rewind the conversation to the first prompt.
     let second = checkpoints[1].entry_id.clone();
     let undone = session.rewind_files(&second).unwrap();
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "v1");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "v1\n");
     assert!(!dir.path().join("new.txt").exists());
     assert_eq!(undone.deleted.len(), 1);
     let first = checkpoints[0].entry_id.clone();
@@ -410,13 +410,16 @@ async fn running_bash_calls_can_be_detached() {
         FauxResponse::ToolCalls(vec![(
             "b1".into(),
             "bash".into(),
-            args(json!({"command": "echo early; sleep 20; echo late", "summary": "detach regression", "riskLevel": "medium"})),
+            args(
+                json!({"command": "echo early; sleep 20; echo late", "summary": "detach regression", "riskLevel": "medium"}),
+            ),
         )]),
         FauxResponse::Text("ok".into()),
     ]);
     let services = services(dir.path(), provider, Vec::new(), JsonObject::new()).await;
     let rt = runtime(&services, SessionSource::InMemory).await;
     let session = rt.session();
+    session.set_autonomy(oino_core::session::permission::Level::High);
     session
         .prompt("run".into(), oino_core::session::PromptOptions::default())
         .await

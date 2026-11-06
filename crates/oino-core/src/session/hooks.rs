@@ -180,11 +180,11 @@ impl TransformContext for SessionHooks {
             let session = self.session()?;
             session
                 .snapshot_image_policy(&messages)
-                .map_err(|e| HookError::new(e.to_string()))?;
+                .map_err(|e| HookError::new(format!("session durability barrier failed: {e}")))?;
             let messages = session.transform_context(messages).await;
             lock(&session.inner.manager)
                 .mark_sent(&messages)
-                .map_err(|e| HookError::new(e.to_string()))?;
+                .map_err(|e| HookError::new(format!("session durability barrier failed: {e}")))?;
             Ok(messages)
         })
     }
@@ -420,7 +420,7 @@ impl AgentSession {
 
     /// Installs the next-turn refresh.
     async fn prepare_next_turn(&self, _context: &AgentContext) -> AgentLoopTurnUpdate {
-        let messages = self.compact_before_next_assistant_response().await;
+        let messages = self.prefix_view(self.compact_before_next_assistant_response().await);
         let base = self.system_prompt_options();
         let run = lock(&self.inner.book).run_prompt_options.clone();
         let mut options = run.unwrap_or_else(|| base.clone());

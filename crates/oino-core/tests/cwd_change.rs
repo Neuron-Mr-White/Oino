@@ -177,8 +177,9 @@ async fn change_cwd_appends_a_reminder_and_keeps_the_prompt_prefix() {
     assert!(!result.is_error, "{result:?}");
     assert_eq!(
         result.content,
-        vec![oino_ai::UserContent::text("from the workspace\n")]
+        vec![oino_ai::UserContent::text("from the workspace")]
     );
+    session.set_autonomy(oino_core::session::permission::Level::High);
     let bash = session
         .execute_bash("pwd".into(), true, None)
         .await

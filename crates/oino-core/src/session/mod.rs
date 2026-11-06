@@ -517,6 +517,8 @@ impl AgentSession {
             session
                 .runner()
                 .emit_error("<runtime>", "system_snapshot", error.to_string());
+        } else {
+            session.refresh_context();
         }
         session
     }

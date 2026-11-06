@@ -454,7 +454,11 @@ impl AgentSession {
         if !CHECKPOINTED_TOOLS.contains(&tool_name) {
             return;
         }
-        let Some(path) = args.get("path").and_then(JsonValue::as_str) else {
+        let Some(path) = args
+            .get("file_path")
+            .or_else(|| args.get("path"))
+            .and_then(JsonValue::as_str)
+        else {
             return;
         };
         let Some(entry) = self.current_user_entry() else {
