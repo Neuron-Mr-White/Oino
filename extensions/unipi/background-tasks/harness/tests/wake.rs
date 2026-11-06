@@ -90,7 +90,13 @@ impl Env {
         options.cache_dir = Some(extensions_dir().join("target/oino-wasm-test-cache"));
         Self {
             runtime: WasmRuntime::new(options).unwrap(),
-            host: RecordingHostServices::new(),
+            host: {
+                let host = RecordingHostServices::new();
+                for program in ["sh", "bash", "cmd", "powershell.exe"] {
+                    host.allow_process_command(program);
+                }
+                host
+            },
             agent,
             project,
         }
@@ -122,14 +128,18 @@ impl Env {
     /// the shared hub first, so the extension's wake route goes through the same
     /// composite the notification path captures (G-04).
     async fn load(&self) -> Arc<dyn ExtensionInstance> {
+        self.load_with_host(Arc::clone(&self.host) as Arc<dyn HostServices>)
+            .await
+    }
+
+    async fn load_with_host(&self, host: Arc<dyn HostServices>) -> Arc<dyn ExtensionInstance> {
         let id = ExtensionId::new(EXTENSION_ID).unwrap();
         let hub = self
             .runtime
             .local_services()
             .expect("local services")
             .clone();
-        let wrapped: Arc<dyn HostServices> =
-            hub.wrap_for_test(&id, Arc::clone(&self.host) as Arc<dyn HostServices>);
+        let wrapped: Arc<dyn HostServices> = hub.wrap_for_test(&id, host);
         let manifest = Manifest::parse(
             &std::fs::read_to_string(extensions_dir().join(format!("unipi/{DIR}/extension.json")))
                 .unwrap(),
@@ -437,4 +447,66 @@ async fn execute_task_output_peek_block_stop_and_mixed_ids() {
     let stop_id = running["details"]["task_id"].as_str().unwrap();
     let stopped = tool(&env, &ext, "task_stop", json!({"task_id":stop_id})).await;
     assert_eq!(stopped["details"]["state"], "killed");
+}
+
+/// Manifest process capability must never substitute for host execution consent.
+#[tokio::test(flavor = "multi_thread")]
+async fn task_service_policy_denial_precedes_all_side_effects() {
+    use oino_extension_api::HostError;
+    use std::sync::Mutex;
+    #[derive(Default)]
+    struct Deny(Mutex<Vec<(CallContext, String, Vec<String>)>>);
+    impl HostServices for Deny {
+        fn check_process(
+            &self,
+            _ext: &ExtensionId,
+            cx: &CallContext,
+            program: &str,
+            args: &[String],
+        ) -> Result<(), HostError> {
+            self.0
+                .lock()
+                .unwrap()
+                .push((cx.clone(), program.into(), args.to_vec()));
+            Err(HostError::Failed("needs Autonomy High".into()))
+        }
+    }
+    let env = Env::new();
+    let policy = Arc::new(Deny::default());
+    let ext = env.load_with_host(policy.clone()).await;
+    for child in [false, true] {
+        let mut cx = env.cx();
+        cx.kind = CallKind::Service;
+        cx.mode = Mode::Print;
+        cx.has_ui = false;
+        cx.is_child = child;
+        cx.child_role = child.then(|| "subagent".into());
+        let result = ext.handle_service("tasks.shell", RawJson::from(json!({
+            "command":"printf bypass-ok > marker", "summary":"Audit policy bypass", "riskLevel":"high", "shell":"bash"
+        })), &ExtensionId::new("oino.frontend").unwrap(), cx.clone()).await;
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("needs Autonomy High")
+        );
+        let calls = policy.0.lock().unwrap();
+        let (seen, program, args) = calls.last().unwrap();
+        assert_eq!(seen, &cx);
+        assert_eq!(program, "bash");
+        assert_eq!(args, &["-c", "printf bypass-ok > marker"]);
+        assert!(!env.project.path().join("marker").exists());
+        assert!(
+            !env.agent.path().join("tmp/tasks").exists(),
+            "denial must not create an output path"
+        );
+        assert!(
+            env.runtime
+                .local_services()
+                .unwrap()
+                .tasks()
+                .list("s1")
+                .is_empty()
+        );
+    }
 }

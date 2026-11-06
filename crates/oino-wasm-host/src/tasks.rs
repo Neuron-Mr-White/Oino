@@ -83,6 +83,34 @@ pub struct ShellExecution {
     pub stdin: Option<String>,
 }
 
+impl TaskSpec {
+    /// Exact invocation authorized by the host and then used by the task spawner.
+    pub(crate) fn process_invocation(&self) -> Result<(String, Vec<String>), HostError> {
+        if let Some(execution) = &self.execution {
+            return Ok((execution.program.clone(), execution.args.clone()));
+        }
+        let (shell, args) = match self.shell.as_deref() {
+            Some("bash") => ("bash", vec!["-c".to_owned(), self.command.clone()]),
+            Some("powershell") if cfg!(windows) => (
+                "powershell.exe",
+                vec![
+                    "-NoProfile".to_owned(),
+                    "-NonInteractive".to_owned(),
+                    "-Command".to_owned(),
+                    format!(
+                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {}",
+                        self.command
+                    ),
+                ],
+            ),
+            Some(_) => return Err(HostError::InvalidArgument("Unsupported shell".to_owned())),
+            None if cfg!(windows) => ("cmd", vec!["/C".to_owned(), self.command.clone()]),
+            None => ("sh", vec!["-c".to_owned(), self.command.clone()]),
+        };
+        Ok((shell.to_owned(), args))
+    }
+}
+
 /// Task state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -216,32 +244,12 @@ impl TaskService {
         {
             return Err(HostError::InvalidArgument("Invalid timeout".to_owned()));
         }
+        let (program, args) = spec.process_invocation()?;
         let id = self.next_id();
         let output = self.output_path(session_id, &id)?;
-        let (shell, args) = match spec.shell.as_deref() {
-            Some("bash") => ("bash", vec!["-c".to_owned(), spec.command.clone()]),
-            Some("powershell") if cfg!(windows) => (
-                "powershell.exe",
-                vec![
-                    "-NoProfile".to_owned(),
-                    "-NonInteractive".to_owned(),
-                    "-Command".to_owned(),
-                    format!(
-                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {}",
-                        spec.command
-                    ),
-                ],
-            ),
-            Some(_) => return Err(HostError::InvalidArgument("Unsupported shell".to_owned())),
-            None if cfg!(windows) => ("cmd", vec!["/C".to_owned(), spec.command.clone()]),
-            None => ("sh", vec!["-c".to_owned(), spec.command.clone()]),
-        };
         let child = self.processes.spawn(&Spawn {
-            command: spec
-                .execution
-                .as_ref()
-                .map_or_else(|| shell.to_owned(), |e| e.program.clone()),
-            args: spec.execution.as_ref().map_or(args, |e| e.args.clone()),
+            command: program,
+            args,
             cwd: cwd.to_path_buf(),
             env: spec.execution.as_ref().map_or_else(
                 || vec![("OINO_TASK_ID".into(), id.clone())],

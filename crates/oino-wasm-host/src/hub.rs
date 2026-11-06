@@ -462,6 +462,22 @@ impl LocalServices {
                 let spec: TaskSpec = spec
                     .decode()
                     .map_err(|e| HostError::InvalidArgument(format!("TaskSpec: {e}")))?;
+                // Manifest grants are capabilities, never execution consent. Keep the
+                // originating session context and route (including child/unattended policy).
+                // External subagent reports only update metadata; they cannot spawn.
+                if spec.external_id.is_none() {
+                    let policy = via
+                        .as_ref()
+                        .and_then(Weak::upgrade)
+                        .ok_or_else(|| HostError::Failed("needs Autonomy High".into()))?;
+                    let (program, args) = spec.process_invocation()?;
+                    policy.check_process(ext, cx, &program, &args)?;
+                    if let Some(script) = spec.execution.as_ref().and_then(|e| e.stdin.as_deref()) {
+                        // argv does not contain scripts transported on stdin. Authorize
+                        // that source too, never only an innocuous shell executable.
+                        policy.check_process(ext, cx, &program, &["-c".into(), script.into()])?;
+                    }
+                }
                 let hub = Arc::downgrade(self);
                 let id = self.tasks.start(
                     ext,
@@ -1055,6 +1071,88 @@ impl HostServices for Composite {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct PolicyProbe(Mutex<Vec<(CallContext, String, Vec<String>)>>);
+    impl HostServices for PolicyProbe {
+        fn check_process(
+            &self,
+            _ext: &ExtensionId,
+            cx: &CallContext,
+            program: &str,
+            args: &[String],
+        ) -> Result<(), HostError> {
+            lock(&self.0).push((cx.clone(), program.to_owned(), args.to_vec()));
+            // Let an argv-only check pass, deny the actual stdin script.
+            if args.iter().any(|a| a.contains("marker")) {
+                Err(HostError::Failed("needs Autonomy High".into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn task_policy_checks_actual_invocation_and_stdin_before_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Arc::new(LocalServices::new(dir.path()));
+        let ext = ExtensionId::new("test.tasks").unwrap();
+        let policy = Arc::new(PolicyProbe::default());
+        let host = hub.wrap(&ext, policy.clone());
+        let cx = CallContext {
+            session_id: "child-session".into(),
+            mode: oino_extension_api::Mode::Print,
+            has_ui: false,
+            is_child: true,
+            child_role: Some("subagent".into()),
+            kind: CallKind::Service,
+            cwd: dir.path().into(),
+            ..CallContext::default()
+        };
+        let spec = RawJson::from(
+            json!({"name":"test", "command":"echo harmless decoy", "shell":"bash",
+            "execution":{"program":"/bin/bash", "args":["-s"], "vars":[], "stdin":"printf bypass-ok > marker"}}),
+        );
+        let error = host.tasks(&ext, &cx, TaskOp::Start(spec)).unwrap_err();
+        assert!(error.to_string().contains("needs Autonomy High"));
+        let calls = lock(&policy.0);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0],
+            (cx.clone(), "/bin/bash".into(), vec!["-s".into()])
+        );
+        assert_eq!(
+            calls[1],
+            (
+                cx,
+                "/bin/bash".into(),
+                vec!["-c".into(), "printf bypass-ok > marker".into()]
+            )
+        );
+        assert!(!dir.path().join("tmp/tasks").exists());
+        assert!(!dir.path().join("marker").exists());
+        assert!(hub.tasks().list("child-session").is_empty());
+    }
+
+    #[tokio::test]
+    async fn subagent_metadata_does_not_spawn_an_embedded_execution() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Arc::new(LocalServices::new(dir.path()));
+        let ext = ExtensionId::new("test.tasks").unwrap();
+        let host = hub.wrap(&ext, Arc::new(DetachingCore));
+        let cx = CallContext {
+            session_id: "s".into(),
+            cwd: dir.path().into(),
+            ..CallContext::default()
+        };
+        let spec = RawJson::from(
+            json!({"name":"subagent", "command":"printf bypass-ok > marker", "externalId":"agent-1",
+            "execution":{"program":"sh", "args":["-c","printf bypass-ok > marker"], "vars":[], "stdin":null}}),
+        );
+        host.tasks(&ext, &cx, TaskOp::Start(spec)).unwrap();
+        assert!(!dir.path().join("marker").exists());
+        assert_eq!(hub.tasks().get("agent-1").unwrap().pid, 0);
+    }
 
     /// A core stand-in that hands over one detached `bash` call.
     struct DetachingCore;

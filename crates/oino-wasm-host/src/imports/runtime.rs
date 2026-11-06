@@ -547,6 +547,19 @@ impl<T: Send> wa::HostWithStore<T> for HostState {
 
 fn tasks(ext: &ExtShared, cx: &CallContext, op: TaskOp) -> Result<RawJson, HostError> {
     ExtShared::require(ext.perms().process.spawn, "process.spawn")?;
+    if let TaskOp::Start(raw) = &op {
+        let spec: crate::tasks::TaskSpec = raw
+            .decode()
+            .map_err(|e| HostError::InvalidArgument(format!("TaskSpec: {e}")))?;
+        if spec.external_id.is_none() {
+            let (program, _) = spec.process_invocation()?;
+            ExtShared::require(
+                ext.perms().allows_program(&program, ext.bundled),
+                &format!("process.allow:{program}"),
+            )?;
+        }
+    }
+    // The composite host authorizes the exact invocation before task output creation.
     ext.host.tasks(&ext.id, cx, op)
 }
 
