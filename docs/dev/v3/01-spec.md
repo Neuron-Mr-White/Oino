@@ -113,3 +113,31 @@ Post-turn threshold uses actual provider input usage including cache reads; reso
 **Target:** semantic search setting defaults off; normal grep uses in-process ripgrep. When enabled use CPU-only zvec-grep direct mode or in-process engine, never a daemon; exact searches need no index. Semantic/hybrid search uses `<project>/.zvec-grep/` and a small local model such as `local/potion-code-16m-v2`. Index creation requires explicit user consent; without it return an actionable refusal, never build silently. Unload the model when idle. Keep normal grep contract and permission boundaries; preserve project isolation.
 
 **Migration/settings/tests:** persist an opt-in semantic toggle; existing sessions remain on exact ripgrep. Test off-by-default, exact without index, consent denial/approval, index path isolation, model unload and CPU-only build.
+
+## J. Memory and dreaming
+
+**Current:** `extensions/unipi/dream/src/lib.rs:13` already schedules daily or interval runs, with a host cron integration; `extensions/unipi/dream/src/schedule.rs:41` builds the schedule. Dream UI exists in `apps/unipi/src/components/memory/DreamPanel.tsx`.
+
+**Target:** retain mempalace as the only memory backend. Dream on the user-selected schedule, consolidating overlapping notes, removing transient details and stale unused memories, extracting missed lessons, and preserving explicit preferences and source session links. Add per-memory usage tracking before making deletion decisions; lack of usage data is not proof of disuse. Keep skill/check proposals subject to approval. Make settings discoverable and usable: enabled, daily time/frequency, model picker backed by model catalog, and recent runs.
+
+**Migration/settings/tests:** preserve existing dream settings and memories; legacy records without usage history must not be pruned as unused. Test source preservation, usage accounting, stale safety, scheduling, model selection and recent run inspection.
+
+## K. Sheet select bug
+
+**Current:** `apps/unipi/src/components/phone/Sheet.tsx:37` already identifies floating layers; `apps/unipi/src/components/phone/SheetSelect.test.tsx:32` contains related tests. This must be rechecked against the actual Subagents edit sheet and BoardSheet, not assumed fixed by the existing tests.
+
+**Target:** a Kobalte Select listbox portaled outside a sheet must not count as an outside click. Apply consistently to SheetFrame and BoardSheet without disabling genuine outside dismissal; selection updates the value and the sheet stays open through Save.
+
+**Migration/settings/tests:** no settings or data migration. Add interaction tests for Subagents thinking selector, every shared sheet wrapper, actual outside click and Save.
+
+## L. Superagent
+
+**Current:** kanboard records the claimant in `apps/unipi/crates/unipi-kanboard/src/model.rs:368`; host cron is embedded in `apps/unipi/crates/unipi-host/src/cron_serve.rs:172`. `apps/unipi/src/lib/session/turns.ts:304` classifies steering without the required author distinction.
+
+**Target:** workspace-free Superagent chat in top navigation manages all project boards, replacing `/kanboard-do` and per-session `/kanboard-autowork`. Select projects from sidebar history and zoxide; ask if ambiguous. It can create backlog tasks, move to todo, edit/order/depend, set ticket autonomy and summarize boards. No worktrees. Parallelism across projects is subject to a global cap and at most one active worker per project by default; dependencies encode same-project serialization.
+
+Host watcher runs independently of chat while enabled. It atomically claims an eligible todo task whose dependencies are met, reserves both global and project slots before launching a worker in that project's existing directory, supplies its ticket autonomy, and records `Run.session`. Worker claims, works, finishes to in_review or blocks with a question. On restart reconcile claims and running sessions before dispatching; never start duplicate workers on an uncertain claim. Watcher off leaves board management and explicit start available. The UI shows chat, live task/project/autonomy/step/tool/elapsed/cost/stop/open, Needs you (blocked question or in_review), toggle and cap.
+
+**Host operations (draft):** `superagent.status {}` → watcher config, workers and needs-you; `superagent.configure {enabled,concurrencyCap}` → effective config; `superagent.start {projectId,taskId}` → session id or actionable refusal; `superagent.stop {projectId,taskId}` → stopped state; `superagent.relay {projectId,taskId,text}` → delivery result. Each operation validates project/task identity and host authorization. Relay finds the current `Run.session`, records a ticket comment and sends a follow-up with author metadata; failures must be reported, not treated as delivered. Host/agent messages display their author and never receive a user Steer chip; only actual user follow-ups do. Board comments do not auto-relay in this version.
+
+**Migration/settings/tests:** task autonomy is an optional persisted field for legacy boards; preserve runs and comments. Add watcher enabled/cap settings and ticket level. Test concurrent claims, project exclusion, dependency transitions, crash/restart, off/manual start, relay and author rendering, in_review and blocked visibility, and unattended risk denial.
