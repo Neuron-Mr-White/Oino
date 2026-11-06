@@ -858,7 +858,15 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 }
 
 /* --- [ux-sessions] "Task list" header + sidebar search -------------------- */
-.sb-tasks { padding: 2px 0 2px; }
+/* The header stays put while the session list scrolls (owner 2026-11-06). */
+.sb-tasks {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 2px 0 2px;
+  background: rgb(20 18 17 / 92%);
+  backdrop-filter: blur(12px);
+}
 .sb-tasks-head {
   display: flex;
   align-items: center;

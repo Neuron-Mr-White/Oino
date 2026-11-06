@@ -76,8 +76,8 @@ describe('the row menu inside <Show> (UNI-226)', () => {
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }));
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
-    // Pinning moved the row into the Pinned group — re-query it.
-    fireEvent.contextMenu(screen.getByTestId('srow-a'));
+    // Pinning copies the row into the Pinned group — re-query it.
+    fireEvent.contextMenu(screen.getAllByTestId('srow-a')[0]!);
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
     expect(openRowMenuState()?.card.session_id).toBe('a');
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }));

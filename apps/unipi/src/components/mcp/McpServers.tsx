@@ -4,6 +4,11 @@
  * error (wrapping, never cut off at an ellipsis) — with per-server Enable / Disable and
  * Reconnect, plus Reload all and Sync catalog. Data: `unipi.mcp`'s `mcp.servers` /
  * `mcp.server-action` services in Settings' own command session.
+ *
+ * The two per-server controls match the extension's API (`mcp.server-action`):
+ * the switch is enable / disable (it persists the server's `enabled` and starts or
+ * stops it) and Reconnect is a button that restarts a running server. Both say what
+ * they did — a toast with the server's new status, or its error.
  */
 import { createResource, createSignal, For, Show } from 'solid-js';
 import { CircleAlert, Plug, RefreshCw } from 'lucide-solid';
@@ -42,13 +47,20 @@ export function McpServers(props: { hostId: string }) {
   const [data, { refetch, mutate }] = createResource(async () => parseMcpServers(await call('mcp.servers')));
   const [busy, setBusy] = createSignal<string | undefined>();
   const [open, setOpen] = createSignal<string | undefined>();
+  /** Runs one server action and reports the outcome (the row's new status). */
   const act = async (key: string, action: string, name?: string) => {
     setBusy(key);
     try {
       const r = obj(await call('mcp.server-action', { action, ...(name ? { name } : {}) }));
       if (r.ok === false) toasts().push(String(r.message ?? 'That did not work'), 'error');
-      else if (r.servers) mutate(parseMcpServers(r.servers));
-      else await refetch();
+      else {
+        const next = r.servers ? parseMcpServers(r.servers) : undefined;
+        if (next) mutate(next);
+        else await refetch();
+        const after = next?.servers.find((s) => s.name === name);
+        if (after) toasts().push(after.error ? `${after.name}: ${after.error}` : `${after.name} — ${after.status}`, after.error ? 'error' : 'success');
+        else if (!name) toasts().push(action === 'reload' ? 'Reloaded the servers' : 'Synced the catalog', 'success');
+      }
     } catch (e) {
       toasts().push(String((e as { message?: unknown })?.message ?? e), 'error');
     } finally {
@@ -92,8 +104,24 @@ export function McpServers(props: { hostId: string }) {
                           <span class="mcps-dim">{s.source} · {s.transport} · {s.toolCount} tools</span>
                         </div>
                         <div class="mcps-actions">
-                          <button type="button" class="settings-link" disabled={!!busy() || !s.enabled} onClick={() => void act(`rc-${s.name}`, 'reconnect', s.name)}>Reconnect</button>
-                          <SwitchField label={`${s.name} enabled`} checked={s.enabled} disabled={!!busy() || s.source.startsWith('project') || s.source === 'acp'} onChange={(v) => void act(`en-${s.name}`, v ? 'enable' : 'disable', s.name)} testId={`mcp-en-${s.name}`} />
+                          <button
+                            type="button"
+                            class="btn-secondary settings-btn mcps-reconnect"
+                            disabled={!!busy() || !s.enabled}
+                            title={s.enabled ? `Restart ${s.name}` : `${s.name} is off — turn it on first`}
+                            data-testid={`mcp-reconnect-${s.name}`}
+                            onClick={() => void act(`rc-${s.name}`, 'reconnect', s.name)}
+                          >
+                            <RefreshCw size={13} class={busy() === `rc-${s.name}` ? 'refresh-spinning' : undefined} />
+                            Reconnect
+                          </button>
+                          <SwitchField
+                            label={`${s.name} ${s.enabled ? 'enabled' : 'disabled'}`}
+                            checked={s.enabled}
+                            disabled={!!busy() || s.source.startsWith('project') || s.source === 'acp'}
+                            onChange={(v) => void act(`en-${s.name}`, v ? 'enable' : 'disable', s.name)}
+                            testId={`mcp-en-${s.name}`}
+                          />
                         </div>
                         <Show when={s.error}>
                           <p class="mcps-err" data-testid={`mcp-err-${s.name}`}><CircleAlert size={13} /> <span>{s.error}</span></p>

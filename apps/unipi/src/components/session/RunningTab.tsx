@@ -284,7 +284,8 @@ function RunList(props: { rows: RunRow[]; now: number; actions: RunActions }) {
 }
 
 function SubagentsSection(props: { s: SessionHandle; rows: RunRow[]; now: number; refetch: () => void }) {
-  const [filter, setFilter] = createSignal<RunFilter>('all');
+  // Owner 2026-11-06: the subagent filter opens on "Running" (in progress).
+  const [filter, setFilter] = createSignal<RunFilter>('running');
   const counts = createMemo(() => filterCounts(props.rows));
   const shown = createMemo(() => props.rows.filter((r) => matchesFilter(r, filter())));
   const live = () => counts().running;

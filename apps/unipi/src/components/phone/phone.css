@@ -35,7 +35,7 @@
   --ph-bottom-chrome: calc(var(--ph-tabbar-h) + var(--safe-bottom));
   /* Z-index scale (§2.12). B/C use only these. */
   --z-content: 0; --z-sticky: 10; --z-header: 20; --z-tabbar: 30; --z-fab: 35; --z-mascot: 38;
-  --z-layer: 40; --z-layer-2: 45; --z-scrim: 60; --z-sheet: 61; --z-sheet-2: 63; --z-toast: 70; --z-system: 90;
+  --z-layer: 40; --z-layer-2: 45; --z-scrim: 60; --z-sheet: 61; --z-sheet-2: 63; --z-popover: 65; --z-toast: 70; --z-system: 90;
 }
 html[data-shell=phone] {
   --color-text-dim: #8A8178;
@@ -360,6 +360,6 @@ html[data-shell=phone] .sheet.report-sheet { z-index: var(--z-sheet); }
 html[data-shell=phone] .ui-modal-scrim { z-index: calc(var(--z-sheet-2) + 1); }
 html[data-shell=phone] .browser-sheet-scrim { z-index: calc(var(--z-sheet-2) + 1); }
 html[data-shell=phone] .browser-sheet { z-index: calc(var(--z-sheet-2) + 2); }
-html[data-shell=phone] .recent-popover-backdrop { z-index: calc(var(--z-toast) - 3); }
-html[data-shell=phone] .recent-popover { z-index: calc(var(--z-toast) - 2); }
-html[data-shell=phone] .ui-select-content { z-index: calc(var(--z-toast) - 2); }
+html[data-shell=phone] .recent-popover-backdrop { z-index: calc(var(--z-popover) - 1); }
+html[data-shell=phone] .recent-popover { z-index: var(--z-popover); }
+html[data-shell=phone] .ui-select-content { z-index: var(--z-popover); }

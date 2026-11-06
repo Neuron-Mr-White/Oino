@@ -58,7 +58,9 @@ html[data-shell=desktop] .app-content:has(.settings-group) > div { margin: 0; }
 .sb-action:active:not(:disabled) { transform: none; }
 .sb-action:focus-visible, .rail-item:focus-visible, .sb-row:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }
 .sb-keys { margin-left: auto; display: flex; gap: 3px; }
-.sb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sb-gap) 10px; scrollbar-width: thin; scrollbar-color: transparent transparent; mask-image: linear-gradient(180deg, transparent, #000 var(--sb-gap), #000 calc(100% - var(--sb-gap)), transparent); }
+/* The scroll fades at the bottom only: the sticky "Task list" header sits at the
+   top edge, and a top fade would cut it off. */
+.sb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sb-gap) 10px; scrollbar-width: thin; scrollbar-color: transparent transparent; mask-image: linear-gradient(180deg, #000 calc(100% - var(--sb-gap)), transparent); }
 .sb-scroll:hover { scrollbar-color: var(--color-surface-3) transparent; }
 /* WP-A4: the sessions area (hosts/projects/rows) lives in components/sidebar/sidebar.css. */
 

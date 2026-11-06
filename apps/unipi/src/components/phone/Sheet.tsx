@@ -33,8 +33,12 @@ export function sizeFor(detents: readonly Detent[]): Detent {
   return 'content';
 }
 
-/** Floating layers portaled out of the drawer (Kobalte Select/Combobox/Menu/Popover, custom pickers). */
-const FLOATING_LAYER = '[data-popper-positioner],[data-kb-top-layer],[data-floating-layer],[role="listbox"],[role="menu"]';
+/**
+ * Floating layers portaled out of the drawer (Kobalte Select/Combobox/Menu/Popover,
+ * the app's own dialogs and menus). A tap inside one of them belongs to that
+ * layer — it must not read as a scrim tap on the sheet below.
+ */
+const FLOATING_LAYER = '[data-popper-positioner],[data-kb-top-layer],[data-floating-layer],[role="listbox"],[role="menu"],[role="dialog"],[role="alertdialog"],[aria-modal="true"]';
 
 /** Pure: is this pointer/focus event target inside a portaled floating layer (not a real outside tap)? */
 export function inFloatingLayer(target: EventTarget | null): boolean {

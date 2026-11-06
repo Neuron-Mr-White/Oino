@@ -7,7 +7,7 @@
  */
 
 /* ── desktop modal ─────────────────────────────────────────────────────── */
-.sm-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(0 0 0 / 52%); animation: sm-fade 140ms ease-out both; }
+.sm-overlay { position: fixed; inset: 0; z-index: var(--z-scrim, 60); display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(0 0 0 / 52%); animation: sm-fade 140ms ease-out both; }
 .sm-dialog:focus, .sm-dialog:focus-visible { outline: none; }
 .sm-dialog { display: flex; flex-direction: column; width: min(680px, 100%); max-height: min(82vh, 780px); border-radius: 20px; border: 1px solid var(--color-line); background: var(--color-surface-1); box-shadow: 0 28px 80px rgb(0 0 0 / 55%); animation: sm-pop 160ms ease-out both; overflow: hidden; }
 .sm-head { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 8px 8px 18px; border-bottom: 1px solid var(--color-line); }

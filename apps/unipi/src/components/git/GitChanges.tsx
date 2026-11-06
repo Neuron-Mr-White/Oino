@@ -18,6 +18,9 @@ type Item =
   | { t: 'file'; row: Extract<GitRow, { kind: 'file' }> }
   | { t: 'diff'; key: string; row: Extract<GitRow, { kind: 'file' }> };
 
+/** The inline diff row's height before it is measured (header + a full body). */
+const DIFF_ROW_ESTIMATE = 360;
+
 export function GitChanges(props: {
   rows: GitRow[];
   /** The inline-expanded diff's diffKey (desktop pane; the phone opens the detail layer). */
@@ -67,7 +70,7 @@ export function GitChanges(props: {
       const item = items()[i];
       if (!item) return 48;
       if (item.t === 'group') return 34;
-      if (item.t === 'diff') return 320;
+      if (item.t === 'diff') return DIFF_ROW_ESTIMATE;
       return desktopShell() ? 44 : 52;
     },
     overscan: 8,
@@ -75,14 +78,18 @@ export function GitChanges(props: {
       const item = items()[i]!;
       return item.t === 'diff' ? item.key : item.row.key;
     },
+    // The row's real height: an inline diff grows when its lazy body lands, and
+    // the rows below must follow it. The default measurement answers with the
+    // cached size, so the growth is never noticed (the rows overlap the diff).
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
 
-  /** A diff body grew after its lazy fetch: re-measure that row (not the list,
-   *  which would fall back to the 320 px estimate and leave a gap). */
+  /** A diff body grew after its lazy fetch: re-measure that row (the list would
+   *  otherwise keep the estimate and leave a gap under the diff). */
   const remeasure = (key: string) =>
     requestAnimationFrame(() => {
       const el = diffRows.get(key);
-      if (el) virtualizer.measureElement(el);
+      if (el?.isConnected) virtualizer.measureElement(el);
     });
 
   // Follow the keyboard selection (↑/↓): centre the row in the window.
@@ -114,13 +121,14 @@ export function GitChanges(props: {
               <Show when={item()} keyed>
                 {(it) => {
                   const rowRef = (el: HTMLElement) => {
-                    el.style.transform = `translateY(${v.start}px)`;
+                    // The position is a reactive style (the offsets change when a
+                    // row is measured); the height is the virtualizer's business.
                     virtualizer.measureElement(el);
                   };
                   if (it.t === 'group') {
                     const group = it.row;
                     return (
-                      <div class="git-vrow git-group-head" ref={rowRef} data-index={v.index}>
+                      <div class="git-vrow git-group-head" ref={rowRef} data-index={v.index} style={{ transform: `translateY(${v.start}px)` }}>
                         <span class="section-label">
                           {group.label} <span class="git-group-count">{group.files.length}</span>
                         </span>
@@ -149,6 +157,7 @@ export function GitChanges(props: {
                           rowRef(el);
                         }}
                         data-index={v.index}
+                        style={{ transform: `translateY(${v.start}px)` }}
                       >
                         <GitDiffDetail
                           hostId={props.hostId}
@@ -180,6 +189,7 @@ export function GitChanges(props: {
                       data-git-key={changeKey(change)}
                       data-selected={isSelected() || isOpen() ? '' : undefined}
                       aria-label={`${change.path}, ${statusWord(change.status)}`}
+                      style={{ transform: `translateY(${v.start}px)` }}
                       onClick={() => {
                         props.onSelect(it.row.key);
                         if (desktopShell()) props.onExpand(isOpen() ? undefined : it.row.diffKey);

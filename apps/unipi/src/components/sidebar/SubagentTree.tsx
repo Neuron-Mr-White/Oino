@@ -63,9 +63,21 @@ export function runsFromAgents(agents: unknown): SubRun[] {
 const key = (hostId: string, sessionId: string) => `${hostId}\u0000${sessionId}`;
 /** Runs read per chat (kept past an LRU eviction of the chat's stream). */
 const [cache, setCache] = createSignal<Record<string, SubRun[]>>({});
-/** The tree header's status filter per chat (`undefined` = all). */
+/** The tree header's status filter per chat (`undefined` = the default, "In progress"). */
 const [filters, setFilters] = createSignal<Record<string, string | undefined>>({});
 const asked = new Set<string>();
+
+/**
+ * The status the tree shows: the user's pick, else "In progress" (owner
+ * 2026-11-06). A chat without in-progress runs keeps that default — the tree
+ * shows its empty state, it never flips to "All" on its own.
+ */
+export const DEFAULT_FILTER = 'running';
+/** The chat's effective filter (`undefined` = no filter row, everything shows). */
+export function filterOf(hostId: string, sessionId: string, runs: readonly unknown[] | undefined): string | undefined {
+  if (!hasFilter(runs)) return undefined;
+  return filters()[key(hostId, sessionId)] ?? DEFAULT_FILTER;
+}
 
 /** Known runs of a chat (reactive): the live topic, else the cache. */
 export function knownRuns(hostId: string, sessionId: string): SubRun[] | undefined {
@@ -94,8 +106,8 @@ export const FILTER_MIN = 3;
 export const hasFilter = (runs: readonly unknown[] | undefined) => (runs?.length ?? 0) > FILTER_MIN;
 
 export function filteredRuns(hostId: string, sessionId: string, runs: readonly SubRun[]): SubRun[] {
-  const f = hasFilter(runs) ? filters()[key(hostId, sessionId)] : undefined;
-  return f ? runs.filter((r) => r.status === f) : [...runs];
+  const f = filterOf(hostId, sessionId, runs);
+  return f && f !== 'all' ? runs.filter((r) => r.status === f) : [...runs];
 }
 
 /** perf-app: rows the tree shows before its runs scroll in a bounded, windowed box (a 200-child graph). */
@@ -189,7 +201,8 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
     return [...STATUS_ORDER.filter((s) => present.has(s)), ...[...present].filter((s) => !STATUS_ORDER.includes(s))];
   };
   const count = (s: string) => (runs() ?? []).filter((r) => r.status === s).length;
-  const filter = () => filters()[k()];
+  /** The filter the tree shows now: the user's pick, else "In progress". */
+  const active = () => filterOf(props.hostId, props.sessionId, runs());
   const setFilter = (s: string | undefined) => setFilters((cur) => ({ ...cur, [k()]: s }));
   const shown = () => filteredRuns(props.hostId, props.sessionId, runs() ?? []);
   const open = (run: SubRun) => {
@@ -221,19 +234,19 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
       >
         <Show when={runs()!.length > FILTER_MIN}>
         <div class="sa-head" style={{ height: `${m().head}px` }} role="toolbar" aria-label="Filter subagents by status">
-          <button type="button" class="sa-filter" data-on={!filter() ? '' : undefined} onClick={() => setFilter(undefined)}>
+          <button type="button" class="sa-filter" data-on={active() === 'all' ? '' : undefined} onClick={() => setFilter('all')}>
             All <span class="sa-n">{runs()!.length}</span>
           </button>
           <For each={statuses()}>
             {(s) => (
-              <button type="button" class="sa-filter" data-on={filter() === s ? '' : undefined} data-status={s} title={statusWord(s)} data-testid={`sa-filter-${s}`} onClick={() => setFilter(filter() === s ? undefined : s)}>
+              <button type="button" class="sa-filter" data-on={active() === s ? '' : undefined} data-status={s} title={statusWord(s)} data-testid={`sa-filter-${s}`} onClick={() => setFilter(active() === s ? 'all' : s)}>
                 {statusWord(s)} <span class="sa-n">{count(s)}</span>
               </button>
             )}
           </For>
         </div>
         </Show>
-        <Show when={shown().length} fallback={<div class="sa-row sa-empty" style={{ height: `${m().row}px` }}>None {statusWord(filter() ?? '').toLowerCase()}</div>}>
+        <Show when={shown().length} fallback={<div class="sa-row sa-empty" style={{ height: `${m().row}px` }}>None {statusWord(active() ?? '').toLowerCase()}</div>}>
           <TreeRows runs={shown()} row={m().row}>
             {(run) => (
               <button

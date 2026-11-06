@@ -44,7 +44,9 @@
 .git-vrow.git-inline-diff { padding: 0 0 4px; }
 .git-inline-diff .git-detail { border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); overflow: hidden; }
 .git-inline-diff .git-detail-head { min-height: 40px; border-bottom: 1px solid rgb(46 40 37 / 50%); }
-.git-inline-diff .git-detail-body { padding: 4px 6px 8px; }
+/* The inline diff scrolls inside its card: the row keeps a bounded height, so
+   the rows below it never have to jump around a huge diff. */
+.git-inline-diff .git-detail-body { padding: 4px 6px 8px; max-height: 320px; overflow-y: auto; }
 .git-inline-diff .git-detail .empty-state, .git-inline-diff .git-detail .git-note { padding: 6px; margin: 0; }
 .git-detail-overlay { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; background: var(--color-bg); }
 .git-detail-overlay .git-detail { flex: 1 1 auto; }

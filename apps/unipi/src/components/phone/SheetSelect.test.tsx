@@ -61,4 +61,21 @@ describe('SheetFrame + portaled Select', () => {
     expect(inFloatingLayer(document.body)).toBe(false);
     expect(inFloatingLayer(null)).toBe(false);
   });
+
+  it('a dialog mounted outside the sheet keeps it open', async () => {
+    render(() => <Harness />);
+    await screen.findByTestId('sheet');
+    // A dialog in its own root (a portal), above the sheet.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    render(() => (
+      <div role="dialog" aria-modal="true" data-testid="outer-dialog">
+        <button type="button" data-testid="outer-btn">pick</button>
+      </div>
+    ), { container: host });
+    pointer(await screen.findByTestId('outer-btn'));
+    expect(closes).toBe(0);
+    expect(screen.queryByTestId('sheet')).not.toBeNull();
+    host.remove();
+  });
 });

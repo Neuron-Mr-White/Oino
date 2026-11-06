@@ -243,7 +243,8 @@ export type ViewGroups = { pinned: SessionCard[]; groups: ViewGroup[]; total: nu
 /**
  * The list a host shows under `view`: filtered cards, the Pinned group on top
  * (Z-14, still filtered), then the groups of the chosen grouping, each sorted.
- * `factsOf` supplies the live state / cron outcome / model of a card.
+ * A pinned session stays in its own group too — the Pinned group is a copy, not
+ * a move. `factsOf` supplies the live state / cron outcome / model of a card.
  */
 export function viewGroups(
   cards: readonly SessionCard[],
@@ -259,10 +260,9 @@ export function viewGroups(
     const facts = factsOf(card);
     if (!matchCard(card, facts, view.filters, now)) continue;
     total += 1;
-    if (!facts.archived && meta[card.session_id]?.pinned) {
-      pinned.push(card);
-      continue;
-    }
+    // A pinned session is listed twice: in the Pinned group on top AND in its own
+    // group (owner 2026-11-06: pinning must not move it out of its project).
+    if (!facts.archived && meta[card.session_id]?.pinned) pinned.push(card);
     let key: string;
     let label: string;
     let cwd: string | undefined;

@@ -310,7 +310,7 @@ html[data-shell=desktop] .ui-input { min-height: 38px; font-size: calc(14px * va
 .ui-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select-icon { color: var(--ui-muted); display: inline-flex; }
 html[data-shell=desktop] .ui-select-trigger { min-height: 38px; font-size: calc(14px * var(--ui-font-scale)); }
-.ui-select-content { z-index: 60; padding: 4px; border-radius: var(--radius-float); background: var(--color-surface-2); box-shadow: 0 12px 36px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); min-width: var(--kb-select-trigger-width, 160px); max-width: min(460px, calc(100vw - 16px)); max-height: min(320px, var(--kb-popper-content-available-height, calc(100dvh - 24px))); overflow-y: auto; }
+.ui-select-content { z-index: var(--z-popover, 65); padding: 4px; border-radius: var(--radius-float); background: var(--color-surface-2); box-shadow: 0 12px 36px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); min-width: var(--kb-select-trigger-width, 160px); max-width: min(460px, calc(100vw - 16px)); max-height: min(320px, var(--kb-popper-content-available-height, calc(100dvh - 24px))); overflow-y: auto; }
 .ui-select-item-label { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
 .ui-select-listbox { outline: none; }
 .ui-select-item { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 10px; border-radius: 10px; color: var(--ui-text); font-size: calc(14px * var(--ui-font-scale)); cursor: pointer; outline: none; }

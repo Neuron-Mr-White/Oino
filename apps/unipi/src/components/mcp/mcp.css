@@ -15,6 +15,7 @@
 .mcps-status[data-status=error] { background: color-mix(in srgb, var(--color-wm-red) 16%, transparent); color: var(--color-wm-red); }
 .mcps-status[data-status=starting] { background: color-mix(in srgb, var(--color-amber) 16%, transparent); color: var(--color-amber); }
 .mcps-actions { display: flex; align-items: center; gap: 10px; }
+.mcps-reconnect { display: inline-flex; align-items: center; gap: 6px; }
 .mcps-err { grid-column: 1 / -1; margin: 0; display: flex; gap: 6px; align-items: flex-start; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-wm-red); white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); }
 .mcps-err svg { flex: none; margin-top: 2px; }
 .mcps-config-err { display: flex; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--color-amber) 12%, transparent); color: var(--color-amber); font-size: calc(12px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere; }

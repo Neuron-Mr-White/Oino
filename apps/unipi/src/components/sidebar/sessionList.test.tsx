@@ -111,18 +111,22 @@ describe('SessionList', () => {
     expect(container.querySelector('.sb-project [data-testid="sb-project-head"]')?.textContent).toContain('website');
   });
 
-  it('pins: a separate Pinned group on top, not repeated in the projects (Z-14); pin/unpin sends session_meta_set (§3.14)', async () => {
+  it('pins: a separate Pinned group on top AND the session stays in its project (owner 2026-11-06); pin/unpin sends session_meta_set (§3.14)', async () => {
     const cards = [card('a', { pinned: true }), card('b'), card('c')];
     boot(cards);
     await waitFor(() => expect(screen.getByTestId('sb-pinned')).toBeTruthy());
     expect(rowsOf(screen.getByTestId('sb-pinned')!)).toEqual(['a']);
-    expect(rowsOf(screen.getByTestId('sb-rows-oino')!)).toEqual(['b', 'c']);
+    // Pinning copies the row into the Pinned group; the project keeps its own row.
+    expect(rowsOf(screen.getByTestId('sb-rows-oino')!)).toEqual(['a', 'b', 'c']);
     // Pin b from its row hover button → the op goes out and the card follows.
     fireEvent.click(screen.getByTestId('srow-pin-b'));
     await waitFor(() => expect(world.log.some((e) => e.op === 'session_meta_set' && (e.args as { session?: string }).session === 'b' && (e.args as { pinned?: boolean }).pinned === true)).toBe(true));
     await waitFor(() => expect(rowsOf(screen.getByTestId('sb-pinned')!)).toEqual(['a', 'b']));
-    fireEvent.click(screen.getByTestId('srow-pin-a'));
+    expect(rowsOf(screen.getByTestId('sb-rows-oino')!)).toEqual(['a', 'b', 'c']);
+    fireEvent.click(within(screen.getByTestId('sb-pinned')!).getByTestId('srow-pin-a'));
     await waitFor(() => expect(rowsOf(screen.getByTestId('sb-pinned')!)).toEqual(['b']));
+    // Unpinned, 'a' is back to a plain project row (the pinned 'b' sorts first).
+    expect(rowsOf(screen.getByTestId('sb-rows-oino')!)).toEqual(['b', 'a', 'c']);
   });
 
   it('shows 5 per project, "Show more" adds 5, hidden at the end, and reset by collapsing the host (Z-11)', async () => {
@@ -224,8 +228,9 @@ describe('SessionList', () => {
 
   it('does not repeat folder name as subline when pinned session title already fell back to folder', async () => {
     boot([card('nameless', { name: '', cwd: '/tmp', pinned: true })]);
-    await waitFor(() => expect(screen.getByTestId('srow-nameless')).toBeTruthy());
-    const row = screen.getByTestId('srow-nameless');
+    await waitFor(() => expect(screen.getByTestId('sb-pinned')).toBeTruthy());
+    // The pinned row (the project group carries a copy of it too).
+    const row = within(screen.getByTestId('sb-pinned')!).getByTestId('srow-nameless');
     expect(row.getAttribute('title')).toBe('tmp');
     expect(row.querySelector('.srow-cwd')).toBeNull();
     expect(row.querySelector('.srow-word')).toBeNull();
@@ -240,7 +245,7 @@ describe('SessionList', () => {
     await waitFor(() => expect(screen.getByTestId('sb-project-Tasks')).toBeTruthy());
     const homeRow = screen.getByTestId('srow-home-chat');
     expect(homeRow.getAttribute('title')).toBe('New chat');
-    const pinnedRow = screen.getByTestId('srow-pinned-proj');
+    const pinnedRow = within(screen.getByTestId('sb-pinned')!).getByTestId('srow-pinned-proj');
     // One meta line, no folder chip (the sidebar's Workspace property is off by default).
     expect(pinnedRow.querySelector('.srow-cwd')).toBeNull();
     expect(pinnedRow.querySelector('.srow-sub')).toBeNull();

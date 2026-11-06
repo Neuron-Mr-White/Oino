@@ -95,9 +95,13 @@ describe('viewGroups', () => {
   it('Project grouping keeps Pinned on top and the Z-9 order inside', () => {
     const g = viewGroups(cards, meta, view(), factsOf, NOW);
     expect(g.pinned.map((c) => c.session_id)).toEqual(['p']);
-    expect(g.groups.map((x) => x.label)).toEqual(['two', 'one']);
-    expect(g.groups[0]!.cards.map((c) => c.session_id)).toEqual(['b', 'd']);
-    expect(g.groups[0]!.cwd).toBe('/p/two');
+    // A pinned session is a copy in the Pinned group, not a move: it stays in its
+    // own project group too (pinned first there, Z-9).
+    expect(g.groups.map((x) => x.label)).toEqual(['one', 'two']);
+    expect(g.groups[0]!.cards.map((c) => c.session_id)).toEqual(['p', 'c', 'a']);
+    expect(g.groups[0]!.cwd).toBe('/p/one');
+    expect(g.groups[1]!.cards.map((c) => c.session_id)).toEqual(['b', 'd']);
+    expect(g.groups[1]!.cwd).toBe('/p/two');
     expect(g.total).toBe(5);
   });
 

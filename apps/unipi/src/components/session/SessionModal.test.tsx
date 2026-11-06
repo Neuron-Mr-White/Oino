@@ -93,6 +93,9 @@ describe('Running tab', () => {
   it('shows bash, ONE subagents list, sidekick and the other work-tray trees', async () => {
     await boot('modal-running');
     await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
+    // The status filter opens on "Running" (owner 2026-11-06); show every row below.
+    expect((await screen.findByTestId('sm-filter-running')).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('sm-filter-all'));
     expect(await screen.findByText('cargo test -p unipi-watchdog')).toBeTruthy();
     expect(await screen.findByText('explore the layout code')).toBeTruthy();
     expect(await screen.findByText(/Handoff running/)).toBeTruthy();
@@ -121,7 +124,8 @@ describe('Running tab', () => {
 
   it('status chips filter the list (All / Running / Done / Failed, Cancelled when present)', async () => {
     await boot('modal-running');
-    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').length).toBe(6));
+    // The filter opens on "Running": the three runs that are still going.
+    await waitFor(() => expect(screen.getAllByTestId('sm-run-row').length).toBe(3));
     expect(screen.getByTestId('sm-filter-all').textContent).toBe('All6');
     expect(screen.getByTestId('sm-filter-running').textContent).toBe('Running3');
     fireEvent.click(screen.getByTestId('sm-filter-failed'));
@@ -136,6 +140,8 @@ describe('Running tab', () => {
   it('actions send the right commands', async () => {
     const { world } = await boot('modal-running');
     await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
+    // Every row, not just the running ones (the filter opens on "Running").
+    fireEvent.click(await screen.findByTestId('sm-filter-all'));
 
     // Foreground bash → the run's Stop (pi `abort`).
     fireEvent.click(await screen.findByText('Stop run'));

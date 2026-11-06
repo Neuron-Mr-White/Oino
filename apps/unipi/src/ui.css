@@ -12,6 +12,14 @@
      --chip-h           PC chip, toolbar pills, segmented options
 */
 :root { --page-gutter: 16px; --page-head-bar: 44px; --radius-float: 16px; --btn-h: 44px; --chip-h: 38px; --empty-top: 64px; }
+/* The overlay scale (both shells): a portaled menu, popover or select opened
+   from a dialog or a sheet floats ABOVE it — never behind it (owner 2026-11-06).
+   --z-scrim   a modal's backdrop
+   --z-dialog  the dialog / sheet panel (a second modal rides one step higher)
+   --z-popover portaled menus, popovers and selects (above every dialog layer,
+               incl. the desktop session sheet at 70)
+   --z-toast   the toast stack */
+:root { --z-scrim: 60; --z-dialog: 61; --z-popover: 75; --z-toast: 70; }
 html[data-shell=desktop] { --page-gutter: 20px; }
 
 /* ── Page header (<PageHeader>, F1) ───────────────────────────────────
