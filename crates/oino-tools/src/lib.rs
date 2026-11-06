@@ -77,6 +77,7 @@ pub use grep::GrepTool;
 pub use info::{
     BuiltinToolInfo, BuiltinToolName, DEFAULT_ACTIVE_TOOLS, READ_ONLY_TOOLS, builtin_tool_info,
 };
+pub use js::{CodemodeTool, ToolSearchTool};
 pub use ls::LsTool;
 pub use mutation_queue::FileMutationQueue;
 pub use read::ReadTool;

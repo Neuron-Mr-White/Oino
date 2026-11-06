@@ -3,6 +3,7 @@
 //! `_restoreToolsFromTranscript`).
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -182,6 +183,7 @@ pub(crate) struct ToolState {
     declared: Vec<oino_agent::ToolDefinitionMeta>,
     initialized: bool,
     catalog: Vec<String>,
+    codemode_only: bool,
 }
 
 impl ToolState {
@@ -203,6 +205,7 @@ impl ToolState {
             declared: Vec::new(),
             initialized: false,
             catalog: Vec::new(),
+            codemode_only: false,
         }
     }
 
@@ -237,7 +240,7 @@ impl AgentSession {
             .with_state(|state| state.tools.iter().map(|t| t.meta().name.clone()).collect())
     }
 
-    /// Tools callable through nested calls: active `direct` tools plus `codemode`/`deferred`.
+    /// Tools callable through nested calls: available direct, codemode and deferred tools.
     #[must_use]
     pub fn callable_tool_names(&self) -> Vec<String> {
         self.callable_tools(&self.active_tool_names().into_iter().collect())
@@ -246,14 +249,16 @@ impl AgentSession {
             .collect()
     }
 
-    pub(crate) fn callable_tools(&self, active: &HashSet<String>) -> Vec<Arc<dyn AgentTool>> {
+    pub(crate) fn callable_tools(&self, _active: &HashSet<String>) -> Vec<Arc<dyn AgentTool>> {
+        let patch_allowed =
+            patch_eligible(self.model().as_ref().map_or("", |model| model.id.as_str()));
         let tools = lock(&self.inner.tools);
         tools
             .registry
             .values()
+            .filter(|entry| entry.name() != "apply_patch" || patch_allowed)
             .filter(|entry| match entry.exposure {
-                ToolExposure::Codemode | ToolExposure::Deferred => true,
-                ToolExposure::Direct => active.contains(entry.name()),
+                ToolExposure::Codemode | ToolExposure::Deferred | ToolExposure::Direct => true,
                 ToolExposure::ModelOnly | ToolExposure::Hidden => false,
             })
             .map(|entry| Arc::clone(&entry.tool))
@@ -362,6 +367,19 @@ impl AgentSession {
     }
 
     pub(crate) fn set_active_tools(&self, names: &[String]) {
+        let only = lock(&self.inner.settings)
+            .snapshot()
+            .merged()
+            .get("codemode")
+            .and_then(|v| v.get("mode"))
+            .and_then(JsonValue::as_str)
+            == Some("only");
+        {
+            let mut state = lock(&self.inner.tools);
+            if !state.initialized {
+                state.codemode_only = only && state.registry.contains_key("codemode");
+            }
+        }
         let tools = self.apply_tool_loadout(names);
         {
             let mut state = lock(&self.inner.tools);
@@ -377,7 +395,20 @@ impl AgentSession {
     }
 
     /// Sets the agent's tools to the registered, non-hidden ones.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "append-only declaration restoration and suffix loading share one registry lock"
+    )]
     pub(crate) fn apply_tool_loadout(&self, names: &[String]) -> Vec<Arc<dyn AgentTool>> {
+        let budget = lock(&self.inner.settings)
+            .snapshot()
+            .merged()
+            .get("codemode")
+            .and_then(|v| v.get("inlineBudget"))
+            .and_then(JsonValue::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+            .unwrap_or(3000)
+            .saturating_mul(4);
         let mut state = lock(&self.inner.tools);
         if state.declared.is_empty() {
             let recorded = lock(&self.inner.manager)
@@ -404,6 +435,12 @@ impl AgentSession {
                             decl.parameters,
                         );
                         meta.constrained_sampling = decl.constrained_sampling;
+                        if let Some(entry) = state.registry.get(&meta.name) {
+                            meta.execution_mode = entry.tool.meta().execution_mode;
+                            meta.output_schema
+                                .clone_from(&entry.tool.meta().output_schema);
+                            meta.replay = entry.tool.meta().replay;
+                        }
                         meta
                     })
                     .collect();
@@ -423,7 +460,8 @@ impl AgentSession {
                 .registry
                 .values()
                 .filter(|e| {
-                    e.exposure != ToolExposure::Hidden
+                    matches!(e.exposure, ToolExposure::Direct | ToolExposure::ModelOnly)
+                        && (!state.codemode_only || matches!(e.name(), "codemode" | "tool_search"))
                         && !is_mcp(e)
                         && (e.name() != "apply_patch" || eligible)
                 })
@@ -435,6 +473,9 @@ impl AgentSession {
             requested.push("apply_patch".into());
         }
         for name in requested {
+            if state.codemode_only && !matches!(name.as_str(), "codemode" | "tool_search") {
+                continue;
+            }
             if state.declared.iter().any(|m| m.name == name) {
                 continue;
             }
@@ -444,7 +485,18 @@ impl AgentSession {
             if let Some(entry) = state.registry.get(&name)
                 && entry.exposure != ToolExposure::Hidden
             {
-                let meta = entry.tool.meta().clone();
+                let mut meta = entry.tool.meta().clone();
+                if name == "codemode" {
+                    append_codemode_declarations(&mut meta, &state, budget);
+                } else if state.registry.contains_key("codemode")
+                    && entry.exposure == ToolExposure::Direct
+                {
+                    let _ = write!(
+                        meta.description,
+                        "\nAlso callable from codemode as tools.{}(args).",
+                        js_identifier(&name)
+                    );
+                }
                 state.declared.push(meta);
             }
         }
@@ -490,7 +542,14 @@ impl AgentSession {
             .registry
             .values()
             .filter(|entry| loaded.contains(entry.name()))
-            .map(|entry| entry.tool.meta().clone())
+            .map(|entry| {
+                state
+                    .declared
+                    .iter()
+                    .find(|meta| meta.name == entry.name())
+                    .cloned()
+                    .unwrap_or_else(|| entry.tool.meta().clone())
+            })
             .collect();
         let current = state
             .declared
@@ -723,6 +782,99 @@ impl AgentSession {
         }
     }
 
+    /// Callable sandbox metadata. Hidden/model-only tools never enter the sandbox.
+    #[must_use]
+    pub fn codemode_catalog(&self) -> Vec<JsonValue> {
+        let callable: HashSet<String> = self.callable_tool_names().into_iter().collect();
+        self.all_tools()
+            .into_iter()
+            .filter(|tool| callable.contains(&tool.name) && tool.name != "codemode")
+            .filter_map(|tool| serde_json::to_value(tool).ok())
+            .collect()
+    }
+
+    /// Load exact selections atomically, or the first name-keyword matches. Existing
+    /// declarations are never replaced and unknown exact names load nothing.
+    ///
+    /// # Errors
+    /// Rejects empty queries and unknown, hidden or unavailable exact selections.
+    pub fn search_deferred_tools(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+    ) -> Result<JsonValue, oino_agent::ToolError> {
+        let query = query.trim();
+        if query.is_empty() || limit == Some(0) {
+            return Err(oino_agent::ToolError::new(
+                "A query and positive max_results are required",
+            ));
+        }
+        let state = lock(&self.inner.tools);
+        let available = |name: &str| {
+            state
+                .registry
+                .get(name)
+                .is_some_and(|e| e.exposure != ToolExposure::Hidden)
+        };
+        let selected = if let Some(names) = query.strip_prefix("select:") {
+            let mut selected = Vec::new();
+            for name in names.split(',').map(str::trim) {
+                if name.is_empty() || !available(name) {
+                    return Err(oino_agent::ToolError::new(format!(
+                        "tool {name} is unavailable"
+                    )));
+                }
+                if !selected.iter().any(|n| n == name) {
+                    selected.push(name.to_owned());
+                }
+            }
+            selected
+        } else {
+            let words: Vec<_> = query
+                .to_lowercase()
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
+            state
+                .registry
+                .keys()
+                .filter(|name| {
+                    available(name) && words.iter().all(|word| name.to_lowercase().contains(word))
+                })
+                .take(limit.unwrap_or(5))
+                .cloned()
+                .collect()
+        };
+        drop(state);
+        self.update_active_tools(&selected, &[]);
+        Ok(serde_json::json!(
+            self.all_tools()
+                .into_iter()
+                .filter(|tool| selected.contains(&tool.name))
+                .collect::<Vec<_>>()
+        ))
+    }
+
+    /// Loaded deferred tools for wp-compaction's persisted state.
+    #[must_use]
+    pub fn loaded_deferred_tool_names(&self) -> Vec<String> {
+        let state = lock(&self.inner.tools);
+        state
+            .declared
+            .iter()
+            .filter(|meta| {
+                state.registry.get(&meta.name).is_some_and(|entry| {
+                    is_mcp(entry)
+                        || matches!(
+                            entry.exposure,
+                            ToolExposure::Deferred | ToolExposure::Codemode
+                        )
+                })
+            })
+            .map(|meta| meta.name.clone())
+            .collect()
+    }
+
     /// Unified catalog for the immutable start slot and later tail updates.
     pub(crate) fn tool_catalog(&self) -> String {
         let state = lock(&self.inner.tools);
@@ -913,5 +1065,91 @@ impl AgentTool for DeclaredTool {
                 ))),
             }
         })
+    }
+}
+
+fn js_identifier(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '$' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn schema_typescript(schema: &JsonValue) -> String {
+    if let Some(values) = schema.get("enum").and_then(JsonValue::as_array) {
+        return values
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" | ");
+    }
+    match schema.get("type").and_then(JsonValue::as_str) {
+        Some("string") => "string".into(),
+        Some("integer" | "number") => "number".into(),
+        Some("boolean") => "boolean".into(),
+        Some("null") => "null".into(),
+        Some("array") => format!("({})[]", schema_typescript(&schema["items"])),
+        Some("object") => {
+            let fields = schema
+                .get("properties")
+                .and_then(JsonValue::as_object)
+                .map(|properties| {
+                    properties
+                        .iter()
+                        .map(|(key, value)| {
+                            format!(
+                                "{}{}: {}",
+                                serde_json::json!(key),
+                                if schema
+                                    .get("required")
+                                    .and_then(JsonValue::as_array)
+                                    .is_some_and(|r| r.contains(&serde_json::json!(key)))
+                                {
+                                    ""
+                                } else {
+                                    "?"
+                                },
+                                schema_typescript(value)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                })
+                .unwrap_or_default();
+            format!("{{ {fields} }}")
+        }
+        _ => "unknown".into(),
+    }
+}
+
+fn append_codemode_declarations(
+    meta: &mut oino_agent::ToolDefinitionMeta,
+    state: &ToolState,
+    mut remaining: usize,
+) {
+    for tool in state.registry.values().filter(|tool| {
+        tool.name() != "codemode"
+            && tool.exposure != ToolExposure::Hidden
+            && tool.exposure != ToolExposure::ModelOnly
+            && tool.exposure != ToolExposure::Deferred
+            && !is_mcp(tool)
+            && (state.codemode_only || tool.exposure == ToolExposure::Codemode)
+    }) {
+        let declaration = format!(
+            "\n{}\ndeclare function {}(args: {}): Promise<unknown>;\n{}\n",
+            tool.tool.meta().description,
+            js_identifier(tool.name()),
+            schema_typescript(&tool.tool.meta().parameters),
+            tool.prompt_guidelines.join("\n")
+        );
+        if declaration.len() <= remaining {
+            remaining -= declaration.len();
+            meta.description.push_str(&declaration);
+        }
     }
 }

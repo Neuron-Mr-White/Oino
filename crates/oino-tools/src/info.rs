@@ -25,6 +25,10 @@ pub enum BuiltinToolName {
     ApplyPatch,
     /// `ls`
     Ls,
+    /// Sandboxed JavaScript.
+    Codemode,
+    /// Deferred schema discovery.
+    ToolSearch,
     /// `powershell` (Windows only)
     Powershell,
 }
@@ -44,6 +48,8 @@ impl BuiltinToolName {
             Self::Glob,
             Self::Ls,
             Self::ApplyPatch,
+            Self::Codemode,
+            Self::ToolSearch,
         ]);
         names
     }
@@ -62,6 +68,8 @@ impl BuiltinToolName {
             Self::ApplyPatch => "apply_patch",
             Self::Ls => "ls",
             Self::Powershell => "powershell",
+            Self::Codemode => "codemode",
+            Self::ToolSearch => "tool_search",
         }
     }
 
@@ -351,5 +359,27 @@ pub fn builtin_tool_info(
         BuiltinToolName::Glob => glob_info(),
         BuiltinToolName::ApplyPatch => apply_patch_info(),
         BuiltinToolName::Ls => ls_info(),
+        BuiltinToolName::Codemode => codemode_info(),
+        BuiltinToolName::ToolSearch => tool_search_info(),
     }
+}
+
+/// Sandboxed script metadata. Providers use the JSON envelope for raw source.
+#[must_use]
+pub fn codemode_info() -> BuiltinToolInfo {
+    let mut value = info(BuiltinToolName::Codemode,
+        "Run JavaScript as an async function in an isolated QuickJS sandbox (no filesystem, network, Node or timers). Pass raw source in code. Use await tools.<name>(args), text(value), image(value), console.log, return, exit(), store/load, ALL_TOOLS, searchTools, describeTool and describeNamespace. Non-identifier tool characters become _. Discover deferred tools without changing the declaration prefix. Every tool call is permission checked; failed calls reject and prior effects are not undone. First-line // @options: {\"max_output_tokens\":10000,\"timeout_ms\":60000} controls output and deadline. Storage commits only on success. Scripts cannot call codemode.".into(),
+        "Execute sandboxed JavaScript using other tools", None,
+        json!({"type":"object","properties":{"code":{"type":"string"}},"required":["code"],"additionalProperties":false}));
+    value.execution_mode = ExecutionMode::Sequential;
+    value
+}
+
+/// Append-only deferred tool discovery metadata.
+#[must_use]
+pub fn tool_search_info() -> BuiltinToolInfo {
+    info(BuiltinToolName::ToolSearch,
+        "Load tool schemas by select:<comma-separated exact names> (ignores max_results) or keywords matched against tool names (default five). Unknown or unavailable exact names are errors. Already loaded schemas are not appended again.".into(),
+        "Find and load deferred tools", None,
+        json!({"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":["integer","null"],"minimum":1}},"required":["query"],"additionalProperties":false}))
 }

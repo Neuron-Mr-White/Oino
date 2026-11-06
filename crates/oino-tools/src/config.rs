@@ -101,6 +101,59 @@ pub trait ToolContext: Send + Sync {
         })
     }
 
+    /// Callable catalog for sandbox discovery (never includes hidden tools).
+    fn codemode_catalog(&self) -> Vec<oino_ai::JsonValue> {
+        Vec::new()
+    }
+
+    /// Catalog of configured models (chat models cannot run in scripts).
+    fn codemode_models(&self, _available_only: bool) -> Vec<oino_ai::JsonValue> {
+        Vec::new()
+    }
+
+    /// Nested execution. Session implementations must route through their shared
+    /// before-tool-call permission entry point, never invoke implementations directly.
+    fn execute_nested(
+        &self,
+        _parent: String,
+        _name: String,
+        _args: oino_ai::JsonObject,
+        _cancel: tokio_util::sync::CancellationToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<oino_agent::AgentToolResult, oino_agent::ToolError>,
+    > {
+        Box::pin(async { Err(oino_agent::ToolError::new("No session tool service")) })
+    }
+
+    /// Load matching tool schemas, appending declarations only.
+    ///
+    /// # Errors
+    /// Unknown selections or unavailable session services.
+    fn search_tools(
+        &self,
+        _query: &str,
+        _limit: Option<usize>,
+    ) -> Result<oino_ai::JsonValue, oino_agent::ToolError> {
+        Err(oino_agent::ToolError::new("No session tool service"))
+    }
+
+    /// Branch-local transactional script storage.
+    fn codemode_store(&self) -> oino_ai::JsonObject {
+        oino_ai::JsonObject::new()
+    }
+
+    /// Persist a successful script's complete store snapshot.
+    ///
+    /// # Errors
+    /// Storage or session service failures.
+    fn commit_codemode_store(
+        &self,
+        _values: oino_ai::JsonObject,
+    ) -> Result<(), oino_agent::ToolError> {
+        Err(oino_agent::ToolError::new("No session store service"))
+    }
+
     /// Current working directory; `None` uses [`ToolConfig::cwd`].
     fn cwd(&self) -> Option<String> {
         None

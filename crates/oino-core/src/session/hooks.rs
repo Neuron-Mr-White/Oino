@@ -337,14 +337,14 @@ impl AgentSession {
     /// Installs the agent request projection.
     async fn prepare_request(
         &self,
-        context: &AgentContext,
+        _context: &AgentContext,
         cancel: &CancellationToken,
     ) -> Result<AgentRequestUpdate, HookError> {
         let failed = lock(&self.inner.book).failed_response.take();
         let projection = lock(&self.inner.manager).build_session_projection();
         let mut next = AgentContext {
             messages: projection.messages.clone(),
-            tools: context.tools.clone(),
+            tools: self.inner.agent.with_state(|state| state.tools.clone()),
         };
         let model = self.inner.agent.model();
         let thinking = self.inner.agent.thinking_level();

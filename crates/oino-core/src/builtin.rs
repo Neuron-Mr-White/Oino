@@ -39,6 +39,108 @@ impl SessionToolContext {
 }
 
 impl ToolContext for SessionToolContext {
+    fn codemode_catalog(&self) -> Vec<oino_ai::JsonValue> {
+        self.session()
+            .map_or_else(Vec::new, |s| s.codemode_catalog())
+    }
+
+    fn codemode_models(&self, available_only: bool) -> Vec<oino_ai::JsonValue> {
+        self.session().map_or_else(Vec::new, |session| {
+            let models = if available_only {
+                session.models().available()
+            } else {
+                session.models().all()
+            };
+            models
+                .into_iter()
+                .filter_map(|model| serde_json::to_value(model).ok())
+                .collect()
+        })
+    }
+
+    fn execute_nested(
+        &self,
+        parent: String,
+        name: String,
+        args: oino_ai::JsonObject,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<oino_agent::AgentToolResult, oino_agent::ToolError>,
+    > {
+        let session = self.session();
+        Box::pin(async move {
+            let session =
+                session.ok_or_else(|| oino_agent::ToolError::new("No session tool service"))?;
+            let outcome = session
+                .execute_nested_tool(&parent, &name, args, cancel)
+                .await;
+            if outcome.is_error {
+                return Err(oino_agent::ToolError::new(
+                    outcome
+                        .result
+                        .content
+                        .iter()
+                        .filter_map(|v| match v {
+                            oino_ai::UserContent::Text(t) => Some(t.text.as_str()),
+                            oino_ai::UserContent::Image(_) => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ));
+            }
+            Ok(outcome.result)
+        })
+    }
+
+    fn search_tools(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+    ) -> Result<oino_ai::JsonValue, oino_agent::ToolError> {
+        self.session()
+            .ok_or_else(|| oino_agent::ToolError::new("No session tool service"))?
+            .search_deferred_tools(query, limit)
+    }
+
+    fn codemode_store(&self) -> oino_ai::JsonObject {
+        self.session()
+            .map_or_else(oino_ai::JsonObject::new, |session| {
+                session.with_manager(|manager| {
+                    manager
+                        .branch(None)
+                        .iter()
+                        .rev()
+                        .find_map(|entry| match &entry.kind {
+                            oino_session::EntryKind::Custom {
+                                custom_type,
+                                data: Some(data),
+                            } if custom_type == "codemode-store" => data.as_object().cloned(),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                })
+            })
+    }
+
+    fn commit_codemode_store(
+        &self,
+        values: oino_ai::JsonObject,
+    ) -> Result<(), oino_agent::ToolError> {
+        let session = self
+            .session()
+            .ok_or_else(|| oino_agent::ToolError::new("No session store service"))?;
+        session
+            .with_manager(|manager| {
+                manager.append_custom_entry(
+                    "codemode-store",
+                    Some(oino_ai::JsonValue::Object(values)),
+                )?;
+                manager.sync()
+            })
+            .map_err(|e| oino_agent::ToolError::new(e.to_string()))
+    }
+
     fn background_shell(
         &self,
         args: oino_ai::JsonValue,

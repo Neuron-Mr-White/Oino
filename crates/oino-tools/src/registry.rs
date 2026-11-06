@@ -32,6 +32,8 @@ pub fn create_tool(name: BuiltinToolName, config: ToolConfig) -> Arc<dyn AgentTo
         BuiltinToolName::Glob => Arc::new(FindTool::glob(config)),
         BuiltinToolName::ApplyPatch => Arc::new(ApplyPatchTool::new(config)),
         BuiltinToolName::Ls => Arc::new(LsTool::new(config)),
+        BuiltinToolName::Codemode => Arc::new(crate::js::CodemodeTool::new(config)),
+        BuiltinToolName::ToolSearch => Arc::new(crate::js::ToolSearchTool::new(config)),
     }
 }
 
