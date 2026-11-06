@@ -764,7 +764,10 @@ where
             let data = serde_json::to_value(&page).map_err(internal)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
-        Request::UsageStats { days, tz_offset_min } => {
+        Request::UsageStats {
+            days,
+            tz_offset_min,
+        } => {
             tracing::info!(op = "usage_stats", days, "request");
             let root = hub.sessions_root().to_path_buf();
             let data = tokio::task::spawn_blocking(move || {
@@ -880,9 +883,8 @@ where
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
         Request::SessionsArchive { sessions } => {
-            unipi_proto::session_bulk::check_batch(&sessions).map_err(|message| {
-                AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false)
-            })?;
+            unipi_proto::session_bulk::check_batch(&sessions)
+                .map_err(|message| AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false))?;
             tracing::info!(op = "sessions_archive", count = sessions.len(), "request");
             let targets: Vec<String> = sessions.iter().map(|s| s.as_str().to_owned()).collect();
             let data = hub.archive_many(&targets).await.map_err(hub_error)?;
@@ -894,9 +896,8 @@ where
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
         Request::SessionsRestore { sessions } => {
-            unipi_proto::session_bulk::check_batch(&sessions).map_err(|message| {
-                AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false)
-            })?;
+            unipi_proto::session_bulk::check_batch(&sessions)
+                .map_err(|message| AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false))?;
             tracing::info!(op = "sessions_restore", count = sessions.len(), "request");
             let targets: Vec<String> = sessions.iter().map(|s| s.as_str().to_owned()).collect();
             let data = hub.restore_many(&targets).await.map_err(hub_error)?;

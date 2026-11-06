@@ -62,7 +62,9 @@ fn walk(dir: &Path, project: &str, out: &mut Vec<(u64, PathBuf, String)>) {
         if hidden(&name) {
             continue;
         }
-        let Ok(kind) = entry.file_type() else { continue };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
         if kind.is_dir() {
             walk(&entry.path(), project, out);
         } else if kind.is_file()
@@ -115,7 +117,9 @@ fn parse(text: &str) -> Option<(Option<String>, String, String, &str)> {
         if line.starts_with(char::is_whitespace) {
             continue;
         }
-        let Some((k, v)) = line.split_once(':') else { continue };
+        let Some((k, v)) = line.split_once(':') else {
+            continue;
+        };
         match k.trim() {
             "id" => id = Some(unquote(v)).filter(|s| !s.is_empty()),
             "title" => title = Some(unquote(v)).filter(|s| !s.is_empty()),
@@ -271,32 +275,102 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         for i in 0..120 {
-            write(root, if i % 3 == 0 { "oino" } else { "tally" }, &format!("m{i}"), &format!("Memory {i}"), "uses the host", 1000 + i);
+            write(
+                root,
+                if i % 3 == 0 { "oino" } else { "tally" },
+                &format!("m{i}"),
+                &format!("Memory {i}"),
+                "uses the host",
+                1000 + i,
+            );
         }
-        write(root, "oino", "fresh", "Redis cache decision", "prefer refresh tokens", 1);
+        write(
+            root,
+            "oino",
+            "fresh",
+            "Redis cache decision",
+            "prefer refresh tokens",
+            1,
+        );
         std::fs::create_dir_all(root.join(".hidden")).unwrap();
 
-        let page = browse(root, &Browse { limit: Some(50), ..Browse::default() }).unwrap();
+        let page = browse(
+            root,
+            &Browse {
+                limit: Some(50),
+                ..Browse::default()
+            },
+        )
+        .unwrap();
         assert!(page.store);
         assert_eq!((page.items.len(), page.total), (50, 121));
         assert_eq!(page.items[0].title, "Redis cache decision");
         assert_eq!(page.next_cursor.as_deref(), Some("50"));
-        assert_eq!(page.projects.iter().map(|p| (p.name.as_str(), p.count)).collect::<Vec<_>>(), vec![("tally", 80), ("oino", 41)]);
-        let last = browse(root, &Browse { limit: Some(50), cursor: Some("100"), ..Browse::default() }).unwrap();
+        assert_eq!(
+            page.projects
+                .iter()
+                .map(|p| (p.name.as_str(), p.count))
+                .collect::<Vec<_>>(),
+            vec![("tally", 80), ("oino", 41)]
+        );
+        let last = browse(
+            root,
+            &Browse {
+                limit: Some(50),
+                cursor: Some("100"),
+                ..Browse::default()
+            },
+        )
+        .unwrap();
         assert_eq!(last.items.len(), 21);
         assert!(last.next_cursor.is_none() && last.projects.is_empty());
 
-        let oino = browse(root, &Browse { project: Some("oino"), ..Browse::default() }).unwrap();
+        let oino = browse(
+            root,
+            &Browse {
+                project: Some("oino"),
+                ..Browse::default()
+            },
+        )
+        .unwrap();
         assert_eq!(oino.total, 41);
         assert!(oino.items.iter().all(|m| m.project == "oino"));
 
-        let hits = browse(root, &Browse { query: "REFRESH tokens", ..Browse::default() }).unwrap();
+        let hits = browse(
+            root,
+            &Browse {
+                query: "REFRESH tokens",
+                ..Browse::default()
+            },
+        )
+        .unwrap();
         assert_eq!(hits.total, 1);
         assert_eq!(hits.items[0].id, "fresh");
         assert_eq!(hits.items[0].body, "prefer refresh tokens");
-        assert_eq!(browse(root, &Browse { project: Some("tally"), query: "redis", ..Browse::default() }).unwrap().total, 0);
+        assert_eq!(
+            browse(
+                root,
+                &Browse {
+                    project: Some("tally"),
+                    query: "redis",
+                    ..Browse::default()
+                }
+            )
+            .unwrap()
+            .total,
+            0
+        );
 
-        assert_eq!(browse(root, &Browse { project: Some("../x"), ..Browse::default() }), Err(BrowseError::BadProject));
+        assert_eq!(
+            browse(
+                root,
+                &Browse {
+                    project: Some("../x"),
+                    ..Browse::default()
+                }
+            ),
+            Err(BrowseError::BadProject)
+        );
         let none = browse(&root.join("missing"), &Browse::default()).unwrap();
         assert!(!none.store && none.total == 0);
     }
@@ -305,17 +379,45 @@ mod tests {
     #[test]
     #[ignore = "needs MEMORY_STORE pointing at a copy of a real memory store"]
     fn real_store() {
-        let Ok(root) = std::env::var("MEMORY_STORE") else { return };
+        let Ok(root) = std::env::var("MEMORY_STORE") else {
+            return;
+        };
         let root = Path::new(&root);
         for (label, req) in [
-            ("first page", Browse { limit: Some(50), ..Browse::default() }),
-            ("search", Browse { query: "release", limit: Some(50), ..Browse::default() }),
-            ("project oino", Browse { project: Some("oino"), limit: Some(50), ..Browse::default() }),
+            (
+                "first page",
+                Browse {
+                    limit: Some(50),
+                    ..Browse::default()
+                },
+            ),
+            (
+                "search",
+                Browse {
+                    query: "release",
+                    limit: Some(50),
+                    ..Browse::default()
+                },
+            ),
+            (
+                "project oino",
+                Browse {
+                    project: Some("oino"),
+                    limit: Some(50),
+                    ..Browse::default()
+                },
+            ),
         ] {
             let t = std::time::Instant::now();
             let page = browse(root, &req).unwrap();
             let bytes = serde_json::to_vec(&page).unwrap().len();
-            println!("{label}: {} items of {} in {:?}, {} projects, {bytes} bytes", page.items.len(), page.total, t.elapsed(), page.projects.len());
+            println!(
+                "{label}: {} items of {} in {:?}, {} projects, {bytes} bytes",
+                page.items.len(),
+                page.total,
+                t.elapsed(),
+                page.projects.len()
+            );
             assert!(bytes < unipi_proto::MAX_FRAME);
         }
     }

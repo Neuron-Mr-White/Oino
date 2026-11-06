@@ -1282,9 +1282,15 @@ impl Extension for Mcp {
         );
         // Owner 2026-11-05: the app's native MCP page (server table with full errors and
         // per-server actions) instead of a terminal-style overlay list.
-        cx.service("mcp.servers", |ext, _p, _caller, _cx| async move { Ok(ext.servers_json()) });
+        cx.service("mcp.servers", |ext, _p, _caller, _cx| async move {
+            Ok(ext.servers_json())
+        });
         cx.service("mcp.server-action", |ext, p, _caller, _cx| async move {
-            let name = p.get("name").and_then(Value::as_str).unwrap_or_default().to_owned();
+            let name = p
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
             match p.get("action").and_then(Value::as_str).unwrap_or_default() {
                 "enable" | "disable" => {
                     let on = p.get("action").and_then(Value::as_str) == Some("enable");
@@ -1296,7 +1302,9 @@ impl Extension for Mcp {
                 "reconnect" => ext.start_named(&name).await,
                 "reload" => ext.reload().await,
                 "sync" => ext.sync().await,
-                other => return Ok(json!({"ok": false, "message": format!("unknown action {other}")})),
+                other => {
+                    return Ok(json!({"ok": false, "message": format!("unknown action {other}")}));
+                }
             }
             Ok(json!({"ok": true, "servers": ext.servers_json()}))
         });

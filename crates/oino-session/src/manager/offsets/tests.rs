@@ -51,7 +51,12 @@ fn conversation(turns: usize) -> Vec<String> {
     let mut parent: Option<String> = None;
     for n in 0..turns {
         let (u, c, a) = (format!("u{n}"), format!("c{n}"), format!("a{n}"));
-        lines.push(message(&u, parent.as_deref(), "user", &format!("question {n}")));
+        lines.push(message(
+            &u,
+            parent.as_deref(),
+            "user",
+            &format!("question {n}"),
+        ));
         lines.push(custom(&c, Some(&u)));
         lines.push(message(&a, Some(&c), "assistant", &format!("answer {n}")));
         parent = Some(a);
@@ -125,7 +130,13 @@ fn tail_page_is_turn_aligned_and_pages_back_to_the_root() {
     let mut pages = 1;
     while let Some(before) = cursor.take() {
         let older = index
-            .page(&path, &PageRequest { before: Some(before), ..request.clone() })
+            .page(
+                &path,
+                &PageRequest {
+                    before: Some(before),
+                    ..request.clone()
+                },
+            )
             .unwrap();
         let mut chunk = ids(&older);
         chunk.extend(all);
@@ -183,7 +194,13 @@ fn page_bounds_raw_bytes_but_keeps_one_entry() {
     assert_eq!(ids(&tiny), ["a2"]);
     // An unknown cursor is an error, not an empty page.
     assert!(matches!(
-        index.page(&path, &PageRequest { before: Some("nope".into()), ..PageRequest::default() }),
+        index.page(
+            &path,
+            &PageRequest {
+                before: Some("nope".into()),
+                ..PageRequest::default()
+            }
+        ),
         Err(SessionError::UnknownEntry(_))
     ));
 }

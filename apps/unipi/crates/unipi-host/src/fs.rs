@@ -1045,7 +1045,10 @@ mod tests {
         assert!(read_text(&lock, false).is_ok());
         let nul = tmp.path().join("nul.dat");
         fs::write(&nul, b"valid utf8\0but binary").unwrap();
-        assert_eq!(read_text(&nul, false).unwrap_err().code, AppErrorCode::E_BINARY);
+        assert_eq!(
+            read_text(&nul, false).unwrap_err().code,
+            AppErrorCode::E_BINARY
+        );
         assert!(looks_like_text(&[b'a', 0xe2, 0x82], true));
         assert!(!looks_like_text(&[b'a', 0xe2, 0x82], false));
     }

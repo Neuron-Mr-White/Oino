@@ -417,9 +417,7 @@ impl HostServices for RecordingHostServices {
             ControlOp::HasPendingMessages => ControlReply::Bool(false),
             ControlOp::ThinkingLevel => ControlReply::String("off".into()),
             ControlOp::SystemPrompt => ControlReply::String(String::new()),
-            ControlOp::ActiveTools => {
-                ControlReply::Strings(guard(&self.active_tools).clone())
-            }
+            ControlOp::ActiveTools => ControlReply::Strings(guard(&self.active_tools).clone()),
             ControlOp::Model | ControlOp::RoutedModel => ControlReply::MaybeJson(None),
             ControlOp::Abort | ControlOp::Shutdown | ControlOp::SetActiveTools(_) => {
                 ControlReply::Unit

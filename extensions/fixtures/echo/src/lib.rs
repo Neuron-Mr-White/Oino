@@ -220,7 +220,9 @@ async fn probe(name: &str, arg: Value) -> Result<Value> {
         }
         "session" => json!({"id": session::session_id(), "entries": session::entries()?.len()}),
         "append" => json!(session::append_entry(&s("type"), Some(&arg["data"]))?),
-        "query" => json!(session::query(&session::EntryQuery::custom(&[&s("type")]).last(1))?),
+        "query" => json!(session::query(
+            &session::EntryQuery::custom(&[&s("type")]).last(1)
+        )?),
         "send-message" => {
             let msg = session::CustomMessage {
                 custom_type: "echo.msg".into(),

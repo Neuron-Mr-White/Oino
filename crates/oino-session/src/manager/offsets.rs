@@ -230,8 +230,7 @@ impl OffsetIndex {
             }
         }
         let extendable = stale.filter(|stale| {
-            stale.end <= size
-                && fingerprint(&mut file, stale.end).ok() == Some(stale.fingerprint)
+            stale.end <= size && fingerprint(&mut file, stale.end).ok() == Some(stale.fingerprint)
         });
         let index = match extendable {
             Some(mut index) => {
@@ -336,7 +335,9 @@ impl OffsetIndex {
             return Ok(());
         };
         let index = as_u32(self.entries.len());
-        let parent = head.parent_id.and_then(|parent| ids.get(parent.as_ref()).copied());
+        let parent = head
+            .parent_id
+            .and_then(|parent| ids.get(parent.as_ref()).copied());
         let mut flags = 0;
         if head.kind == "message" && head.message.and_then(|m| m.role).as_deref() == Some("user") {
             flags |= FLAG_USER;
@@ -396,7 +397,11 @@ impl OffsetIndex {
     /// # Errors
     ///
     /// I/O failures.
-    pub fn entries_by_id(&self, path: &Path, ids: &[String]) -> Result<Vec<JsonValue>, SessionError> {
+    pub fn entries_by_id(
+        &self,
+        path: &Path,
+        ids: &[String],
+    ) -> Result<Vec<JsonValue>, SessionError> {
         let positions: Vec<u32> = ids
             .iter()
             .filter_map(|id| self.by_id().get(id.as_str()).copied())
@@ -537,7 +542,9 @@ fn stat(file: &File) -> io::Result<(u64, u64)> {
         .modified()
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map_or(0, |since| u64::try_from(since.as_nanos()).unwrap_or(u64::MAX));
+        .map_or(0, |since| {
+            u64::try_from(since.as_nanos()).unwrap_or(u64::MAX)
+        });
     Ok((meta.len(), mtime_ns))
 }
 
@@ -588,7 +595,9 @@ fn write_persisted(path: &Path, index: &OffsetIndex) -> io::Result<()> {
     let bytes = serde_json::to_vec(index).map_err(io::Error::other)?;
     let tmp = dir.join(format!(
         ".{}.{}.tmp",
-        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         std::process::id()
     ));
     {

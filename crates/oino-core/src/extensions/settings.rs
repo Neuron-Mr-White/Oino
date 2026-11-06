@@ -1104,7 +1104,8 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                     vec![
                         {
                             // The picker field: stores the model id; the app writes `defaultProvider` beside it.
-                            let mut field = core_field("defaultModel", "Default model", FieldType::Model);
+                            let mut field =
+                                core_field("defaultModel", "Default model", FieldType::Model);
                             field.description = Some("The model new chats start on. Empty = the first model of a working provider.".into());
                             field
                         },
@@ -1136,8 +1137,12 @@ fn core_namespaces() -> Vec<(SettingsNamespace, Option<String>)> {
                         },
                         {
                             // One token budget per level (core's `ThinkingBudgets`); blank = the provider default.
-                            let mut field = core_field("thinkingBudgets", "Thinking budgets", FieldType::Json);
-                            field.description = Some("Token budget per thinking level. Blank = the provider default.".into());
+                            let mut field =
+                                core_field("thinkingBudgets", "Thinking budgets", FieldType::Json);
+                            field.description = Some(
+                                "Token budget per thinking level. Blank = the provider default."
+                                    .into(),
+                            );
                             field.props.schema = Some(serde_json::json!({
                                 "type": "object",
                                 "additionalProperties": false,

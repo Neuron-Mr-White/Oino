@@ -503,14 +503,24 @@ async fn install_and_remove_extension_through_host_cmd() {
     .await
     .unwrap_err();
     assert!(error.contains("checksum"), "{error}");
-    let removed = run_on(&hub, HostCmd::RemoveExtension { id: "acme.hello".into() })
-        .await
-        .unwrap();
+    let removed = run_on(
+        &hub,
+        HostCmd::RemoveExtension {
+            id: "acme.hello".into(),
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(removed["needsRestart"], true);
     assert!(!target.exists());
-    let missing = run_on(&hub, HostCmd::RemoveExtension { id: "acme.hello".into() })
-        .await
-        .unwrap_err();
+    let missing = run_on(
+        &hub,
+        HostCmd::RemoveExtension {
+            id: "acme.hello".into(),
+        },
+    )
+    .await
+    .unwrap_err();
     assert!(missing.contains("not installed"), "{missing}");
 }
 

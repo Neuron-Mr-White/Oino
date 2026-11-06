@@ -22,7 +22,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use oino_extension_api::manifest::{MANIFEST_FILE, Manifest};
+use oino_extension_api::manifest::{Manifest, MANIFEST_FILE};
 use serde::Serialize;
 
 /// The record `oino update` re-installs from (same name and shape as the CLI's).
@@ -210,7 +210,8 @@ fn is_zip(path: &Path) -> bool {
 /// Unpacks `archive` into `dest`, refusing entries that escape it, symlinks, and archives
 /// that expand past [`MAX_UNPACKED`] / [`MAX_ENTRIES`].
 fn unzip(archive: &Path, dest: &Path) -> Result<(), InstallError> {
-    let file = std::fs::File::open(archive).map_err(io(format!("opening {}", archive.display())))?;
+    let file =
+        std::fs::File::open(archive).map_err(io(format!("opening {}", archive.display())))?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| InstallError::Invalid(format!("not a readable .zip: {e}")))?;
     if zip.len() > MAX_ENTRIES {
@@ -235,7 +236,8 @@ fn unzip(archive: &Path, dest: &Path) -> Result<(), InstallError> {
         }
         let target = dest.join(relative);
         if entry.is_dir() {
-            std::fs::create_dir_all(&target).map_err(io(format!("creating {}", target.display())))?;
+            std::fs::create_dir_all(&target)
+                .map_err(io(format!("creating {}", target.display())))?;
             continue;
         }
         total = total.saturating_add(entry.size());
@@ -245,13 +247,15 @@ fn unzip(archive: &Path, dest: &Path) -> Result<(), InstallError> {
             ));
         }
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(io(format!("creating {}", parent.display())))?;
+            std::fs::create_dir_all(parent)
+                .map_err(io(format!("creating {}", parent.display())))?;
         }
         let mut out =
             std::fs::File::create(&target).map_err(io(format!("writing {}", target.display())))?;
         // `take` guards against a lying size header.
         let mut limited = (&mut entry).take(MAX_UNPACKED);
-        std::io::copy(&mut limited, &mut out).map_err(io(format!("unpacking {}", target.display())))?;
+        std::io::copy(&mut limited, &mut out)
+            .map_err(io(format!("unpacking {}", target.display())))?;
     }
     Ok(())
 }
@@ -432,7 +436,9 @@ pub fn install(
     // The copy must still verify (a file changed or vanished mid-copy).
     if let Err(error) = Manifest::load_package(&staging) {
         let _ = std::fs::remove_dir_all(&staging);
-        return Err(InstallError::Invalid(format!("invalid extension package: {error}")));
+        return Err(InstallError::Invalid(format!(
+            "invalid extension package: {error}"
+        )));
     }
     if from_dir {
         let record = serde_json::json!({
@@ -472,16 +478,25 @@ pub fn install(
 /// # Errors
 ///
 /// [`InstallError::NotInstalled`] for unknown and bundled-only ids, [`InstallError::Io`].
-pub fn remove(id: &str, agent_dir: &Path, dist_dirs: &[PathBuf]) -> Result<RemoveOutcome, InstallError> {
+pub fn remove(
+    id: &str,
+    agent_dir: &Path,
+    dist_dirs: &[PathBuf],
+) -> Result<RemoveOutcome, InstallError> {
     if !valid_id(id) {
-        return Err(InstallError::Invalid(format!("invalid extension id `{id}`")));
+        return Err(InstallError::Invalid(format!(
+            "invalid extension id `{id}`"
+        )));
     }
     let bundled = bundled_manifest(id, dist_dirs).is_some();
     let Some(target) = user_package_dir(id, agent_dir) else {
         return Err(InstallError::NotInstalled(if bundled {
             format!("{id} ships with the app and cannot be removed — turn it off instead")
         } else {
-            format!("{id} is not installed in {}", user_root(agent_dir).display())
+            format!(
+                "{id} is not installed in {}",
+                user_root(agent_dir).display()
+            )
         }));
     };
     std::fs::remove_dir_all(&target).map_err(io(format!("removing {}", target.display())))?;
@@ -515,7 +530,11 @@ mod tests {
         let settings = r#","ui":{"settings":[{"namespace":"acme","sections":[]}]}"#;
         std::fs::write(
             dir.join(MANIFEST_FILE),
-            manifest(id, version, &format!(r#","checksums":{{"component.wasm":"{tag}"}}{settings}"#)),
+            manifest(
+                id,
+                version,
+                &format!(r#","checksums":{{"component.wasm":"{tag}"}}{settings}"#),
+            ),
         )
         .unwrap();
     }
@@ -529,7 +548,8 @@ mod tests {
             let entry = entry.unwrap();
             let name = format!("{prefix}{}", entry.file_name().to_string_lossy());
             zip.start_file(name, options).unwrap();
-            zip.write_all(&std::fs::read(entry.path()).unwrap()).unwrap();
+            zip.write_all(&std::fs::read(entry.path()).unwrap())
+                .unwrap();
         }
         zip.finish().unwrap();
     }
@@ -563,7 +583,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let agent = tmp.path().join("agent");
         let wrapped = tmp.path().join("release");
-        package(&wrapped.join("acme-notify"), "acme.notify", "1.0.0", b"wasm");
+        package(
+            &wrapped.join("acme-notify"),
+            "acme.notify",
+            "1.0.0",
+            b"wasm",
+        );
         assert!(install(&wrapped, &agent, &[], false).unwrap().installed);
         let other = tmp.path().join("other");
         package(&other, "acme.other", "1.0.0", b"w2");
@@ -582,9 +607,14 @@ mod tests {
         let agent = tmp.path().join("agent");
         let out = install(&blob, &agent, &[], false).unwrap();
         assert!(out.installed);
-        assert!(agent.join("extensions/acme.zipped/component.wasm").is_file());
+        assert!(agent
+            .join("extensions/acme.zipped/component.wasm")
+            .is_file());
         // A zip source records no `.source.json` (the upload is not a stable source).
-        assert!(!agent.join("extensions/acme.zipped").join(SOURCE_FILE).exists());
+        assert!(!agent
+            .join("extensions/acme.zipped")
+            .join(SOURCE_FILE)
+            .exists());
     }
 
     #[test]
@@ -605,16 +635,29 @@ mod tests {
         // Not a folder, not a zip.
         let text = tmp.path().join("notes.txt");
         std::fs::write(&text, "hello").unwrap();
-        assert!(matches!(install(&text, &agent, &[], false), Err(InstallError::Invalid(_))));
+        assert!(matches!(
+            install(&text, &agent, &[], false),
+            Err(InstallError::Invalid(_))
+        ));
         // A folder without any manifest.
         let empty = tmp.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
-        assert!(matches!(install(&empty, &agent, &[], false), Err(InstallError::Invalid(_))));
+        assert!(matches!(
+            install(&empty, &agent, &[], false),
+            Err(InstallError::Invalid(_))
+        ));
         // Missing component.
         let nocomp = tmp.path().join("nocomp");
         std::fs::create_dir_all(&nocomp).unwrap();
-        std::fs::write(nocomp.join(MANIFEST_FILE), manifest("acme.nocomp", "1.0.0", "")).unwrap();
-        assert!(matches!(install(&nocomp, &agent, &[], false), Err(InstallError::Invalid(_))));
+        std::fs::write(
+            nocomp.join(MANIFEST_FILE),
+            manifest("acme.nocomp", "1.0.0", ""),
+        )
+        .unwrap();
+        assert!(matches!(
+            install(&nocomp, &agent, &[], false),
+            Err(InstallError::Invalid(_))
+        ));
     }
 
     #[test]
@@ -645,12 +688,18 @@ mod tests {
         assert_eq!(conflict.installed_version.as_deref(), Some("1.0.0"));
         assert_eq!(conflict.version, "1.1.0");
         let target = agent.join("extensions/acme.notify");
-        assert_eq!(std::fs::read(target.join("component.wasm")).unwrap(), b"one");
+        assert_eq!(
+            std::fs::read(target.join("component.wasm")).unwrap(),
+            b"one"
+        );
         // With `replace`: swapped.
         let done = install(&v2, &agent, &[], true).unwrap();
         assert!(done.installed);
         assert_eq!(done.replaced.as_deref(), Some("1.0.0"));
-        assert_eq!(std::fs::read(target.join("component.wasm")).unwrap(), b"two");
+        assert_eq!(
+            std::fs::read(target.join("component.wasm")).unwrap(),
+            b"two"
+        );
         assert!(!agent.join("extensions/.acme.notify.old").exists());
     }
 
@@ -682,14 +731,22 @@ mod tests {
     fn a_hand_copied_folder_is_found_by_manifest_id() {
         let tmp = tempfile::tempdir().unwrap();
         let agent = tmp.path().join("agent");
-        package(&agent.join("extensions/my-copy"), "acme.copied", "1.0.0", b"one");
+        package(
+            &agent.join("extensions/my-copy"),
+            "acme.copied",
+            "1.0.0",
+            b"one",
+        );
         assert!(is_user_installed("acme.copied", &agent));
         let v2 = tmp.path().join("v2");
         package(&v2, "acme.copied", "2.0.0", b"two");
         assert!(install(&v2, &agent, &[], false).unwrap().confirm.is_some());
         install(&v2, &agent, &[], true).unwrap();
         // Replaced in place, not duplicated under a second folder.
-        assert_eq!(std::fs::read(agent.join("extensions/my-copy/component.wasm")).unwrap(), b"two");
+        assert_eq!(
+            std::fs::read(agent.join("extensions/my-copy/component.wasm")).unwrap(),
+            b"two"
+        );
         assert!(!agent.join("extensions/acme.copied").exists());
         remove("acme.copied", &agent, &[]).unwrap();
         assert!(!agent.join("extensions/my-copy").exists());
@@ -699,9 +756,18 @@ mod tests {
     fn remove_refuses_unknown_and_unsafe_ids() {
         let tmp = tempfile::tempdir().unwrap();
         let agent = tmp.path().join("agent");
-        assert!(matches!(remove("acme.none", &agent, &[]), Err(InstallError::NotInstalled(_))));
-        assert!(matches!(remove("../etc", &agent, &[]), Err(InstallError::Invalid(_))));
-        assert!(matches!(remove("", &agent, &[]), Err(InstallError::Invalid(_))));
+        assert!(matches!(
+            remove("acme.none", &agent, &[]),
+            Err(InstallError::NotInstalled(_))
+        ));
+        assert!(matches!(
+            remove("../etc", &agent, &[]),
+            Err(InstallError::Invalid(_))
+        ));
+        assert!(matches!(
+            remove("", &agent, &[]),
+            Err(InstallError::Invalid(_))
+        ));
     }
 
     #[test]
@@ -715,7 +781,10 @@ mod tests {
         zip.write_all(b"x").unwrap();
         zip.finish().unwrap();
         let agent = tmp.path().join("agent");
-        assert!(matches!(install(&archive, &agent, &[], false), Err(InstallError::Invalid(_))));
+        assert!(matches!(
+            install(&archive, &agent, &[], false),
+            Err(InstallError::Invalid(_))
+        ));
         assert!(!agent.join("evil.txt").exists());
     }
 }

@@ -30,7 +30,8 @@ pub const SESSION_NAME_MAX: usize = 256;
 /// Longest session id accepted (ids are timestamps with a suffix today).
 pub const SESSION_ID_MAX: usize = 128;
 /// The event kinds core never produces (host-only, §7.4).
-pub const HOST_EVENT_KINDS: [&str; 5] = ["crashed", "taken_over", "reloaded", "woken", "wake_failed"];
+pub const HOST_EVENT_KINDS: [&str; 5] =
+    ["crashed", "taken_over", "reloaded", "woken", "wake_failed"];
 
 /// A `session` target: an exact id, a unique prefix or a session file path.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -656,7 +657,13 @@ mod tests {
     #[test]
     fn session_search_pages_and_matches_every_word() {
         let cards: Vec<SessionCard> = (0..120)
-            .map(|i| search_card(&format!("id{i}"), Some(if i % 2 == 0 { "Fix Parser" } else { "Deploy" }), "/home/u/Projects/oino"))
+            .map(|i| {
+                search_card(
+                    &format!("id{i}"),
+                    Some(if i % 2 == 0 { "Fix Parser" } else { "Deploy" }),
+                    "/home/u/Projects/oino",
+                )
+            })
             .collect();
         let first = session_search_page(&cards, "", Some(50), None);
         assert_eq!((first.cards.len(), first.total), (50, 120));
@@ -666,11 +673,27 @@ mod tests {
         assert_eq!(last.next_cursor, None);
         let hits = session_search_page(&cards, "  parser OINO ", None, None);
         assert_eq!(hits.total, 60);
-        assert!(hits.cards.iter().all(|c| c.name.as_deref() == Some("Fix Parser")));
-        assert_eq!(session_search_page(&cards, "parser nope", None, None).total, 0);
+        assert!(hits
+            .cards
+            .iter()
+            .all(|c| c.name.as_deref() == Some("Fix Parser")));
+        assert_eq!(
+            session_search_page(&cards, "parser nope", None, None).total,
+            0
+        );
         // the limit is clamped, a bad cursor restarts
-        assert_eq!(session_search_page(&cards, "", Some(0), Some("x")).cards.len(), 1);
-        assert_eq!(session_search_page(&cards, "", Some(10_000), None).cards.len(), 120);
+        assert_eq!(
+            session_search_page(&cards, "", Some(0), Some("x"))
+                .cards
+                .len(),
+            1
+        );
+        assert_eq!(
+            session_search_page(&cards, "", Some(10_000), None)
+                .cards
+                .len(),
+            120
+        );
         assert!(session_search_page(&cards, &"é".repeat(400), None, None).total == 0);
         let data = serde_json::to_value(&hits).unwrap();
         assert_eq!(data["total"], 60);
@@ -709,16 +732,29 @@ mod tests {
         assert_eq!(value["seq"], 7);
         assert_eq!(value["leaf_id"], "e1");
         assert!(value.get("replay").is_none(), "{value}");
-        assert!(value.get("page").is_none() && value.get("waking").is_none(), "{value}");
+        assert!(
+            value.get("page").is_none() && value.get("waking").is_none(),
+            "{value}"
+        );
         let parsed: SessionSnapshot = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, snapshot);
         let mut paged = snapshot.clone();
-        paged.page = Some(HistoryPage { total: 900, has_more: true, cursor: Some("e1".into()) });
+        paged.page = Some(HistoryPage {
+            total: 900,
+            has_more: true,
+            cursor: Some("e1".into()),
+        });
         paged.waking = true;
         let value = serde_json::to_value(&paged).unwrap();
-        assert_eq!(value["page"], json!({"total": 900, "has_more": true, "cursor": "e1"}));
+        assert_eq!(
+            value["page"],
+            json!({"total": 900, "has_more": true, "cursor": "e1"})
+        );
         assert_eq!(value["waking"], true);
-        assert_eq!(serde_json::from_value::<SessionSnapshot>(value).unwrap(), paged);
+        assert_eq!(
+            serde_json::from_value::<SessionSnapshot>(value).unwrap(),
+            paged
+        );
 
         let resume = SessionSnapshot::resume(
             "s1",

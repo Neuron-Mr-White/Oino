@@ -121,7 +121,12 @@ pub fn start_hint() -> &'static str {
 /// plain text on its own line (copyable over ssh, no colour codes in it), then
 /// how long the code works. `qr` is the already rendered terminal QR.
 pub fn human_text(started: &Started, qr: &str, now: u64) -> String {
-    let minutes = started.state.expires_at.saturating_sub(now).div_ceil(60).max(1);
+    let minutes = started
+        .state
+        .expires_at
+        .saturating_sub(now)
+        .div_ceil(60)
+        .max(1);
     format!(
         "{qr}\n\nScan with the Unipi app (Add a PC → Pair with QR), or paste this link there:\n{}\n\nHost {} · the code works once, for {minutes} min · waiting…",
         started.link, started.host

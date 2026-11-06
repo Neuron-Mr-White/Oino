@@ -15,10 +15,10 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use oino_ai::{JsonObject, Message};
+use oino_core::extensions::api::CallContext;
 use oino_core::extensions::api::{
     CallKind, ExtensionInstance, ExtensionMode, Registration, ToolExposure, ToolSpec,
 };
-use oino_core::extensions::api::CallContext;
 use oino_core::extensions::host::{HostApi, HostOp};
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions, StaticLoader};
@@ -65,8 +65,10 @@ async fn runtime(dir: &std::path::Path, provider: Arc<FauxProvider>) -> AgentSes
     ));
     let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "k");
-    let instances: Vec<Arc<dyn ExtensionInstance>> =
-        vec![Arc::new(FauxComponent(provider)), lh as Arc<dyn ExtensionInstance>];
+    let instances: Vec<Arc<dyn ExtensionInstance>> = vec![
+        Arc::new(FauxComponent(provider)),
+        lh as Arc<dyn ExtensionInstance>,
+    ];
     let services = Services::create(ServicesOptions {
         cwd: dir.to_path_buf(),
         agent_dir: dir.join("agent"),
@@ -122,13 +124,18 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
     let turn = |text: &'static str| {
         let session = session.clone();
         async move {
-            session.prompt(text.into(), PromptOptions::default()).await.unwrap();
+            session
+                .prompt(text.into(), PromptOptions::default())
+                .await
+                .unwrap();
             session.wait_for_idle().await;
         }
     };
     turn("plan it").await;
     assert!(
-        !declared(&provider.requests()[0]).iter().any(|t| t == "update_agent_graph"),
+        !declared(&provider.requests()[0])
+            .iter()
+            .any(|t| t == "update_agent_graph"),
         "plain chat declares no graph tools"
     );
     // `/graph <task>` (a command call) switches the tools before its prompt runs.
@@ -148,7 +155,10 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
     turn("go").await;
     let tools = declared(&provider.requests()[1]);
     for name in GRAPH_TOOLS {
-        assert!(tools.iter().any(|t| t == name), "{name} missing from turn 2: {tools:?}");
+        assert!(
+            tools.iter().any(|t| t == name),
+            "{name} missing from turn 2: {tools:?}"
+        );
     }
     // The update arrived as a mid-conversation system message (what a provider must
     // declare, inline or at request level).
@@ -162,7 +172,10 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
         .flat_map(|m| m["toolsAdded"].as_array().cloned().unwrap_or_default())
         .filter_map(|t| t["name"].as_str().map(str::to_owned))
         .collect::<Vec<_>>();
-    assert!(mid_added.iter().any(|t| t == "update_agent_graph"), "{mid_added:?}");
+    assert!(
+        mid_added.iter().any(|t| t == "update_agent_graph"),
+        "{mid_added:?}"
+    );
     // `/regular`: the graph tools leave before the next turn.
     session
         .host_call(
@@ -177,13 +190,19 @@ async fn mode_switch_mid_chat_reaches_the_next_turn() {
         .unwrap();
     turn("thanks").await;
     let tools = declared(&provider.requests()[2]);
-    assert!(!tools.iter().any(|t| t.contains("agent_graph")), "{tools:?}");
+    assert!(
+        !tools.iter().any(|t| t.contains("agent_graph")),
+        "{tools:?}"
+    );
 }
 
 /// The tool definitions (name → description) a provider request declares.
 fn declared_descriptions(request: &Value) -> Vec<(String, String)> {
     let messages: Vec<Message> = serde_json::from_value(
-        request.pointer("/context/messages").cloned().expect("request context"),
+        request
+            .pointer("/context/messages")
+            .cloned()
+            .expect("request context"),
     )
     .unwrap();
     oino_ai::transcript::current_tools(&messages)
@@ -216,7 +235,10 @@ async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
         )
         .await
         .unwrap();
-    session.prompt("one".into(), PromptOptions::default()).await.unwrap();
+    session
+        .prompt("one".into(), PromptOptions::default())
+        .await
+        .unwrap();
     session.wait_for_idle().await;
     let before = declared_descriptions(&provider.requests()[0]);
     assert!(
@@ -228,14 +250,24 @@ async fn a_tool_re_registered_without_a_session_reaches_the_next_turn() {
     runtime
         .services()
         .host
-        .call("unipi.long-horizon", &CallContext::default(), HostOp::RegisterTool(changed))
+        .call(
+            "unipi.long-horizon",
+            &CallContext::default(),
+            HostOp::RegisterTool(changed),
+        )
         .await
         .unwrap();
-    session.prompt("two".into(), PromptOptions::default()).await.unwrap();
+    session
+        .prompt("two".into(), PromptOptions::default())
+        .await
+        .unwrap();
     session.wait_for_idle().await;
     let after = declared_descriptions(&provider.requests()[1]);
     assert!(
-        after.contains(&("view_agent_graph".into(), "view the graph (profiles: a, b)".into())),
+        after.contains(&(
+            "view_agent_graph".into(),
+            "view the graph (profiles: a, b)".into()
+        )),
         "{after:?}"
     );
 }

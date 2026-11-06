@@ -84,21 +84,32 @@ fn fixture() -> Fixture {
     }
 }
 
-
 /// Writes a session file (header + one user message) for `cwd`; returns its id.
 fn write_session(f: &Fixture, n: usize, cwd: &str, name: Option<&str>, first: &str) -> String {
     let id = format!("0190{n:04}-0000-7000-8000-{n:012}");
     let dir = oino_session::manager::cwd_session_dir(&f.sessions, std::path::Path::new(cwd));
     std::fs::create_dir_all(&dir).unwrap();
-    let ts = format!("2026-10-{:02}T10:{:02}:{:02}.000Z", 1 + n % 28, n / 60 % 60, n % 60);
+    let ts = format!(
+        "2026-10-{:02}T10:{:02}:{:02}.000Z",
+        1 + n % 28,
+        n / 60 % 60,
+        n % 60
+    );
     let stem = ts.replace([':', '.'], "-");
-    let mut lines = vec![serde_json::json!({"type":"session","version":3,"id":id,"timestamp":ts,"cwd":cwd}).to_string()];
+    let mut lines = vec![
+        serde_json::json!({"type":"session","version":3,"id":id,"timestamp":ts,"cwd":cwd})
+            .to_string(),
+    ];
     if let Some(name) = name {
         lines.push(serde_json::json!({"type":"session_info","id":format!("i{n}"),"parentId":null,"timestamp":ts,"name":name}).to_string());
     }
     lines.push(serde_json::json!({"type":"message","id":format!("m{n}"),"parentId":null,"timestamp":ts,
         "message":{"role":"user","content":[{"type":"text","text":first}],"timestamp":1_790_000_000_000_i64 + n as i64}}).to_string());
-    std::fs::write(dir.join(format!("{stem}_{id}.jsonl")), lines.join("\n") + "\n").unwrap();
+    std::fs::write(
+        dir.join(format!("{stem}_{id}.jsonl")),
+        lines.join("\n") + "\n",
+    )
+    .unwrap();
     id
 }
 
@@ -125,7 +136,15 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
 async fn archive_many_moves_every_file_in_one_op_with_chunked_events() {
     let f = fixture();
     let ids: Vec<String> = (0..450)
-        .map(|n| write_session(&f, n, &format!("/work/p{}", n % 7), Some(&format!("chat {n}")), "hello"))
+        .map(|n| {
+            write_session(
+                &f,
+                n,
+                &format!("/work/p{}", n % 7),
+                Some(&format!("chat {n}")),
+                "hello",
+            )
+        })
         .collect();
     let hub = f.hub();
     assert_eq!(hub.list().await.unwrap().len(), 450);
@@ -136,14 +155,22 @@ async fn archive_many_moves_every_file_in_one_op_with_chunked_events() {
     let data = hub.archive_many(&targets).await.unwrap();
     assert_eq!(data.done.len(), 450);
     assert_eq!(data.failed.len(), 1);
-    assert!(started.elapsed() < std::time::Duration::from_secs(20), "batch took {:?}", started.elapsed());
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "batch took {:?}",
+        started.elapsed()
+    );
     assert_eq!(files_in(&f.sessions), 0);
     assert_eq!(files_in(&f.trash()), 450);
     assert!(hub.list().await.unwrap().is_empty());
     assert_eq!(hub.archived().await.unwrap().len(), 450);
     let mut chunks = Vec::new();
     while let Ok(event) = events.try_recv() {
-        if let HubEvent::SessionsRemoved { session_ids, archived } = event {
+        if let HubEvent::SessionsRemoved {
+            session_ids,
+            archived,
+        } = event
+        {
             assert!(archived);
             chunks.push(session_ids.len());
         }
@@ -159,32 +186,82 @@ async fn archive_many_moves_every_file_in_one_op_with_chunked_events() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn query_matches_title_and_first_message_across_live_and_archived() {
     let f = fixture();
-    let a = write_session(&f, 1, "/work/parser", None, "please fix the flaky tokenizer test");
-    let b = write_session(&f, 2, "/work/web", Some("Deploy the landing page"), "ship it");
+    let a = write_session(
+        &f,
+        1,
+        "/work/parser",
+        None,
+        "please fix the flaky tokenizer test",
+    );
+    let b = write_session(
+        &f,
+        2,
+        "/work/web",
+        Some("Deploy the landing page"),
+        "ship it",
+    );
     let c = write_session(&f, 3, "/work/web", Some("Old tokenizer notes"), "notes");
     for n in 10..130 {
         write_session(&f, n, "/work/bulk", Some(&format!("bulk {n}")), "filler");
     }
     let hub = f.hub();
     hub.archive_many(std::slice::from_ref(&c)).await.unwrap();
-    let q = |text: &str, scope: SessionsQueryScope| SessionsQuery { text: text.into(), scope, ..SessionsQuery::default() };
+    let q = |text: &str, scope: SessionsQueryScope| SessionsQuery {
+        text: text.into(),
+        scope,
+        ..SessionsQuery::default()
+    };
 
     // First user message + title, archived included under `all`, marked archived.
-    let page = hub.query(&q("TOKENIZER", SessionsQueryScope::All)).await.unwrap();
-    let mut got: Vec<(String, bool)> = page.hits.iter().map(|h| (h.card.session_id.clone(), h.archived)).collect();
+    let page = hub
+        .query(&q("TOKENIZER", SessionsQueryScope::All))
+        .await
+        .unwrap();
+    let mut got: Vec<(String, bool)> = page
+        .hits
+        .iter()
+        .map(|h| (h.card.session_id.clone(), h.archived))
+        .collect();
     got.sort();
     assert_eq!(got, vec![(a.clone(), false), (c.clone(), true)]);
     let hit_a = page.hits.iter().find(|h| h.card.session_id == a).unwrap();
     assert!(hit_a.snippet.as_deref().unwrap().contains("tokenizer"));
     // Live only / archived only.
-    assert_eq!(hub.query(&q("tokenizer", SessionsQueryScope::Live)).await.unwrap().total, 1);
-    assert_eq!(hub.query(&q("tokenizer", SessionsQueryScope::Archived)).await.unwrap().total, 1);
+    assert_eq!(
+        hub.query(&q("tokenizer", SessionsQueryScope::Live))
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(
+        hub.query(&q("tokenizer", SessionsQueryScope::Archived))
+            .await
+            .unwrap()
+            .total,
+        1
+    );
     // Every word must match (title OR message); a folder-only title counts ("parser").
-    assert_eq!(hub.query(&q("parser flaky", SessionsQueryScope::All)).await.unwrap().total, 1);
-    assert_eq!(hub.query(&q("landing nope", SessionsQueryScope::All)).await.unwrap().total, 0);
+    assert_eq!(
+        hub.query(&q("parser flaky", SessionsQueryScope::All))
+            .await
+            .unwrap()
+            .total,
+        1
+    );
+    assert_eq!(
+        hub.query(&q("landing nope", SessionsQueryScope::All))
+            .await
+            .unwrap()
+            .total,
+        0
+    );
     // Workspace filter + paging.
     let mut req = q("bulk", SessionsQueryScope::Live);
-    req.filters = SessionsQueryFilters { workspaces: vec!["/work/bulk".into()], ..SessionsQueryFilters::default() };
+    req.filters = SessionsQueryFilters {
+        workspaces: vec!["/work/bulk".into()],
+        ..SessionsQueryFilters::default()
+    };
     req.limit = Some(50);
     let first = hub.query(&req).await.unwrap();
     assert_eq!((first.hits.len(), first.total), (50, 120));
@@ -197,5 +274,11 @@ async fn query_matches_title_and_first_message_across_live_and_archived() {
     req.cursor = None;
     req.text = String::new();
     let web = hub.query(&req).await.unwrap();
-    assert_eq!(web.hits.iter().map(|h| h.card.session_id.clone()).collect::<Vec<_>>(), vec![b]);
+    assert_eq!(
+        web.hits
+            .iter()
+            .map(|h| h.card.session_id.clone())
+            .collect::<Vec<_>>(),
+        vec![b]
+    );
 }

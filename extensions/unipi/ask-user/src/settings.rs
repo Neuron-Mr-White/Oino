@@ -67,9 +67,7 @@ pub fn namespace() -> Namespace {
                 )
                 .field(
                     Field::boolean("digitAdvance", "Number keys move on")
-                        .description(
-                            "In a single-choice question, picking with 1–9 also advances.",
-                        )
+                        .description("In a single-choice question, picking with 1–9 also advances.")
                         .only_on(&[Surface::Tui]),
                 )
                 .field(

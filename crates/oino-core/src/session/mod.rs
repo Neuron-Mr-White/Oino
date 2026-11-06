@@ -7,9 +7,9 @@
 
 mod bash;
 mod boundary;
-mod cwd;
 pub mod checkpoints;
 mod compaction_flow;
+mod cwd;
 mod feeds;
 mod frontend;
 mod hooks;
@@ -52,8 +52,8 @@ use crate::hub::{EventHub, EventStream};
 use crate::ui::{RegistrySink, UiBridge, UiOutput, UiRegistry, UiSink, is_dialog};
 
 pub use bash::BashResult;
-pub use cwd::cwd_change_reminder;
 pub use checkpoints::{Checkpoint, CheckpointFile, RewindFailure, RewindResult};
+pub use cwd::cwd_change_reminder;
 pub use feeds::{DetachedBash, ExtensionInfo, RunningBash};
 pub use frontend::{
     AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent, FRONTEND_CALLER,

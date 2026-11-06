@@ -414,7 +414,10 @@ async fn open_restores_builtins_missing_from_the_recorded_loadout() {
     .unwrap();
     let active = runtime.session().active_tool_names();
     for name in ["read", "bash", "edit", "write"] {
-        assert!(active.iter().any(|a| a == name), "{name} missing from {active:?}");
+        assert!(
+            active.iter().any(|a| a == name),
+            "{name} missing from {active:?}"
+        );
     }
 }
 
@@ -479,7 +482,10 @@ async fn graph_runtime_with(
 
 fn has_core_tools(active: &[String]) {
     for name in ["read", "bash", "edit", "write"] {
-        assert!(active.iter().any(|a| a == name), "{name} missing from {active:?}");
+        assert!(
+            active.iter().any(|a| a == name),
+            "{name} missing from {active:?}"
+        );
     }
 }
 
@@ -532,14 +538,20 @@ async fn update_active_tools_toggles_only_named_tools() {
         .host_call(
             "unipi.long-horizon",
             &cx,
-            update(&["view_agent_graph", "update_agent_graph", "no_such_tool"], &[]),
+            update(
+                &["view_agent_graph", "update_agent_graph", "no_such_tool"],
+                &[],
+            ),
         )
         .await
         .unwrap();
     let active = session.active_tool_names();
     has_core_tools(&active);
     assert!(active.iter().any(|a| a == "memory_store"), "{active:?}");
-    assert!(active.iter().any(|a| a == "update_agent_graph"), "{active:?}");
+    assert!(
+        active.iter().any(|a| a == "update_agent_graph"),
+        "{active:?}"
+    );
     assert!(!active.iter().any(|a| a == "no_such_tool"), "{active:?}");
     // Same request again: no change, no ToolsChanged churn.
     let mut events = session.subscribe();
@@ -572,7 +584,10 @@ async fn update_active_tools_toggles_only_named_tools() {
     let active = session.active_tool_names();
     has_core_tools(&active);
     assert!(active.iter().any(|a| a == "memory_store"), "{active:?}");
-    assert!(!active.iter().any(|a| a.contains("agent_graph")), "{active:?}");
+    assert!(
+        !active.iter().any(|a| a.contains("agent_graph")),
+        "{active:?}"
+    );
     // A built-in leaves when named explicitly.
     session
         .host_call("unipi.long-horizon", &cx, update(&[], &["bash"]))

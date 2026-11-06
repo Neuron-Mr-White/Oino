@@ -763,7 +763,10 @@ mod tests {
         );
         let out = resolve(&[], &context);
         assert_eq!(ids(&out), vec!["acme.router".to_owned()]);
-        assert!(!out.packages[0].project, "a user extension is global, not project");
+        assert!(
+            !out.packages[0].project,
+            "a user extension is global, not project"
+        );
     }
 
     #[test]

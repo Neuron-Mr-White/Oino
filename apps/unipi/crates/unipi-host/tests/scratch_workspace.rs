@@ -282,7 +282,10 @@ async fn a_scratch_chats_fork_gets_its_own_copy_of_the_folder() {
         "the fork runs in its own scratch folder, named after its id"
     );
     assert_eq!(fork.card().cwd, fork_dir.display().to_string());
-    assert_eq!(std::fs::read_to_string(fork_dir.join("a.txt")).unwrap(), "original");
+    assert_eq!(
+        std::fs::read_to_string(fork_dir.join("a.txt")).unwrap(),
+        "original"
+    );
     assert_eq!(
         std::fs::read_to_string(fork_dir.join("sub").join("b.txt")).unwrap(),
         "nested"
@@ -290,9 +293,15 @@ async fn a_scratch_chats_fork_gets_its_own_copy_of_the_folder() {
     // A copy, not a share: writes on one side never show on the other.
     std::fs::write(fork_dir.join("a.txt"), "forked").unwrap();
     std::fs::write(fork_dir.join("new.txt"), "only in the fork").unwrap();
-    assert_eq!(std::fs::read_to_string(scratch.join("a.txt")).unwrap(), "original");
+    assert_eq!(
+        std::fs::read_to_string(scratch.join("a.txt")).unwrap(),
+        "original"
+    );
     assert!(!scratch.join("new.txt").exists());
-    assert_eq!(state_of(&chat).await.cwd.unwrap(), scratch.display().to_string());
+    assert_eq!(
+        state_of(&chat).await.cwd.unwrap(),
+        scratch.display().to_string()
+    );
 
     // A workspace chat's fork stays in the workspace (no copy anywhere).
     let work = fx.dir.path().join("work");
@@ -303,7 +312,10 @@ async fn a_scratch_chats_fork_gets_its_own_copy_of_the_folder() {
     fx.provider.push(FauxResponse::Text("ok".into()));
     ask(&plain, "hi").await;
     let plain_fork = fx.hub.fork(&plain.session_id(), None, None).await.unwrap();
-    assert_eq!(state_of(&plain_fork).await.cwd.unwrap(), work.display().to_string());
+    assert_eq!(
+        state_of(&plain_fork).await.cwd.unwrap(),
+        work.display().to_string()
+    );
     assert_eq!(std::fs::read_dir(&root).unwrap().count(), before);
 }
 
@@ -344,7 +356,10 @@ async fn deleting_a_scratch_chat_deletes_only_its_own_scratch_folder() {
     // Deleting one scratch chat deletes its folder, not the other's.
     fx.hub.delete_archived(&ids[0]).await.unwrap();
     assert!(!one.exists(), "the deleted chat's scratch folder is gone");
-    assert!(two.join("y.txt").is_file(), "another chat's scratch folder stays");
+    assert!(
+        two.join("y.txt").is_file(),
+        "another chat's scratch folder stays"
+    );
     // Emptying the trash: the other scratch folder goes; a workspace and home never.
     fx.hub.empty_trash().await.unwrap();
     assert!(!two.exists());
@@ -377,9 +392,15 @@ async fn an_older_home_chat_moves_without_copy_and_home_is_untouched() {
     let work_canon = dunce::canonicalize(&work).unwrap();
     assert_eq!(moved.card.cwd, work_canon.display().to_string());
     assert_eq!((moved.copied, moved.skipped), (0, 0));
-    assert_eq!(state_of(&chat).await.cwd.unwrap(), work_canon.display().to_string());
+    assert_eq!(
+        state_of(&chat).await.cwd.unwrap(),
+        work_canon.display().to_string()
+    );
     assert!(home.join("home.txt").is_file(), "the home is never deleted");
-    assert!(!work.join("home.txt").exists(), "nothing copied from the home");
+    assert!(
+        !work.join("home.txt").exists(),
+        "nothing copied from the home"
+    );
     // One way: no second move.
     assert!(fx.hub.move_to_workspace(&id, &work, false).await.is_err());
 }
@@ -400,9 +421,18 @@ async fn a_failed_copy_keeps_the_scratch_folder_and_the_chat_unmoved() {
         // Root reads anything: no way to make the copy fail here.
         return;
     }
-    let result = fx.hub.move_to_workspace(&chat.session_id(), &work, true).await;
+    let result = fx
+        .hub
+        .move_to_workspace(&chat.session_id(), &work, true)
+        .await;
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600)).unwrap();
     assert!(result.is_err(), "the copy must fail");
-    assert!(locked.is_file(), "the scratch folder is kept when the copy fails");
-    assert_eq!(state_of(&chat).await.cwd.unwrap(), scratch.display().to_string());
+    assert!(
+        locked.is_file(),
+        "the scratch folder is kept when the copy fails"
+    );
+    assert_eq!(
+        state_of(&chat).await.cwd.unwrap(),
+        scratch.display().to_string()
+    );
 }

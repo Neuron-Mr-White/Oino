@@ -339,7 +339,8 @@ impl AgentSession {
             previous
                 .iter()
                 .filter(|name| {
-                    !names.contains(*name) && state.builtin.iter().any(|e| e.name() == name.as_str())
+                    !names.contains(*name)
+                        && state.builtin.iter().any(|e| e.name() == name.as_str())
                 })
                 .cloned()
                 .collect()

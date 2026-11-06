@@ -18,15 +18,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use oino_session::manager::{OffsetIndex, PageRequest, offsets_dir};
-use serde_json::{Value, json};
+use oino_session::manager::{offsets_dir, OffsetIndex, PageRequest};
+use serde_json::{json, Value};
 use tokio::sync::watch;
 use unipi_proto::session::HistoryPage;
 use unipi_proto::{AppErrorCode, AppErrorDto};
 
 use super::bound;
-use super::hub::HubSession;
 use super::card::SessionCard;
+use super::hub::HubSession;
 
 /// Entries in the snapshot's tail page and in each "load earlier" page.
 pub const PAGE_LIMIT: usize = 80;
@@ -82,7 +82,10 @@ impl Live {
     pub fn ready(&self) -> Option<Arc<HubSession>> {
         match self {
             Self::Ready(session) => Some(Arc::clone(session)),
-            Self::Waking(rx) => rx.borrow().as_ref().and_then(|outcome| outcome.as_ref().ok().cloned()),
+            Self::Waking(rx) => rx
+                .borrow()
+                .as_ref()
+                .and_then(|outcome| outcome.as_ref().ok().cloned()),
         }
     }
 }
@@ -180,7 +183,10 @@ impl Page {
                     .get("total")
                     .and_then(Value::as_u64)
                     .unwrap_or(entries.len() as u64),
-                has_more: reply.get("hasMore").and_then(Value::as_bool).unwrap_or(false),
+                has_more: reply
+                    .get("hasMore")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
                 cursor: reply
                     .get("cursor")
                     .and_then(Value::as_str)
@@ -305,7 +311,9 @@ pub fn paged_request(cmd: &Value) -> Option<(Option<String>, usize, Option<Vec<S
     if ids.is_none() && before.is_none() && limit.is_none() {
         return None;
     }
-    let limit = limit.map_or(PAGE_LIMIT, |limit| usize::try_from(limit).unwrap_or(PAGE_LIMIT));
+    let limit = limit.map_or(PAGE_LIMIT, |limit| {
+        usize::try_from(limit).unwrap_or(PAGE_LIMIT)
+    });
     Some((before, limit.clamp(1, 500), ids))
 }
 
@@ -329,7 +337,10 @@ mod tests {
             json!({"type": "message", "id": "u", "message": {"role": "user"}}),
         ];
         let state = provisional_state(&card(), &entries);
-        assert_eq!(state["model"], json!({"provider": "p", "id": "m1", "name": "m1"}));
+        assert_eq!(
+            state["model"],
+            json!({"provider": "p", "id": "m1", "name": "m1"})
+        );
         assert_eq!(state["thinkingLevel"], "high");
         assert_eq!(state["sessionName"], "Chat");
         assert_eq!(state["isStreaming"], false);
@@ -354,10 +365,16 @@ mod tests {
     fn a_page_over_the_frame_budget_drops_its_oldest_and_moves_the_cursor() {
         let mut page = Page {
             entries: (0..40)
-                .map(|i| json!({"id": format!("e{i}"), "type": "custom", "pad": "p".repeat(30_000)}))
+                .map(
+                    |i| json!({"id": format!("e{i}"), "type": "custom", "pad": "p".repeat(30_000)}),
+                )
                 .collect(),
             leaf_id: Some("e39".into()),
-            page: HistoryPage { total: 100, has_more: true, cursor: Some("e0".into()) },
+            page: HistoryPage {
+                total: 100,
+                has_more: true,
+                cursor: Some("e0".into()),
+            },
         };
         page.bound(None);
         assert!(bound::serialized_len(&page.entries) <= bound::ENTRIES_BUDGET);

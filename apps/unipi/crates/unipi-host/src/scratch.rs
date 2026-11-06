@@ -148,16 +148,14 @@ pub fn check_move(
 ///
 /// Removal failures.
 pub fn remove_own(root: &Path, session_id: &str, cwd: &Path) -> io::Result<bool> {
-    if session_id.is_empty()
-        || session_id.contains(['/', '\\'])
-        || matches!(session_id, "." | "..")
+    if session_id.is_empty() || session_id.contains(['/', '\\']) || matches!(session_id, "." | "..")
     {
         return Ok(false);
     }
     let own = scratch_dir(root, session_id);
     let canon = |path: &Path| dunce::canonicalize(path).ok();
-    let same = normal(cwd) == normal(&own)
-        || canon(cwd).is_some_and(|cwd| Some(cwd) == canon(&own));
+    let same =
+        normal(cwd) == normal(&own) || canon(cwd).is_some_and(|cwd| Some(cwd) == canon(&own));
     if !same || !is_scratch(root, &own) {
         return Ok(false);
     }
@@ -290,7 +288,10 @@ mod tests {
         }
         let home = Some(dir.path());
         // scratch → workspace: allowed.
-        assert_eq!(check_move(&root, home, &chat, &work), Ok(MoveSource::Scratch));
+        assert_eq!(
+            check_move(&root, home, &chat, &work),
+            Ok(MoveSource::Scratch)
+        );
         // workspace → scratch, workspace → workspace: refused.
         assert!(check_move(&root, home, &work, &chat).is_err());
         assert!(check_move(&root, home, &work, &other).is_err());
@@ -313,7 +314,10 @@ mod tests {
             fs::create_dir_all(d).unwrap();
         }
         // home ("No workspace" before scratch existed, cloned UniPi chats) → workspace.
-        assert_eq!(check_move(&root, Some(home), home, &work), Ok(MoveSource::Home));
+        assert_eq!(
+            check_move(&root, Some(home), home, &work),
+            Ok(MoveSource::Home)
+        );
         assert_eq!(
             check_move(&root, Some(home), &home.join("./"), &work),
             Ok(MoveSource::Home)

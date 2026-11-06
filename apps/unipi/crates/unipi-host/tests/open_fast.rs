@@ -100,7 +100,12 @@ impl Client {
             unipi_host::sessions::stream::serve_request(&service, req, &mut read, &mut write).await
         });
         let (read, write) = tokio::io::split(client);
-        Self { seen: Vec::new(), read, write, task }
+        Self {
+            seen: Vec::new(),
+            read,
+            write,
+            task,
+        }
     }
 
     /// The next control frame (kind, bytes).
@@ -202,9 +207,14 @@ fn big_session(sessions: &std::path::Path, cwd: &std::path::Path, turns: usize) 
         let user = format!("u{n:05}");
         let assistant = format!("a{n:05}");
         let tool = format!("t{n:05}");
-        writeln!(out, "{}", json!({"type": "message", "id": user, "parentId": parent,
+        writeln!(
+            out,
+            "{}",
+            json!({"type": "message", "id": user, "parentId": parent,
             "timestamp": "2026-11-02T00:00:01.000Z",
-            "message": {"role": "user", "content": format!("question {n}"), "timestamp": n}})).unwrap();
+            "message": {"role": "user", "content": format!("question {n}"), "timestamp": n}})
+        )
+        .unwrap();
         writeln!(out, "{}", json!({"type": "message", "id": assistant, "parentId": user,
             "timestamp": "2026-11-02T00:00:02.000Z",
             "message": {"role": "assistant", "provider": "faux", "model": "faux-1", "api": "faux",
@@ -212,15 +222,23 @@ fn big_session(sessions: &std::path::Path, cwd: &std::path::Path, turns: usize) 
                 "usage": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
                     "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}},
                 "stopReason": "toolUse", "timestamp": n}})).unwrap();
-        writeln!(out, "{}", json!({"type": "message", "id": tool, "parentId": assistant,
+        writeln!(
+            out,
+            "{}",
+            json!({"type": "message", "id": tool, "parentId": assistant,
             "timestamp": "2026-11-02T00:00:03.000Z",
             "message": {"role": "toolResult", "toolCallId": format!("c{n}"), "toolName": "read",
-                "isError": false, "content": [{"type": "text", "text": blob}], "timestamp": n}})).unwrap();
+                "isError": false, "content": [{"type": "text", "text": blob}], "timestamp": n}})
+        )
+        .unwrap();
         parent = json!(tool);
     }
     out.flush().unwrap();
     drop(out);
-    assert!(std::fs::metadata(&file).unwrap().len() > 100_000_000, "really 100 MB");
+    assert!(
+        std::fs::metadata(&file).unwrap().len() > 100_000_000,
+        "really 100 MB"
+    );
     id
 }
 
@@ -252,28 +270,52 @@ async fn a_100_mb_session_opens_at_its_tail_and_pages_back() {
         .await
         .expect("the snapshot");
     let cold = started.elapsed();
-    eprintln!("perf-open: cold 100 MB open answered in {cold:?} ({} bytes)", bytes.len());
+    eprintln!(
+        "perf-open: cold 100 MB open answered in {cold:?} ({} bytes)",
+        bytes.len()
+    );
     assert_eq!(kind, 0);
-    assert!(bytes.len() < MAX_FRAME, "the snapshot fits one frame: {}", bytes.len());
+    assert!(
+        bytes.len() < MAX_FRAME,
+        "the snapshot fits one frame: {}",
+        bytes.len()
+    );
     let reply: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(reply["type"], "ok", "{reply}");
     let data = &reply["data"];
-    assert_eq!(data["waking"], true, "history first, the runtime wakes behind it");
+    assert_eq!(
+        data["waking"], true,
+        "history first, the runtime wakes behind it"
+    );
     assert_eq!(data["page"]["total"], json!(turns * 3));
     assert_eq!(data["page"]["has_more"], true);
     let tail = ids(&data["entries"]);
-    assert!(!tail.is_empty() && tail.len() <= PAGE_LIMIT, "{}", tail.len());
+    assert!(
+        !tail.is_empty() && tail.len() <= PAGE_LIMIT,
+        "{}",
+        tail.len()
+    );
     assert_eq!(tail.last().unwrap(), &format!("t{:05}", turns - 1));
-    assert!(tail[0].starts_with('u'), "the page starts at a turn: {}", tail[0]);
+    assert!(
+        tail[0].starts_with('u'),
+        "the page starts at a turn: {}",
+        tail[0]
+    );
     assert_eq!(data["page"]["cursor"], json!(tail[0]));
     assert_eq!(data["leaf_id"], json!(format!("t{:05}", turns - 1)));
-    assert_eq!(data["state"]["model"]["id"], "faux-1", "provisional model from the file");
+    assert_eq!(
+        data["state"]["model"]["id"], "faux-1",
+        "provisional model from the file"
+    );
     assert!(cold < COLD_BUDGET, "cold open took {cold:?}");
 
     // "Load earlier": the page before the cursor, contiguous with the tail.
     let started = Instant::now();
     let older = client
-        .cmd(1, json!({"type": "get_entries", "before": tail[0], "limit": PAGE_LIMIT}))
+        .cmd(
+            1,
+            json!({"type": "get_entries", "before": tail[0], "limit": PAGE_LIMIT}),
+        )
         .await;
     let page_took = started.elapsed();
     eprintln!("perf-open: load-earlier page in {page_took:?}");
@@ -281,7 +323,10 @@ async fn a_100_mb_session_opens_at_its_tail_and_pages_back() {
     let older_ids = ids(&older["data"]["entries"]);
     assert!(!older_ids.is_empty());
     let first_of_tail: usize = tail[0][1..].parse().unwrap();
-    assert_eq!(older_ids.last().unwrap(), &format!("t{:05}", first_of_tail - 1));
+    assert_eq!(
+        older_ids.last().unwrap(),
+        &format!("t{:05}", first_of_tail - 1)
+    );
     assert_eq!(older["data"]["hasMore"], true);
     assert_eq!(older["data"]["total"], json!(turns * 3));
     assert!(page_took < WARM_BUDGET, "page took {page_took:?}");
@@ -292,7 +337,9 @@ async fn a_100_mb_session_opens_at_its_tail_and_pages_back() {
         .await;
     assert_eq!(full["type"], "ok", "{full}");
     assert_eq!(ids(&full["data"]["entries"]), ["t00010"]);
-    let text = full["data"]["entries"][0]["message"]["content"][0]["text"].as_str().unwrap();
+    let text = full["data"]["entries"][0]["message"]["content"][0]["text"]
+        .as_str()
+        .unwrap();
     assert_eq!(text.len(), 48 * 1024, "small enough to come whole");
 
     // The runtime woke behind the history: `woken` carries the real state and commands.
@@ -302,7 +349,10 @@ async fn a_100_mb_session_opens_at_its_tail_and_pages_back() {
     // tells the app, which reconciles with `get_entries{since}` — just the new entries.
     let leaf = woken["leafId"].as_str().expect("a leaf").to_owned();
     let since = client
-        .cmd(4, json!({"type": "get_entries", "since": format!("t{:05}", turns - 1)}))
+        .cmd(
+            4,
+            json!({"type": "get_entries", "since": format!("t{:05}", turns - 1)}),
+        )
         .await;
     assert_eq!(since["type"], "ok", "{since}");
     let appended = ids(&since["data"]["entries"]);
@@ -310,7 +360,11 @@ async fn a_100_mb_session_opens_at_its_tail_and_pages_back() {
         assert!(appended.is_empty(), "{appended:?}");
     } else {
         assert_eq!(appended.last(), Some(&leaf), "{appended:?}");
-        eprintln!("perf-open: the wake appended {} entries: {}", appended.len(), since["data"]["entries"]);
+        eprintln!(
+            "perf-open: the wake appended {} entries: {}",
+            appended.len(),
+            since["data"]["entries"]
+        );
     }
     // A runtime command works once woken (it would have waited for the wake otherwise).
     let state = client.cmd(3, json!({"type": "get_state"})).await;

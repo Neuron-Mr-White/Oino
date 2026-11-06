@@ -505,7 +505,9 @@ async fn wait_card_where(
 /// an idle card with `background_work`; both clear when the work ends.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn waiting_parent_stays_working_and_quiet_background_is_a_marker() {
-    let wait = Arc::new(std::sync::Mutex::new(Some("2 subagents working".to_owned())));
+    let wait = Arc::new(std::sync::Mutex::new(Some(
+        "2 subagents working".to_owned(),
+    )));
     let source = {
         let wait = Arc::clone(&wait);
         FakeExtension::new("waiter", Registration::default())
@@ -569,7 +571,10 @@ async fn reopened_session_with_running_graph_work_is_working() {
     prompt(&session, "run the graph").await;
     assert_eq!(wait_text(&session).await, "yielded to the graph");
     wait_idle(&session).await;
-    wait_card_where(&fixture.hub, &id, "idle lead", |c| c.state == HubState::Idle).await;
+    wait_card_where(&fixture.hub, &id, "idle lead", |c| {
+        c.state == HubState::Idle
+    })
+    .await;
     drop(session);
     fixture.hub.close(&id).await.unwrap();
     assert!(!fixture.hub.is_live(&id).await);
@@ -584,7 +589,14 @@ async fn reopened_session_with_running_graph_work_is_working() {
     assert!(card.state.is_working(), "{card:?}");
     // Still Working past the supervisor's idle window, then idle once the work ends.
     tokio::time::sleep(Duration::from_secs(5)).await;
-    assert!(fixture.hub.card(&id).await.unwrap().unwrap().state.is_working());
+    assert!(fixture
+        .hub
+        .card(&id)
+        .await
+        .unwrap()
+        .unwrap()
+        .state
+        .is_working());
     *wait.lock().unwrap() = None;
     wait_card_where(&fixture.hub, &id, "graph done", |c| {
         c.state == HubState::Idle && c.pending_work.is_none()

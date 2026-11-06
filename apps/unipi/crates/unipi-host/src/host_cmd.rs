@@ -229,11 +229,7 @@ async fn install_extension(
 async fn remove_extension(hub: &Arc<SessionHub>, id: String) -> Result<Value, AppErrorDto> {
     let agent_dir = hub.agent_dir().to_path_buf();
     let outcome = tokio::task::spawn_blocking(move || {
-        crate::extension_install::remove(
-            &id,
-            &agent_dir,
-            &crate::sessions::services::dist_dirs(),
-        )
+        crate::extension_install::remove(&id, &agent_dir, &crate::sessions::services::dist_dirs())
     })
     .await
     .map_err(failed)?

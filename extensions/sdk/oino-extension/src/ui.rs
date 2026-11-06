@@ -538,9 +538,15 @@ mod tests {
         assert_eq!(request["order"], 5);
         assert_eq!(request["size"], "large");
         assert_eq!(request["params"]["task"], "T-12");
-        assert!(request.get("surfaces").is_none(), "every client unless only_on");
+        assert!(
+            request.get("surfaces").is_none(),
+            "every client unless only_on"
+        );
         assert_eq!(
-            Panel::new("ext/t").only_on(&[Surface::Tui]).open_request().unwrap_or_default()["surfaces"],
+            Panel::new("ext/t")
+                .only_on(&[Surface::Tui])
+                .open_request()
+                .unwrap_or_default()["surfaces"],
             json!(["tui"])
         );
         assert_eq!(

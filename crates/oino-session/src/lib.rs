@@ -51,8 +51,8 @@ pub use context::{
 };
 pub use entry::{
     BranchSummaryEntry, CURRENT_SESSION_VERSION, CWD_CHANGE_CUSTOM_TYPE, CompactionEntry,
-    ContextReplacement,
-    EditableContent, EntryId, EntryKind, FileLine, IsoTimestamp, SessionEntry, SessionHeader,
+    ContextReplacement, EditableContent, EntryId, EntryKind, FileLine, IsoTimestamp, SessionEntry,
+    SessionHeader,
 };
 pub use error::SessionError;
 #[cfg(feature = "manager")]
@@ -62,9 +62,8 @@ pub use manager::{
     BranchSummaryDraft, CompactionDraft, CreateOptions, INTERRUPTED_TOOL_TEXT, LeaseInfo,
     MigratedSession, ProgressSink, RESUME_REPAIR_TYPE, ReadonlySession, RepairReport, SessionInfo,
     SessionLease, SessionManager, SessionTreeFlatNode, SessionTreeNode, TOOL_DISPATCH_TYPE,
-    TakeoverRequest,
-    clear_takeover_request, lock_file_path, lock_metadata_path, read_takeover_request,
-    takeover_path, write_takeover_request,
+    TakeoverRequest, clear_takeover_request, lock_file_path, lock_metadata_path,
+    read_takeover_request, takeover_path, write_takeover_request,
 };
 pub use messages::{
     BRANCH_SUMMARY_PREFIX, BRANCH_SUMMARY_SUFFIX, COMPACTION_SUMMARY_PREFIX,

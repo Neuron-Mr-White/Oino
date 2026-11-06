@@ -184,7 +184,10 @@ pub fn query_words(query: &str) -> Vec<String> {
     while !query.is_char_boundary(end) {
         end -= 1;
     }
-    query[..end].split_whitespace().map(str::to_lowercase).collect()
+    query[..end]
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect()
 }
 
 /// Validates a batch's targets (1..=[`SESSIONS_BATCH_MAX`]).
@@ -231,11 +234,17 @@ mod tests {
             "created": {"from": 10}, "updated": {"to": 20}
         }))
         .unwrap();
-        assert_eq!(f.status, vec![SessionsQueryStatus::Running, SessionsQueryStatus::Waiting]);
+        assert_eq!(
+            f.status,
+            vec![SessionsQueryStatus::Running, SessionsQueryStatus::Waiting]
+        );
         assert!(f.created.unwrap().contains(10) && !f.created.unwrap().contains(9));
         assert!(f.updated.unwrap().contains(19) && !f.updated.unwrap().contains(20));
         assert!(serde_json::from_value::<SessionsQueryScope>(json!("all")).is_ok());
-        let data = SessionsBatchData { done: vec!["a".into()], failed: vec![] };
+        let data = SessionsBatchData {
+            done: vec!["a".into()],
+            failed: vec![],
+        };
         assert_eq!(serde_json::to_value(&data).unwrap(), json!({"done": ["a"]}));
     }
 }

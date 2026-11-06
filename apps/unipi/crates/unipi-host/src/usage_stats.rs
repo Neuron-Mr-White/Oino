@@ -14,8 +14,8 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
 use unipi_proto::usage::{
-    UsageData, UsageDay, UsageModel, UsageProject, UsageTotals, USAGE_DAILY_MODELS, USAGE_DAYS_MAX, USAGE_OTHER_MODEL,
-    USAGE_ROWS_MAX,
+    UsageData, UsageDay, UsageModel, UsageProject, UsageTotals, USAGE_DAILY_MODELS, USAGE_DAYS_MAX,
+    USAGE_OTHER_MODEL, USAGE_ROWS_MAX,
 };
 
 const DAY_MS: i64 = 86_400_000;
@@ -50,7 +50,9 @@ fn cache() -> &'static Mutex<HashMap<PathBuf, Cached>> {
 }
 
 fn num(v: Option<&Value>) -> f64 {
-    v.and_then(Value::as_f64).filter(|n| n.is_finite() && *n > 0.0).unwrap_or(0.0)
+    v.and_then(Value::as_f64)
+        .filter(|n| n.is_finite() && *n > 0.0)
+        .unwrap_or(0.0)
 }
 
 /// `2026-09-20T16:53:21.276Z` → epoch ms (UTC); `None` when malformed.
@@ -60,8 +62,21 @@ fn parse_iso_ms(s: &str) -> Option<i64> {
         return None;
     }
     let n = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
-    let (y, m, d, h, mi, se) = (n(0..4)?, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?);
-    let ms = if b.get(19) == Some(&b'.') { s.get(20..23).and_then(|f| f.parse::<i64>().ok()).unwrap_or(0) } else { 0 };
+    let (y, m, d, h, mi, se) = (
+        n(0..4)?,
+        n(5..7)?,
+        n(8..10)?,
+        n(11..13)?,
+        n(14..16)?,
+        n(17..19)?,
+    );
+    let ms = if b.get(19) == Some(&b'.') {
+        s.get(20..23)
+            .and_then(|f| f.parse::<i64>().ok())
+            .unwrap_or(0)
+    } else {
+        0
+    };
     Some(days_from_civil(y, m, d) * DAY_MS + ((h * 60 + mi) * 60 + se) * 1000 + ms)
 }
 
@@ -115,34 +130,79 @@ fn parse_text(text: &str) -> Parsed {
     for line in text.lines() {
         if out.cwd.is_empty() && line.starts_with("{\"type\":\"session\"") {
             if let Ok(v) = serde_json::from_str::<Value>(line) {
-                out.cwd = v.get("cwd").and_then(Value::as_str).unwrap_or_default().to_owned();
+                out.cwd = v
+                    .get("cwd")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
             }
             continue;
         }
         if !line.contains("\"usage\"") && !line.contains("unipi-child-usage") {
             continue;
         }
-        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
-        let entry_ts = e.get("timestamp").and_then(Value::as_str).and_then(parse_iso_ms).unwrap_or(0);
+        let Ok(e) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let entry_ts = e
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(parse_iso_ms)
+            .unwrap_or(0);
         let rec = match e.get("type").and_then(Value::as_str) {
             Some("message") => {
-                let Some(m) = e.get("message").filter(|m| m.get("role").and_then(Value::as_str) == Some("assistant")) else { continue };
-                let (Some(u), Some(model)) = (m.get("usage"), m.get("model").and_then(Value::as_str)) else { continue };
-                let ts = m.get("timestamp").and_then(Value::as_i64).filter(|t| *t > 0).unwrap_or(entry_ts);
+                let Some(m) = e
+                    .get("message")
+                    .filter(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
+                else {
+                    continue;
+                };
+                let (Some(u), Some(model)) =
+                    (m.get("usage"), m.get("model").and_then(Value::as_str))
+                else {
+                    continue;
+                };
+                let ts = m
+                    .get("timestamp")
+                    .and_then(Value::as_i64)
+                    .filter(|t| *t > 0)
+                    .unwrap_or(entry_ts);
                 record(ts, u, model, num(u.pointer("/cost/total")))
             }
             Some("usage") => {
                 let u = e.get("usage").unwrap_or(&Value::Null);
-                let cost = u.get("cost").map_or(0.0, |c| c.as_f64().map_or_else(|| num(c.get("total")), |n| n.max(0.0)));
-                record(entry_ts, u, e.get("model").and_then(Value::as_str).unwrap_or("child-agent"), cost)
+                let cost = u.get("cost").map_or(0.0, |c| {
+                    c.as_f64()
+                        .map_or_else(|| num(c.get("total")), |n| n.max(0.0))
+                });
+                record(
+                    entry_ts,
+                    u,
+                    e.get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or("child-agent"),
+                    cost,
+                )
             }
-            Some("custom") if e.get("customType").and_then(Value::as_str) == Some("unipi-child-usage") => {
+            Some("custom")
+                if e.get("customType").and_then(Value::as_str) == Some("unipi-child-usage") =>
+            {
                 let d = e.get("data").unwrap_or(&Value::Null);
                 if d.get("standalone").and_then(Value::as_bool) == Some(false) {
                     continue;
                 }
-                let cost = d.get("cost").map_or(0.0, |c| c.as_f64().map_or_else(|| num(c.get("total")), |n| n.max(0.0)));
-                record(entry_ts, d, d.get("model").and_then(Value::as_str).unwrap_or("child-agent"), cost)
+                let cost = d.get("cost").map_or(0.0, |c| {
+                    c.as_f64()
+                        .map_or_else(|| num(c.get("total")), |n| n.max(0.0))
+                });
+                record(
+                    entry_ts,
+                    d,
+                    d.get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or("child-agent"),
+                    cost,
+                )
             }
             _ => None,
         };
@@ -153,9 +213,13 @@ fn parse_text(text: &str) -> Parsed {
 
 /// Every `.jsonl` under `dir` with `(mtime ms, size)`.
 fn walk(dir: &Path, out: &mut Vec<(PathBuf, i64, u64)>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in rd.flatten() {
-        let Ok(kind) = entry.file_type() else { continue };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
         let path = entry.path();
         if kind.is_dir() {
             walk(&path, out);
@@ -178,7 +242,11 @@ fn project_of(path: &Path, cwd: &str) -> String {
     }
     path.ancestors()
         .skip(1)
-        .find_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| n.starts_with("--")))
+        .find_map(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("--"))
+        })
         .map_or_else(|| "unknown".to_owned(), |n| n.trim_matches('-').to_owned())
 }
 
@@ -191,7 +259,11 @@ struct Bucket {
 }
 
 fn unpriced_of(r: &Rec, tokens: f64) -> f64 {
-    if r.cost > 0.0 { 0.0 } else { tokens }
+    if r.cost > 0.0 {
+        0.0
+    } else {
+        tokens
+    }
 }
 
 /// Aggregates the parsed files at `now_ms` over the last `days` local days. Pure.
@@ -200,7 +272,12 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
     let off = i64::from(tz_offset_min) * 60_000;
     let today = (now_ms + off).div_euclid(DAY_MS);
     let first = today - i64::from(days) + 1;
-    let mut daily: Vec<UsageDay> = (first..=today).map(|d| UsageDay { day: day_label(d), ..UsageDay::default() }).collect();
+    let mut daily: Vec<UsageDay> = (first..=today)
+        .map(|d| UsageDay {
+            day: day_label(d),
+            ..UsageDay::default()
+        })
+        .collect();
     let mut totals = UsageTotals::default();
     let mut by_model: BTreeMap<String, UsageModel> = BTreeMap::new();
     let mut by_project: BTreeMap<String, Bucket> = BTreeMap::new();
@@ -233,7 +310,10 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
             totals.unpriced_tokens += unpriced;
             totals.turns += 1;
             active.insert(day);
-            if let Some(i) = usize::try_from(day - first).ok().filter(|i| *i < daily.len()) {
+            if let Some(i) = usize::try_from(day - first)
+                .ok()
+                .filter(|i| *i < daily.len())
+            {
                 let d = &mut daily[i];
                 d.tokens += tokens;
                 d.cost += r.cost;
@@ -241,7 +321,12 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
                 d.turns += 1;
                 *day_models[i].entry(r.model.clone()).or_default() += tokens;
             }
-            let m = by_model.entry(r.model.clone()).or_insert_with(|| UsageModel { name: r.model.clone(), ..UsageModel::default() });
+            let m = by_model
+                .entry(r.model.clone())
+                .or_insert_with(|| UsageModel {
+                    name: r.model.clone(),
+                    ..UsageModel::default()
+                });
             m.tokens += tokens;
             m.cost += r.cost;
             m.unpriced_tokens += unpriced;
@@ -259,22 +344,50 @@ fn aggregate(files: &[(PathBuf, Parsed)], now_ms: i64, days: u32, tz_offset_min:
     }
     totals.active_days = u32::try_from(active.len()).unwrap_or(u32::MAX);
     let mut models: Vec<UsageModel> = by_model.into_values().collect();
-    models.sort_by(|a, b| b.tokens.total_cmp(&a.tokens).then_with(|| a.name.cmp(&b.name)));
-    let top: HashSet<&str> = models.iter().take(USAGE_DAILY_MODELS).map(|m| m.name.as_str()).collect();
+    models.sort_by(|a, b| {
+        b.tokens
+            .total_cmp(&a.tokens)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    let top: HashSet<&str> = models
+        .iter()
+        .take(USAGE_DAILY_MODELS)
+        .map(|m| m.name.as_str())
+        .collect();
     for (d, per) in daily.iter_mut().zip(day_models) {
         for (name, t) in per {
-            let key = if top.contains(name.as_str()) { name } else { USAGE_OTHER_MODEL.to_owned() };
+            let key = if top.contains(name.as_str()) {
+                name
+            } else {
+                USAGE_OTHER_MODEL.to_owned()
+            };
             *d.models.entry(key).or_default() += t;
         }
     }
     models.truncate(USAGE_ROWS_MAX);
     let mut projects: Vec<UsageProject> = by_project
         .into_iter()
-        .map(|(name, b)| UsageProject { name, tokens: b.tokens, cost: b.cost, unpriced_tokens: b.unpriced, sessions: b.count })
+        .map(|(name, b)| UsageProject {
+            name,
+            tokens: b.tokens,
+            cost: b.cost,
+            unpriced_tokens: b.unpriced,
+            sessions: b.count,
+        })
         .collect();
-    projects.sort_by(|a, b| b.tokens.total_cmp(&a.tokens).then_with(|| a.name.cmp(&b.name)));
+    projects.sort_by(|a, b| {
+        b.tokens
+            .total_cmp(&a.tokens)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     projects.truncate(USAGE_ROWS_MAX);
-    UsageData { days, totals, daily, by_model: models, by_project: projects }
+    UsageData {
+        days,
+        totals,
+        daily,
+        by_model: models,
+        by_project: projects,
+    }
 }
 
 /// Reads (or takes from the cache) every session file touched inside the range.
@@ -285,18 +398,32 @@ fn load(root: &Path, now_ms: i64, days: u32) -> Vec<(PathBuf, Parsed)> {
     // One day of slack for the timezone; a file untouched since cannot hold a newer reply.
     let cutoff = now_ms - (i64::from(days.clamp(1, USAGE_DAYS_MAX)) + 1) * DAY_MS;
     let mut out = Vec::new();
-    let mut cache = cache().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut cache = cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     for (path, mtime, size) in found {
         if mtime < cutoff {
             continue;
         }
-        if let Some(hit) = cache.get(&path).filter(|c| c.mtime == mtime && c.size == size) {
+        if let Some(hit) = cache
+            .get(&path)
+            .filter(|c| c.mtime == mtime && c.size == size)
+        {
             out.push((path, hit.parsed.clone()));
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
         let parsed = parse_text(&text);
-        cache.insert(path.clone(), Cached { mtime, size, parsed: parsed.clone() });
+        cache.insert(
+            path.clone(),
+            Cached {
+                mtime,
+                size,
+                parsed: parsed.clone(),
+            },
+        );
         out.push((path, parsed));
     }
     out
@@ -349,7 +476,12 @@ mod tests {
             assistant("2026-09-21T10:00:00.000Z", NOW - 5000, "glm", 100, 20, 0.5),
             assistant("2026-09-20T11:00:00.000Z", NOW - DAY_MS, "glm", 30, 0, 0.1),
         ));
-        let d = aggregate(&[("/s/a.jsonl".into(), a), ("/s/b.jsonl".into(), b)], NOW, 7, 0);
+        let d = aggregate(
+            &[("/s/a.jsonl".into(), a), ("/s/b.jsonl".into(), b)],
+            NOW,
+            7,
+            0,
+        );
         assert_eq!(d.totals.turns, 3);
         assert_eq!(d.totals.sessions, 2);
         assert_eq!(d.totals.active_days, 2);
@@ -371,10 +503,22 @@ mod tests {
 
     #[test]
     fn range_and_timezone_bound_the_days() {
-        let old = parse_text(&assistant("2026-08-01T10:00:00.000Z", NOW - 50 * DAY_MS, "m", 1, 1, 0.1));
+        let old = parse_text(&assistant(
+            "2026-08-01T10:00:00.000Z",
+            NOW - 50 * DAY_MS,
+            "m",
+            1,
+            1,
+            0.1,
+        ));
         let d = aggregate(&[("/s/o.jsonl".into(), old.clone())], NOW, 7, 0);
         assert_eq!(d.totals.turns, 0);
-        assert_eq!(aggregate(&[("/s/o.jsonl".into(), old)], NOW, 90, 0).totals.turns, 1);
+        assert_eq!(
+            aggregate(&[("/s/o.jsonl".into(), old)], NOW, 90, 0)
+                .totals
+                .turns,
+            1
+        );
         // 14:13Z at UTC+10 is already the next local day
         let e = aggregate(&[], NOW, 1, 600);
         assert_eq!(e.daily[0].day, "2026-09-22");
@@ -385,8 +529,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("--home-u-app--");
         std::fs::create_dir_all(&dir).unwrap();
-        let now = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
-        std::fs::write(dir.join("a.jsonl"), assistant("2026-09-21T10:00:00.000Z", now - 1000, "m", 10, 10, 0.2)).unwrap();
+        let now = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        std::fs::write(
+            dir.join("a.jsonl"),
+            assistant("2026-09-21T10:00:00.000Z", now - 1000, "m", 10, 10, 0.2),
+        )
+        .unwrap();
         let d = usage_stats(tmp.path(), 7, 0);
         assert_eq!(d.totals.turns, 1);
         assert_eq!(usage_stats(tmp.path(), 7, 0), d);

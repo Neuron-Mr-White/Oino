@@ -596,7 +596,13 @@ unipi-host is already running (pid 7, mode app, version 1.0.0)
 
         // The run's start is the first record of the trailing fast-fail run.
         let dir = tempfile::tempdir().unwrap();
-        let records = [(1, Success), (2, FastFail), (3, Stopped), (10, FastFail), (20, FastFail)];
+        let records = [
+            (1, Success),
+            (2, FastFail),
+            (3, Stopped),
+            (10, FastFail),
+            (20, FastFail),
+        ];
         let starts = records
             .iter()
             .map(|(ts, outcome)| StartRecord {

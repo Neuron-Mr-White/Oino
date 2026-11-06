@@ -45,7 +45,13 @@ fn request(base_url: &str) -> ProviderRequest {
 
 /// The request body as sent, plus the `anthropic-beta` header.
 fn body(base_url: &str) -> (Value, String) {
-    let prepared = prepare(Wire::Anthropic, &request(base_url), PrepareOptions::default(), 0).unwrap();
+    let prepared = prepare(
+        Wire::Anthropic,
+        &request(base_url),
+        PrepareOptions::default(),
+        0,
+    )
+    .unwrap();
     let mut headers = prepared.http.headers.clone();
     let body = finalize(Wire::Anthropic, prepared.http.payload.clone(), &mut headers);
     let beta = headers
@@ -83,10 +89,19 @@ fn gateway_declares_mid_conversation_tools_at_request_level() {
     let (body, beta) = body("https://llm-gateway.example.com/v1");
     let tools = request_tools(&body);
     for name in ["bash", "update_agent_graph", "view_agent_graph"] {
-        assert!(tools.iter().any(|t| t == name), "{name} missing from request tools {tools:?}");
+        assert!(
+            tools.iter().any(|t| t == name),
+            "{name} missing from request tools {tools:?}"
+        );
     }
-    assert!(inline_additions(&body).is_empty(), "no inline tool_addition through a gateway");
-    assert!(!beta.contains("inline-tools"), "no inline-tools beta through a gateway: {beta}");
+    assert!(
+        inline_additions(&body).is_empty(),
+        "no inline tool_addition through a gateway"
+    );
+    assert!(
+        !beta.contains("inline-tools"),
+        "no inline-tools beta through a gateway: {beta}"
+    );
     // The mode text itself still arrives (mid-conversation system text is kept).
     assert!(body.to_string().contains("Mode: Graph"));
 }
@@ -94,17 +109,34 @@ fn gateway_declares_mid_conversation_tools_at_request_level() {
 #[test]
 fn first_party_api_keeps_native_inline_tool_changes() {
     let (body, beta) = body("https://api.anthropic.com");
-    assert_eq!(inline_additions(&body), ["update_agent_graph", "view_agent_graph"]);
-    assert!(!request_tools(&body).iter().any(|t| t == "update_agent_graph"));
+    assert_eq!(
+        inline_additions(&body),
+        ["update_agent_graph", "view_agent_graph"]
+    );
+    assert!(
+        !request_tools(&body)
+            .iter()
+            .any(|t| t == "update_agent_graph")
+    );
     assert!(beta.contains("inline-tools"), "{beta}");
 }
 
 #[test]
 fn first_party_endpoint_detection() {
-    for url in ["", "https://api.anthropic.com", "https://API.anthropic.com/v1/", "api.anthropic.com:443"] {
+    for url in [
+        "",
+        "https://api.anthropic.com",
+        "https://API.anthropic.com/v1/",
+        "api.anthropic.com:443",
+    ] {
         assert!(is_first_party_endpoint(url), "{url}");
     }
-    for url in ["https://gateway.example.com/v1", "http://localhost:8080", "https://api.anthropic.com.evil.dev", "https://x@proxy.example/api.anthropic.com"] {
+    for url in [
+        "https://gateway.example.com/v1",
+        "http://localhost:8080",
+        "https://api.anthropic.com.evil.dev",
+        "https://x@proxy.example/api.anthropic.com",
+    ] {
         assert!(!is_first_party_endpoint(url), "{url}");
     }
 }

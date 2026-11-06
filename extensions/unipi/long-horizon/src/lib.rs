@@ -2437,8 +2437,11 @@ impl Lh {
         };
         // [owner-fix-8] At most ONE graph runs at a time across the app: a
         // second chat asking for a graph is told why it cannot start.
-        if matches!(mode, Mode::Graph | Mode::Swarm) && self.graph_owned_elsewhere(cx.session_id()) {
-            notify("Another chat is running a graph — only one graph runs at a time. Stop it there first, then start this one.");
+        if matches!(mode, Mode::Graph | Mode::Swarm) && self.graph_owned_elsewhere(cx.session_id())
+        {
+            notify(
+                "Another chat is running a graph — only one graph runs at a time. Stop it there first, then start this one.",
+            );
             return;
         }
         if mode == Mode::Ralph && sub == "start" {
@@ -3327,10 +3330,8 @@ impl Lh {
                 st.turns.remove(cx.session_id());
                 // [owner-fix-8] A new chat starts in the regular mode — never in
                 // the mode the last chat of this workspace used.
-                st.session_display.insert(
-                    cx.session_id().to_owned(),
-                    self.settings().default_mode,
-                );
+                st.session_display
+                    .insert(cx.session_id().to_owned(), self.settings().default_mode);
             } else {
                 // A chat that is already running keeps the mode it resolved.
                 let known = st
@@ -3789,10 +3790,7 @@ mod tests {
     #[test]
     fn owner_fix_8_mode_is_per_chat() {
         // [owner-fix-8] every chat reads its own mode from its own topic.
-        assert_eq!(
-            session_state_topic("s-1"),
-            "unipi:long-horizon:state:s-1"
-        );
+        assert_eq!(session_state_topic("s-1"), "unipi:long-horizon:state:s-1");
     }
 
     #[test]

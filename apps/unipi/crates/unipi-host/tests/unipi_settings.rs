@@ -211,10 +211,15 @@ async fn unipi_state_files_move_into_settings() {
         .unwrap();
     let project = read_json(&cwd.join(".oino/settings.json"));
     assert!(
-        project["extensionSettings"]["permission"].get("mode").is_none(),
+        project["extensionSettings"]["permission"]
+            .get("mode")
+            .is_none(),
         "the mode is never written into a project: {project}"
     );
-    assert!(registry.values("permission", SettingsLayer::Effective).get("mode").is_none());
+    assert!(registry
+        .values("permission", SettingsLayer::Effective)
+        .get("mode")
+        .is_none());
 
     // Shared secret: a hub write of the decision-model key lands in secrets.json and is
     // readable by other unipi components, masked for frontends.

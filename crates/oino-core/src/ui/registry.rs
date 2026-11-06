@@ -13,8 +13,8 @@ use indexmap::IndexMap;
 use oino_ai::{JsonObject, JsonValue};
 use oino_ui::extras::icon::Icon;
 use oino_ui::node::Node;
-use oino_ui::settings::Surface;
 use oino_ui::patch::{NodeOp, apply, diff};
+use oino_ui::settings::Surface;
 use oino_ui::slot::{
     DismissReason, EntryMetaPatch, EntrySize, KeyBinding, RegistryOp, ReservedComponent, Scope,
     Slot, UiEntry, UiMeta, UiPatch, UiSnapshot, UiView,

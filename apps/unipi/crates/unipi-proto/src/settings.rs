@@ -386,7 +386,9 @@ mod tests {
             (HostCmd::AuthProviders { validate: None }, "auth_providers"),
             (HostCmd::GetShortcuts, "get_shortcuts"),
             (
-                HostCmd::RemoveExtension { id: "acme.x".into() },
+                HostCmd::RemoveExtension {
+                    id: "acme.x".into(),
+                },
                 "remove_extension",
             ),
         ] {

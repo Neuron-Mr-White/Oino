@@ -245,8 +245,15 @@ async fn a_huge_session_opens_with_a_bounded_snapshot() {
         "bounded entries are {payload} bytes"
     );
     // perf-open: read from the file (no runtime yet) — every entry of the branch fits the page.
-    assert!(entries.len() >= 42, "every entry is still listed: {}", entries.len());
-    assert_eq!(reply.pointer("/data/page/has_more"), Some(&Value::Bool(false)));
+    assert!(
+        entries.len() >= 42,
+        "every entry is still listed: {}",
+        entries.len()
+    );
+    assert_eq!(
+        reply.pointer("/data/page/has_more"),
+        Some(&Value::Bool(false))
+    );
 
     // The huge tool result: cut and flagged for the app's `get_entries` refetch.
     let huge = entries

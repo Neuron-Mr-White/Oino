@@ -424,9 +424,7 @@ fn claude_skills_are_discovered_and_can_be_turned_off() {
         .map(|s| s.source_info.path.display().to_string())
         .collect();
     assert!(
-        !paths
-            .iter()
-            .any(|p| p.contains(".claude/skills")),
+        !paths.iter().any(|p| p.contains(".claude/skills")),
         "{paths:?}"
     );
     assert!(
@@ -448,10 +446,12 @@ fn claude_project_skills_follow_the_project_trust() {
     );
     let untrusted = tree.loader(ResourceLoaderOptions::default(), false);
     assert!(
-        !untrusted
-            .skills()
-            .iter()
-            .any(|s| s.source_info.path.display().to_string().contains(".claude/skills")),
+        !untrusted.skills().iter().any(|s| s
+            .source_info
+            .path
+            .display()
+            .to_string()
+            .contains(".claude/skills")),
         "an untrusted project must not load its .claude/skills"
     );
 }

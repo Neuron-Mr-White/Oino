@@ -209,19 +209,13 @@ fn a_lock_collision_never_counts_as_a_failed_start() {
     kill(&mut winner);
     let (outcomes, open) = start_outcomes(dir.path());
     assert!(!open, "the winner's clean stop closed its start");
-    assert!(
-        !outcomes.iter().any(|o| o == "fast-fail"),
-        "{outcomes:?}"
-    );
+    assert!(!outcomes.iter().any(|o| o == "fast-fail"), "{outcomes:?}");
     // The next start sees no failed starts: no safe mode.
     let mut next = serve(dir.path(), &["--mode", "app"]);
     wait_running_for(dir.path(), &mut [&mut next]);
     kill(&mut next);
     let (outcomes, _) = start_outcomes(dir.path());
-    assert!(
-        !outcomes.iter().any(|o| o == "fast-fail"),
-        "{outcomes:?}"
-    );
+    assert!(!outcomes.iter().any(|o| o == "fast-fail"), "{outcomes:?}");
 }
 
 /// fix5-host: the app replacing a host that has only just taken the lock (SIGTERM
@@ -236,10 +230,7 @@ fn a_host_terminated_while_starting_is_not_a_failed_start() {
         kill(&mut host);
         let (outcomes, open) = start_outcomes(dir.path());
         assert!(!open, "SIGTERM left the start open: {outcomes:?}");
-        assert!(
-            !outcomes.iter().any(|o| o == "fast-fail"),
-            "{outcomes:?}"
-        );
+        assert!(!outcomes.iter().any(|o| o == "fast-fail"), "{outcomes:?}");
     }
 }
 

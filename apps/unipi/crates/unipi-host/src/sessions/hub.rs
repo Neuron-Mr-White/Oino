@@ -59,14 +59,14 @@ use oino_session::{EntryId, LeaseInfo, SessionManager};
 use oino_settings::SettingsManager;
 
 use super::card::{HubState, ProjectGroup, SessionCard};
+use super::crash;
+use super::meta::{FocusRegistry, MetaStore};
+use unipi_proto::session::SessionMetaPatch;
 use unipi_proto::session_bulk::{
     query_words, SessionsBatchData, SessionsBatchFailure, SessionsQueryAutomation,
     SessionsQueryFilters, SessionsQueryScope, SessionsQuerySort, SessionsQueryStatus,
     SESSIONS_EVENT_CHUNK, SESSIONS_QUERY_LIMIT_DEFAULT, SESSIONS_QUERY_LIMIT_MAX,
 };
-use super::crash;
-use super::meta::{FocusRegistry, MetaStore};
-use unipi_proto::session::SessionMetaPatch;
 
 /// Event queue of one [`SessionHub::subscribe`] receiver.
 const EVENTS_CAPACITY: usize = 256;
@@ -2511,7 +2511,12 @@ fn is_no_workspace(cwd: &str, scratch_root: &Path) -> bool {
 
 /// The list's title of a card (name, else the folder, else "New chat") — `sessionTitle`.
 fn query_title(card: &SessionCard, no_workspace: bool) -> String {
-    if let Some(name) = card.name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+    if let Some(name) = card
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    {
         return name.to_owned();
     }
     if !no_workspace {
@@ -2528,7 +2533,11 @@ fn snippet_around(text: &str, word: &str) -> Option<String> {
     let at = lower.find(word)?;
     // Byte offsets of `lower` map onto `text` only for same-length case folding; fall back
     // to a char walk over the lowercase copy (what is shown is lowercase-safe text).
-    let source = if lower.len() == text.len() { text } else { lower.as_str() };
+    let source = if lower.len() == text.len() {
+        text
+    } else {
+        lower.as_str()
+    };
     let chars: Vec<(usize, char)> = source.char_indices().collect();
     let pos = chars.iter().position(|(i, _)| *i >= at).unwrap_or(0);
     let start = pos.saturating_sub(SNIPPET_CONTEXT);
@@ -2560,7 +2569,10 @@ impl Inner {
         let mut seen: HashSet<String> = HashSet::with_capacity(targets.len());
         for target in targets {
             let fail = |out: &mut SessionsBatchData, message: String| {
-                out.failed.push(SessionsBatchFailure { session: target.clone(), message });
+                out.failed.push(SessionsBatchFailure {
+                    session: target.clone(),
+                    message,
+                });
             };
             // Exact ids come from the one listing; anything else resolves like `session_archive`.
             let resolved;
@@ -2584,7 +2596,8 @@ impl Inner {
             }
             let working = {
                 let state = lock(&self.state);
-                matches!(state.states.get(&id), Some(HubState::Working)) || state.needs_you.contains(&id)
+                matches!(state.states.get(&id), Some(HubState::Working))
+                    || state.needs_you.contains(&id)
             };
             if working {
                 fail(&mut out, "the session is running".to_owned());
@@ -2601,7 +2614,10 @@ impl Inner {
             );
             let dest = unique_destination(&trash, &name);
             if let Err(error) = tokio::fs::rename(&record.info.path, &dest).await {
-                fail(&mut out, format!("archiving {}: {error}", record.info.path.display()));
+                fail(
+                    &mut out,
+                    format!("archiving {}: {error}", record.info.path.display()),
+                );
                 continue;
             }
             out.done.push(id.clone());
@@ -2634,8 +2650,10 @@ impl Inner {
     async fn restore_many(&self, targets: &[String]) -> Result<SessionsBatchData, HubError> {
         let started = Instant::now();
         let archived = self.archived_sessions().await?;
-        let by_id: HashMap<&str, &oino_session::manager::SessionInfo> =
-            archived.iter().map(|info| (info.id.as_str(), info)).collect();
+        let by_id: HashMap<&str, &oino_session::manager::SessionInfo> = archived
+            .iter()
+            .map(|info| (info.id.as_str(), info))
+            .collect();
         let mut out = SessionsBatchData::default();
         let mut chunk: Vec<SessionCard> = Vec::new();
         let mut seen: HashSet<String> = HashSet::with_capacity(targets.len());
@@ -2703,9 +2721,11 @@ impl Inner {
             |name| name.to_string_lossy().into_owned(),
         );
         let dest = unique_destination(&dir, &name);
-        tokio::fs::rename(&entry.path, &dest).await.map_err(|error| {
-            HubError::failed(format!("restoring {}: {error}", entry.path.display()))
-        })?;
+        tokio::fs::rename(&entry.path, &dest)
+            .await
+            .map_err(|error| {
+                HubError::failed(format!("restoring {}: {error}", entry.path.display()))
+            })?;
         let modified = epoch_ms(entry.modified);
         let cron = self.cron.owner_of(&entry.id, &dest);
         Ok(self.meta.onto(SessionCard {
@@ -2790,7 +2810,11 @@ impl Inner {
         for row in rows {
             let no_workspace = is_no_workspace(&row.card.cwd, &self.scratch_root);
             if !workspaces.is_empty() {
-                let key = if no_workspace { "" } else { row.card.cwd.trim_end_matches(['/', '\\']) };
+                let key = if no_workspace {
+                    ""
+                } else {
+                    row.card.cwd.trim_end_matches(['/', '\\'])
+                };
                 if !workspaces.contains(key) {
                     continue;
                 }
@@ -2820,15 +2844,24 @@ impl Inner {
                 }
             }
             if !filters.models.is_empty()
-                && !filters.models.iter().any(|m| m == row.card.model.as_deref().unwrap_or(""))
+                && !filters
+                    .models
+                    .iter()
+                    .any(|m| m == row.card.model.as_deref().unwrap_or(""))
             {
                 continue;
             }
-            if filters.created.is_some_and(|range| !range.contains(row.created_ms)) {
+            if filters
+                .created
+                .is_some_and(|range| !range.contains(row.created_ms))
+            {
                 continue;
             }
             let activity = i64::try_from(row.card.last_activity).unwrap_or(i64::MAX);
-            if filters.updated.is_some_and(|range| !range.contains(activity)) {
+            if filters
+                .updated
+                .is_some_and(|range| !range.contains(activity))
+            {
                 continue;
             }
             let title = query_title(&row.card, no_workspace);
@@ -2836,9 +2869,16 @@ impl Inner {
             if !words.is_empty() {
                 let title_lower = title.to_lowercase();
                 // The index's placeholder for an empty chat is not searchable text.
-                let first = if row.first_message == "(no messages)" { "" } else { row.first_message.as_str() };
+                let first = if row.first_message == "(no messages)" {
+                    ""
+                } else {
+                    row.first_message.as_str()
+                };
                 let first_lower = first.to_lowercase();
-                if !words.iter().all(|w| title_lower.contains(w.as_str()) || first_lower.contains(w.as_str())) {
+                if !words
+                    .iter()
+                    .all(|w| title_lower.contains(w.as_str()) || first_lower.contains(w.as_str()))
+                {
                     continue;
                 }
                 if let Some(word) = words.iter().find(|w| !title_lower.contains(w.as_str())) {
@@ -2849,12 +2889,19 @@ impl Inner {
         }
         match query.sort {
             SessionsQuerySort::Updated => hits.sort_by(|a, b| {
-                b.0.card.last_activity.cmp(&a.0.card.last_activity).then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
+                b.0.card
+                    .last_activity
+                    .cmp(&a.0.card.last_activity)
+                    .then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
             }),
             SessionsQuerySort::Created => hits.sort_by(|a, b| {
-                b.0.created_ms.cmp(&a.0.created_ms).then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
+                b.0.created_ms
+                    .cmp(&a.0.created_ms)
+                    .then_with(|| a.0.card.session_id.cmp(&b.0.card.session_id))
             }),
-            SessionsQuerySort::Name => hits.sort_by_cached_key(|h| (h.1.to_lowercase(), h.0.card.session_id.clone())),
+            SessionsQuerySort::Name => {
+                hits.sort_by_cached_key(|h| (h.1.to_lowercase(), h.0.card.session_id.clone()))
+            }
         }
         let limit = query
             .limit
@@ -2909,9 +2956,15 @@ mod query_helper_tests {
 
     #[test]
     fn snippets_are_short_and_one_line() {
-        let text = format!("{}\nfind the Needle here{}", "a ".repeat(100), " b".repeat(100));
+        let text = format!(
+            "{}\nfind the Needle here{}",
+            "a ".repeat(100),
+            " b".repeat(100)
+        );
         let s = snippet_around(&text, "needle").unwrap();
-        assert!(s.contains("Needle") && s.starts_with('…') && s.ends_with('…') && !s.contains('\n'));
+        assert!(
+            s.contains("Needle") && s.starts_with('…') && s.ends_with('…') && !s.contains('\n')
+        );
         assert!(s.chars().count() < 2 * SNIPPET_CONTEXT + 12);
         assert!(snippet_around("abc", "zz").is_none());
     }

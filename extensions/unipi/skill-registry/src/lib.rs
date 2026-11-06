@@ -254,14 +254,19 @@ impl Registry {
 
     /// `skills.save {scope: "global"|"project", states?, proxy?}`: writes one scope's states.
     fn save(&self, cx: &Ctx, p: &Value) -> Value {
-        let layer = if p.get("scope").and_then(Value::as_str) == Some("project") { Layer::Project } else { Layer::Global };
+        let layer = if p.get("scope").and_then(Value::as_str) == Some("project") {
+            Layer::Project
+        } else {
+            Layer::Global
+        };
         if let Some(states) = p.get("states") {
             settings::write_layer(&self.settings, layer, &registry::normalize_states(states));
         }
         if let Some(on) = p.get("proxy").and_then(Value::as_bool) {
             settings::set_proxy(&self.settings, on);
         }
-        self.sessions.with(cx.session_id(), |s| s.judge.judged = false);
+        self.sessions
+            .with(cx.session_id(), |s| s.judge.judged = false);
         json!({"ok": true})
     }
 
@@ -649,8 +654,12 @@ impl Extension for Registry {
             Ok(())
         });
         bus::subscribe(topics::SKILLS_REVEAL);
-        cx.service("skills.catalog", |ext, _p, _caller, cx| async move { Ok(ext.catalog(&cx)) });
-        cx.service("skills.save", |ext, p, _caller, cx| async move { Ok(ext.save(&cx, &p)) });
+        cx.service("skills.catalog", |ext, _p, _caller, cx| async move {
+            Ok(ext.catalog(&cx))
+        });
+        cx.service("skills.save", |ext, p, _caller, cx| async move {
+            Ok(ext.save(&cx, &p))
+        });
 
         cx.command(
             Command::<Self>::new("skills")
