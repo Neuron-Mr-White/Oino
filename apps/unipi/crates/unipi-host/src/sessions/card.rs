@@ -99,6 +99,13 @@ pub struct SessionCard {
     /// Quiet background work (a background task without wake) on an idle session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_work: Option<String>,
+    /// When the composer draft was last saved (epoch ms; 0 = none; owner 2026-11-06).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub draft_at: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 impl SessionCard {
@@ -193,6 +200,7 @@ mod tests {
             pinned: false,
             unread: false,
             title_locked: false,
+            draft_at: 0,
             source: None,
             cron_job_id: None,
             cron_job_name: None,

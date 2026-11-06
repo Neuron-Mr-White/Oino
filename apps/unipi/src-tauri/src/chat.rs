@@ -639,7 +639,10 @@ pub async fn usage_stats(
         &app,
         &state,
         &host_id,
-        Request::UsageStats { days, tz_offset_min: tz_offset_min.unwrap_or(0) },
+        Request::UsageStats {
+            days,
+            tz_offset_min: tz_offset_min.unwrap_or(0),
+        },
         REPLY_TIMEOUT,
     )
     .await
@@ -932,7 +935,14 @@ pub async fn sessions_archive(
     host_id: String,
     sessions: Vec<SessionTarget>,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SessionsArchive { sessions }, BATCH_TIMEOUT).await
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionsArchive { sessions },
+        BATCH_TIMEOUT,
+    )
+    .await
 }
 
 /// `sessions_restore` (owner fix 2026-11-03, `[ux-sessions]`): restore many archived
@@ -944,7 +954,14 @@ pub async fn sessions_restore(
     host_id: String,
     sessions: Vec<SessionTarget>,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SessionsRestore { sessions }, BATCH_TIMEOUT).await
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::SessionsRestore { sessions },
+        BATCH_TIMEOUT,
+    )
+    .await
 }
 
 /// `sessions_query` (owner fix 2026-11-03, `[ux-sessions]`): one page of the sidebar's
@@ -1067,6 +1084,45 @@ pub async fn session_meta_set(
         &state,
         &host_id,
         Request::SessionMetaSet { session, patch },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `draft_get` (owner 2026-11-06): the session's composer draft kept by the host. → `{draft}`.
+#[tauri::command]
+pub async fn draft_get(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::DraftGet { session },
+        REPLY_TIMEOUT,
+    )
+    .await
+}
+
+/// `draft_set` (owner 2026-11-06): store (or clear with `null`) the session's composer draft;
+/// the card's `draft_at` follows. → the updated `SessionCard`.
+#[tauri::command]
+pub async fn draft_set(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    session: SessionTarget,
+    draft: Option<serde_json::Value>,
+) -> Result<serde_json::Value, AppErrorDto> {
+    let draft = draft.filter(|d| !d.is_null());
+    one_shot(
+        &app,
+        &state,
+        &host_id,
+        Request::DraftSet { session, draft },
         REPLY_TIMEOUT,
     )
     .await

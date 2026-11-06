@@ -108,6 +108,7 @@ import { composerHistory } from '../../lib/composer/undo';
 import { attachmentToken, imageChipIds, imageToken, pathCandidates, type Chip } from '../../lib/composer/chips';
 import { outgoingMessage, referencedIds } from '../../lib/composer/wire';
 import { clipIds, fileOfDataUrl, pastedText, type ComposerClip } from '../../lib/composer/clip';
+import { clearHostDraft, loadHostDraft, scheduleDraftSync } from '../../lib/composer/draftSync';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { PhoneField } from './PhoneField';
 import { ActionSheet } from '../phone';
@@ -472,6 +473,19 @@ export function Composer(props: ComposerProps) {
 
   /* ── attachments (Z-60 states, D-6 per-chat store) ───────────────── */
   const attachments = () => pendingAttachmentsFor(key());
+  /* ── host-synced drafts (owner 2026-11-06) ── */
+  // The PC's draft comes in when the chat's composer mounts (once per app run) …
+  createEffect(on(key, (k) => void loadHostDraft(k).then(() => queueMicrotask(() => editor?.syncFromStore()))));
+  // … and every change goes back, throttled: the text, quote / paste chips, and each attachment's
+  // readiness and version (an image edit replaces the bytes).
+  createEffect(() => {
+    const d = draft();
+    void d.text;
+    void d.quotes.length;
+    void d.chips.length;
+    for (const a of attachments()) void `${a.id}:${a.status}:${a.size}:${a.placed}`;
+    untrack(() => scheduleDraftSync(key()));
+  });
   /** Pre-uploads what was picked (images shrink+encode, files over the blob
    *  channel) and says so when something does not fit. Each one lands as an
    *  inline chip at the caret (`placeAttachments`). */
@@ -940,6 +954,7 @@ export function Composer(props: ComposerProps) {
   /** After a send the draft starts over; one Ctrl/⌘+Z brings back what was sent. */
   const afterSend = (outgoing: string) => {
     clearComposer(key());
+    clearHostDraft(key());
     history().reset(outgoing);
     setHistRev((n) => n + 1);
     setDismissed(null);

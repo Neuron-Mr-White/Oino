@@ -266,6 +266,14 @@ pub struct SessionCard {
     /// list's "background" marker, not "Working".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_work: Option<String>,
+    /// When the session's composer draft was last saved (epoch ms; 0 = no draft): the
+    /// sidebar's "Draft" marker (owner 2026-11-06, `draft_set`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub draft_at: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 /// The patch of `session_meta_set` (app spec §3.14): only the fields present change.
@@ -815,6 +823,7 @@ mod tests {
             last_activity: 1_700_000_000_000,
             pending_work: Some("2 subagents working".into()),
             background_work: None,
+            draft_at: 0,
         };
         let changed = HubEvent::SessionChanged { card };
         let value = serde_json::to_value(&changed).unwrap();

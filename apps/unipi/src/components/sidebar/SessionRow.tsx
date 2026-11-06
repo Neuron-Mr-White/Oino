@@ -14,6 +14,8 @@
  * like "Working" takes its place). Compact view only tightens the row height.
  */
 import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
+import { composerDraft, hasLiveDraft } from '../../lib/composer/drafts';
+import { pendingAttachmentsFor } from '../../lib/composer/attachments';
 import { Archive, Circle, CircleAlert, CircleDashed, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
 import type { SessionCard } from '../../lib/host/client';
 import { hostClient } from '../../lib/host/factory';
@@ -202,8 +204,24 @@ export function SessionRow(props: {
     if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
   });
   /** The meta chips (comfortable: the second line; compact: icons after the title). */
+  /** Owner 2026-11-06: an unsent draft — this run's own (in memory), else the PC's (`draft_at`). */
+  const hasDraft = () => {
+    const k = `${props.hostId}/${props.card.session_id}`;
+    if (!hasLiveDraft(k)) return (props.card.draft_at ?? 0) > 0;
+    const d = composerDraft(k);
+    return !!(d.text.trim() || d.quotes.length || d.chips.length || pendingAttachmentsFor(k).length);
+  };
   const word = () => (
-    <Show when={show('status') && statusWord()}>
+    <Show
+      when={show('status') && statusWord()}
+      fallback={
+        <Show when={!props.archived && hasDraft()}>
+          <span class="srow-word srow-draft" data-testid={`srow-draft-${props.card.session_id}`} title="Unsent draft">
+            Draft
+          </span>
+        </Show>
+      }
+    >
       <span class="srow-word" data-state={status()} title={statusTip()}>
         {statusWord()}
       </span>

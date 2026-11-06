@@ -17,7 +17,8 @@ import { createMockHost, type MockScenario, type MockWorld } from '../../dev/moc
 import { genFsTree, genLiveRun, genSession } from '../../dev/mock/gen';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { createSession, type SessionHandle } from '../../lib/session/store';
-import { resetComposerDrafts } from '../../lib/composer/drafts';
+import { reloadComposerDrafts, resetComposerDrafts } from '../../lib/composer/drafts';
+import { resetDraftSync } from '../../lib/composer/draftSync';
 import { resetAttachments } from '../../lib/composer/attachments';
 import { setBlobTransport, type BlobPutResult, type BlobTransport } from '../../lib/blob';
 import { setDesktopOverride, resetLayout } from '../../lib/layout';
@@ -131,6 +132,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetDraftSync();
   for (const dispose of disposers) dispose();
   disposers = [];
   resetComposerDrafts();
@@ -354,5 +356,58 @@ describe('rich copy / paste (owner 2026-11-06)', () => {
     expect(b.chips()[0]!.getAttribute('data-kind')).toBe('image');
     await waitFor(() => expect(b.chips()[0]!.querySelector('img.ichip-thumb')).toBeTruthy());
     expect(f.textContent).toContain('look at');
+  });
+});
+
+describe('host-synced drafts (owner 2026-11-06)', () => {
+  const hostDraft = () => world.client(HOST).drafts.get(A) as { text: string; attachments: Array<{ kind: string; sha256?: string }> } | undefined;
+
+  /** The PC's blob store, in memory. */
+  const memoryBlobs = () => {
+    const store = new Map<string, { bytes: Uint8Array; mime: string }>();
+    const t: BlobTransport = {
+      async putFile(): Promise<BlobPutResult> {
+        throw new Error('not used');
+      },
+      async putBytes(_h, bytes, mime): Promise<BlobPutResult> {
+        const sha = `sha${store.size + 1}`;
+        store.set(sha, { bytes, mime });
+        return { sha256: sha, size: bytes.length, deduped: false, path: `/blobs/${sha}` };
+      },
+      async getFile() {
+        throw new Error('not used');
+      },
+      async getBytes(_h, ref) {
+        const hit = store.get((ref as { sha256: string }).sha256);
+        if (!hit) throw new Error('gone');
+        return { mime: hit.mime, bytes: hit.bytes };
+      },
+    };
+    return t;
+  };
+
+  it('text and image chips go to the PC (throttled) and come back after a restart; a send clears them', async () => {
+    setBlobTransport(memoryBlobs());
+    const s = await open(A);
+    const a = mountComposer(s);
+    a.type('half a thought ');
+    a.pick([pngFile()]);
+    await waitFor(() => expect(a.chips()[0]?.getAttribute('data-status')).toBe('done'));
+    await waitFor(() => expect(hostDraft()?.attachments?.[0]?.sha256).toBeTruthy(), { timeout: 4000 });
+    expect(hostDraft()!.text).toContain('half a thought');
+    expect(hostDraft()!.text).toMatch(/\[image]@img:/);
+
+    // An app restart: memory (drafts, attachments) is gone; the PC still has the draft.
+    cleanup();
+    reloadComposerDrafts();
+    resetDraftSync();
+    const b = mountComposer(s);
+    await waitFor(() => expect(b.chips()).toHaveLength(1));
+    expect(b.chips()[0]!.getAttribute('data-kind')).toBe('image');
+    await waitFor(() => expect(b.chips()[0]!.querySelector('img.ichip-thumb')).toBeTruthy());
+    expect(b.field().textContent).toContain('half a thought');
+
+    fireEvent.click(b.view.container.querySelector('[data-testid="send-send"]')!);
+    await waitFor(() => expect(hostDraft()).toBeUndefined());
   });
 });

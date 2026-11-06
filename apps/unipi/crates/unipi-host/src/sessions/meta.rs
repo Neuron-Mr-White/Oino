@@ -33,7 +33,17 @@ pub struct SessionMetaFlags {
     /// A manual name beats auto-rename (Z-15).
     #[serde(default)]
     pub title_locked: bool,
+    /// When the composer draft was last saved (epoch ms; 0 = none; owner 2026-11-06).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub draft_at: u64,
 }
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
+/// The largest draft document the host keeps (attachments are blob refs, so this is text).
+pub const DRAFT_MAX_BYTES: usize = 512 * 1024;
 
 impl SessionMetaFlags {
     /// Applies a patch's present fields.
@@ -54,7 +64,7 @@ impl SessionMetaFlags {
     /// True when no flag is set (the record is dropped from the file).
     #[must_use]
     pub fn is_clear(self) -> bool {
-        !(self.pinned || self.unread || self.title_locked)
+        !(self.pinned || self.unread || self.title_locked || self.draft_at != 0)
     }
 }
 
@@ -130,7 +140,76 @@ impl MetaStore {
         card.pinned = flags.pinned;
         card.unread = flags.unread;
         card.title_locked = flags.title_locked;
+        card.draft_at = flags.draft_at;
         card
+    }
+
+    /// `drafts/<id>.json` next to `session-meta.json` (`None` for an id that is not a plain
+    /// file name — ids come from the host's own records, this is belt and braces).
+    fn draft_path(&self, session_id: &str) -> Option<PathBuf> {
+        let safe = !session_id.is_empty()
+            && session_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        safe.then(|| {
+            self.path
+                .parent()
+                .map(|dir| dir.join("drafts").join(format!("{session_id}.json")))
+        })
+        .flatten()
+    }
+
+    /// The session's stored draft (owner 2026-11-06), when there is one.
+    #[must_use]
+    pub fn draft(&self, session_id: &str) -> Option<serde_json::Value> {
+        let path = self.draft_path(session_id)?;
+        let bytes = std::fs::read(path).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    /// Stores (`Some`) or drops (`None`) the session's draft and stamps `draft_at` (`now_ms`, 0
+    /// when cleared) into the meta. Errors only on a failed write of the draft itself.
+    ///
+    /// # Errors
+    ///
+    /// The draft file cannot be written.
+    pub fn set_draft(
+        &self,
+        session_id: &str,
+        draft: Option<&serde_json::Value>,
+        now_ms: u64,
+    ) -> std::io::Result<()> {
+        let path = self.draft_path(session_id).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "bad session id")
+        })?;
+        match draft {
+            Some(value) => {
+                let bytes = serde_json::to_vec(value)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+                std::fs::write(&tmp, &bytes)?;
+                std::fs::rename(&tmp, &path)?;
+            }
+            None => match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            },
+        }
+        let at = if draft.is_some() { now_ms.max(1) } else { 0 };
+        let mut flags = lock(&self.flags);
+        let mut next = flags.get(session_id).copied().unwrap_or_default();
+        next.draft_at = at;
+        if next.is_clear() {
+            flags.remove(session_id);
+        } else {
+            flags.insert(session_id.to_owned(), next);
+        }
+        self.persist(&flags);
+        Ok(())
     }
 
     /// Writes the file atomically; `false` (with a log line) when it cannot.
@@ -226,6 +305,7 @@ mod tests {
             pinned,
             unread,
             title_locked,
+            draft_at: 0,
         }
     }
 
@@ -330,5 +410,25 @@ mod tests {
         assert!(!registry.is_focused("s1"));
         assert_eq!(registry.set(a, None), Some("s2".to_owned()));
         assert!(!registry.is_focused("s2"));
+    }
+
+    #[test]
+    fn drafts_round_trip_and_stamp_the_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = MetaStore::open(dir.path());
+        let doc = serde_json::json!({"v": 1, "text": "half a thought"});
+        store.set_draft("s-1", Some(&doc), 42).unwrap();
+        assert_eq!(store.draft("s-1"), Some(doc));
+        assert_eq!(store.flags("s-1").draft_at, 42);
+        // Survives a reload of the meta file.
+        assert_eq!(MetaStore::open(dir.path()).flags("s-1").draft_at, 42);
+        store.set_draft("s-1", None, 50).unwrap();
+        assert_eq!(store.draft("s-1"), None);
+        assert!(store.flags("s-1").is_clear());
+        // A path-like id never touches the disk.
+        assert!(store
+            .set_draft("../x", Some(&serde_json::json!({})), 1)
+            .is_err());
+        assert_eq!(store.draft("../x"), None);
     }
 }

@@ -805,6 +805,24 @@ impl SessionHub {
         Ok(self.inner.card_from(&state, &record))
     }
 
+    /// How many sessions run or wait on work right now (`Working`, background work included):
+    /// the live-update swap waits for 0 (owner 2026-11-06).
+    #[must_use]
+    pub fn working_count(&self) -> usize {
+        let state = lock(&self.inner.state);
+        let working = state
+            .states
+            .values()
+            .filter(|s| matches!(s, HubState::Working))
+            .count();
+        working
+            + state
+                .activity
+                .values()
+                .filter(|a| !a.background.is_empty())
+                .count()
+    }
+
     /// Is the core hub busy (a wake parsing a session file under its lock)?
     #[must_use]
     pub fn core_busy(&self) -> bool {
@@ -842,6 +860,51 @@ impl SessionHub {
         patch: SessionMetaPatch,
     ) -> Result<SessionCard, HubError> {
         self.inner.meta_set(target, patch).await
+    }
+
+    /// The session's composer draft (owner 2026-11-06), when one is stored.
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target.
+    pub async fn draft_get(&self, target: &str) -> Result<Option<serde_json::Value>, HubError> {
+        let id = self.inner.resolve(target).await?.info.id;
+        Ok(self.inner.meta.draft(&id))
+    }
+
+    /// Stores (or clears) the session's composer draft; its card's `draft_at` follows and
+    /// every client gets the card (`SessionChanged`). Returns the card.
+    ///
+    /// # Errors
+    ///
+    /// Unknown or ambiguous target, a draft too large to keep, a failed write.
+    pub async fn draft_set(
+        &self,
+        target: &str,
+        draft: Option<serde_json::Value>,
+    ) -> Result<SessionCard, HubError> {
+        let id = self.inner.resolve(target).await?.info.id;
+        if let Some(value) = &draft {
+            let size = serde_json::to_vec(value).map_or(usize::MAX, |b| b.len());
+            if size > super::meta::DRAFT_MAX_BYTES {
+                return Err(HubError::failed("The draft is too large to keep"));
+            }
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        self.inner
+            .meta
+            .set_draft(&id, draft.as_ref(), now)
+            .map_err(|error| HubError::failed(format!("Could not save the draft: {error}")))?;
+        self.inner
+            .card(&id)
+            .await?
+            .inspect(|card| {
+                self.inner
+                    .emit(HubEvent::SessionChanged { card: card.clone() })
+            })
+            .ok_or_else(|| HubError::failed(format!("No session found matching '{target}'")))
     }
 
     /// A dialog arrived for (or left) `session_id`: the card's `needs_you`. A session
@@ -1209,6 +1272,7 @@ impl Inner {
             pinned: false,
             unread: false,
             title_locked: false,
+            draft_at: 0,
             // App spec §3.14 (WP-A23, Z-112): a run-owned session says who runs it.
             source: cron.as_ref().map(|_| "cron".to_owned()),
             cron_job_id: cron.as_ref().map(|c| c.job_id.clone()),
@@ -1266,6 +1330,7 @@ impl Inner {
             pinned: false,
             unread: false,
             title_locked: false,
+            draft_at: 0,
             source: None,
             cron_job_id: None,
             cron_job_name: None,
@@ -1743,6 +1808,7 @@ impl Inner {
                     pinned: false,
                     unread: false,
                     title_locked: false,
+                    draft_at: 0,
                     source: None,
                     cron_job_id: None,
                     cron_job_name: None,
@@ -1802,6 +1868,7 @@ impl Inner {
             pinned: false,
             unread: false,
             title_locked: false,
+            draft_at: 0,
             source: None,
             cron_job_id: None,
             cron_job_name: None,
@@ -2741,6 +2808,7 @@ impl Inner {
             pinned: false,
             unread: false,
             title_locked: false,
+            draft_at: 0,
             source: cron.as_ref().map(|_| "cron".to_owned()),
             cron_job_id: cron.as_ref().map(|c| c.job_id.clone()),
             cron_job_name: cron.and_then(|c| c.job_name),
@@ -2787,6 +2855,7 @@ impl Inner {
                     pinned: false,
                     unread: false,
                     title_locked: false,
+                    draft_at: 0,
                     source: None,
                     cron_job_id: None,
                     cron_job_name: None,

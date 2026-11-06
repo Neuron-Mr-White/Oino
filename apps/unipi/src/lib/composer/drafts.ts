@@ -123,6 +123,12 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/** Whether this app run has the chat's draft in memory (edited or restored here), as opposed to
+ *  only the stored text a reload reads back. */
+export function hasLiveDraft(key: string): boolean {
+  return key in drafts();
+}
+
 export function composerDraft(key: string): ComposerDraft {
   const stored = drafts()[key] ?? load(key);
   return { ...stored, images: readyImages(key) };
@@ -170,6 +176,13 @@ export function restoreComposer(key: string, draft: { text: string; images?: Out
   markPlaced(key, ids);
   setDrafts((all) => ({ ...all, [key]: { text, quotes: [], images: [], chips: all[key]?.chips ?? [] } }));
   persist(key, text);
+}
+
+/** A draft from the host (another device, or before a restart): text, quotes and chips. The
+ *  attachments are restored by the caller (`draftSync`). */
+export function applyHostDraft(key: string, draft: { text: string; quotes?: QuoteChip[]; chips?: ComposerChip[] }): void {
+  setDrafts((all) => ({ ...all, [key]: { text: draft.text, quotes: draft.quotes ?? [], images: [], chips: draft.chips ?? [] } }));
+  persist(key, draft.text);
 }
 
 /** Starts the composer over (a send): text, quotes, chips and attachments. */

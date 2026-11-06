@@ -239,6 +239,7 @@
 }
 .srow[data-compact] .srow-word { line-height: calc(18px * var(--ui-font-scale)); }
 .srow-word[data-state='working'] { color: var(--color-claw); }
+.srow-word.srow-draft { color: var(--color-shell); font-style: italic; }
 .srow-word[data-state='needs-you'] { color: var(--color-shell); }
 .srow-word[data-state='crashed'], .srow-word[data-state='taken-over'], .srow-word[data-state='failed'] { color: var(--color-wm-red); }
 .srow-word[data-state='timed-out'] { color: var(--color-wm-yellow); }

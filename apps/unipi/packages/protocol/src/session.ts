@@ -103,6 +103,8 @@ export const SessionCardSchema = z
     pending_work: z.string().optional(),
     /** Quiet background work (a bg task without wake) on an idle session: a quiet marker, not "Working". */
     background_work: z.string().optional(),
+    /** When the composer draft was last saved (epoch ms; absent = no draft): the sidebar's "Draft". */
+    draft_at: z.number().optional(),
   })
   .passthrough();
 export type SessionCard = z.infer<typeof SessionCardSchema>;
@@ -394,6 +396,11 @@ export const SessionCloseRequestSchema = z.object({
   op: z.literal("session_close"),
   session: SessionTargetSchema,
 });
+
+/** Owner 2026-11-06: a session's composer draft, kept host-side (`{draft}`, `null` = none). */
+export const DraftGetRequestSchema = z.object({ op: z.literal("draft_get"), session: SessionTargetSchema });
+/** Sets (or clears with `null`) a session's draft → the updated card. */
+export const DraftSetRequestSchema = z.object({ op: z.literal("draft_set"), session: SessionTargetSchema, draft: z.record(z.string(), z.unknown()).nullable() });
 
 /** App spec §3.14 (WP-A4): pin / unread / title-lock flags, persisted host-side. */
 export const SessionMetaSetRequestSchema = SessionMetaPatchSchema.extend({

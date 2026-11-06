@@ -511,6 +511,19 @@ pub enum Request {
     /// UNI-232: local-only (this PC's own app over `app.sock`; iroh peers get
     /// E_UNAUTHORIZED). What runs here. → `HostInfoData`.
     HostInfo,
+    /// Live update (owner 2026-11-06), local-only: the app is about to restart into a new
+    /// version — when it dies, wait up to `grace_secs` for a new app to adopt this host instead
+    /// of ending with it. → `{armed}` (`false` for a host that runs for no app).
+    HostHandoff {
+        /// How long to wait for the new app (capped by the host).
+        grace_secs: u32,
+    },
+    /// Live update, local-only: a new app instance takes over a handed-off host; from now on
+    /// the host ends with `pid`. → `{adopted, reason?}` (refused while the old app lives).
+    HostAdopt {
+        /// The new app's process id.
+        pid: u32,
+    },
     /// UNI-232: local-only. Start a phone pairing. → `PairBeginData`.
     PairBegin {
         #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -856,6 +869,22 @@ pub enum Request {
         /// The patch.
         #[serde(flatten)]
         patch: crate::session::SessionMetaPatch,
+    },
+    /// Owner 2026-11-06: the composer draft of a session (its text, chips and the blob refs
+    /// of its attachments), kept host-side so every device shows it. → `{draft}` (`null`
+    /// when there is none).
+    DraftGet {
+        /// Session id (or a unique prefix / file path).
+        session: crate::session::SessionTarget,
+    },
+    /// Owner 2026-11-06: sets the session's draft (`null` clears it); the card's `draftAt`
+    /// follows and every client gets the card. → the updated `SessionCard`.
+    DraftSet {
+        /// Session id (or a unique prefix / file path).
+        session: crate::session::SessionTarget,
+        /// The app's draft document (opaque to the host), or `null`.
+        #[serde(default)]
+        draft: Option<serde_json::Value>,
     },
     /// v2 (host.md §9.9): the host settings object (`config.json`), secrets
     /// masked. Any paired device may read it; → the object.

@@ -2157,23 +2157,49 @@ mod tests {
         // ("Subagent running" on every later turn, owner 2026-11-06).
         let mut registry = registry();
         registry
-            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "Subagent running"})))
+            .produce(
+                "x",
+                "setWorkingMessage",
+                &params(serde_json::json!({"message": "Subagent running"})),
+            )
             .unwrap();
-        assert_eq!(registry.snapshot().meta.working_message.as_deref(), Some("Subagent running"));
+        assert_eq!(
+            registry.snapshot().meta.working_message.as_deref(),
+            Some("Subagent running")
+        );
         registry
-            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": null})))
+            .produce(
+                "x",
+                "setWorkingMessage",
+                &params(serde_json::json!({"message": null})),
+            )
             .unwrap();
         assert_eq!(registry.snapshot().meta.working_message, None);
         registry
-            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "again"})))
+            .produce(
+                "x",
+                "setWorkingMessage",
+                &params(serde_json::json!({"message": "again"})),
+            )
             .unwrap();
-        registry.produce("x", "setWorkingMessage", &params(serde_json::json!({}))).unwrap();
+        registry
+            .produce("x", "setWorkingMessage", &params(serde_json::json!({})))
+            .unwrap();
         assert_eq!(registry.snapshot().meta.working_message, None);
         // A title update leaves the working message alone.
         registry
-            .produce("x", "setWorkingMessage", &params(serde_json::json!({"message": "kept"})))
+            .produce(
+                "x",
+                "setWorkingMessage",
+                &params(serde_json::json!({"message": "kept"})),
+            )
             .unwrap();
-        registry.produce("x", "setTitle", &params(serde_json::json!({"title": "t"}))).unwrap();
-        assert_eq!(registry.snapshot().meta.working_message.as_deref(), Some("kept"));
+        registry
+            .produce("x", "setTitle", &params(serde_json::json!({"title": "t"})))
+            .unwrap();
+        assert_eq!(
+            registry.snapshot().meta.working_message.as_deref(),
+            Some("kept")
+        );
     }
 }

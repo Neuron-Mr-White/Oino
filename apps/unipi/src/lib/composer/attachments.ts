@@ -384,6 +384,25 @@ export function addReadyImage(
   return attachment;
 }
 
+/** A file that already sits on the host (a restored draft's attachment): ready, placed. */
+export function addReadyFile(chatKey: string, file: { name: string; mime: string; size: number; path: string }): PendingAttachment | undefined {
+  if (pendingAttachmentsFor(chatKey).length >= MAX_ATTACHMENTS) return undefined;
+  const attachment: PendingAttachment = {
+    id: nextId('file'),
+    kind: 'file',
+    name: file.name,
+    mime: file.mime,
+    size: file.size,
+    status: 'ready',
+    progress: 1,
+    path: file.path,
+    autoRetries: 0,
+    placed: true,
+  };
+  push(chatKey, attachment);
+  return attachment;
+}
+
 /** Replaces every pending image with already-encoded ones (Edit / tree jump). */
 export function setImages(chatKey: string, images: readonly { mimeType: string; data: string }[]): string[] {
   for (const a of pendingAttachmentsFor(chatKey)) if (a.kind === 'image') removeAttachment(chatKey, a.id);

@@ -420,6 +420,8 @@ export {
   SessionMoveRequestSchema,
   SessionMoveDataSchema,
   SessionMetaSetRequestSchema,
+  DraftGetRequestSchema,
+  DraftSetRequestSchema,
   hostEventBanner,
 } from "./session.js";
 export type {

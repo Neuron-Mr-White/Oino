@@ -638,6 +638,7 @@ fn wire_card(card: &HostCard) -> SessionCard {
         last_activity: card.last_activity,
         pending_work: card.pending_work.clone(),
         background_work: card.background_work.clone(),
+        draft_at: card.draft_at,
     }
 }
 
@@ -979,6 +980,30 @@ where
             hub.close(&card.session_id).await.map_err(hub_error)?;
             service.feed(&card.session_id).mark_disposed();
             write_control(write, &Control::Ok { data: None }).await
+        }
+        Request::DraftGet { session } => {
+            let draft = hub.draft_get(session.as_str()).await.map_err(hub_error)?;
+            write_control(
+                write,
+                &Control::Ok {
+                    data: Some(json!({ "draft": draft })),
+                },
+            )
+            .await
+        }
+        Request::DraftSet { session, draft } => {
+            tracing::info!(
+                op = "draft_set",
+                session = session.as_str(),
+                clear = draft.is_none(),
+                "request"
+            );
+            let card = hub
+                .draft_set(session.as_str(), draft)
+                .await
+                .map_err(hub_error)?;
+            let data = serde_json::to_value(wire_card(&card)).map_err(internal)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
         }
         Request::SessionMetaSet { session, patch } => {
             tracing::info!(

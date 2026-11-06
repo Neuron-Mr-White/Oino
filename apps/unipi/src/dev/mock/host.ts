@@ -616,6 +616,19 @@ const BUILTIN: Record<string, MockOp> = {
     h.emit({ kind: 'session_changed', card: { ...card } });
     return { ...card };
   },
+  // Owner 2026-11-06: host-synced composer drafts; the card's `draft_at` follows.
+  draft_get: (a, h) => ({ draft: h.drafts.get(String(a.session)) ?? null }),
+  draft_set: (a, h) => {
+    const id = String(a.session);
+    const card = h.spec.cards?.find((c) => c.session_id === id);
+    if (a.draft && typeof a.draft === 'object') h.drafts.set(id, a.draft);
+    else h.drafts.delete(id);
+    if (!card) return { session_id: id };
+    if (h.drafts.has(id)) (card as Record<string, unknown>).draft_at = Date.now();
+    else delete (card as Record<string, unknown>).draft_at;
+    h.emit({ kind: 'session_changed', card: { ...card } });
+    return { ...card };
+  },
   // App spec §3.14 / host.md §4.2 (WP-A5, Z-13): archive moves the card to the
   // host's trash; restore puts it back; delete/trash_empty unlink for good.
   session_archive: (a, h) => {
@@ -879,6 +892,8 @@ export class MockHost implements HostClient {
   private readonly setConn;
   /** In-memory blob store behind `blob_put_bytes`/`blob_get_bytes` (uploads, previews). */
   readonly blobs = new Map<string, { text: string }>();
+  /** Host-synced composer drafts (`draft_get` / `draft_set`) by session id. */
+  readonly drafts = new Map<string, unknown>();
   /** Repo roots a `git_watch{on:true}` asked for (off drops them), like the host's refcount. */
   readonly watched = new Set<string>();
   /** The in-memory board behind `board_cli`; every write emits `board_changed`. */

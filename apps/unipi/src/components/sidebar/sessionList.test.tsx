@@ -80,6 +80,15 @@ describe('the idle indicator (owner 2026-11-06)', () => {
   });
 });
 
+describe('the Draft marker (owner 2026-11-06)', () => {
+  it("a chat with a draft on the PC says Draft; one without doesn't", async () => {
+    boot([card('with', { draft_at: 1793964000000 } as never), card('without')]);
+    await waitFor(() => expect(screen.getByTestId('srow-draft-with')).toBeTruthy());
+    expect(screen.getByTestId('srow-draft-with').textContent).toBe('Draft');
+    expect(screen.queryByTestId('srow-draft-without')).toBeNull();
+  });
+});
+
 describe('the row stats (owner-fix-8)', () => {
   it('compact rows show the title only; the comfortable row stacks its stats', async () => {
     const cards = [card('c1', { changes: { add: 3, del: 1 } })];
