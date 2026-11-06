@@ -14,6 +14,10 @@ What changed in each Unipi app release (desktop and phone), newest first.
   remote browser, the request pops up right away.
 - Subagent tabs are live: the latest work stays open and a spinner shows while it runs.
 - A finished turn no longer keeps saying "Subagent running".
+- Compaction can't hang any more: a model that stops answering fails it after 3 minutes.
+- Phone: no file list under each turn, shorter image chips that open the editor when
+  tapped, and tighter tool rows. On the desktop the file summary under a turn is a proper
+  native row again and no longer blinks while the turn runs.
 - New chats started from a project run in that project, not in a scratch folder.
 - The Git panel's inline diff no longer overlaps the file list.
 - Menus and pickers opened inside a dialog show above it, and picking an option no
