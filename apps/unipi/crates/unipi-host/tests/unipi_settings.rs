@@ -192,12 +192,12 @@ async fn unipi_state_files_move_into_settings() {
     assert!(!permission.exists());
     assert!(!skill_states.exists());
 
-    // A permission-mode change is session state (E-18/F-09): it never lands in the
+    // Decision E: legacy permission commands no longer grant consent or write mode into the
     // repo's settings.json (the host refuses project `mode` writes) — the registry
     // carries no `mode` either; only rules and the global default are settings.
     let session = runtime.session();
     let cx = session.runner().call_context().with_kind(CallKind::Command);
-    services
+    let permission = services
         .host
         .call(
             "unipi.workflow",
@@ -207,8 +207,11 @@ async fn unipi_state_files_move_into_settings() {
                 args: "ask".into(),
             },
         )
-        .await
-        .unwrap();
+        .await;
+    assert!(
+        permission.is_err(),
+        "legacy permission command must not grant consent"
+    );
     let project = read_json(&cwd.join(".oino/settings.json"));
     assert!(
         project["extensionSettings"]["permission"]

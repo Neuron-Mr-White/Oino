@@ -287,14 +287,26 @@ async fn a_huge_session_opens_with_a_bounded_snapshot() {
     assert_eq!(decoded, vec![7u8; 300 * 1024], "the blob serves the bytes");
     assert_eq!(media["data"]["mime"], "application/octet-stream");
 
-    // Core's whole-history `get_entries` (no `ids`/`before`) is 5 MiB here: one frame
-    // cannot carry it, and the app's reader would reject it. fix-frames: the host never
-    // writes an oversize frame — the reply becomes a retryable error with the same id
-    // (the app's expand path uses the bounded `get_entries{ids}` instead).
+    // Whole-history reconciliation is bounded like the initial snapshot. It must
+    // preserve entry identities and leave the on-disk source available for expansion.
     let full = client.cmd(2, json!({"type": "get_entries"})).await;
-    assert_eq!(full["type"], "err", "{full}");
+    assert_eq!(full["type"], "ok", "{full}");
     assert_eq!(full["id"], 2);
-    assert_eq!(full["error"]["retryable"], Value::Bool(true));
+    let reconciled = full["data"]["entries"].as_array().unwrap();
+    assert!(serde_json::to_vec(reconciled).unwrap().len() <= ENTRIES_BUDGET + FRAME_HEADROOM);
+    for entry in &entries {
+        assert!(reconciled.iter().any(|item| item["id"] == entry["id"]));
+    }
+    let huge = reconciled
+        .iter()
+        .find(|entry| entry["id"] == "huge")
+        .unwrap();
+    assert_eq!(huge["message"]["truncated"], true);
+    let source = client
+        .cmd(3, json!({"type": "get_entries", "ids": ["p000"]}))
+        .await;
+    assert_eq!(source["type"], "ok", "{source}");
+    assert_eq!(source["data"]["entries"][0]["message"]["content"], "note 0");
     client.close().await;
 
     // Reopening works too (the blob is deduped by content).

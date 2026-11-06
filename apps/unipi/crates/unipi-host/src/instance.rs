@@ -133,7 +133,17 @@ fn read_owner(file: &mut File) -> Option<Owner> {
 /// Take the data dir's exclusive lock and record `mode` as its owner.
 pub fn acquire(paths: &HostPaths, mode: Mode) -> Result<InstanceLock, AcquireError> {
     let mut file = open(&paths.host_lock()).map_err(AcquireError::Io)?;
-    match file.try_lock() {
+    // A concurrent status probe briefly takes the same lock. Give that read-only
+    // probe time to finish before treating a held lock as another serving host.
+    let mut acquired = file.try_lock();
+    for _ in 0..20 {
+        if !matches!(acquired, Err(std::fs::TryLockError::WouldBlock)) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        acquired = file.try_lock();
+    }
+    match acquired {
         Ok(()) => {}
         Err(std::fs::TryLockError::WouldBlock) => {
             let mut owner = read_owner(&mut file);

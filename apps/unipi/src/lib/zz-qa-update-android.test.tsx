@@ -5,12 +5,14 @@
 // the APK URL reaches the native download() untouched.
 import { render, screen, cleanup, fireEvent, waitFor } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), Channel: class {} }));
 vi.mock('./board/share', () => ({ openExternal: vi.fn(() => true) }));
 
-const FEED = JSON.parse(readFileSync(process.env.QA_FEED ?? '/tmp/qaupd/local/feeds/app/android/latest.json', 'utf8'));
+const feedPath = process.env.QA_FEED ?? '/tmp/qaupd/local/feeds/app/android/latest.json';
+const hasFeed = existsSync(feedPath);
+const FEED = hasFeed ? JSON.parse(readFileSync(feedPath, 'utf8')) : undefined;
 const download = vi.fn();
 (window as unknown as { UniPiUpdate: unknown }).UniPiUpdate = {
   info: () => JSON.stringify({ versionName: '1.0.0', versionCode: 1000000, canInstall: true }),
@@ -30,7 +32,7 @@ import { UpdateBanner, UpdateCard } from '../components/UpdateCard';
 
 afterEach(() => cleanup());
 
-describe('qa-update: android feed v1.0.1 against an installed 1.0.0 (versionCode 1000000)', () => {
+describe.skipIf(!hasFeed)('qa-update: android feed v1.0.1 against an installed 1.0.0 (versionCode 1000000)', () => {
   it('constant points at the oino.dev android feed', () => {
     expect(FEED_URL).toBe('https://oino.dev/app/android/latest.json');
   });

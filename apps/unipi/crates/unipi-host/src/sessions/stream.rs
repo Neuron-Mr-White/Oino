@@ -360,10 +360,13 @@ impl Feed {
         if tap.as_ref().is_some_and(|task| !task.is_finished()) {
             return;
         }
+        // Subscribe synchronously: commands sent immediately after ensure_tap must
+        // not race the spawned task and lose non-replayed events such as renames.
+        let events = backend.events();
         let feed = Arc::clone(self);
-        *tap = Some(tokio::spawn(
-            async move { feed.run_tap(backend, service).await },
-        ));
+        *tap = Some(tokio::spawn(async move {
+            feed.run_tap(backend, service, events).await
+        }));
     }
 
     /// Stops the tap (the runtime is gone; a later open restarts it).
@@ -380,8 +383,8 @@ impl Feed {
         self: Arc<Self>,
         backend: Arc<dyn SessionBackend>,
         service: Weak<SessionService>,
+        mut events: futures_util::stream::BoxStream<'static, ClientEvent>,
     ) {
-        let mut events = backend.events();
         let mut tick = tokio::time::interval(IDLE_POLL);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut idle_polls = 0;
