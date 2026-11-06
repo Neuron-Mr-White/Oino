@@ -436,6 +436,17 @@ describe('a rejected open recovers (never a blank chat forever)', () => {
     expect(calls).toBe(1);
   });
 
+  it('a stream that ended with no error counts as failed: the runtime was retired behind the chat', () => {
+    // owner 2026-11-07 00:33Z: the hub retired the chat's runtime (maxServices); the history is
+    // in the file, only the runtime is gone, so a re-click / the window coming back must reopen it.
+    expect(openFailed({ conn: 'closed' })).toBe(true);
+    // The exclusions stay: a session the host does not have, and one taken over by another runner.
+    expect(openFailed({ conn: 'closed', connError: { code: 'E_NOT_FOUND', message: 'gone', retryable: false } })).toBe(false);
+    expect(openFailed({ conn: 'closed', banner: { kind: 'taken_over' } as SessionState['banner'] })).toBe(false);
+    expect(openFailed({ conn: 'live' })).toBe(false);
+    expect(openFailed({ conn: 'connecting' })).toBe(false);
+  });
+
   it('after the retries it shows the failure; Retry (and a revisit) opens again', async () => {
     const c = clock();
     const f = flakyClient(5);

@@ -299,6 +299,15 @@ impl Feed {
         self.forget_ring();
     }
 
+    /// Ends every open stream on this feed: the runtime they were following is gone (evicted,
+    /// taken over, closed). The app treats a clean end as a lost link and reopens (§7.4;
+    /// `lib/session/stream.ts`), so the chat wakes again instead of sitting silent on a dead
+    /// backend until the app is reloaded. Events already fanned out still reach the client
+    /// first — dropping the senders only ends the stream after them.
+    fn end_streams(&self) {
+        lock(&self.subscribers).clear();
+    }
+
     /// Drops the buffered events (perf-fix #8): the feed keeps only its numbering. A later
     /// `session_open{since_seq}` with `since == seq` still resumes (nothing to replay), an
     /// older one resets to a snapshot — exactly what a ring that rolled over would do.
@@ -380,8 +389,10 @@ impl Feed {
             tokio::select! {
                 event = futures_util::StreamExt::next(&mut events) => {
                     let Some(event) = event else {
-                        // The runtime ended (evicted, taken over, closed): a reopen is new.
+                        // The runtime ended (evicted, taken over, closed): a reopen is new,
+                        // and the streams have nothing left to follow.
                         self.mark_disposed();
+                        self.end_streams();
                         return;
                     };
                     idle_polls = 0;
@@ -424,12 +435,14 @@ impl Feed {
                                     .mark_taken_over(&self.session_id(), &from)
                                     .await;
                             }
+                            self.end_streams();
                             return;
                         }
                         ClientEvent::Oino(oino_core::events::OinoEvent::SessionEvicted {
                             ..
                         }) => {
                             self.mark_disposed();
+                            self.end_streams();
                             return;
                         }
                         _ => {}
@@ -2247,5 +2260,26 @@ mod ring_tests {
         );
         assert!(!feed.can_resume(2), "a missed event: snapshot");
         assert_eq!(feed.publish(json!({"type": "turn_start"})).await, 4);
+    }
+
+    /// owner 2026-11-07 00:33Z: the hub retired a chat's runtime (`maxServices`) and the app's
+    /// stream stayed open and silent, so the chat never loaded again (no `session_open` until a
+    /// reload). A runtime that goes away now ends every stream: the app reconnects on a clean end.
+    #[tokio::test]
+    async fn a_gone_runtime_ends_every_open_stream_after_what_it_queued() {
+        let feed = Feed::new("s1");
+        let mut first = feed.subscribe();
+        let mut second = feed.subscribe();
+        assert_eq!(feed.subscriber_count(), 2);
+        feed.publish(json!({"type": "turn_start"})).await;
+        feed.mark_disposed();
+        feed.end_streams();
+        assert_eq!(first.recv().await.unwrap().seq, 1, "queued first");
+        assert!(first.recv().await.is_none(), "then the stream ends");
+        assert!(second.recv().await.is_some());
+        assert!(second.recv().await.is_none());
+        assert_eq!(feed.subscriber_count(), 0);
+        // The disposed feed makes the reopen a fresh snapshot, never a replay.
+        assert!(!feed.can_resume(1));
     }
 }

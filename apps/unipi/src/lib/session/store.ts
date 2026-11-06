@@ -491,7 +491,12 @@ export function openFailed(state: Pick<SessionState, 'conn' | 'connError' | 'ban
   if (state.banner?.kind === 'taken_over') return false;
   // Gone for good (the host has no such session): never re-opened behind the user's back.
   if (sessionMissing(state)) return false;
-  return state.conn === 'lost' || (state.conn === 'closed' && !!state.connError);
+  // `closed` without an error too: the host ended the stream because the chat's runtime was
+  // retired (the hub's `maxServices` eviction, an idle disposal, a host restart). The history
+  // is safe in the file and only the runtime is gone, so a re-click, the window coming back or
+  // the host reconnecting reopens it. A chat this app closed itself never reaches here — the
+  // registry drops that handle.
+  return state.conn === 'lost' || state.conn === 'closed';
 }
 
 /** The host answered that this session does not exist (`E_NOT_FOUND`). */

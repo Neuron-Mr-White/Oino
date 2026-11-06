@@ -2,6 +2,18 @@
 
 What changed in each Unipi app release (desktop and phone), newest first.
 
+## Unreleased
+
+- A chat whose runtime was retired (the services cap, an idle disposal, a host restart) reopens
+  by itself instead of staying blank until the app is restarted: the host now ends that chat's
+  stream, so the app reconnects and wakes it, and a chat that ended without an error also counts
+  as failed when you click it again, come back to the window or the host returns.
+- More chats stay live at once: the host sizes its services cache to the machine (about 300 open
+  files and up to 768 MiB of memory per open project, half of available RAM, at most 32) instead
+  of the fixed 4 it kept before. On the owner's PC that is 26 projects rather than 4, so opening a
+  chat in a sixth project no longer unloads the one you were reading.
+- The `maxServices` setting no longer decides: the app host's own budget overrides it.
+
 ## 1.0.1 — 2026-11-06
 
 - Updating the desktop app no longer stops running tasks: the new version picks up the

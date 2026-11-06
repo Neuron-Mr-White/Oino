@@ -653,13 +653,21 @@ async fn main() -> anyhow::Result<()> {
                 safe_mode: safe_plan.disable_extensions.then(|| safe_plan.clone()),
                 ..oino_core::services::ResourceFlags::default()
             };
-            // v2 QA (os error 24): every cached services set costs ~290 descriptors
-            // (wasm preopens + extension logs), so the hub's default `maxServices` of 4
-            // does not fit a desktop session's 1024-fd limit. Raise the soft limit
-            // where possible, then cap the hub to the remaining budget.
+            // v2 QA (os error 24): every cached services set costs ~290 descriptors (wasm
+            // preopens + extension logs) and up to ~768 MiB of wasm memory, so the cap is
+            // whatever is left of both budgets — not the hub's setting default of 4, which
+            // retired chats the owner had open (owner 2026-11-07: "allow as many sessions
+            // running as possible"). Raise the soft limit where possible, then let the
+            // descriptors and the RAM available decide, never past MAX_SERVICES.
             let nofile = unipi_host::fd_budget::soft_limit();
-            let services_cap = unipi_host::fd_budget::services_cap(nofile);
-            tracing::info!(soft_limit = nofile, services_cap, "fd budget");
+            let available = unipi_host::fd_budget::available_memory();
+            let services_cap = unipi_host::fd_budget::services_cap_for(nofile, available);
+            tracing::info!(
+                soft_limit = nofile,
+                available_mib = available.map(|bytes| bytes >> 20),
+                services_cap,
+                "fd budget"
+            );
             let hub =
                 unipi_host::sessions::SessionHub::create(unipi_host::sessions::HostHubOptions {
                     cwd,
