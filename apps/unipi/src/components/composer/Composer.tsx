@@ -21,7 +21,7 @@
  * (Z-64, `./Toolbar`) and the permission/plan control bound to the workflow
  * extension (G-6, `./PermissionControl`).
  */
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, untrack, type JSX } from 'solid-js';
+import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, untrack, type JSX } from 'solid-js';
 import { Camera, FilePlus, FolderOpen, Image as ImageIcon, ListPlus, MessageSquareText, Paperclip, Plus, Quote } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import {
@@ -107,6 +107,7 @@ import { promptHistory, walkDown, walkUp } from '../../lib/composer/history';
 import { composerHistory } from '../../lib/composer/undo';
 import { attachmentToken, imageChipIds, imageToken, pathCandidates, type Chip } from '../../lib/composer/chips';
 import { outgoingMessage, referencedIds } from '../../lib/composer/wire';
+import { clipIds, fileOfDataUrl, pastedText, type ComposerClip } from '../../lib/composer/clip';
 import { ChipEditor, type ChipEditorApi } from './ChipEditor';
 import { PhoneField } from './PhoneField';
 import { ActionSheet } from '../phone';
@@ -597,6 +598,38 @@ export function Composer(props: ComposerProps) {
     if (!a) return;
     if (a.status === 'failed') retryAttachment(key(), hostId(), a.id);
     else if (a.kind === 'image') openEditor(a.id);
+  };
+  /** Rich copy: the attachments the copied text names, with their bytes / host paths. */
+  const clipOf = (text: string): ComposerClip => ({
+    v: 1,
+    text,
+    attachments: clipIds(text).flatMap((id) => {
+      const a = attachments().find((x) => x.id === id);
+      if (!a) return [];
+      return [{ id: a.id, kind: a.kind, name: a.name, mime: a.mime, ...(a.kind === 'image' && a.preview ? { data: a.preview } : {}), ...(a.path ? { path: a.path } : {}) }];
+    }),
+  });
+  /** A rich paste: chips this box still holds stay; images from elsewhere are attached again
+   *  (their chips placed by the pasted text, not at the caret). */
+  const pasteClip = (clip: ComposerClip): string | undefined => {
+    if (props.readOnly) return undefined;
+    const known = (id: string) => attachments().some((a) => a.id === id);
+    const missing = clip.attachments.filter((a) => a.kind === 'image' && a.data && !known(a.id));
+    const files = missing.flatMap((a) => {
+      const f = fileOfDataUrl(a.data!, a.name, a.mime);
+      return f ? [{ id: a.id, file: f }] : [];
+    });
+    const remap = new Map<string, string>();
+    if (files.length) {
+      if (attachmentRoom(key()) < files.length) prunePlaced(key(), referencedIds(draft().text));
+      // One batch: the inline-chip placer must see them already placed (no second chip at the caret).
+      batch(() => {
+        const { added } = attach(key(), hostId(), files.map((f) => f.file));
+        markPlaced(key(), added.map((a) => a.id));
+        added.forEach((a, i) => remap.set(files[i]!.id, a.id));
+      });
+    }
+    return pastedText(clip, known, remap);
   };
   /** A paste from another chat: its attachment chips can't resolve here — drop them. */
   const cleanPaste = (text: string): string =>
@@ -1176,6 +1209,8 @@ export function Composer(props: ComposerProps) {
               chipThumb={chipThumb}
               onChipClick={onChipClick}
               cleanPaste={cleanPaste}
+              clipOf={clipOf}
+              onPasteClip={pasteClip}
               api={(api) => (editor = api)}
               onHistory={travel}
               onChange={(text, at, kind) => {

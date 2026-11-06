@@ -311,3 +311,48 @@ describe('D-6: pending images are per chat', () => {
     expect(again.chips()[0]!.querySelector('img.ichip-thumb')).not.toBeNull();
   });
 });
+
+describe('rich copy / paste (owner 2026-11-06)', () => {
+  /** A clipboard event whose data the test reads back (copy) or seeds (paste). */
+  const clipEvent = (type: 'copy' | 'paste', seed?: Map<string, string>) => {
+    const data = seed ?? new Map<string, string>();
+    const ev = new Event(type, { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(ev, 'clipboardData', {
+      value: { setData: (t: string, v: string) => data.set(t, v), getData: (t: string) => data.get(t) ?? '', types: [...data.keys()], items: [], files: [] },
+    });
+    return { ev, data };
+  };
+  const selectAll = (f: HTMLElement) => {
+    f.focus();
+    const r = document.createRange();
+    r.selectNodeContents(f);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(r);
+  };
+
+  it('a copied image chip pastes back into another chat as an image chip with its picture', async () => {
+    const a = mountComposer(await open(A));
+    a.type('look at ');
+    a.pick([pngFile()]);
+    await waitFor(() => expect(a.chips()[0]?.getAttribute('data-status')).toBe('done'));
+    selectAll(a.field());
+    const copy = clipEvent('copy');
+    a.field().dispatchEvent(copy.ev);
+    expect(copy.ev.defaultPrevented).toBe(true);
+    // Other apps get readable text; Unipi gets the chips and the bytes.
+    expect(copy.data.get('text/plain')).toBe('look at [image] ');
+    expect(copy.data.get('application/x-unipi-composer')).toContain('data:image/png;base64');
+    expect(copy.data.get('text/html')).toContain('data-unipi-composer=');
+    cleanup();
+
+    const b = mountComposer(await open(B));
+    const f = b.field();
+    f.focus();
+    const paste = clipEvent('paste', new Map([['text/html', copy.data.get('text/html')!], ['text/plain', copy.data.get('text/plain')!]]));
+    f.dispatchEvent(paste.ev);
+    await waitFor(() => expect(b.chips()).toHaveLength(1));
+    expect(b.chips()[0]!.getAttribute('data-kind')).toBe('image');
+    await waitFor(() => expect(b.chips()[0]!.querySelector('img.ichip-thumb')).toBeTruthy());
+    expect(f.textContent).toContain('look at');
+  });
+});

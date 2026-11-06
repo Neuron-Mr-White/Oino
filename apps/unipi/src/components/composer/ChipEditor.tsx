@@ -24,6 +24,7 @@ import { createEffect, onCleanup, onMount } from 'solid-js';
 import { File as FileIcon, Folder, Image as ImageIcon, Sparkles, SquareSlash } from 'lucide-solid';
 import { removeToken, tokenize, type Chip, type Seg, type TokenizeOpts } from '../../lib/composer/chips';
 import { classifyPaste } from '../../lib/composer/paste';
+import { CLIP_MIME, decodeClip, encodeClip, type ComposerClip } from '../../lib/composer/clip';
 import { undoKey, type EditKind } from '../../lib/composer/undo';
 
 export type ChipEditorApi = {
@@ -76,6 +77,12 @@ export function ChipEditor(props: {
    * clipboard images and copied files) — the caller reads the clipboard natively. Resolves true
    * when it attached something; otherwise the event's text (if any) is pasted. */
   onPasteNative?: () => Promise<boolean>;
+  /** Rich copy (owner 2026-11-06): the attachments a copied text names, so the clipboard can
+   *  carry their bytes; without it a copy is the draft text only. */
+  clipOf?: (text: string) => ComposerClip;
+  /** A paste of a rich copy: returns the text to insert (chips re-attached here), or undefined
+   *  to paste it as plain text. */
+  onPasteClip?: (clip: ComposerClip) => string | undefined;
   placeholder?: string;
   class?: string;
   api?: (api: ChipEditorApi) => void;
@@ -441,12 +448,29 @@ export function ChipEditor(props: {
     const text = selectedText();
     if (text === undefined || !e.clipboardData) return;
     e.preventDefault();
-    e.clipboardData.setData('text/plain', text);
+    const clip = props.clipOf?.(text);
+    if (clip) {
+      const out = encodeClip(clip);
+      e.clipboardData.setData('text/plain', out.plain);
+      e.clipboardData.setData('text/html', out.html);
+      try {
+        e.clipboardData.setData(CLIP_MIME, out.json);
+      } catch {
+        // An engine without custom clipboard types keeps the HTML flavour.
+      }
+    } else e.clipboardData.setData('text/plain', text);
     if (cut && !props.disabled) insertPlain('', 'delete');
   };
   const onPaste = (e: ClipboardEvent) => {
     e.preventDefault();
     if (props.disabled) return;
+    // A copy from a Unipi message box: its chips (and image bytes) come back.
+    const clip = props.onPasteClip ? decodeClip(e.clipboardData) : undefined;
+    const restored = clip ? props.onPasteClip!(clip) : undefined;
+    if (restored !== undefined) {
+      insertPlain(restored);
+      return;
+    }
     // UNI-117: files on the clipboard (a screenshot, copied files) become attachments when the
     // caller takes them (desktop); otherwise only the text is pasted, as before.
     // UNI-256: WebKitGTK shows neither — the caller reads the clipboard natively (lib/chat/paste.ts).
