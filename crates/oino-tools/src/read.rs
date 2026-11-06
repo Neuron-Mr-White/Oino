@@ -284,6 +284,12 @@ fn paged_text(
             (*line).to_owned()
         };
         if result.len() + shown.len() > usize::try_from(DEFAULT_MAX_BYTES).unwrap_or(usize::MAX) {
+            if next == start {
+                return Err(ToolError::new(format!(
+                    "Line {} exceeds the read output byte limit",
+                    index + 1
+                )));
+            }
             break;
         }
         if !result.is_empty() {

@@ -454,3 +454,105 @@ async fn windows_atomic_replace() {
         b"\xef\xbb\xbfreplacement\r\n"
     );
 }
+
+#[tokio::test]
+async fn diagnostics_only_new_and_pdf_content() {
+    struct Hook;
+    impl oino_tools::write::DiagnosticsHook for Hook {
+        fn diagnostics(&self, _config: &ToolConfig, path: &str) -> Vec<String> {
+            let mut diagnostics = vec!["existing diagnostic".to_owned()];
+            if std::fs::read_to_string(path).is_ok_and(|text| text.contains("broken")) {
+                diagnostics.push("new diagnostic".to_owned());
+            }
+            diagnostics
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path());
+    let path = root.path().join("diagnostics");
+    oino_tools::write::set_diagnostics_hook(Some(Arc::new(Hook))).unwrap();
+    let result = run(
+        &config,
+        "write",
+        json!({"file_path":path,"content":"broken"}),
+    )
+    .await
+    .unwrap();
+    assert!(text(&result).contains("new diagnostic"));
+    assert!(!text(&result).contains("existing diagnostic"));
+    assert_eq!(
+        result.details.unwrap()["new_diagnostics"],
+        json!(["new diagnostic"])
+    );
+    oino_tools::write::set_diagnostics_hook(None).unwrap();
+    // A complete small PDF, including correct xref offsets. No external generator required.
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_owned(),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+        { let stream = "BT /F1 12 Tf 72 720 Td (Oino PDF content) Tj ET\n"; format!("<< /Length {} >>\nstream\n{stream}endstream",stream.len()) },
+    ];
+    let mut pdf = "%PDF-1.4\n".to_owned();
+    let mut offsets = vec![0];
+    for (index, object) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf = format!("{pdf}{} 0 obj\n{object}\nendobj\n", index + 1);
+    }
+    let start = pdf.len();
+    pdf.push_str("xref\n0 6\n0000000000 65535 f \n");
+    for offset in offsets.iter().skip(1) {
+        pdf = format!("{pdf}{offset:010} 00000 n \n");
+    }
+    pdf = format!("{pdf}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n");
+    let path = root.path().join("small.pdf");
+    std::fs::write(&path, pdf).unwrap();
+    let result = run(&config, "read", json!({"file_path":path}))
+        .await
+        .unwrap();
+    assert!(text(&result).contains("Oino PDF content"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn atomic_metadata_and_failed_edits_do_not_touch_destination() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path());
+    let path = root.path().join("mode");
+    std::fs::write(&path, "original\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let original = std::fs::read(&path).unwrap();
+    assert!(
+        run(
+            &config,
+            "edit",
+            json!({"file_path":path,"edits":[{"oldText":"absent","newText":"x"}]})
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    run(
+        &config,
+        "write",
+        json!({"file_path":path,"content":"replacement"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let link = root.path().join("link");
+    std::os::unix::fs::symlink(&path, &link).unwrap();
+    run(
+        &config,
+        "write",
+        json!({"file_path":link,"content":"through link"}),
+    )
+    .await
+    .unwrap();
+    assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "through link\n");
+}

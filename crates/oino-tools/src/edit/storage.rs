@@ -1,6 +1,7 @@
 //! Encoding-preserving atomic mutation and session-scoped observed file state.
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -100,7 +101,22 @@ impl TextFile {
     }
 }
 
-type Observations = HashMap<(String, String), Vec<u8>>;
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Fingerprint {
+    length: usize,
+    hash: u64,
+}
+
+fn fingerprint(bytes: &[u8]) -> Fingerprint {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    Fingerprint {
+        length: bytes.len(),
+        hash: hasher.finish(),
+    }
+}
+
+type Observations = HashMap<(String, String), Fingerprint>;
 static OBSERVED: OnceLock<Mutex<Observations>> = OnceLock::new();
 
 fn observation_key(config: &ToolConfig, path: &str) -> (String, String) {
@@ -116,7 +132,7 @@ pub(crate) fn observe(config: &ToolConfig, path: &str, bytes: &[u8]) -> Result<(
         .get_or_init(Mutex::default)
         .lock()
         .map_err(|_| ToolError::new("File observation lock poisoned"))?
-        .insert(observation_key(config, path), bytes.to_vec());
+        .insert(observation_key(config, path), fingerprint(bytes));
     Ok(())
 }
 
@@ -131,8 +147,8 @@ pub(crate) fn check_observed(
         .map_err(|_| ToolError::new("File observation lock poisoned"))?;
     let previous = observed
         .entry(observation_key(config, path))
-        .or_insert_with(|| bytes.to_vec());
-    if previous != bytes {
+        .or_insert_with(|| fingerprint(bytes));
+    if *previous != fingerprint(bytes) {
         return Err(ToolError::new(format!(
             "File \"{path}\" has been modified externally since it was last read. Please use the Read tool to read the file before editing it again."
         )));
@@ -225,4 +241,20 @@ fn replace(source: &Path, target: &Path) -> std::io::Result<()> {
         }
     }
     Err(std::io::Error::other("Atomic replace retry exhausted"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_replace_refuses_changed_snapshot_and_cleans_temp() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("file");
+        std::fs::write(&path, b"external change").unwrap();
+        let error = atomic_write_sync(&path, b"replacement", Some(b"previous read")).unwrap_err();
+        assert!(error.to_string().contains("modified externally"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"external change");
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
 }
