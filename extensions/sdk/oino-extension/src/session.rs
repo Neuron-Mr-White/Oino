@@ -166,6 +166,12 @@ pub fn append_entry(custom_type: &str, data: Option<&impl Serialize>) -> Result<
     Ok(ws::append_entry(custom_type, data.as_deref())?)
 }
 
+/// Append trusted harness context without changing any earlier message.
+/// The key must start with this extension's id followed by `/` and a topic.
+pub fn append_reminder(key: &str, text: &str) -> Result<Value> {
+    parse(&ws::append_reminder(key, text)?)
+}
+
 /// A custom message (`sendMessage` draft).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -188,6 +188,24 @@ impl<T: Send> ws::HostWithStore<T> for HostState {
         }
     }
 
+    fn append_reminder(
+        mut host: Access<'_, T, Self>,
+        key: String,
+        text: String,
+    ) -> impl Future<Output = HostResult<String>> + Send {
+        let (ext, cx) = current(&mut host);
+        async move {
+            let result = write(ext, cx, SessionWrite::AppendReminder { key, text })
+                .await
+                .and_then(|reply| {
+                    reply.ok_or_else(|| {
+                        HostError::Failed("append-reminder returned no reply".into())
+                    })
+                });
+            Ok(convert::wit(result))
+        }
+    }
+
     async fn send_message(
         accessor: &Accessor<T, Self>,
         message: String,

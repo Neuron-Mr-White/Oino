@@ -291,6 +291,13 @@ pub enum SessionWrite {
         /// Data.
         data: Option<RawJson>,
     },
+    /// `append-reminder` → serialized `{id, appended}` reply.
+    AppendReminder {
+        /// Caller-owned reminder key (`extension-id/topic`).
+        key: String,
+        /// Plain harness text; the host owns the envelope.
+        text: String,
+    },
     /// `send-message`: `{customType, content, display, details?}`.
     SendMessage {
         /// Message JSON.

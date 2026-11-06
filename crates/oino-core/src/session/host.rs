@@ -271,6 +271,9 @@ impl AgentSession {
                 self.publish_entry(&id);
                 Ok(json!(id.as_str()))
             }
+            HostOp::AppendReminder { key, text } => {
+                to_json(self.append_reminder(extension, &key, &text).map_err(failed)?)
+            }
             HostOp::SendMessage {
                 message,
                 trigger_turn,

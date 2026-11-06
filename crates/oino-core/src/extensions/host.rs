@@ -128,6 +128,13 @@ pub enum HostOp {
         /// Payload.
         data: Option<JsonValue>,
     },
+    /// Appends trusted context using an authenticated extension-owned key.
+    AppendReminder {
+        /// Caller-owned key.
+        key: String,
+        /// Plain text (the host supplies the envelope).
+        text: String,
+    },
     /// Sends a message into the session.
     SendMessage {
         /// Draft.

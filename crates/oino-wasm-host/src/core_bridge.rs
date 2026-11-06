@@ -633,6 +633,12 @@ impl HostServices for CoreHost {
                     custom_type,
                     data: data.map(|d| d.to_value()),
                 },
+                SessionWrite::AppendReminder { key, text } => {
+                    let reply = self
+                        .call(&ext, &cx, HostOp::AppendReminder { key, text })
+                        .await?;
+                    return Ok(Some(reply.to_string()));
+                }
                 SessionWrite::SendMessage { message, options } => HostOp::SendMessage {
                     message: message
                         .decode()

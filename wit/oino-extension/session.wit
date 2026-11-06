@@ -32,6 +32,9 @@ interface session {
     set-label: func(id: entry-id, label: option<string>) -> result<_, host-error>;
     /// appendEntry: `custom` entry, emits entry_appended. data = JSON value or none.
     append-entry: func(custom-type: string, data: option<json>) -> result<entry-id, host-error>;
+    /// Append plain harness context. Keys belong to the authenticated extension.
+    /// Returns {"id": "message-id", "appended": true}; repeated keys append.
+    append-reminder: func(key: string, text: string) -> result<json, host-error>;
     /// sendMessage. message = {customType, content, display, details?}.
     send-message: async func(message: json, options: send-options) -> result<_, host-error>;
     /// sendUserMessage. content = UserContentField.

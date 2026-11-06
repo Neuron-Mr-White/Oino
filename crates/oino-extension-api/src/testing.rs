@@ -381,6 +381,9 @@ impl HostServices for RecordingHostServices {
             SessionWrite::AppendEntry { custom_type, data } => {
                 json!({"appendEntry": custom_type, "data": data.as_ref().map(RawJson::to_value)})
             }
+            SessionWrite::AppendReminder { key, text } => {
+                json!({"appendReminder": key, "text": text})
+            }
             SessionWrite::SendMessage { message, options } => {
                 json!({"sendMessage": message.to_value(), "options": to_json(options)})
             }
@@ -389,6 +392,26 @@ impl HostServices for RecordingHostServices {
             }
         };
         self.record("session_write", Some(ext), detail);
+        if let SessionWrite::AppendReminder { key, text } = &w {
+            if key
+                .strip_prefix(ext.as_str())
+                .and_then(|s| s.strip_prefix('/'))
+                .is_none_or(str::is_empty)
+            {
+                return Box::pin(async {
+                    Err(HostError::InvalidArgument(
+                        "reminder key must belong to the originating extension".into(),
+                    ))
+                });
+            }
+            let mut entries = guard(&self.entries);
+            let id = format!("{:08x}", entries.len() + 1);
+            entries.push(json!({"type": "custom_message", "id": id,
+                "customType": "oino.system-reminder", "content": format!("<system-reminder>\n{text}\n</system-reminder>"),
+                "display": false, "details": {"key": key}}));
+            let reply = json!({"id": id, "appended": true}).to_string();
+            return Box::pin(async move { Ok(Some(reply)) });
+        }
         let id = if let SessionWrite::AppendEntry { custom_type, data } = w {
             let mut entries = guard(&self.entries);
             let id = format!("{:08x}", entries.len() + 1);
