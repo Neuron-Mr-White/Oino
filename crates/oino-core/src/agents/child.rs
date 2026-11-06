@@ -705,10 +705,39 @@ impl AgentSession {
         let mut manager = match &spec.seed {
             Seed::BranchCopy => {
                 let branch = self.with_manager(|m| {
+                    // A child is a new session with its own tool policy and prefix.
+                    // Copy conversation bytes, not the parent's declaration authority.
+                    let mut parent = None;
+                    let mut positions = std::collections::HashMap::new();
                     m.branch(None)
                         .into_iter()
-                        .filter(|e| !matches!(e.message(), Some(AgentMessage::System(_))))
-                        .cloned()
+                        .filter(|entry| !matches!(entry.message(), Some(AgentMessage::System(_))))
+                        .filter(|entry| {
+                            !matches!(&entry.kind, oino_session::EntryKind::SystemSnapshot { .. })
+                        })
+                        .filter(|entry| {
+                            !matches!(&entry.kind,
+                                oino_session::EntryKind::Custom { custom_type, .. }
+                                    if custom_type == "oino.tool-declarations"
+                            )
+                        })
+                        .filter(|entry| {
+                            !matches!(&entry.kind,
+                                oino_session::EntryKind::CustomMessage { custom_type, .. }
+                                    if custom_type == "oino.session-start"
+                            )
+                        })
+                        .map(|entry| {
+                            let mut copy = entry.clone();
+                            copy.parent_id = parent.replace(copy.id.clone());
+                            if let oino_session::EntryKind::CompactionState(state) = &mut copy.kind
+                                && let Some(index) = positions.get(&state.anchor_message.id)
+                            {
+                                state.anchor_message.index = *index;
+                            }
+                            positions.insert(copy.id.clone(), positions.len());
+                            copy
+                        })
                         .collect()
                 });
                 SessionManager::in_memory(cwd, options, branch)

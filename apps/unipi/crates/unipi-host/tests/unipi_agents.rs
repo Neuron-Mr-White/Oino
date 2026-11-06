@@ -514,7 +514,7 @@ async fn memory_side_save_runs_after_a_writing_task() {
     .await;
     let request = &env.requests_with("Memory save pass")[0];
     assert!(request["context"].to_string().contains("write a note"));
-    let tools: Vec<String> = request["context"]["tools"]
+    let tools: Vec<String> = request["context"]["messages"][0]["toolsAdded"]
         .as_array()
         .map(|t| {
             t.iter()
@@ -522,6 +522,11 @@ async fn memory_side_save_runs_after_a_writing_task() {
                 .collect()
         })
         .unwrap_or_default();
+    assert!(
+        !tools.is_empty(),
+        "memory save must declare its restricted tools"
+    );
+    assert!(!tools.iter().any(|tool| tool == "memory_delete"), "{tools:?}");
     assert!(
         tools
             .iter()
