@@ -138,6 +138,67 @@ async fn run(dir: &tempfile::TempDir, cmd: HostCmd) -> Result<serde_json::Value,
     run_on(&hub, cmd).await
 }
 
+/// A hub whose model catalogue lives in `<agent>/models.json`, so a reload has a file
+/// to re-read (`ollama`, whose key is a literal, needs no credential).
+fn hub_with_models_json(dir: &tempfile::TempDir, model: &str) -> Arc<SessionHub> {
+    let cwd = dir.path().to_path_buf();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    std::fs::write(
+        agent_dir.join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": model}]}}})
+        .to_string(),
+    )
+    .unwrap();
+    let models = ModelRegistry::new(
+        Arc::new(oino_models::AuthStorage::in_memory(indexmap::IndexMap::new())),
+        oino_models::ModelRegistryOptions {
+            models_json_path: Some(agent_dir.join("models.json")),
+            env: Arc::new(oino_models::MapEnv::default()),
+            ..oino_models::ModelRegistryOptions::default()
+        },
+    );
+    models.register_api_implementor("openai-completions", "ext");
+    let provider = FauxProvider::new(
+        (0..4)
+            .map(|_| oino_core::testing::FauxResponse::Text("ok".into()))
+            .collect(),
+    );
+    SessionHub::create(HostHubOptions {
+        cwd,
+        agent_dir,
+        docs_root: None,
+        session_dir: None,
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(vec![Arc::new(FauxComponent(provider))
+            as Arc<dyn oino_core::extensions::api::ExtensionInstance>])),
+        models: Some(models),
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: Some(dir.path().join("host")),
+    })
+    .unwrap()
+}
+
+fn model_ids(reply: &serde_json::Value) -> Vec<String> {
+    reply["models"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 async fn run_on(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<serde_json::Value, String> {
     match host_cmd::run(hub, cmd).await {
         Ok(value) => Ok(value),
@@ -166,6 +227,31 @@ async fn reload_extensions_answers_with_the_fresh_list() {
         .collect();
     assert_eq!(before_ids, after_ids);
     assert!(!after_ids.is_empty());
+}
+
+#[tokio::test]
+async fn reload_rereads_models_json_alongside_the_packages() {
+    // The settings page's Reload: models.json + credentials + the extension packages,
+    // without restarting the host (a model edited outside the app becomes usable).
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_models_json(&dir, "qwen");
+    let before = run_on(&hub, HostCmd::AvailableModels).await.unwrap();
+    assert_eq!(model_ids(&before), vec!["qwen".to_owned()]);
+
+    std::fs::write(
+        hub.agent_dir().join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": "llama"}]}}})
+        .to_string(),
+    )
+    .unwrap();
+    let reloaded = run_on(&hub, HostCmd::Reload).await.unwrap();
+    assert_eq!(model_ids(&reloaded), vec!["llama".to_owned()]);
+    // A freshly installed package is live too: the packages are rediscovered, not only
+    // the catalogue.
+    assert!(!reloaded["extensions"].as_array().unwrap().is_empty());
+    let after = run_on(&hub, HostCmd::AvailableModels).await.unwrap();
+    assert_eq!(model_ids(&after), vec!["llama".to_owned()]);
 }
 
 #[tokio::test]

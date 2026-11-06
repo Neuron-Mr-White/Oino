@@ -141,6 +141,12 @@ impl ReadinessCache {
         self.entries().remove(provider);
     }
 
+    /// Drops every answer: `auth.json` or `models.json` changed on disk and the
+    /// cached validation may describe a credential that is gone.
+    pub fn invalidate_all(&self) {
+        self.entries().clear();
+    }
+
     /// Every fresh entry (F-02: the app path enriches model rows from the snapshot).
     #[must_use]
     pub fn snapshot(&self) -> HashMap<String, Readiness> {

@@ -251,6 +251,12 @@ pub enum HostCmd {
     /// discover the packages again — the freshly installed (or removed) package
     /// is loaded without restarting the host. → `{extensions: [...]}`.
     ReloadExtensions,
+    /// `_oino/reload`: everything `reload_extensions` does, plus `models.json` and
+    /// the provider credentials — the settings page's "Reload" button, so a model or
+    /// key edited outside the app (or a package dropped into the folder) is picked up
+    /// without restarting it. Live chats follow with their own `reload` command.
+    /// → `{extensions: [...], models: [...]}`.
+    Reload,
     /// `_oino/auth_providers`: providers with sign-in support and credential state →
     /// `{providers: […]}`. Rows carry the hub's cached credential validation (D-37):
     /// `state` (`ready` | `invalid_key` | `unreachable` | `unknown` | `not_configured`),
@@ -298,6 +304,7 @@ impl HostCmd {
             Self::InstallExtension { .. } => "install_extension",
             Self::RemoveExtension { .. } => "remove_extension",
             Self::ReloadExtensions => "reload_extensions",
+            Self::Reload => "reload",
             Self::AuthProviders { .. } => "auth_providers",
             Self::DefaultModel => "default_model",
             Self::AvailableModels => "available_models",

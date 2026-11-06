@@ -96,6 +96,24 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
                 .map_err(|error| failed(error.to_string()))?;
             return Ok(json!({ "extensions": extension_infos(&services, hub.agent_dir()) }));
         }
+        // The settings page's "Reload": the same rediscovery, and the model catalogue
+        // with it (`models.json` + `auth.json`), so a provider or model edited outside
+        // the app is live without restarting it. A live chat reloads itself from the
+        // chat command (`reload` on its stream), which also rebuilds its resources.
+        HostCmd::Reload => {
+            hub.reset_core_services().await;
+            let services = hub
+                .core_services()
+                .await
+                .map_err(|error| failed(error.to_string()))?;
+            services.models.auth_storage().reload();
+            services.models.refresh();
+            hub.readiness().invalidate_all();
+            return Ok(json!({
+                "extensions": extension_infos(&services, hub.agent_dir()),
+                "models": services.models.available(),
+            }));
+        }
         _ => {}
     }
     let services = match settings_cwd(&cmd)? {
@@ -392,8 +410,9 @@ async fn dispatch(
         // Served before the services spin up (`run`).
         HostCmd::InstallExtension { .. }
         | HostCmd::RemoveExtension { .. }
-        | HostCmd::ReloadExtensions => Err(unsupported(
-            "package installs are served by `run`",
+        | HostCmd::ReloadExtensions
+        | HostCmd::Reload => Err(unsupported(
+            "package installs and reloads are served by `run`",
         )),
     }
 }
