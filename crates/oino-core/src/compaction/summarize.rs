@@ -124,6 +124,9 @@ impl Summarizer {
     }
 }
 
+/// The longest a summarisation stream may stay silent before it counts as stalled.
+pub const SUMMARY_IDLE: std::time::Duration = std::time::Duration::from_secs(180);
+
 /// Collects a provider stream to its terminal message (a missing terminal event becomes an
 /// error, or `aborted` when cancelled).
 async fn final_message(
@@ -132,7 +135,25 @@ async fn final_message(
     cancel: &CancellationToken,
 ) -> AssistantMessage {
     let mut last_partial = None;
-    while let Some(event) = events.next().await {
+    loop {
+        // A provider stream that goes quiet (a wedged bridge, a dropped connection the
+        // transport never notices) must not leave the session "Compacting…" forever
+        // (owner 2026-11-06): no event for `SUMMARY_IDLE` fails the call.
+        let event = match tokio::time::timeout(SUMMARY_IDLE, events.next()).await {
+            Ok(Some(event)) => event,
+            Ok(None) => break,
+            Err(_) => {
+                let mut message = last_partial.unwrap_or_else(|| {
+                    AssistantMessage::empty(&model.api, &model.provider, &model.id, now_ms())
+                });
+                message.stop_reason = StopReason::Error;
+                message.error_message = Some(format!(
+                    "The model stopped responding (nothing for {} s)",
+                    SUMMARY_IDLE.as_secs()
+                ));
+                return message;
+            }
+        };
         match event {
             AssistantMessageEvent::Done { message, .. }
             | AssistantMessageEvent::Error { error: message, .. } => return message,
@@ -383,4 +404,27 @@ pub async fn compact(
         usage: Some(usage),
         details: serde_json::to_value(&lists).ok(),
     })
+}
+
+#[cfg(test)]
+mod idle_tests {
+    use super::*;
+
+    /// A provider stream that never says anything more fails after [`SUMMARY_IDLE`] instead of
+    /// keeping the session "Compacting…" forever (owner 2026-11-06).
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_summary_stream_fails_after_the_idle_limit() {
+        let model = crate::testing::FauxProvider::model();
+        let silent: BoxStream<'static, AssistantMessageEvent> = futures::stream::pending().boxed();
+        let started = tokio::time::Instant::now();
+        let message = final_message(silent, &model, &CancellationToken::new()).await;
+        assert_eq!(message.stop_reason, StopReason::Error);
+        assert!(
+            message
+                .error_message
+                .as_deref()
+                .is_some_and(|m| m.contains("stopped responding"))
+        );
+        assert!(started.elapsed() >= SUMMARY_IDLE);
+    }
 }
