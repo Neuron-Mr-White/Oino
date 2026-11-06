@@ -56,11 +56,13 @@ Old sessions must still replay (alias old names/args where needed).
 - F3. Triggers: post-turn threshold from REAL provider usage (limit resolution: session override → per-model → global → model default → 250k, clamped to max input); in-turn context-overflow compaction that RETRIES the same turn with requireProgress; manual `/compact` with custom instructions. Suppression ref so compaction never loops when usage won't drop. A failed threshold compaction is non-fatal. PreCompact hook can block manual only.
 - F4. Summarizer window fitting: instructions ≤25% of the window, 4k reserve, pinned tail + `[N earlier messages omitted…]`, shrink ladder 0.9 → 0.75 → 0.5, resample/escalate on empty output.
 - F5. LLM compaction prompt = Droid's VERBATIM (docs/dev/v3/ref-droid-prompts.md §5; the injected summary message names Oino instead of Droid). After compaction: reset the prompt-cache snapshot, re-announce retained skills/deferred tools.
+- F5a (owner, 2026-11-07). Use only the adaptive body (ref §5.1) plus §5.3/§5.4/§5.5. Drop the classic 10-section body (§5.2); no setting to pick it.
 - F6. KEEP the existing vcc / llm compaction toggle so the user chooses which compactor runs; both plug into the same F1/F3 architecture.
 
 ## G. Loop guards (normal loop, every session, not just missions)
 - G1. TodoWrite suggestion after 5 tool calls with no list; stale-list reminder after 20 calls with no update; settle nag (once) when the model ends the turn with open todos ("You may be ending the turn, but the TodoWrite plan still has open items…"); continue the loop after the nag.
 - G2. Stop after 3 consecutive empty responses (no text, no tools) with a user-visible notice; stop on repeated identical tool calls; resample degenerate/looping output up to 3 times; "Continue." nudge after a length-truncated empty reply.
+- G1a (owner, 2026-11-07). Stale-list reminder text: only the prefix "IMPORTANT: Your todo list has pending items but hasn't been updated" exists in the Droid binary (it is a detection substring; the full text is not recoverable from ~/Projects/Personal/droid-harness-decompose). Use that prefix verbatim and finish it as: "IMPORTANT: Your todo list has pending items but hasn't been updated in a while. Update it with todowrite to reflect your current progress: mark finished items completed and keep exactly one item in_progress."
 - G3. Steering note when a follow-up user message arrives mid-run (Droid §4.4).
 
 ## H. Codemode, deferred tools, ToolSearch
@@ -88,6 +90,10 @@ Old sessions must still replay (alias old names/args where needed).
 - L5. Host-side work watcher (dispatcher), runs in unipi-oino-host (always alive like cron): watches `todo` tasks whose dependencies are met, starts a worker session in that project at the ticket's autonomy, the worker claims → works → finishes to in_review (or blocked with a question). An on/off toggle and a concurrency cap live in the Superagent UI. With the watcher OFF the superagent still manages the board and can start a specific task on command.
 - L6. Superagent page: center = chat; side pane = live workers (task, project, autonomy, current step/tool, elapsed, cost, stop/open), "Needs you" (in_review + blocked across projects, blocked shows its question), watcher toggle + cap.
 - L7. Relaying to a running worker: the superagent finds the claiming session (kanboard records `Run.session`) and sends it a follow-up, and also records a ticket comment. Host-authored/agent-authored messages must NOT show the user "Steer" chip; label them by author (fix `isSteer()` in apps/unipi/src/lib/session/turns.ts). Board comments auto-reaching workers = v2, not now.
+
+## Accepted reviewer decisions (2026-11-07, owner may override)
+- E "always" approval = project-scoped allow rule for the exact normalized command; applies to interactive sessions of that project only; never raises the ceiling; unattended runs ignore it. No session scope.
+- E default level = Medium for the global interactive default, legacy tickets without a level, and new tickets without one.
 
 ## Out of scope for this graph
 - Windows install defects found on coffee (separate graph).
