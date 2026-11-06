@@ -255,6 +255,8 @@ jobs:
           EOF
       - run: npm ci
         working-directory: apps/unipi
+      - name: tauri-cli
+        run: cargo install tauri-cli --version 2.12.1 --locked
       - name: cargo tauri build (deb + AppImage)
         run: cargo tauri build --config target/tauri-release.conf.json --bundles deb,appimage
         working-directory: apps/unipi
@@ -321,6 +323,8 @@ jobs:
           EOF
       - run: npm ci
         working-directory: apps/unipi
+      - name: tauri-cli
+        run: cargo install tauri-cli --version 2.12.1 --locked
       - name: cargo tauri build (NSIS)
         run: cargo tauri build --config target/tauri-release.conf.json --bundles nsis
         working-directory: apps/unipi
@@ -391,6 +395,8 @@ jobs:
           EOF
       - run: npm ci
         working-directory: apps/unipi
+      - name: tauri-cli
+        run: cargo install tauri-cli --version 2.12.1 --locked
       - name: cargo tauri build (universal .app + dmg)
         run: cargo tauri build --config target/tauri-release.conf.json --target universal-apple-darwin --bundles app,dmg
         working-directory: apps/unipi
@@ -489,6 +495,8 @@ jobs:
           printf '{\n  "version": "%s"\n}\n' "$VERSION" > apps/unipi/target/tauri-release.conf.json
       - run: npm ci
         working-directory: apps/unipi
+      - name: tauri-cli
+        run: cargo install tauri-cli --version 2.12.1 --locked
       - name: cargo tauri android build (universal apk)
         run: cargo tauri android build --apk --config target/tauri-release.conf.json
         working-directory: apps/unipi
