@@ -210,10 +210,11 @@ impl OffsetIndex {
     pub fn load(path: &Path, offsets_dir: Option<&Path>) -> Result<Arc<Self>, SessionError> {
         let mut file = File::open(path).map_err(|e| SessionError::io(path, e))?;
         let (size, mtime_ns) = stat(&file).map_err(|e| SessionError::io(path, e))?;
-        if let Some(hit) = memory_get(path) {
-            if hit.size == size && hit.mtime_ns == mtime_ns {
-                return Ok(hit);
-            }
+        if let Some(hit) = memory_get(path)
+            && hit.size == size
+            && hit.mtime_ns == mtime_ns
+        {
+            return Ok(hit);
         }
         let persisted = offsets_dir.map(|dir| persisted_path(dir, path));
         let stale = memory_get(path).map(|hit| (*hit).clone()).or_else(|| {
@@ -222,12 +223,13 @@ impl OffsetIndex {
                 .and_then(read_persisted)
                 .filter(|index| index.version == FORMAT_VERSION)
         });
-        if let Some(stale) = stale.as_ref() {
-            if stale.size == size && stale.mtime_ns == mtime_ns {
-                let index = Arc::new(stale.clone());
-                memory_put(path, Arc::clone(&index));
-                return Ok(index);
-            }
+        if let Some(stale) = stale.as_ref()
+            && stale.size == size
+            && stale.mtime_ns == mtime_ns
+        {
+            let index = Arc::new(stale.clone());
+            memory_put(path, Arc::clone(&index));
+            return Ok(index);
         }
         let extendable = stale.filter(|stale| {
             stale.end <= size && fingerprint(&mut file, stale.end).ok() == Some(stale.fingerprint)
@@ -244,11 +246,11 @@ impl OffsetIndex {
             mtime_ns,
             ..index
         };
-        if size >= PERSIST_MIN {
-            if let Some(persisted) = persisted.as_deref() {
-                // A cache: failing to write it only costs the next cold open a scan.
-                let _ = write_persisted(persisted, &index);
-            }
+        if size >= PERSIST_MIN
+            && let Some(persisted) = persisted.as_deref()
+        {
+            // A cache: failing to write it only costs the next cold open a scan.
+            let _ = write_persisted(persisted, &index);
         }
         let index = Arc::new(index);
         memory_put(path, Arc::clone(&index));
@@ -450,10 +452,10 @@ pub fn page_start(
         bytes += next;
         start -= 1;
     }
-    if start > 0 {
-        if let Some(aligned) = (start..end).find(|at| is_user(*at)) {
-            start = aligned;
-        }
+    if start > 0
+        && let Some(aligned) = (start..end).find(|at| is_user(*at))
+    {
+        start = aligned;
     }
     start
 }
@@ -478,10 +480,6 @@ struct Role<'a> {
 }
 
 fn parse_head(line: &[u8]) -> Option<Head<'_>> {
-    if let Ok(head) = serde_json::from_slice::<Head<'_>>(line) {
-        return Some(head);
-    }
-    // `message` of an unexpected shape (a string in a custom entry): retry without it.
     #[derive(Deserialize)]
     struct Bare<'a> {
         #[serde(rename = "type", borrow, default)]
@@ -491,6 +489,10 @@ fn parse_head(line: &[u8]) -> Option<Head<'_>> {
         #[serde(rename = "parentId", borrow, default)]
         parent_id: Option<Cow<'a, str>>,
     }
+    if let Ok(head) = serde_json::from_slice::<Head<'_>>(line) {
+        return Some(head);
+    }
+    // `message` of an unexpected shape (a string in a custom entry): retry without it.
     let bare = serde_json::from_slice::<Bare<'_>>(line).ok()?;
     Some(Head {
         kind: bare.kind,

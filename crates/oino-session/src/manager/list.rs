@@ -89,25 +89,18 @@ pub fn session_info(path: &Path) -> Option<SessionInfo> {
             continue;
         }
         if kind == Some("session_info") {
-            name = entry
-                .get("name")
-                .and_then(JsonValue::as_str)
-                .map(str::trim)
-                .filter(|n| !n.is_empty())
-                .map(str::to_owned);
+            name = session_name(&entry);
         }
         if kind == Some("custom_message")
             && entry.get("customType").and_then(JsonValue::as_str)
                 == Some(crate::CWD_CHANGE_CUSTOM_TYPE)
-        {
-            if let Some(cwd) = entry
+            && let Some(cwd) = entry
                 .get("details")
                 .and_then(|details| details.get("cwd"))
                 .and_then(JsonValue::as_str)
                 .filter(|cwd| !cwd.is_empty())
-            {
-                moved_cwd = Some(cwd.to_owned());
-            }
+        {
+            moved_cwd = Some(cwd.to_owned());
         }
         if kind != Some("message") {
             continue;
@@ -120,15 +113,7 @@ pub fn session_info(path: &Path) -> Option<SessionInfo> {
         if !matches!(role, Some("user" | "assistant")) || message.get("content").is_none() {
             continue;
         }
-        let activity = message
-            .get("timestamp")
-            .and_then(JsonValue::as_i64)
-            .or_else(|| {
-                entry
-                    .get("timestamp")
-                    .and_then(JsonValue::as_str)
-                    .and_then(|ts| IsoTimestamp::from_text(ts).to_ms())
-            });
+        let activity = message_activity(message, &entry);
         if let Some(activity) = activity {
             last_activity = Some(last_activity.map_or(activity, |last| last.max(activity)));
         }
@@ -328,4 +313,25 @@ pub(super) fn find_by_id(
         .flat_map(|dir| jsonl_files(dir))
         .collect();
     search(&all, id)
+}
+
+fn message_activity(message: &JsonValue, entry: &JsonValue) -> Option<i64> {
+    message
+        .get("timestamp")
+        .and_then(JsonValue::as_i64)
+        .or_else(|| {
+            entry
+                .get("timestamp")
+                .and_then(JsonValue::as_str)
+                .and_then(|ts| IsoTimestamp::from_text(ts).to_ms())
+        })
+}
+
+fn session_name(entry: &JsonValue) -> Option<String> {
+    entry
+        .get("name")
+        .and_then(JsonValue::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
 }

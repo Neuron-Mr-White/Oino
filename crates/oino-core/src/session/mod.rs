@@ -271,6 +271,7 @@ pub(crate) struct Inner {
     pub(crate) stream: Arc<dyn StreamFn>,
     pub(crate) manager: Mutex<SessionManager>,
     pub(crate) settings: Arc<Mutex<SettingsManager>>,
+    pub(crate) image_policy: Arc<Mutex<ImagePolicy>>,
     pub(crate) resources: Arc<RwLock<ResourceLoader>>,
     pub(crate) models: ModelRegistry,
     pub(crate) runner: RwLock<ExtensionRunner>,
@@ -444,7 +445,9 @@ impl AgentSession {
         options.stream_options.thinking_budgets = settings.thinking_budgets();
         options.stream_options.max_retry_delay_ms =
             Some(settings.provider_retry_settings().max_retry_delay_ms);
-        options.convert_to_llm = convert_with_block_images(Arc::clone(&config.settings));
+        let image_policy = Arc::new(Mutex::new(ImagePolicy::default()));
+        options.convert_to_llm =
+            convert_with_block_images(Arc::clone(&config.settings), Arc::clone(&image_policy));
         let agent = Agent::new(options);
         let (idle, _) = watch::channel(true);
         let agents = match config.child {
@@ -465,6 +468,7 @@ impl AgentSession {
             stream: Arc::clone(&session_stream) as Arc<dyn StreamFn>,
             manager: Mutex::new(config.manager),
             settings: config.settings,
+            image_policy,
             resources: config.resources,
             models: config.models,
             runner: RwLock::new(runner),
@@ -1280,9 +1284,112 @@ fn unmap_queue_mode(mode: oino_agent::QueueMode) -> oino_settings::QueueMode {
 }
 
 /// Converts an entry to LLM records, blocking images.
-fn convert_with_block_images(settings: Arc<Mutex<SettingsManager>>) -> oino_agent::ConvertToLlm {
+#[derive(Default)]
+pub(crate) struct ImagePolicy {
+    /// Entry id is durable identity; original message is the conversion lookup.
+    entries: Vec<(EntryId, AgentMessage, bool)>,
+    current: Option<bool>,
+}
+
+impl AgentSession {
+    /// Pin image serialization before first provider use. Policy records are
+    /// append-only, so reopen, settings toggles and compaction cannot reserialize
+    /// an already-seen entry with today's policy. Source content is never edited.
+    pub(crate) fn snapshot_image_policy(
+        &self,
+        messages: &[AgentMessage],
+    ) -> Result<(), SessionOpError> {
+        let blocked = lock(&self.inner.settings)
+            .settings()
+            .image_settings()
+            .block_images;
+        let mut policy = lock(&self.inner.image_policy);
+        let mut manager = lock(&self.inner.manager);
+        let branch = manager.branch(None);
+        let mut recorded = std::collections::HashMap::new();
+        let mut previous = None;
+        for entry in &branch {
+            if let oino_session::EntryKind::Custom {
+                custom_type,
+                data: Some(data),
+            } = &entry.kind
+            {
+                if custom_type == "oino.image-policy" {
+                    if let (Some(id), Some(blocked)) =
+                        (data["entryId"].as_str(), data["blocked"].as_bool())
+                    {
+                        recorded.insert(id.to_owned(), blocked);
+                    }
+                } else if custom_type == "oino.image-setting" {
+                    previous = data["blocked"].as_bool();
+                }
+            }
+        }
+        let changed = policy
+            .current
+            .or(previous)
+            .is_some_and(|old| old != blocked);
+        let mut pending = Vec::new();
+        let mut pending_messages = Vec::new();
+        for message in messages {
+            if !matches!(
+                message,
+                AgentMessage::User(_) | AgentMessage::ToolResult(_) | AgentMessage::Custom(_)
+            ) {
+                continue;
+            }
+            let entry = branch.iter().find(|entry| {
+                oino_session::context::entry_to_context_messages(entry, None).contains(message)
+            });
+            let Some(entry) = entry else {
+                continue;
+            };
+            if policy.entries.iter().any(|(id, _, _)| id == &entry.id) {
+                continue;
+            }
+            let pinned = recorded.get(entry.id.as_str()).copied().unwrap_or(blocked);
+            if !recorded.contains_key(entry.id.as_str()) {
+                pending.push((entry.id.clone(), pinned));
+            }
+            // Commit lookup state only after all metadata appends succeed.
+            pending_messages.push((entry.id.clone(), message.clone(), pinned));
+        }
+        for (id, pinned) in pending {
+            manager
+                .append_custom_entry(
+                    "oino.image-policy",
+                    Some(serde_json::json!({
+                        "entryId":id, "blocked":pinned,
+                    })),
+                )
+                .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        }
+        if policy.current.or(previous) != Some(blocked) {
+            manager
+                .append_custom_entry(
+                    "oino.image-setting",
+                    Some(serde_json::json!({"blocked":blocked})),
+                )
+                .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        }
+        drop(manager);
+        if changed {
+            self.append_reminder("oino", "oino/image-policy", &format!(
+                "Image reading is now {} for new content. Previously sent content retains its original image policy.",
+                if blocked { "disabled" } else { "enabled" }))?;
+        }
+        policy.entries.extend(pending_messages);
+        policy.current = Some(blocked);
+        Ok(())
+    }
+}
+
+fn convert_with_block_images(
+    settings: Arc<Mutex<SettingsManager>>,
+    policy: Arc<Mutex<ImagePolicy>>,
+) -> oino_agent::ConvertToLlm {
     Arc::new(move |messages: &[AgentMessage]| {
-        let converted = messages
+        messages
             .iter()
             .filter_map(|message| {
                 let mut converted = oino_session::messages::to_llm(message)?;
@@ -1291,13 +1398,21 @@ fn convert_with_block_images(settings: Arc<Mutex<SettingsManager>>) -> oino_agen
                 if !trusted {
                     oino_ai::transcript::escape_message_reminders(&mut converted);
                 }
-                Some(converted)
+                let blocked = lock(&policy)
+                    .entries
+                    .iter()
+                    .find(|(_, original, _)| original == message)
+                    .map_or_else(
+                        || lock(&settings).settings().image_settings().block_images,
+                        |(_, _, blocked)| *blocked,
+                    );
+                Some(if blocked {
+                    block_images(converted)
+                } else {
+                    converted
+                })
             })
-            .collect::<Vec<_>>();
-        if !lock(&settings).settings().image_settings().block_images {
-            return converted;
-        }
-        converted.into_iter().map(block_images).collect()
+            .collect::<Vec<_>>()
     })
 }
 

@@ -258,7 +258,7 @@ impl SessionManager {
         Ok(manager)
     }
 
-    /// Opens a session file: migrates v1/v2 in place and pre-v1 Oino files to
+    /// Opens a session file: migrates v1/v2 in memory and pre-v1 Oino files to
     /// the v3 layout; a missing file starts a new session at that path.
     ///
     /// # Errors
@@ -499,12 +499,8 @@ impl SessionManager {
                 self.session_file = Some(path.clone());
                 self.load_entries(parsed.entries);
                 self.flushed = true;
-                if parsed.migrated {
-                    files::write_atomic(
-                        &path,
-                        &files::serialize_lines(&self.header, self.index.entries())?,
-                    )?;
-                }
+                // Format migration is an in-memory compatibility view. Keep the
+                // original header and records byte-for-byte; new v3 records append.
                 Ok(())
             }
         }

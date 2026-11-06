@@ -146,7 +146,8 @@ fn model_row<'a>(models: &'a mut Vec<ModelStats>, model: &str) -> &'a mut ModelS
             model: model.to_owned(),
             ..ModelStats::default()
         });
-        models.last_mut().expect("just pushed")
+        let last = models.len() - 1;
+        &mut models[last]
     }
 }
 

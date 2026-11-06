@@ -361,3 +361,138 @@ async fn declarations_are_ordered_frozen_and_restored() {
     session.rebuild_declarations_after_compaction();
     assert!(!session.active_tool_names().contains(&"zebra".into()));
 }
+
+#[tokio::test]
+async fn image_setting_changes_only_new_provider_content() {
+    let provider = FauxProvider::new(vec![FauxResponse::Text("ok".into()); 3]);
+    let session = TestSession::default().build(provider.clone()).await;
+    let image = oino_ai::ImageContent {
+        data: "first-image".into(),
+        mime_type: "image/png".into(),
+    };
+    session
+        .prompt(
+            "first image".into(),
+            PromptOptions {
+                images: vec![image],
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    session.wait_for_idle().await;
+    let first = provider.requests()[0].clone();
+    session
+        .with_settings(|settings| settings.set_block_images(true))
+        .unwrap();
+    let image = oino_ai::ImageContent {
+        data: "second-image".into(),
+        mime_type: "image/png".into(),
+    };
+    session
+        .prompt(
+            "second image".into(),
+            PromptOptions {
+                images: vec![image],
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    session.wait_for_idle().await;
+    let second = provider.requests()[1].clone();
+    let image_message = |request: &Value, text: &str| {
+        request["context"]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["content"].to_string().contains(text))
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        image_message(&first, "first image"),
+        image_message(&second, "first image")
+    );
+    assert!(
+        image_message(&second, "first image")
+            .to_string()
+            .contains("first-image")
+    );
+    let new = image_message(&second, "second image").to_string();
+    assert!(new.contains("Image reading is disabled."));
+    assert!(!new.contains("second-image"));
+    assert!(
+        second
+            .to_string()
+            .contains("Image reading is now disabled for new content")
+    );
+    stable(&first, &second);
+    session
+        .with_settings(|settings| settings.set_block_images(false))
+        .unwrap();
+    turn(&session).await;
+    let third = provider.requests()[2].clone();
+    assert_eq!(
+        image_message(&second, "second image"),
+        image_message(&third, "second image")
+    );
+    stable(&second, &third);
+}
+
+#[tokio::test]
+async fn image_setting_preserves_tool_result_bytes() {
+    use oino_core::extensions::api::Registration;
+    use oino_core::testing::FakeExtension;
+    let provider = FauxProvider::new(vec![
+        FauxResponse::ToolCalls(vec![(
+            "image-call".into(),
+            "image_probe".into(),
+            Default::default(),
+        )]),
+        FauxResponse::Text("ok".into()),
+        FauxResponse::Text("ok".into()),
+    ]);
+    let extension = std::sync::Arc::new(
+        FakeExtension::new(
+            "test",
+            Registration {
+                tools: vec![spec("image_probe")],
+                ..Default::default()
+            },
+        )
+        .on_tool(|_, _| {
+            Ok(oino_agent::AgentToolResult {
+                content: vec![oino_ai::UserContent::Image(oino_ai::ImageContent {
+                    data: "tool-image".into(),
+                    mime_type: "image/png".into(),
+                })],
+                ..Default::default()
+            })
+        }),
+    );
+    let session = TestSession {
+        extensions: vec![extension],
+        ..Default::default()
+    }
+    .build(provider.clone())
+    .await;
+    turn(&session).await;
+    assert_eq!(provider.requests().len(), 2);
+    session
+        .with_settings(|settings| settings.set_block_images(true))
+        .unwrap();
+    turn(&session).await;
+    let requests = provider.requests();
+    let find = |request: &Value| {
+        request["context"]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["role"] == "toolResult")
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(find(&requests[1]), find(&requests[2]));
+    assert!(find(&requests[2]).to_string().contains("tool-image"));
+}

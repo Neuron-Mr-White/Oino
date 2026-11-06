@@ -176,6 +176,9 @@ impl TransformContext for SessionHooks {
     ) -> BoxFuture<'a, Result<Vec<AgentMessage>, HookError>> {
         Box::pin(async move {
             let session = self.session()?;
+            session
+                .snapshot_image_policy(&messages)
+                .map_err(|e| HookError::new(e.to_string()))?;
             Ok(session.transform_context(messages).await)
         })
     }
@@ -585,5 +588,8 @@ fn convert_provider_view(
     session: &AgentSession,
     messages: &[AgentMessage],
 ) -> Vec<oino_ai::Message> {
-    (super::convert_with_block_images(Arc::clone(&session.inner.settings)))(messages)
+    (super::convert_with_block_images(
+        Arc::clone(&session.inner.settings),
+        Arc::clone(&session.inner.image_policy),
+    ))(messages)
 }

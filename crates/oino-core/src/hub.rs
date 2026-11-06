@@ -141,21 +141,22 @@ impl Queue {
 
     /// Appends `event`'s text/thinking delta to the last queued event when both are deltas
     /// of the same block of the same (agent's) message; gives `event` back otherwise.
+    #[allow(
+        clippy::result_large_err,
+        reason = "returns the unconsumed event without boxing the queue"
+    )]
     fn merge_delta(&mut self, event: ClientEvent) -> Result<(), ClientEvent> {
+        use oino_ai::AssistantMessageEvent as E;
         let Some(last) = self.events.back_mut() else {
             return Err(event);
         };
         let Some((last_agent, last_message, last_update)) = update_parts(last) else {
             return Err(event);
         };
-        let (agent, message, update) = match into_update_parts(event) {
-            Ok(parts) => parts,
-            Err(event) => return Err(event),
-        };
+        let (agent, message, update) = into_update_parts(event)?;
         if last_agent != agent.as_deref() {
             return Err(rebuild_update(agent, message, update));
         }
-        use oino_ai::AssistantMessageEvent as E;
         match (last_update, update) {
             (
                 E::TextDelta {
@@ -229,6 +230,10 @@ type OwnedUpdate = (
 );
 
 /// The parts of a (possibly agent-wrapped) `message_update`, moved out; the event otherwise.
+#[allow(
+    clippy::result_large_err,
+    reason = "returns ownership of the original event on mismatch"
+)]
 fn into_update_parts(event: ClientEvent) -> Result<OwnedUpdate, ClientEvent> {
     match event {
         ClientEvent::Session(AgentSessionEvent::MessageUpdate {

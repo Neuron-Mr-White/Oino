@@ -72,11 +72,11 @@ impl AgentSession {
         };
         // The new folder applies before the entry is published, so a frontend that reads
         // the state on `message_end` already sees it.
-        *self
-            .inner
+        self.inner
             .work_cwd
             .write()
-            .unwrap_or_else(PoisonError::into_inner) = cwd.clone();
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&cwd);
         {
             let mut runner = self
                 .inner

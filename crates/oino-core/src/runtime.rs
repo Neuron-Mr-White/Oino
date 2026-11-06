@@ -504,6 +504,10 @@ async fn lease_watcher(core: Weak<RuntimeCore>, epoch: u64, session_file: PathBu
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one ordered session installation transaction"
+)]
 async fn install(
     services: &Arc<Services>,
     options: &SessionOptions,

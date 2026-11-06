@@ -610,16 +610,15 @@ impl ChildAgent {
                 return;
             }
         }
-        match self.session_slot() {
-            Some(session) => session.hub().publish(OinoEvent::SessionTakenOver { by }),
+        if let Some(session) = self.session_slot() {
+            session.hub().publish(OinoEvent::SessionTakenOver { by });
+        } else {
             // Hibernated: the child hub is closed; surface the takeover on the parent
             // (and to the child's `events()` subscribers, which wait on the relay).
-            None => {
-                self.relay
-                    .publish(OinoEvent::SessionTakenOver { by: by.clone() });
-                if let Some(parent) = self.parent.upgrade() {
-                    parent.hub.publish(OinoEvent::SessionTakenOver { by });
-                }
+            self.relay
+                .publish(OinoEvent::SessionTakenOver { by: by.clone() });
+            if let Some(parent) = self.parent.upgrade() {
+                parent.hub.publish(OinoEvent::SessionTakenOver { by });
             }
         }
         self.close_with_reason(Duration::ZERO, "takeover").await;

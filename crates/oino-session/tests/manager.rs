@@ -461,9 +461,10 @@ fn open_edge_cases() {
     let sm = SessionManager::open(&v1, dir, None).unwrap();
     assert_eq!(sm.header().version, 3);
     assert_eq!(sm.cwd(), Path::new("/w"));
-    assert!(
-        fs::read_to_string(&v1).unwrap().contains("\"version\":3"),
-        "rewritten in place"
+    assert_eq!(
+        fs::read_to_string(&v1).unwrap(),
+        "{\"type\":\"session\",\"id\":\"s1\",\"timestamp\":\"2025-01-01T00:00:00.000Z\",\"cwd\":\"/w\"}\n{\"type\":\"message\",\"timestamp\":\"2025-01-01T00:00:01.000Z\",\"message\":{\"role\":\"user\",\"content\":\"a\",\"timestamp\":1}}\n",
+        "migration must not replace source bytes"
     );
     assert!(!dir.join("v1.jsonl.tmp").exists());
 

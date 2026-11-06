@@ -11,10 +11,12 @@ async fn resume(path: &Path) -> AgentSession {
     let base = TestSession::default()
         .build(FauxProvider::new(vec![]))
         .await;
+    resume_with_base(path, &base).await
+}
+
+async fn resume_with_base(path: &Path, base: &AgentSession) -> AgentSession {
     let cwd = path.parent().unwrap().to_path_buf();
     let manager = SessionManager::open(path, &cwd, Some(&cwd)).unwrap();
-    let models =
-        oino_models::ModelRegistry::in_memory(std::sync::Arc::new(oino_models::MapEnv::default()));
     let settings = std::sync::Arc::new(std::sync::Mutex::new(
         oino_settings::SettingsManager::in_memory(Default::default()),
     ));
@@ -33,7 +35,7 @@ async fn resume(path: &Path) -> AgentSession {
         manager,
         settings,
         resources,
-        models,
+        models: base.models().clone(),
         extensions: base.runner().set().clone(),
         stream: std::sync::Arc::new(oino_core::provider::ProviderStream::new(
             base.runner().set().clone(),
@@ -143,4 +145,124 @@ async fn append_only_original_bytes() {
         1
     );
     assert_eq!(std::fs::read(&path).unwrap(), after);
+}
+
+#[tokio::test]
+async fn actual_format_v2_preserves_source_bytes_on_open_append_and_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("format-v2.jsonl");
+    let original = include_bytes!("fixtures/v2/format-v2-replay.jsonl");
+    assert!(
+        std::str::from_utf8(original)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .contains("\"version\":2")
+    );
+    std::fs::write(&path, original).unwrap();
+    // Opening alone must not normalize the header, whitespace, or old records.
+    let manager = SessionManager::open(&path, dir.path(), Some(dir.path())).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    assert!(manager.entries().iter().any(|entry| matches!(&entry.kind,
+        EntryKind::Compaction(c) if c.system_message.is_some())));
+    drop(manager);
+    let session = resume(&path).await;
+    session
+        .append_reminder("test", "test/v2", "new tail")
+        .unwrap();
+    let appended = std::fs::read(&path).unwrap();
+    assert!(appended.starts_with(original));
+    assert!(appended.len() > original.len());
+    assert_eq!(
+        session
+            .entries()
+            .iter()
+            .filter(|entry| matches!(entry.kind, EntryKind::SystemSnapshot { version: 3, .. }))
+            .count(),
+        1
+    );
+    drop(session);
+    let reopened = resume(&path).await;
+    assert_eq!(std::fs::read(&path).unwrap(), appended);
+    assert_eq!(
+        reopened
+            .entries()
+            .iter()
+            .filter(|entry| matches!(entry.kind, EntryKind::SystemSnapshot { version: 3, .. }))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn image_policy_is_restored_per_entry_after_reopen() {
+    use oino_core::session::PromptOptions;
+    use oino_core::testing::FauxResponse;
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("ok".into()); 2]);
+    let session = TestSession {
+        session_dir: Some(dir.path().to_path_buf()),
+        ..Default::default()
+    }
+    .build(provider.clone())
+    .await;
+    session
+        .prompt(
+            "stored image".into(),
+            PromptOptions {
+                images: vec![oino_ai::ImageContent {
+                    data: "persisted-image".into(),
+                    mime_type: "image/png".into(),
+                }],
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    session.wait_for_idle().await;
+    let first = provider.requests()[0].clone();
+    let path = session.session_file().unwrap();
+    // A fresh session object has no in-memory policy lookup.
+    let reopened = resume_with_base(&path, &session).await;
+    reopened
+        .with_settings(|settings| settings.set_block_images(true))
+        .unwrap();
+    reopened
+        .prompt("next turn".into(), PromptOptions::default())
+        .await
+        .unwrap();
+    reopened.wait_for_idle().await;
+    let second = provider.requests()[1].clone();
+    let find = |request: &Value| {
+        request["context"]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message["content"].to_string().contains("stored image"))
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(find(&first), find(&second));
+    assert!(find(&second).to_string().contains("persisted-image"));
+    assert!(
+        second
+            .to_string()
+            .contains("Image reading is now disabled for new content")
+    );
+    assert_eq!(
+        reopened
+            .entries()
+            .iter()
+            .filter(|entry| matches!(&entry.kind,
+        EntryKind::Custom {custom_type, ..} if custom_type == "oino.image-policy"))
+            .count(),
+        session
+            .entries()
+            .iter()
+            .filter(|entry| matches!(&entry.kind,
+        EntryKind::Custom {custom_type, ..} if custom_type == "oino.image-policy"))
+            .count()
+            + 1
+    );
 }
