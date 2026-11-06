@@ -188,10 +188,12 @@ impl App {
                 for warning in warnings {
                     self.notice(NoticeLevel::Warning, format!("keybindings.json: {warning}"));
                 }
-                self.send(Tag::Commands, AgentCommand::GetCommands);
+                // The session side: settings, extension packages, skills / prompts /
+                // context files, models and credentials — all re-read from disk.
+                self.send(Tag::Ignore, AgentCommand::Reload);
                 self.notice(
                     NoticeLevel::Info,
-                    "Reloaded keybindings and settings (extensions and resources reload on restart)",
+                    "Reloaded keybindings, settings, extensions, skills, context files and models",
                 );
             }
             Builtin::Hotkeys => {

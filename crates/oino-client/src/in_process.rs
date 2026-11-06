@@ -515,6 +515,17 @@ impl Shared {
             }
             AgentCommand::GetMessages => data(json!({ "messages": session.messages() })),
             AgentCommand::GetCommands => data(json!({ "commands": session.commands() })),
+            AgentCommand::Reload => {
+                // Dropping and rebinding the extension instances under a live run would
+                // pull its tools out from under it: ask again once the turn ended.
+                if session.is_streaming() || session.is_compacting() {
+                    return Err(ClientError::Command(
+                        "Cannot reload while this chat is working — stop it first".to_owned(),
+                    ));
+                }
+                session.reload().await.map_err(failed)?;
+                Ok(None)
+            }
         }
     }
 

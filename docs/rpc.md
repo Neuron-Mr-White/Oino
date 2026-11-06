@@ -18,7 +18,13 @@ printf '%s\n' '{"id":"1","type":"prompt","message":"hello"}' | oino --mode rpc
 `set_auto_compaction`, `set_auto_retry`, `abort_retry`, `bash`, `abort_bash`,
 `get_session_stats`, `export_html`, `switch_session`, `fork`, `clone`, `get_fork_messages`,
 `get_entries`, `get_tree`, `get_last_assistant_text`, `set_session_name`, `get_messages`,
-`get_commands`, `clear_queue`.
+`get_commands`, `clear_queue`, `reload`.
+
+`reload` is pi's `/reload`: the session re-reads `config.json`, the installed extension
+packages, skills / prompt templates / context files, `models.json` and the provider
+credentials from disk, then tells frontends to refetch `get_commands`. It is refused while
+a run or a compaction is in flight. The host-wide half — no session needed: `models.json`,
+credentials and the extension packages — is the desktop host's `host_cmd` `reload`.
 
 ## Oino commands (`_oino/*`)
 

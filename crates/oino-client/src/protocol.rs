@@ -244,6 +244,11 @@ pub enum AgentCommand {
     GetCommands,
     /// Clear both queues.
     ClearQueue,
+    /// Re-read everything that lives on disk, without restarting the host: settings
+    /// (`config.json`), the installed extension packages, skills / prompt templates /
+    /// context files, `models.json` and the provider credentials. Refused while a run
+    /// or a compaction is in flight (its extension instances are dropped and rebound).
+    Reload,
 }
 
 /// `_oino/hello` client identity.
@@ -696,6 +701,7 @@ impl AgentCommand {
             Self::GetMessages => "get_messages",
             Self::GetCommands => "get_commands",
             Self::ClearQueue => "clear_queue",
+            Self::Reload => "reload",
         }
     }
 }

@@ -606,6 +606,11 @@ impl AgentSession {
     /// `session_shutdown{reason:"reload"}`, settings and resources reload, tool
     /// registry rebuild, then `session_start{reason:"reload"}` and `resources_discover`.
     ///
+    /// Also re-reads what lives outside the session: `models.json` and the provider
+    /// credentials, so a model (or key) edited on disk reaches this session's picker
+    /// without a host restart, and tells clients to refetch `get_commands` for the
+    /// skills / prompts / extension commands that just changed.
+    ///
     /// # Errors
     ///
     /// Never fails today; kept fallible for the package reload path.
@@ -641,6 +646,9 @@ impl AgentSession {
             .reload(&snapshot, trusted);
         self.refresh_tool_registry(None, true);
         self.bind_extensions("reload", None).await;
+        self.inner.models.auth_storage().reload();
+        self.inner.models.refresh();
+        self.inner.hub.publish(OinoEvent::CommandsChanged);
         Ok(())
     }
 

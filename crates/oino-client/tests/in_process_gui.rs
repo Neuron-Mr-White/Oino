@@ -35,10 +35,19 @@ struct Fixture {
 }
 
 async fn fixture(responses: Vec<FauxResponse>, extra: Vec<Arc<dyn ExtensionInstance>>) -> Fixture {
-    let dir = tempfile::tempdir().unwrap();
-    let cwd = dir.path().to_path_buf();
     let models = oino_models::ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
     models.set_runtime_api_key("faux", "k");
+    fixture_with(models, responses, extra).await
+}
+
+/// A fixture over `models` (a registry that can re-read a real `models.json`).
+async fn fixture_with(
+    models: oino_models::ModelRegistry,
+    responses: Vec<FauxResponse>,
+    extra: Vec<Arc<dyn ExtensionInstance>>,
+) -> Fixture {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = dir.path().to_path_buf();
     let mut instances: Vec<Arc<dyn ExtensionInstance>> =
         vec![Arc::new(FauxComponent(FauxProvider::new(responses)))];
     instances.extend(extra);
@@ -273,4 +282,57 @@ async fn shutdown_requested_resolves_when_idle() {
         .await
         .unwrap();
     f.backend.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reload_rereads_models_json_without_a_restart() {
+    // A real `models.json` under the agent dir: the registry reloads it from disk.
+    let dir = tempfile::tempdir().unwrap();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let write_models = |models: &str| {
+        std::fs::write(
+            agent_dir.join("models.json"),
+            json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+                "api": "openai-completions", "apiKey": "ollama", "models": [{"id": models}]}}})
+            .to_string(),
+        )
+        .unwrap();
+    };
+    write_models("qwen");
+    let auth = Arc::new(oino_models::AuthStorage::in_memory(IndexMap::new()));
+    let env = Arc::new(oino_models::MapEnv::default());
+    let models = oino_models::ModelRegistry::new(
+        auth,
+        oino_models::ModelRegistryOptions {
+            models_json_path: Some(agent_dir.join("models.json")),
+            env,
+            ..oino_models::ModelRegistryOptions::default()
+        },
+    );
+    // A `models.json` provider is only offered once some implementation serves its `api`.
+    models.register_api_implementor("openai-completions", "ext.openai");
+    let f = fixture_with(models, Vec::new(), Vec::new()).await;
+    let ids = |reply: Option<serde_json::Value>| {
+        reply
+            .and_then(|data| data.get("models").cloned())
+            .and_then(|rows| rows.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        ids(f.backend.send(AgentCommand::GetAvailableModels.into()).await.unwrap()),
+        vec!["qwen"]
+    );
+
+    write_models("llama");
+    // `/reload` (the terminal's built-in and the app's) is this command.
+    f.backend.send(AgentCommand::Reload.into()).await.unwrap();
+
+    assert_eq!(
+        ids(f.backend.send(AgentCommand::GetAvailableModels.into()).await.unwrap()),
+        vec!["llama"]
+    );
 }
