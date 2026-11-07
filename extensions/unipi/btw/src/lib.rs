@@ -666,9 +666,22 @@ impl Extension for Btw {
         cx.service(point::BTW_ASK, |ext, p, _caller, cx| async move {
             Ok(ext.ask_service(&p, &cx).await)
         });
+        cx.service("btw.delete", |ext, p, _caller, cx| async move {
+            let id = p.get("id").and_then(Value::as_str).unwrap_or_default();
+            let deleted = ext.sessions.with(cx.session_id(), |s| {
+                if let Some(page) = s.pages.iter_mut().find(|page| !id.is_empty() && page.id == id) {
+                    *page = Page::default();
+                    true
+                } else {
+                    false
+                }
+            });
+            ext.update_panel(cx.session_id(), true);
+            Ok(json!({"deleted": deleted}))
+        });
         cx.service("btw.list", |ext, _p, _caller, cx| async move {
             Ok(Value::Array(ext.sessions.with(cx.session_id(), |s| {
-                s.pages.iter().map(list_page).collect()
+                s.pages.iter().filter(|p| !p.id.is_empty()).map(list_page).collect()
             })))
         });
         Ok(())

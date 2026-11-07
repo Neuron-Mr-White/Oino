@@ -83,6 +83,7 @@ function session(): MockSession {
         asked.push(String(((c as { payload?: { question?: string } }).payload ?? {}).question ?? ''));
         return { id: `p${asked.length}`, answer: btWAnswer, done: true };
       }
+      if (name === 'btw.delete') { const id = (c as { payload: { id: string } }).payload.id; const index = Number(id.slice(1)) - 1; asked.splice(index, 1); return { deleted: true }; }
       if (name === 'btw.list') return asked.map((q, i) => ({ id: `p${i + 1}`, question: q, answer: btWAnswer, done: true }));
       return {};
     },
@@ -329,6 +330,15 @@ describe('side chat tab (Z-31)', () => {
     field.dispatchEvent(new Event('input', { bubbles: true }));
     screen.getByTestId('btw-ask').click();
     await waitFor(() => expect(screen.getByTestId('btw-error').textContent).toBe('Provider unavailable'));
+  });
+
+  it('deletes a card from the service and refreshes the list', async () => {
+    await openHandle();
+    asked.push('remove me');
+    withRouter(() => <BtwTab {...tab('btw', {})} />);
+    (await screen.findByRole('button', { name: 'Close side question' })).click();
+    await waitFor(() => expect(screen.queryByTestId('btw-page')).toBeNull());
+    expect(asked).toEqual([]);
   });
 
   it('supports multiline questions and does not send during IME composition', async () => {

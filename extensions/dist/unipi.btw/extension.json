@@ -1,0 +1,24 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.btw",
+  "name": "BTW",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Ask a side question in an inline panel — read-only, never reaches the main agent.",
+  "license": "MIT",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "agents": {
+      "spawn": true,
+      "maxDepth": 1
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:69831a05bac26f471c46d50471c5586cba63e061395e808c79104f8d6691246c"
+  }
+}

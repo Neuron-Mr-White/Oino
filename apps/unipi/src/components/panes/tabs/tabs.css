@@ -123,6 +123,10 @@
 .btab-page { border-radius: 14px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 60%); padding: 10px 12px 8px; }
 .btab-page + .btab-page { margin-top: 0; }
 .btab-q { display: flex; align-items: center; gap: 7px; font-size: calc(13px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.btab-question { flex: 1; min-width: 0; }
+.btab-close { flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; border-radius: 6px; background: transparent; color: var(--color-text-dim); }
+.btab-close:hover { background: var(--color-surface-3); color: var(--color-text); }
+html:not([data-shell='desktop']) .btab-close { width: 40px; height: 40px; min-height: 40px; }
 .btab-q > svg { color: var(--color-claw); }
 .btab-tools { margin: 6px 0 0; padding: 0 0 0 22px; list-style: none; font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
 .btab-answer { margin-top: 8px; font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(21px * var(--ui-font-scale)); color: var(--color-text); }

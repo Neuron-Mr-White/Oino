@@ -6,7 +6,7 @@
  * and "Ask in main chat" copies a Q&A into the composer draft.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
-import { MessageCircleQuestion, Send } from 'lucide-solid';
+import { MessageCircleQuestion, Send, X } from 'lucide-solid';
 import { copyText } from '../../../lib/board/share';
 import { renderBlocks } from '../../../lib/chat/markdown';
 import { setComposerText, focusComposer } from '../../../lib/composer/drafts';
@@ -50,6 +50,7 @@ export function BtwTab(props: PaneTabProps) {
   };
   createEffect(() => { question(); resizeField(); });
   const [asking, setAsking] = createSignal(false);
+  const [hidePending, setHidePending] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>();
 
   const refresh = () => {
@@ -74,12 +75,14 @@ export function BtwTab(props: PaneTabProps) {
     const s = live();
     const q = (text ?? question()).trim();
     if (!s || !q || asking()) return;
+    setHidePending(false);
     setAsking(true);
     setError(undefined);
     setQuestion('');
     try {
       const reply = await askBtw(s, q);
       if (reply?.error) setError(errorText(reply.error));
+      if (hidePending() && reply?.id) await s.cmd({ type: '_oino/service_call', target: 'unipi.btw', name: 'btw.delete', payload: { id: reply.id } });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -100,12 +103,22 @@ export function BtwTab(props: PaneTabProps) {
     void ask(q);
   });
 
-  const own = createMemo<BtwPage[]>(() => (asking() ? [{ id: 'asking', question: pendingQ, answer: '', done: false, running: true }, ...pages()] : pages()));
+  const own = createMemo<BtwPage[]>(() => (asking() && !hidePending() ? [{ id: 'asking', question: pendingQ, answer: '', done: false, running: true }, ...pages()] : pages()));
   let pendingQ = '';
 
   const send = () => {
     pendingQ = question().trim();
     void ask();
+  };
+
+  const closePage = async (page: BtwPage) => {
+    if (page.id === 'asking') { setHidePending(true); return; }
+    const s = live();
+    if (!s) return;
+    try {
+      await s.cmd({ type: '_oino/service_call', target: 'unipi.btw', name: 'btw.delete', payload: { id: page.id } });
+      await refresh();
+    } catch (e) { setError(errorText(e)); }
   };
 
   const intoComposer = (page: BtwPage) => {
@@ -123,7 +136,8 @@ export function BtwTab(props: PaneTabProps) {
             <div class="btab-page" data-testid="btw-page">
               <div class="btab-q">
                 <MessageCircleQuestion size={15} class="shrink-0" />
-                <span class="truncate">{page.question}</span>
+                <span class="truncate btab-question">{page.question}</span>
+                <button type="button" class="btab-close" aria-label="Close side question" onClick={() => void closePage(page)}><X size={14} /></button>
               </div>
               <Show when={page.toolLines?.length}>
                 <ul class="btab-tools" data-testid="btw-tools">
