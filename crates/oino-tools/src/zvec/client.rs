@@ -5,7 +5,7 @@ use std::process::Stdio;
 #[cfg(not(feature = "zvec"))]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-const MANIFEST: &str = include_str!("zvec-manifest.json");
+const MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/zvec-manifest.json"));
 
 pub(super) fn asset() -> Option<(String, Value)> {
     let manifest: Value = serde_json::from_str(MANIFEST).ok()?;

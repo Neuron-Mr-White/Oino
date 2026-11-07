@@ -50,6 +50,21 @@ stage="$root/apps/unipi/target/dist-stage/extensions"
 if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then identity=''; label="Unipi $version (productName UniPi Oino), identifier dev.unipi.oino"
 else identity='"productName": "UniPi Dev", "identifier": "dev.unipi.app.dev",'; label="Unipi $version (dev: productName UniPi Dev), identifier dev.unipi.app.dev"; fi
 if [ "$os" = linux ]; then
+  if [ "${UNIPI_LOCAL_ZVEC:-${UNIPI_RELEASE_IDENTITY:-0}}" = 1 ]; then
+    arch=$(uname -m); case "$arch" in x86_64|amd64) arch=x86_64;; aarch64|arm64) arch=aarch64;; *) echo "Unsupported helper architecture: $arch" >&2; exit 1;; esac
+    target="${arch}-unknown-linux-gnu"
+    asset_dir="$root/apps/unipi/target/local-zvec"
+    mkdir -p "$asset_dir"
+    echo "==> local glibc semantic search helper"
+    bash scripts/release/build-zvec.sh "$version" "$target" "$asset_dir"
+    export OINO_ZVEC_MANIFEST="$asset_dir/zvec-manifest.json"
+    python3 - "$asset_dir/oino-zvec-$version-$target.tar.gz" "$OINO_ZVEC_MANIFEST" "$version" "$target" <<'PY'
+import hashlib, json, pathlib, sys
+asset, manifest, version, target = sys.argv[1:]
+p = pathlib.Path(asset).resolve()
+pathlib.Path(manifest).write_text(json.dumps({'version': version, 'assets': {target: {'url': p.as_uri(), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'size': p.stat().st_size}}}))
+PY
+  fi
   echo "==> oino CLI (release)"
   cargo build --release -p oino-cli --bin oino
   oino="$root/target/release/oino"
