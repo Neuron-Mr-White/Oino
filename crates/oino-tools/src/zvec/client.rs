@@ -8,7 +8,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 const MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/zvec-manifest.json"));
 
 pub(super) fn asset() -> Option<(String, Value)> {
-    let manifest: Value = serde_json::from_str(MANIFEST).ok()?;
+    asset_from(MANIFEST)
+}
+
+fn asset_from(source: &str) -> Option<(String, Value)> {
+    let manifest: Value = serde_json::from_str(source).ok()?;
     let version = manifest.get("version")?.as_str()?;
     if version.is_empty()
         || !version
@@ -32,7 +36,11 @@ pub(super) fn asset() -> Option<(String, Value)> {
 }
 
 pub(super) fn helper(agent_dir: &Path) -> Option<PathBuf> {
-    let (version, _) = asset()?;
+    helper_for(agent_dir, asset())
+}
+
+fn helper_for(agent_dir: &Path, asset: Option<(String, Value)>) -> Option<PathBuf> {
+    let (version, _) = asset?;
     let path = agent_dir
         .join("tools/zvec")
         .join(version)
@@ -100,7 +108,11 @@ pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, Stri
     let pool = POOL.get_or_init(|| tokio::sync::Mutex::new(Pool::new()));
     let mut pool = pool.lock().await;
     if let Some(process) = pool.get_mut(&key)
-        && process.child.try_wait().map_err(|e| e.to_string())?.is_some()
+        && process
+            .child
+            .try_wait()
+            .map_err(|e| e.to_string())?
+            .is_some()
     {
         pool.remove(&key);
     }
@@ -141,6 +153,48 @@ pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, Stri
 }
 
 pub(super) fn capabilities(agent_dir: &Path) -> Value {
-    let asset = asset();
-    json!({"semanticSearch": cfg!(feature = "zvec") || helper(agent_dir).is_some(), "installed": cfg!(feature = "zvec") || helper(agent_dir).is_some(), "available": asset.is_some(), "size": asset.as_ref().and_then(|(_, a)| a.get("size")).and_then(Value::as_u64), "version": asset.map(|(v, _)| v)})
+    capabilities_for(agent_dir, asset())
+}
+
+fn capabilities_for(agent_dir: &Path, asset: Option<(String, Value)>) -> Value {
+    let installed = cfg!(feature = "zvec") || helper_for(agent_dir, asset.clone()).is_some();
+    json!({"semanticSearch": installed, "installed": installed, "available": asset.is_some(), "size": asset.as_ref().and_then(|(_, a)| a.get("size")).and_then(Value::as_u64), "version": asset.map(|(v, _)| v)})
+}
+
+#[cfg(all(test, not(feature = "zvec")))]
+mod tests {
+    #[test]
+    fn pinned_capability_tracks_installation() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
+            ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
+            ("macos", "x86_64") => "x86_64-apple-darwin",
+            ("macos", "aarch64") => "aarch64-apple-darwin",
+            ("windows", "x86_64") => "x86_64-pc-windows-msvc",
+            _ => return,
+        };
+        let manifest =
+            serde_json::json!({"version":"1.2.3", "assets":{target:{"size":123}}}).to_string();
+        let asset = super::asset_from(&manifest);
+        assert_eq!(
+            super::capabilities_for(dir.path(), asset.clone())["installed"],
+            false
+        );
+        let install = dir.path().join("tools/zvec/1.2.3");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(
+            install.join(if cfg!(windows) {
+                "oino-zvec.exe"
+            } else {
+                "oino-zvec"
+            }),
+            "fixture",
+        )
+        .unwrap();
+        assert_eq!(
+            super::capabilities_for(dir.path(), asset)["installed"],
+            true
+        );
+    }
 }
