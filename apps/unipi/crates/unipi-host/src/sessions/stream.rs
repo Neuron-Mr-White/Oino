@@ -837,7 +837,13 @@ where
                 "request"
             );
             let started = std::time::Instant::now();
-            if let Some((card, file, page)) = if crate::superagent_session::runtime(session.as_str()).is_some() { None } else { file_open(&hub, session.as_str()).await } {
+            if let Some((card, file, page)) =
+                if crate::superagent_session::runtime(session.as_str()).is_some() {
+                    None
+                } else {
+                    file_open(&hub, session.as_str()).await
+                }
+            {
                 tracing::info!(
                     session = %card.session_id,
                     entries = page.entries.len(),
@@ -1685,7 +1691,12 @@ where
                         // carry the hub's per-provider readiness. Both are app-path
                         // semantics, applied at this boundary only (the TUI/CLI keep their
                         // behaviour).
-                        let cmd = app_model_semantics(cmd);
+                        let mut cmd = app_model_semantics(cmd);
+                        if let Err(message) = resolve_prompt_images(&mut cmd, service.upgrade().map(|s| s.hub().blobs_dir()).as_deref()) {
+                            let error = AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false);
+                            write_json(write, &SessionReply::failed(id, error)).await?;
+                            continue;
+                        }
                         // E-04: a dialog answer (`extension_ui_response`) is not an RPC
                         // command — it rides the same stream as one and must reach the
                         // waiting tool instead of dying as a schema rejection (the
@@ -1871,6 +1882,42 @@ fn app_model_semantics(mut cmd: Value) -> Value {
         cmd["persist"] = Value::Bool(false);
     }
     cmd
+}
+
+/// Resolve only content-addressed blobs from this host's blob store before the core sees
+/// the unchanged image protocol. Never accept client-supplied filesystem paths.
+fn resolve_prompt_images(
+    cmd: &mut Value,
+    blobs_dir: Option<&std::path::Path>,
+) -> Result<(), String> {
+    use base64::Engine as _;
+    if cmd.get("type").and_then(Value::as_str) != Some("prompt") {
+        return Ok(());
+    }
+    let Some(images) = cmd.get_mut("images").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    for image in images {
+        let Some(reference) = image.get("mediaRef") else {
+            continue;
+        };
+        let digest = reference.as_str().ok_or("Invalid image blob reference")?;
+        if digest.len() != 64
+            || !digest
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err("Invalid image blob reference".into());
+        }
+        let dir = blobs_dir.ok_or("Host unavailable")?;
+        let bytes = std::fs::read(dir.join(digest)).map_err(|_| "Image blob not found")?;
+        image["data"] = Value::String(base64::engine::general_purpose::STANDARD.encode(bytes));
+        image
+            .as_object_mut()
+            .ok_or("Invalid image")?
+            .remove("mediaRef");
+    }
+    Ok(())
 }
 
 /// Enriches a `get_available_models` reply with the hub's per-provider readiness (F-02):
@@ -2176,6 +2223,25 @@ fn merge_delta(into: &mut SessionEventDto, next: &SessionEventDto) -> bool {
 #[allow(clippy::unwrap_used, reason = "test assertions")]
 mod app_model_tests {
     use super::*;
+
+    #[test]
+    fn prompt_blob_images_are_resolved_in_order_and_bad_refs_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let digest = "a".repeat(64);
+        std::fs::write(dir.path().join(&digest), b"image bytes").unwrap();
+        let mut cmd = json!({"type":"prompt", "message":"images", "images": (0..20).map(|_| json!({"type":"image", "mimeType":"image/png", "mediaRef":digest})).collect::<Vec<_>>()});
+        resolve_prompt_images(&mut cmd, Some(dir.path())).unwrap();
+        let images = cmd["images"].as_array().unwrap();
+        assert_eq!(images.len(), 20);
+        assert!(images
+            .iter()
+            .all(|image| image["data"] == "aW1hZ2UgYnl0ZXM=" && image.get("mediaRef").is_none()));
+        assert!(RpcRequest::from_value(cmd).is_ok());
+        let mut bad = json!({"type":"prompt", "images":[{"mediaRef":"../secret"}]});
+        assert!(resolve_prompt_images(&mut bad, Some(dir.path())).is_err());
+        let mut missing = json!({"type":"prompt", "images":[{"mediaRef":"b".repeat(64)}]});
+        assert!(resolve_prompt_images(&mut missing, Some(dir.path())).is_err());
+    }
 
     #[test]
     fn an_app_model_pick_without_a_flag_is_per_chat() {

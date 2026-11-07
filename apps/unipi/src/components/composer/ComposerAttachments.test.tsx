@@ -23,6 +23,7 @@ import { resetAttachments } from '../../lib/composer/attachments';
 import { setBlobTransport, type BlobPutResult, type BlobTransport } from '../../lib/blob';
 import { setDesktopOverride, resetLayout } from '../../lib/layout';
 import { Composer } from './Composer';
+import { UserBubble } from '../timeline/UserBubble';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
@@ -31,7 +32,7 @@ vi.mock('../../lib/imageShrink', () => ({
   QUALITY: 0.8,
   INLINE_MAX_BYTES: 700 * 1024,
   shrinkImage: async (file: Blob) => ({ blob: file, mime: 'image/png', width: 100, height: 80 }),
-  blobToBase64: async () => 'QUJD',
+  blobToBase64: async (file: Blob) => file.size > 1024 ? btoa(String.fromCharCode(file.size % 256, 0, 0)) + 'QUJD'.repeat(Math.ceil(file.size / 3) - 1) : 'QUJD',
 }));
 
 const HOST = 'pc-one';
@@ -145,6 +146,54 @@ afterEach(() => {
 });
 
 describe('inline attachment chips (Z-60 states, owner spec 2026-11-03)', () => {
+  for (const method of ['paste', 'drop'] as const) it(`${method} sends 20 realistic images as blob references`, async () => {
+    const s = await open(A);
+    const uploads: number[] = [];
+    setBlobTransport({
+      async putBytes(host, bytes) {
+        expect(host).toBe(HOST);
+        uploads.push(bytes[0]!);
+        const sha256 = bytes[0]!.toString(16).padStart(64, '0');
+        world.client(host).blobs.set(sha256, { text: 'image' });
+        return { sha256, size: bytes.length, path: '/blob', deduped: false };
+      },
+      async putFile() { throw new Error('unused'); },
+      async getFile() { throw new Error('unused'); },
+      async getBytes() { throw new Error('unused'); },
+    });
+    const c = mountComposer(s);
+    const files = Array.from({ length: 20 }, (_, i) => new File([new Uint8Array(2 * 1024 * 1024 + i)], `${i}.png`, { type: 'image/png' }));
+    const data = { files, items: files.map((file) => ({ kind: 'file', type: file.type, getAsFile: () => file })), types: ['Files'], getData: () => '' };
+    const event = new Event(method, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, method === 'paste' ? 'clipboardData' : 'dataTransfer', { value: data });
+    c.field().dispatchEvent(event);
+    await waitFor(() => expect(c.chips()).toHaveLength(20));
+    await waitFor(() => expect(c.chips().every((chip) => chip.getAttribute('data-status') === 'done')).toBe(true), { timeout: 15000 });
+    fireEvent.click(c.view.container.querySelector('[data-testid="send-send"]')!);
+    await waitFor(() => expect(c.prompt()).toBeDefined(), { timeout: 30000 });
+    const images = c.prompt()!.images as unknown as Array<{ mediaRef: string; data?: string }>;
+    expect(images).toHaveLength(20);
+    expect(images.map((image) => image.mediaRef)).toEqual(Array.from({ length: 20 }, (_, i) => i.toString(16).padStart(64, '0')));
+    expect(images.every((image) => !image.data)).toBe(true);
+    expect(uploads).toEqual(Array.from({ length: 20 }, (_, i) => i));
+  }, 60000);
+  it('shows an upload failure in the outbox and sends no prompt', async () => {
+    const s = await open(A);
+    setBlobTransport({
+      async putBytes() { throw new Error('Upload failed: connection lost'); },
+      async putFile() { throw new Error('unused'); },
+      async getFile() { throw new Error('unused'); },
+      async getBytes() { throw new Error('unused'); },
+    });
+    const c = mountComposer(s);
+    c.pick([new File([new Uint8Array(2 * 1024 * 1024)], 'large.png', { type: 'image/png' })]);
+    await waitFor(() => expect(c.chips()[0]?.getAttribute('data-status')).toBe('done'));
+    fireEvent.click(c.view.container.querySelector('[data-testid="send-send"]')!);
+    await waitFor(() => expect(s.state.outbox[0]?.status).toBe('lost'));
+    const bubble = render(() => <UserBubble chat={{ hostId: HOST }} commands={() => new Set<string>()} text={s.state.outbox[0]!.text} images={[]} pending="lost" error={s.state.outbox[0]!.error} />);
+    expect(bubble.getByTestId('tl-outbox-error').textContent).toContain('Upload failed: connection lost');
+    expect(c.prompt()).toBeUndefined();
+  });
   it('an attached image becomes an inline "image 1" chip with its thumbnail', async () => {
     const s = await open(A);
     const c = mountComposer(s);

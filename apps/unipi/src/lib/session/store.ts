@@ -110,7 +110,20 @@ export const BRANCH_PAGE = 80;
  * and otherwise queues it by the behaviour — and ignores the behaviour when
  * the run is idle (a run starts instead).
  */
-function sendCommand(mode: OutboxMode, item: OutboxItem): RpcCommand {
+async function sendCommand(hostId: string, mode: OutboxMode, item: OutboxItem): Promise<RpcCommand> {
+  if (item.images && item.images.reduce((n, image) => n + image.data.length, 0) > 700 * 1024) {
+    const { blobTransport } = await import('../blob');
+    const images: Array<{ type: 'image'; mediaRef: string; mimeType: string }> = [];
+    // Start uploads in image order, at most four at a time, and retain that order.
+    for (let i = 0; i < item.images.length; i += 4) {
+      images.push(...await Promise.all(item.images.slice(i, i + 4).map(async (image) => {
+        const bytes = Uint8Array.from(atob(image.data), (c) => c.charCodeAt(0));
+        const blob = await blobTransport().putBytes(hostId, bytes, image.mimeType);
+        return { type: 'image' as const, mediaRef: blob.sha256, mimeType: image.mimeType };
+      })));
+    }
+    return { type: 'prompt', message: item.text, images, ...(mode !== 'prompt' ? { streamingBehavior: mode } : {}) };
+  }
   const images = item.images?.map((img) => ({ type: 'image', data: img.data, mimeType: img.mimeType }));
   const base = { message: item.text, ...(images?.length ? { images } : {}) };
   if (mode === 'steer') return { type: 'prompt', ...base, streamingBehavior: 'steer' };
@@ -158,6 +171,8 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let reconciling = false;
   let reconcileAgain = false;
+  let sendTail: Promise<void> = Promise.resolve();
+  const preparing = new Set<string>();
 
   const mutate = (fn: (s: SessionState) => void) => setState(produce(fn));
   const persist = () => saveOutbox(hostId, id(), unwrap(state).outbox);
@@ -166,7 +181,10 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
     if (sweepTimer || !state.outbox.some((o) => o.status === 'sending' || o.status === 'acked')) return;
     sweepTimer = setInterval(() => {
       let lost: string[] = [];
-      mutate((s) => (lost = sweep(s)));
+      mutate((s) => {
+        for (const o of s.outbox) if (preparing.has(o.ref)) o.at = Date.now();
+        lost = sweep(s);
+      });
       if (lost.length) persist();
       if (!state.outbox.some((o) => o.status === 'sending' || o.status === 'acked')) {
         clearInterval(sweepTimer);
@@ -189,7 +207,17 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       });
     mutate((s) => markSending(s, ref));
     ensureSweep();
-    stream.cmd<{ disposition?: string } | undefined>(sendCommand(item.mode, unwrap(item))).then(
+    preparing.add(ref);
+    const send = sendTail.then(async () => {
+      if (!state.outbox.some((o) => o.ref === ref)) return undefined;
+      const command = await sendCommand(hostId, item.mode, unwrap(item));
+      if (!state.outbox.some((o) => o.ref === ref)) return undefined;
+      preparing.delete(ref);
+      mutate((s) => markSending(s, ref));
+      return stream.cmd<{ disposition?: string } | undefined>(command);
+    });
+    sendTail = send.then(() => undefined, () => undefined);
+    void send.then(
       (reply) => {
         // An extension slash command (`/plan on`, `/permission auto`, …) runs
         // immediately and answers `handled`: no user message will ever settle
@@ -202,7 +230,7 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
         mutate((s) => markLost(s, ref, toAppError(error).message));
         persist();
       },
-    );
+    ).finally(() => preparing.delete(ref));
   };
 
   const flushWaiting = () => {

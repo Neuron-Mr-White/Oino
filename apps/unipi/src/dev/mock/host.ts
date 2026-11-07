@@ -815,10 +815,11 @@ const BUILTIN: Record<string, MockOp> = {
     if (node) scan(root, node);
     return { results, more: false };
   },
-  blob_put_bytes: (a, h) => {
+  blob_put_bytes: async (a, h) => {
     const bytes = Array.isArray(a.bytes) ? (a.bytes as number[]) : [];
     const text = bytes.map((b) => String.fromCharCode(b)).join('');
-    const sha256 = `b${bytes.length}-${text.slice(0, 8)}`;
+    const digest = await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes));
+    const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
     h.blobs.set(sha256, { text });
     return { sha256, size: bytes.length, deduped: false, path: `/tmp/${sha256}` };
   },
@@ -1029,6 +1030,16 @@ export class MockHost implements HostClient {
       cmd: async <T,>(cmd: RpcCommand): Promise<T> => {
         this.world.record({ host: this.hostId, kind: 'cmd', op: cmd.type, args: cmd });
         if (!open) throw err('E_TRANSPORT', 'The session stream closed');
+        if (cmd.type === 'prompt' && Array.isArray(cmd.images)) {
+          cmd = { ...cmd, images: cmd.images.map((image: Record<string, unknown>) => {
+            if (image.mediaRef === undefined) return image;
+            const ref = String(image.mediaRef);
+            const blob = /^[a-f0-9]{64}$/.test(ref) ? this.blobs.get(ref) : undefined;
+            if (!blob) throw err('E_SCHEMA', 'Image blob not found');
+            const { mediaRef: _ref, ...rest } = image;
+            return { ...rest, data: btoa(blob.text) };
+          }) };
+        }
         const handler = session?.cmd?.[cmd.type];
         if (handler) return (await handler(cmd, this)) as T;
         if (cmd.type === 'get_commands') return { commands: session?.snapshot.commands ?? [] } as T;
