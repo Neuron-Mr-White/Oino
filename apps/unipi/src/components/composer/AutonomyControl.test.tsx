@@ -32,11 +32,11 @@ describe('v3 autonomy', () => {
     }
     expect(vi.mocked(session.cmd).mock.calls.map(([c]) => c)).toEqual([{ type: 'set_autonomy', level: 'medium' }, { type: 'set_autonomy', level: 'high' }, { type: 'set_autonomy', level: 'low' }]);
   });
-  it('focuses the approval card and does not approve on Enter or stop on Escape', () => {
+  it('does not focus the approval card or approve on Enter or stop on Escape', () => {
     const session = handle();
     const view = render(() => <ApprovalCard session={session} request={request} />);
     const card = view.getByTestId('approval-card');
-    expect(document.activeElement).toBe(card);
+    expect(document.activeElement).not.toBe(card);
     let escaped = false;
     view.container.addEventListener('keydown', () => { escaped = true; });
     fireEvent.keyDown(card, { key: 'Escape' });

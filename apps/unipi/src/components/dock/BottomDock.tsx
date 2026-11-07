@@ -18,7 +18,7 @@
  * elsewhere is read-only here — the composer is disabled and the
  * `ReadOnlyBanner` offers Take back.
  */
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from 'solid-js';
+import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from 'solid-js';
 import type { SessionHandle } from '../../lib/session/store';
 import type { UiRequest } from '../../ui/types';
 import { sendModeForEnter, followUpMode } from '../../lib/composer/sendMode';
@@ -99,9 +99,12 @@ export function BottomDock(props: {
           {props.widgets}
         </div>
       </Show>
-      <For each={props.session.state.approvals ?? []}>{(request) =>
-        <div class="dock-region dock-region-dialog"><ApprovalCard request={request} session={props.session} disabled={props.readOnly} /></div>
-      }</For>
+      <Show when={props.session.state.approvals?.[0]} keyed>{(request) =>
+        <div class="dock-region dock-region-dialog">
+          <Show when={(props.session.state.approvals?.length ?? 0) > 1}><span>1 of {props.session.state.approvals?.length}</span></Show>
+          <ApprovalCard request={request} session={props.session} disabled={props.readOnly} />
+        </div>
+      }</Show>
       <Show when={docked().length}>
         <div class="dock-region dock-region-dialog" data-region="dialog">
           <DialogPanel

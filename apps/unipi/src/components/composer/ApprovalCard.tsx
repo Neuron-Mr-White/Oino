@@ -1,4 +1,4 @@
-import { createSignal, Show, For, onMount } from 'solid-js';
+import { createSignal, Show, For } from 'solid-js';
 import { Copy, ShieldAlert } from 'lucide-solid';
 import { copyText } from '../../lib/board/share';
 import type { SessionHandle } from '../../lib/session/store';
@@ -23,9 +23,7 @@ export function ApprovalCard(props: { request: ApprovalRequest; session?: Sessio
   };
   const args = () => props.request.arguments;
   const command = () => typeof args().command === 'string' ? String(args().command) : JSON.stringify(args(), null, 2);
-  let root: HTMLElement | undefined;
-  onMount(() => root?.focus({ preventScroll: true }));
-  return <section ref={root} tabindex="-1" class="dlg dlg-approval autonomy-approval" aria-label="Command approval" data-testid="approval-card" aria-busy={pending()}
+  return <section tabindex="-1" class="dlg dlg-approval autonomy-approval" aria-label="Command approval" data-testid="approval-card" aria-busy={pending()}
     on:keydown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); } }}>
     <div class="dlg-head"><ShieldAlert size={16} class="dlg-head-icon" /><span class="dlg-eyebrow">Approval needed</span><span class="ap-origin">{props.request.tool}</span>
       <Show when={props.request.riskLevel}><span class="autonomy-risk" data-risk={props.request.riskLevel}>{props.request.riskLevel}</span></Show>

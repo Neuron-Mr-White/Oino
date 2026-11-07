@@ -58,6 +58,28 @@ const cmds = (w: MockWorld, op: string): RpcCommand[] => w.log.filter((e) => e.k
 const select: UiRequest = { id: 'd1', method: 'select', title: 'Which file first?', options: ['math.ts', 'cli.ts'] };
 
 describe('BottomDock', () => {
+  it('queues approvals in arrival order without stealing composer focus', async () => {
+    const w = world();
+    const s = await open(w);
+    render(() => <BottomDock session={s} />);
+    const input = screen.getByPlaceholderText('Message…') as HTMLInputElement;
+    input.focus();
+    fireEvent.input(input, { target: { value: 'still typing' } });
+    const request = { sessionId: 's1', tool: 'bash', riskLevel: 'high' as const, ceiling: 'medium' as const, reason: 'approval required' };
+    w.push('h1', 's1', [
+      { session: 's1', seq: 1, event: { type: 'approval_request', ...request, requestId: 'first', arguments: { command: 'first command' } } },
+      { session: 's1', seq: 2, event: { type: 'approval_request', ...request, requestId: 'second', arguments: { command: 'second command' } } },
+    ]);
+    await waitFor(() => expect(screen.getByText('first command')).toBeInTheDocument());
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('still typing');
+    expect(screen.getAllByTestId('approval-card')).toHaveLength(1);
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+    expect(screen.queryByText('second command')).toBeNull();
+    fireEvent.click(screen.getByText('Deny'));
+    await waitFor(() => expect(screen.getByText('second command')).toBeInTheDocument());
+    expect(cmds(w, 'approval_response')[0]).toMatchObject({ requestId: 'first', decision: 'deny' });
+  });
   it('[ask-user] a terminal-only dialog (/answer\'s editor) never opens in the dock; an ask_user form without its card stays docked', async () => {
     const w = world();
     const s = await open(w);
