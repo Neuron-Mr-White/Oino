@@ -1,4 +1,4 @@
-import { createResource, createSignal, Show } from 'solid-js';
+import { createResource, createSignal, onCleanup, Show } from 'solid-js';
 import { Search } from 'lucide-solid';
 import { z } from 'zod';
 import { piSettings, setPiSetting } from '../../settings/hostCmd';
@@ -11,7 +11,7 @@ export default function SearchSettings() {
   const [settings, { refetch }] = createResource(settingsHostId, piSettings);
   const [capabilities, { refetch: refetchCapabilities }] = createResource(settingsHostId, (hostId) =>
     requestParsed(hostClient(hostId), 'host_cmd', { cmd: { kind: 'search_capabilities' } },
-      z.object({ semanticSearch: z.boolean(), installed: z.boolean().optional(), available: z.boolean().optional(), size: z.number().nullable().optional() })),
+      z.object({ semanticSearch: z.boolean(), installed: z.boolean().optional(), available: z.boolean().optional(), size: z.number().nullable().optional(), downloaded: z.number().optional(), total: z.number().optional() })),
   );
   const supported = () => {
     const result = capabilities();
@@ -22,9 +22,15 @@ export default function SearchSettings() {
   const [installConsent, setInstallConsent] = createSignal(false);
   const available = () => { const result = capabilities(); return result?.ok === true && result.value.available === true; };
   const size = () => { const result = capabilities(); return result?.ok ? result.value.size : undefined; };
+  const [progress, setProgress] = createSignal({ downloaded: 0, total: 0 });
+  let timer: ReturnType<typeof setInterval> | undefined;
+  onCleanup(() => { if (timer) clearInterval(timer); });
   const action = async (kind: 'install_search' | 'uninstall_search' | 'cancel_search_install') => {
     if (kind === 'install_search' && !installConsent()) return;
-    if (kind === 'install_search') setInstalling(true);
+    if (kind === 'install_search') {
+      setInstalling(true);
+      timer = setInterval(() => { void requestParsed(hostClient(settingsHostId()), 'host_cmd', { cmd: { kind: 'search_capabilities' } }, z.object({ downloaded: z.number(), total: z.number() })).then((r) => { if (r.ok) setProgress(r.value); }); }, 500);
+    }
     setError(undefined);
     try {
       const reply = await requestParsed(hostClient(settingsHostId()), 'host_cmd', {
@@ -33,7 +39,7 @@ export default function SearchSettings() {
       if (!reply.ok) throw new Error(reply.error.message);
       if (kind !== 'cancel_search_install') await refetchCapabilities();
     } catch (e) { setError(e instanceof Error ? e.message : 'Search action failed'); }
-    finally { if (kind === 'install_search') setInstalling(false); }
+    finally { if (kind === 'install_search') { if (timer) clearInterval(timer); timer = undefined; setInstalling(false); } }
   };
   const [consent, setConsent] = createSignal(false);
   const [error, setError] = createSignal<string>();
@@ -71,7 +77,7 @@ export default function SearchSettings() {
         <p>Download size: {size() ? `${(size()! / 1_000_000).toFixed(1)} MB` : 'unknown'}</p>
         <label><input type="checkbox" checked={installConsent()} disabled={installing()} onChange={(e) => setInstallConsent(e.currentTarget.checked)} /> I consent to download and install semantic search.</label>
         <Show when={installing()} fallback={<button type="button" class="btn-secondary" disabled={!installConsent()} onClick={() => void action('install_search')}>Install semantic search</button>}>
-          <p role="status">Installing semantic search…</p><button type="button" onClick={() => void action('cancel_search_install')}>Cancel</button>
+          <p role="status">Installing semantic search… {progress().total ? `${Math.min(100, Math.floor(progress().downloaded * 100 / progress().total))}% (${(progress().downloaded / 1_000_000).toFixed(1)} / ${(progress().total / 1_000_000).toFixed(1)} MB)` : ''}</p><button type="button" onClick={() => void action('cancel_search_install')}>Cancel</button>
         </Show>
       </Show></div>}>
         <Row label="Semantic search (zvec-grep)" description="Default off. Changes apply to new sessions. Exact search always works without an index.">

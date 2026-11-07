@@ -36,7 +36,12 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 static SEARCH_INSTALL: Mutex<Option<tokio_util::sync::CancellationToken>> = Mutex::new(None);
 
 fn search_capabilities(agent_dir: &std::path::Path) -> Value {
-    oino_core::builtin::search_capabilities(agent_dir)
+    let mut value = oino_core::builtin::search_capabilities(agent_dir);
+    let (downloaded, total) = oino_core::builtin::search_install_progress();
+    value["installing"] = json!(lock(&SEARCH_INSTALL).is_some());
+    value["downloaded"] = json!(downloaded);
+    value["total"] = json!(total);
+    value
 }
 
 fn failed(message: impl std::fmt::Display) -> AppErrorDto {

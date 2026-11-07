@@ -242,6 +242,10 @@ pub fn search_capabilities(agent_dir: &std::path::Path) -> serde_json::Value {
     oino_tools::zvec::capabilities(agent_dir)
 }
 
+/// Current helper installation byte progress.
+#[must_use]
+pub fn search_install_progress() -> (u64, u64) { oino_tools::zvec::install_progress() }
+
 /// Install the optional search helper with user consent.
 /// # Errors
 /// Returns installation errors.

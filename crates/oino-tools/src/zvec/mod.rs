@@ -26,6 +26,11 @@ pub fn uninstall_helper(agent_dir: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+/// Current installation byte progress.
+#[must_use]
+pub fn install_progress() -> (u64, u64) {
+    install::progress()
+}
 /// Information about the pinned helper and its installation.
 #[must_use]
 pub fn capabilities(agent_dir: &Path) -> serde_json::Value {
