@@ -91,11 +91,68 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "release version: $v"
 
+  zvec:
+    name: semantic search helper ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup target add "${{ matrix.target }}"
+        shell: bash
+      - name: Build and package helper
+        shell: bash
+        run: bash scripts/release/build-zvec.sh '${{ needs.version.outputs.version }}' '${{ matrix.target }}' "$PWD/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zvec-${{ matrix.target }}
+          path: out/*
+
+  zvec-manifest:
+    needs: [version, zvec]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zvec-*
+          path: out
+          merge-multiple: true
+      - name: Pin asset checksums
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          version = os.environ['VERSION']
+          prefix = f'oino-zvec-{version}-'
+          assets = {}
+          for path in Path('out').glob('*.tar.gz'):
+              target = path.name.removeprefix(prefix).removesuffix('.tar.gz')
+              assets[target] = {'url': f"https://github.com/{os.environ['REPO']}/releases/download/v{version}/{path.name}", 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'size': path.stat().st_size}
+          assert len(assets) == 5
+          Path('zvec-manifest.json').write_text(json.dumps({'version': version, 'assets': assets}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zvec-manifest
+          path: zvec-manifest.json
+
   # ── oino CLI/TUI ───────────────────────────────────────────────────────────
 
   oino:
     name: oino ${{ matrix.target }}
-    needs: [wasm, version]
+    needs: [wasm, version, zvec-manifest]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -112,6 +169,10 @@ jobs:
       TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: zvec-manifest
+          path: crates/oino-tools/src/zvec
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target\napps/unipi -> target"
@@ -207,7 +268,7 @@ jobs:
 
   app-linux:
     name: unipi desktop (linux)
-    needs: [wasm, version]
+    needs: [wasm, version, zvec-manifest]
     runs-on: ubuntu-22.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -226,6 +287,10 @@ jobs:
         with:
           name: dist
           path: extensions/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: zvec-manifest
+          path: crates/oino-tools/src/zvec
       - name: Tauri prerequisites (webkitgtk et al.)
         run: |
           sudo apt-get update
@@ -285,7 +350,7 @@ jobs:
 
   app-windows:
     name: unipi desktop (windows)
-    needs: [wasm, version]
+    needs: [wasm, version, zvec-manifest]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -304,6 +369,10 @@ jobs:
         with:
           name: dist
           path: extensions/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: zvec-manifest
+          path: crates/oino-tools/src/zvec
       - name: unipi-host sidecar (native MSVC)
         shell: bash
         run: |
@@ -351,7 +420,7 @@ jobs:
     name: unipi desktop (macos, universal)
     # UNSIGNED: ad-hoc codesign only (dist.md §2.1) — no Apple Developer
     # account. First launch needs right-click → Open; apps/unipi/BUILDING.md.
-    needs: [wasm, version]
+    needs: [wasm, version, zvec-manifest]
     runs-on: macos-15
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -370,6 +439,10 @@ jobs:
         with:
           name: dist
           path: extensions/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: zvec-manifest
+          path: crates/oino-tools/src/zvec
       - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - name: unipi-host sidecar (universal lipo + ad-hoc codesign)
         run: |
@@ -531,7 +604,7 @@ jobs:
 
   release:
     name: GitHub Release
-    needs: [wasm, version, oino, app-linux, app-windows, app-macos, app-android]
+    needs: [wasm, version, zvec, zvec-manifest, oino, app-linux, app-windows, app-macos, app-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -547,6 +620,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: 'unipi-*'
+          path: out
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zvec-*
           path: out
           merge-multiple: true
       - name: SHA256SUMS + release-manifest.json

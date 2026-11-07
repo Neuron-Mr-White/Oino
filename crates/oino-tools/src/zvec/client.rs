@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+#[cfg(not(feature = "zvec"))]
 use std::process::Stdio;
+#[cfg(not(feature = "zvec"))]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const MANIFEST: &str = include_str!("zvec-manifest.json");
@@ -42,9 +44,24 @@ pub(super) fn helper(agent_dir: &Path) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+#[cfg(not(feature = "zvec"))]
 pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, String> {
     let path = helper(agent_dir).ok_or(super::INSTALL)?;
+    let library_dir = path.parent().ok_or("Invalid helper path")?;
+    let library_var = if cfg!(target_os = "macos") {
+        "DYLD_LIBRARY_PATH"
+    } else if cfg!(windows) {
+        "PATH"
+    } else {
+        "LD_LIBRARY_PATH"
+    };
+    let mut paths = vec![library_dir.to_path_buf()];
+    if let Some(existing) = std::env::var_os(library_var) {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    let library_path = std::env::join_paths(paths).map_err(|e| e.to_string())?;
     let mut child = tokio::process::Command::new(&path)
+        .env(library_var, library_path)
         .env("OINO_AGENT_DIR", agent_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
