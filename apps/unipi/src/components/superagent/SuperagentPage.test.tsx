@@ -27,6 +27,7 @@ vi.mock('../phone/Sheet', () => ({
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setHostClientFactory(undefined); resetSessions(); resetHubs(); resetLayout(); setDesktopOverride(undefined); setPlatformOverride(undefined); });
 const status: SuperagentStatus = { enabled: false, concurrencyCap: 2, workers: [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'high', step: 'Testing', tool: 'bash', startedAt: new Date().toISOString(), cost: 1.25 }], needsYou: [{ projectId: 'oino', taskId: 'OIN-12', status: 'in_review' }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain should I use?' }] };
 function mount(value = status) {
+  setHostClientFactory(createMockHost(superagent).client);
   vi.spyOn(superagentApi, 'status').mockResolvedValue({ ok: true, value });
   vi.spyOn(boardApi, 'task').mockImplementation(async (_host, _project, id) => ({ id, title: `Title ${id}`, autonomy: id === 'WEB-8' ? 'low' : 'medium' }) as never);
   const onOpen = vi.fn(); const onTicket = vi.fn();
@@ -56,6 +57,14 @@ describe('v3 Superagent', () => {
     expect(onOpen).toHaveBeenCalledWith('worker-14');
     fireEvent.click(screen.getByText('Allow once'));
     await waitFor(() => expect(respond).toHaveBeenCalledWith('pc-coffee', 'oino', 'OIN-14', 'worker-14', 'req-1', 'allow_once'));
+  });
+  it('removes a stale approval and shows an inline notice', async () => {
+    const parked = { ...status, needsYou: [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked' as const, workerSessionId: 'worker-14', requestId: 'req-stale', sessionId: 'worker-14', tool: 'bash', ceiling: 'medium' as const, reason: 'needs Autonomy High' }] };
+    vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: false, error: { code: 'E_BOARD_REJECTED', message: 'Already answered', retryable: false } });
+    mount(parked);
+    fireEvent.click(await screen.findByText('Allow once'));
+    await screen.findByText('This request is no longer pending');
+    expect(screen.queryByTestId('approval-card')).toBeNull();
   });
   it('watcher_and_relay', async () => {
     const configure = vi.spyOn(superagentApi, 'configure').mockResolvedValue({ ok: true, value: { enabled: true, concurrencyCap: 2 } });

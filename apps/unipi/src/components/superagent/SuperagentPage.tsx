@@ -14,6 +14,7 @@ import { api as boardApi } from '../../lib/board/api';
 import { boardUi, rememberLast } from '../../lib/board/ui';
 import { boardStore } from '../../lib/board/store';
 import { sessionHref } from '../shell/Sidebar';
+import { sessions } from '../../lib/session/store';
 import { ConfigSchema, openSuperagentSession, RelayTextSchema, superagentApi, type SuperagentStatus, type Worker } from './api';
 import './superagent.css';
 
@@ -30,6 +31,7 @@ export function WorkersPane(props: { hostId: string; onOpen: (id: string) => voi
   const [relayTo, setRelayTo] = createSignal<Worker>();
   const [text, setText] = createSignal('');
   const [notice, setNotice] = createSignal('');
+  const [cleared, setCleared] = createSignal<string[]>([]);
   const [now, setNow] = createSignal(Date.now());
   const [titles, setTitles] = createSignal<Record<string, { title: string; autonomy?: string }>>({});
   let generation = 0;
@@ -63,12 +65,29 @@ export function WorkersPane(props: { hostId: string; onOpen: (id: string) => voi
     props.hostId;
     generation++;
     loading = false;
-    setStatus(undefined); setError(''); setTitles({}); setRelayTo(undefined); setNotice(''); setBusy(false); setCapDirty(false);
+    setStatus(undefined); setError(''); setTitles({}); setRelayTo(undefined); setNotice(''); setCleared([]); setBusy(false); setCapDirty(false);
     void refresh();
     const timer = setInterval(() => { setNow(Date.now()); void refresh(); }, 5000);
     onCleanup(() => { generation++; clearInterval(timer); });
   });
   const meta = (project: string, task: string) => titles()[`${project}/${task}`];
+  const visibleNeeds = () => (status()?.needsYou ?? []).filter((ticket) => !ticket.requestId || !cleared().includes(ticket.requestId));
+  function clearRequest(id: string, stale = false) {
+    setCleared((old) => old.includes(id) ? old : [...old, id]);
+    if (stale) setNotice('This request is no longer pending');
+  }
+  function WatchApproval(props: { sessionId: string; requestId: string }) {
+    const worker = sessions().ensure(propsHost(), props.sessionId);
+    const release = worker.acquire(); onCleanup(release);
+    let seen = false;
+    createEffect(() => {
+      const pending = (worker.state.approvals ?? []).some((r) => r.requestId === props.requestId);
+      if (pending) seen = true;
+      else if (seen && worker.state.conn === 'live') clearRequest(props.requestId);
+    });
+    return null;
+  }
+  const propsHost = () => props.hostId;
   async function configure(enabled: boolean) {
     if (busy()) return;
     const parsed = ConfigSchema.safeParse({ enabled, concurrencyCap: Number(cap()) });
@@ -131,7 +150,7 @@ export function WorkersPane(props: { hostId: string; onOpen: (id: string) => voi
         <section class="sa-list"><h2>Workers <span>{s().workers.length}</span></h2><Show when={s().workers.length} fallback={<p class="sa-empty">No live workers. Ask Superagent to start a ready ticket.</p>}>
           <For each={s().workers}>{(worker) => <article class="sa-worker"><button class="sa-ticket" onClick={() => props.onTicket(worker.projectId, worker.taskId)}><span class="sa-project">{worker.projectId}</span><strong>{worker.taskId}{meta(worker.projectId, worker.taskId)?.title ? ` · ${meta(worker.projectId, worker.taskId)!.title}` : ''}</strong></button><div class="sa-worker-state"><span class="sa-live-dot" />Running<span class="sa-autonomy">{autonomyLabel(worker.autonomy)}</span></div><dl><div><dt>Step</dt><dd>{worker.step ?? 'Not reported'}</dd></div><div><dt>Tool</dt><dd>{worker.tool ?? 'Not reported'}</dd></div><div><dt>Elapsed</dt><dd>{elapsed(worker.startedAt)}</dd></div><div><dt>Cost</dt><dd>{worker.cost === null ? 'Not reported' : `$${worker.cost.toFixed(2)}`}</dd></div></dl><div class="sa-actions"><Button onClick={() => props.onOpen(worker.sessionId)}>Open</Button><Button disabled={busy()} onClick={() => { setRelayTo(worker); setText(''); }}>Relay</Button><Button disabled={busy()} kind="danger" onClick={() => void stop(worker)}>Stop</Button></div></article>}</For>
         </Show></section>
-        <section class="sa-list"><h2>Needs you <span>{s().needsYou.length}</span></h2><Show when={s().needsYou.length} fallback={<p class="sa-empty">Nothing waiting for you.</p>}><For each={s().needsYou}>{(ticket) => <Show when={ticket.requestId && ticket.workerSessionId && ticket.sessionId && ticket.tool && ticket.ceiling && ticket.reason} fallback={<button class="sa-needs" onClick={() => props.onTicket(ticket.projectId, ticket.taskId)}><span class="sa-project">{ticket.projectId} · {ticket.status === 'blocked' ? 'Blocked' : 'In review'}</span><strong>{ticket.taskId}{meta(ticket.projectId, ticket.taskId)?.title ? ` · ${meta(ticket.projectId, ticket.taskId)!.title}` : ''}</strong><Show when={meta(ticket.projectId, ticket.taskId)?.autonomy}>{(level) => <span class="sa-autonomy">{autonomyLabel(level())}</span>}</Show><Show when={ticket.question}><p>{ticket.question}</p></Show></button>}><div><button class="sa-needs" onClick={() => props.onTicket(ticket.projectId, ticket.taskId)}><span class="sa-project">{ticket.projectId}</span><strong>{ticket.taskId}</strong></button><Button onClick={() => props.onOpen(ticket.workerSessionId!)}>Open worker</Button><ApprovalCard request={{ requestId: ticket.requestId!, sessionId: ticket.sessionId!, tool: ticket.tool!, arguments: { command: ticket.command ?? '', summary: ticket.summary ?? undefined }, riskLevel: ticket.risk ?? null, ceiling: ticket.ceiling!, reason: ticket.reason! }} onDecision={async (decision) => { const result = await superagentApi.approvalResponse(props.hostId, ticket.projectId, ticket.taskId, ticket.workerSessionId!, ticket.requestId!, decision); if (!result.ok) throw new Error(result.error.message); await refresh(); }} /></div></Show>}</For></Show></section>
+        <section class="sa-list"><h2>Needs you <span>{visibleNeeds().length}</span></h2><Show when={visibleNeeds().length} fallback={<p class="sa-empty">Nothing waiting for you.</p>}><For each={visibleNeeds()}>{(ticket) => <Show when={ticket.requestId && ticket.workerSessionId && ticket.sessionId && ticket.tool && ticket.ceiling && ticket.reason} fallback={<button class="sa-needs" onClick={() => props.onTicket(ticket.projectId, ticket.taskId)}><span class="sa-project">{ticket.projectId} · {ticket.status === 'blocked' ? 'Blocked' : 'In review'}</span><strong>{ticket.taskId}{meta(ticket.projectId, ticket.taskId)?.title ? ` · ${meta(ticket.projectId, ticket.taskId)!.title}` : ''}</strong><Show when={meta(ticket.projectId, ticket.taskId)?.autonomy}>{(level) => <span class="sa-autonomy">{autonomyLabel(level())}</span>}</Show><Show when={ticket.question}><p>{ticket.question}</p></Show></button>}><div><WatchApproval sessionId={ticket.workerSessionId!} requestId={ticket.requestId!} /><button class="sa-needs" onClick={() => props.onTicket(ticket.projectId, ticket.taskId)}><span class="sa-project">{ticket.projectId}</span><strong>{ticket.taskId}</strong></button><Button onClick={() => props.onOpen(ticket.workerSessionId!)}>Open worker</Button><ApprovalCard request={{ requestId: ticket.requestId!, sessionId: ticket.sessionId!, tool: ticket.tool!, arguments: { command: ticket.command ?? '', summary: ticket.summary ?? undefined }, riskLevel: ticket.risk ?? null, ceiling: ticket.ceiling!, reason: ticket.reason! }} onDecision={async (decision) => { const result = await superagentApi.approvalResponse(props.hostId, ticket.projectId, ticket.taskId, ticket.workerSessionId!, ticket.requestId!, decision); clearRequest(ticket.requestId!, !result.ok); await refresh(); }} /></div></Show>}</For></Show></section>
       </>}
     </Show>
     <SheetFrame open={!!relayTo()} onClose={() => { if (!busy()) setRelayTo(undefined); }} label="Relay to worker" level={2} title={`Relay to ${relayTo()?.taskId ?? 'worker'}`} noDrag footer={<Button kind="primary" disabled={busy()} onClick={() => void relay()}>Send relay</Button>}>
