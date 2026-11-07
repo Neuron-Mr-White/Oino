@@ -86,7 +86,7 @@ const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.l
 type Anchor = { id: string; top: number } | { el: HTMLElement; top: number };
 type Target = { id: string; align: 'start' | 'center'; offset?: number };
 
-export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element; /** Z-87: the new-chat empty state (supplied by `Conversation`, which knows the host). */ empty?: JSX.Element }) {
+export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element; /** Z-87: the new-chat empty state (supplied by `Conversation`, which knows the host). */ empty?: JSX.Element; centeredEmpty?: boolean }) {
   const session = () => props.ctx.session;
   const liveTurns = () => session().turns();
   const cachedTurns = createMemo(() => readTimelineSnapshot(session().key));
@@ -827,7 +827,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
       <TurnNavigator turns={turns} width={props.ctx.columnWidth} activeId={activeTurn} onJump={jumpToTurn} />
       <SelectionQuote root={scrollEl} sessionKey={() => props.ctx.session.key} />
       <TurnMenus ctx={props.ctx} />
-      <div class="tl" ref={setScrollEl} data-testid="tl" data-ready={ready() ? '' : undefined} onScroll={onScroll}>
+      <div class="tl" ref={setScrollEl} data-testid="tl" data-ready={ready() ? '' : undefined} data-centered-empty={props.centeredEmpty && empty() ? '' : undefined} onScroll={onScroll}>
         <div class="tl-content" ref={contentEl} onClick={onContentClick}>
           {props.header}
           <Show when={loading()}>
@@ -850,7 +850,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
               />
             </div>
           </Show>
-          <Show when={empty()}>
+          <Show when={empty() && !props.centeredEmpty}>
             <div class="tl-empty" data-testid="tl-empty">
               {props.empty ?? <p>Say hi — the first message starts the session.</p>}
             </div>
@@ -901,6 +901,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
             </div>
           </Show>
           <JumpButton show={lock.mode() === 'detached' && overflowing()} unread={lock.unread()} onJump={() => scrollEl() && (lock.jump(scrollEl()!), settle())} />
+          <Show when={props.centeredEmpty && empty()}><div class="empty-chat" data-variant="start">{props.empty}</div></Show>
           {props.dock}
           <div class="tl-overlay-host" data-testid="tl-overlay-host">
             {props.overlay}

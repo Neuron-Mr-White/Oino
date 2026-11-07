@@ -46,9 +46,12 @@
 .sa-center > .sa-loading { padding:32px; }
 .sa-loading span { display:block; height:20px; width:85%; border-radius:6px; background:var(--color-surface-3); }
 .sa-loading span:nth-child(2) { width:60%; }
-.sa-chat-empty { padding:64px 24px; text-align:center; }
-.sa-chat-empty h2 { font-size:calc(22px * var(--ui-font-scale)); font-weight:550; margin:0 0 12px; }
-.sa-chat-empty p, .sa-relay-hint { color:var(--color-text-muted); white-space:normal; line-height:1.6; }
+.sa-center .tl[data-centered-empty] { display:flex; flex-direction:column; justify-content:center; }
+.sa-center .tl[data-centered-empty] .tl-content { display:none; }
+.sa-center .tl[data-centered-empty] .tl-dock { position:relative; width:min(720px, 100%); margin:0 auto; }
+.sa-center .tl[data-centered-empty] .empty-chat { gap:8px; padding:0 8px 22px; }
+.sa-center .tl[data-centered-empty] .empty-chat-greeting { font-size:calc(28px * var(--ui-font-scale)); line-height:calc(36px * var(--ui-font-scale)); font-weight:600; margin:0; }
+.sa-relay-hint { color:var(--color-text-muted); white-space:normal; line-height:1.6; }
 .sa-relay-input { width:100%; min-height:128px; resize:vertical; padding:12px; border:1px solid var(--color-line); border-radius:var(--radius-input); color:var(--color-text); background:var(--color-bg); font:inherit; white-space:pre-wrap; box-sizing:border-box; }
 @media (max-width:1100px) { .sa-side { width:300px; } .sa-pane { padding:16px; } }
 [data-shell=phone] .sa-page, .ph-shell .sa-page { height:100%; }

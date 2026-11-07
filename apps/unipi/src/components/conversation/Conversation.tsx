@@ -362,7 +362,8 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                       {(_sid) => (
                         <Timeline
                           ctx={c()}
-                          empty={<Show when={!restricted()} fallback={<div class="sa-chat-empty"><h2>What needs doing?</h2><p>Manage project boards, dispatch workers, and follow up here.</p></div>}><EmptyChat cwd={cwd()} hostName={hostName()} /></Show>}
+                          centeredEmpty={restricted()}
+                          empty={<Show when={!restricted()} fallback={<><h2 class="empty-chat-greeting">What needs doing?</h2><p class="empty-chat-hint">Manage project boards, dispatch workers, and follow up here.</p></>}><EmptyChat cwd={cwd()} hostName={hostName()} /></Show>}
                           header={<HeaderBand entries={headerEntries()} target={target()} />}
                           overlay={<SlotModal stack={overlayStack()} target={target()} phone={!layout().desktop()} />}
                           dock={

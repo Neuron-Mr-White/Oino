@@ -135,6 +135,17 @@ describe('v3 Superagent', () => {
     expect(screen.queryByTestId('workspace-picker')).toBeNull();
     expect(screen.queryByLabelText(/Plan mode/)).toBeNull();
   });
+  it('centers the composer for an empty superagent conversation', async () => {
+    const scenario = structuredClone(superagent.hosts[0]!.sessions!['superagent-chat']!.snapshot);
+    scenario.entries = []; scenario.leaf_id = null;
+    const world = createMockHost({ ...superagent, hosts: [{ ...superagent.hosts[0]!, sessions: { ...superagent.hosts[0]!.sessions, 'superagent-chat': { snapshot: scenario } } }] });
+    setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    await screen.findByText('What needs doing?');
+    expect(screen.getByTestId('tl').hasAttribute('data-centered-empty')).toBe(true);
+    expect(screen.getByTestId('tl-dock').textContent).toContain('What needs doing?');
+  });
   it('opens history and starts another restricted session', async () => {
     const world = createMockHost(superagent);
     setHostClientFactory(world.client);
