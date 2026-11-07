@@ -3464,6 +3464,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-zvec"
+version = "1.0.0-alpha.5"
+dependencies = [
+ "dirs",
+ "oino-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
