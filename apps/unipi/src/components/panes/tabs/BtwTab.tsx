@@ -41,6 +41,13 @@ export function BtwTab(props: PaneTabProps) {
   const handle = () => (base().sessionId ? sessions().ensure(base().hostId, base().sessionId) : undefined);
   const [pages, setPages] = createSignal<BtwPage[]>([]);
   const [question, setQuestion] = createSignal('');
+  let field: HTMLTextAreaElement | undefined;
+  const resizeField = () => {
+    if (!field) return;
+    field.style.height = 'auto';
+    field.style.height = `${field.scrollHeight}px`;
+  };
+  createEffect(() => { question(); resizeField(); });
   const [asking, setAsking] = createSignal(false);
   const [error, setError] = createSignal<string | undefined>();
 
@@ -164,13 +171,14 @@ export function BtwTab(props: PaneTabProps) {
       </div>
       <div class="btab-ask">
         <textarea
+          ref={field}
           class="btab-field"
           rows={1}
           placeholder="Ask a quick side question…"
           value={question()}
           onInput={(e) => setQuestion(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               send();
             }

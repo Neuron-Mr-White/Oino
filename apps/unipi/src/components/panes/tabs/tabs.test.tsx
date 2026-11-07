@@ -317,6 +317,20 @@ describe('side chat tab (Z-31)', () => {
     expect(sessionCmds.some((l) => l.op === '_oino/service_call' && (l.args as { name?: string }).name === 'btw.ask')).toBe(true);
   });
 
+  it('supports multiline questions and does not send during IME composition', async () => {
+    await openHandle();
+    withRouter(() => <BtwTab {...tab('btw', {})} />);
+    await waitFor(() => expect(sessions().ensure(HOST, S).state.conn).toBe('live'));
+    const field = screen.getByPlaceholderText('Ask a quick side question…') as HTMLTextAreaElement;
+    field.value = 'first\nsecond';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
+    expect(asked).toEqual([]);
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await waitFor(() => expect(asked).toEqual(['first\nsecond']));
+  });
+
   it('"Ask in main chat" copies the Q&A into the session draft (still no prompt)', async () => {
     const handle = await openHandle();
     asked.push('why is the build slow?');
