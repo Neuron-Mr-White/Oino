@@ -217,6 +217,7 @@ function TaskPage(props: { id: string }) {
               </Show>
 
               <div class="board-page-scroll task-scroll" ref={scroller}>
+                <div class="task-measure">
                 <textarea
                   ref={bindTitle}
                   class="task-title-edit"
@@ -347,6 +348,7 @@ function TaskPage(props: { id: string }) {
                     </button>
                   </Show>
                 </Section>
+                </div>
               </div>
 
               <TaskComposer task={current()} value={note()} onInput={setNote} uploading={uploading()} setUploading={setUploading} />
