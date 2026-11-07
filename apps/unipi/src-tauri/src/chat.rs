@@ -85,14 +85,15 @@ fn schema(message: impl Into<String>) -> AppErrorDto {
     AppErrorDto::new(AppErrorCode::E_SCHEMA, message, false)
 }
 
-fn hello_frame(request: Request) -> Result<Vec<u8>, AppErrorDto> {
-    let hello = Control::Hello {
-        proto: PROTO_VERSION
-            .to_string()
-            .try_into()
-            .map_err(|e: String| ProtoError::Internal(e).to_app_error())?,
-        req: request,
-    };
+fn hello_frame(request: impl Serialize) -> Result<Vec<u8>, AppErrorDto> {
+    #[derive(Serialize)]
+    struct Hello<T> {
+        #[serde(rename = "type")]
+        kind: &'static str,
+        proto: &'static str,
+        req: T,
+    }
+    let hello = Hello { kind: "hello", proto: PROTO_VERSION, req: request };
     let bytes = serde_json::to_vec(&hello)
         .map_err(|e| ProtoError::Internal(e.to_string()).to_app_error())?;
     Ok(encode(FrameKind::Control, &bytes))
@@ -126,7 +127,7 @@ async fn read_frame<R: AsyncRead + Unpin>(
 async fn hello_reply<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     send: &mut W,
     recv: &mut R,
-    req: Request,
+    req: impl Serialize,
     limit: Duration,
 ) -> Result<Control, AppErrorDto> {
     send.write_all(&hello_frame(req)?)
@@ -213,7 +214,7 @@ pub(crate) async fn one_shot(
     app: &tauri::AppHandle,
     state: &NetState,
     host_id: &str,
-    req: Request,
+    req: impl Serialize,
     limit: Duration,
 ) -> Result<serde_json::Value, AppErrorDto> {
     let dir = directory(app)?;
@@ -712,29 +713,36 @@ pub async fn superagent_status(
     one_shot(&app, &state, &host_id, Request::SuperagentStatus, REPLY_TIMEOUT).await
 }
 
-/// Authenticated Superagent dispatcher operation.
-#[tauri::command]
-pub async fn superagent_configure(
-    app: tauri::AppHandle,
-    state: State<'_, NetState>,
-    host_id: String,
-    enabled: bool,
-    concurrency_cap: usize,
-) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SuperagentConfigure { enabled, concurrency_cap }, REPLY_TIMEOUT).await
+// Preserve protocol fields, including future additions, instead of rebuilding a typed request.
+fn superagent_request(op: &str, args: serde_json::Value) -> Result<serde_json::Value, AppErrorDto> {
+    let mut args = args.as_object().cloned().ok_or_else(|| schema("Superagent args must be an object"))?;
+    args.insert("op".into(), op.into());
+    Ok(args.into())
 }
 
-/// Authenticated Superagent dispatcher operation.
-#[tauri::command]
-pub async fn superagent_start(
-    app: tauri::AppHandle,
-    state: State<'_, NetState>,
-    host_id: String,
-    project_id: String,
-    task_id: String,
-) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SuperagentStart { project_id, task_id: Some(task_id), task_ids: vec![], preset_id: None, overrides: None }, REPLY_TIMEOUT).await
+macro_rules! superagent_command {
+    ($name:ident, $op:literal) => {
+        #[tauri::command]
+        pub async fn $name(
+            app: tauri::AppHandle,
+            state: State<'_, NetState>,
+            host_id: String,
+            args: serde_json::Value,
+        ) -> Result<serde_json::Value, AppErrorDto> {
+            one_shot(&app, &state, &host_id, superagent_request($op, args)?, REPLY_TIMEOUT).await
+        }
+    };
 }
+
+superagent_command!(superagent_configure, "superagent.configure");
+superagent_command!(superagent_start, "superagent.start");
+superagent_command!(superagent_set_mode, "superagent.set_mode");
+superagent_command!(superagent_configure_project, "superagent.configure_project");
+superagent_command!(superagent_presets_list, "superagent.presets.list");
+superagent_command!(superagent_presets_save, "superagent.presets.save");
+superagent_command!(superagent_presets_delete, "superagent.presets.delete");
+superagent_command!(superagent_presets_set_default, "superagent.presets.set_default");
+superagent_command!(superagent_relay, "superagent.relay");
 
 /// Authenticated Superagent dispatcher operation.
 #[tauri::command]
@@ -746,19 +754,6 @@ pub async fn superagent_stop(
     task_id: String,
 ) -> Result<serde_json::Value, AppErrorDto> {
     one_shot(&app, &state, &host_id, Request::SuperagentStop { project_id, task_id }, REPLY_TIMEOUT).await
-}
-
-/// Authenticated Superagent dispatcher operation.
-#[tauri::command]
-pub async fn superagent_relay(
-    app: tauri::AppHandle,
-    state: State<'_, NetState>,
-    host_id: String,
-    project_id: String,
-    task_id: String,
-    text: String,
-) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SuperagentRelay { project_id, task_id: Some(task_id), text, task_ids: vec![], delivery: None, priority: false }, REPLY_TIMEOUT).await
 }
 
 /// Answer a pending approval on a live dispatcher worker.
@@ -1272,10 +1267,34 @@ mod tests {
             assert_eq!(hello["req"]["op"], op);
         }
         let registration = include_str!("lib.rs");
-        for name in ["status", "session", "configure", "start", "stop", "relay"] {
+        for name in ["status", "sessions", "session", "configure", "start", "stop", "relay", "approval_response", "set_mode", "configure_project", "presets_list", "presets_save", "presets_delete", "presets_set_default"] {
             assert!(registration.contains(&format!("chat::superagent_{name},")));
         }
     }
+
+    fn assert_superagent_framing(op: &str, args: serde_json::Value) {
+        let mut expected = args.clone();
+        expected["op"] = op.into();
+        let bytes = hello_frame(superagent_request(op, args).unwrap()).unwrap();
+        let hello: serde_json::Value = serde_json::from_slice(&bytes[5..]).unwrap();
+        assert_eq!(hello, serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":expected}));
+    }
+
+    macro_rules! framing_test {
+        ($name:ident, $op:literal, $args:expr) => {
+            #[test]
+            fn $name() { assert_superagent_framing($op, $args); }
+        };
+    }
+    framing_test!(set_mode_framing, "superagent.set_mode", serde_json::json!({"projectId":"p","mode":"graph"}));
+    framing_test!(configure_project_framing, "superagent.configure_project", serde_json::json!({"projectId":"p","autoStart":true}));
+    framing_test!(presets_list_framing, "superagent.presets.list", serde_json::json!({}));
+    framing_test!(presets_save_framing, "superagent.presets.save", serde_json::json!({"preset":{"id":"p","future":42}}));
+    framing_test!(presets_delete_framing, "superagent.presets.delete", serde_json::json!({"presetId":"p"}));
+    framing_test!(presets_set_default_framing, "superagent.presets.set_default", serde_json::json!({"presetId":"p"}));
+    framing_test!(configure_framing, "superagent.configure", serde_json::json!({"enabled":true,"concurrencyCap":3}));
+    framing_test!(start_framing, "superagent.start", serde_json::json!({"projectId":"p","taskIds":["a","b"],"presetId":"x","overrides":{"future":42}}));
+    framing_test!(relay_framing, "superagent.relay", serde_json::json!({"projectId":"p","text":"hi","delivery":"steer","taskIds":["a"],"priority":true}));
 
     #[tokio::test]
     async fn request_returns_ok_data_or_host_error() {

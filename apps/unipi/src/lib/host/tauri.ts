@@ -71,7 +71,9 @@ export function createTauriHost(hostId: string): HostClient {
   const request = async <T,>(op: string, args?: Record<string, unknown>): Promise<T> => {
     try {
       const command = op.startsWith('superagent.') ? op.replaceAll('.', '_') : op;
-      const value = (await (hostId === APP_HOST ? invoke(command, args) : withWireId(hostId, (id) => invoke(command, { hostId: id, ...(args ?? {}) })))) as T;
+      const jsonCommands = ['superagent.configure', 'superagent.start', 'superagent.relay', 'superagent.set_mode', 'superagent.configure_project', 'superagent.presets.list', 'superagent.presets.save', 'superagent.presets.delete', 'superagent.presets.set_default'];
+      const wireArgs = jsonCommands.includes(op) ? { args: args ?? {} } : args;
+      const value = (await (hostId === APP_HOST ? invoke(command, wireArgs) : withWireId(hostId, (id) => invoke(command, { hostId: id, ...(wireArgs ?? {}) })))) as T;
       if (conn().state !== 'connected') setConn({ state: 'connected' });
       return value;
     } catch (error) {

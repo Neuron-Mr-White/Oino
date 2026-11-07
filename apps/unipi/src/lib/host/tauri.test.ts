@@ -22,6 +22,20 @@ afterEach(() => {
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+describe('tauri Superagent requests', () => {
+  it('maps JSON commands without dropping protocol or future fields', async () => {
+    const client = createTauriHost('h1');
+    const ops = ['configure', 'start', 'relay', 'set_mode', 'configure_project', 'presets.list', 'presets.save', 'presets.delete', 'presets.set_default'];
+    const args = { projectId: 'p', taskIds: ['a', 'b'], presetId: 'x', overrides: { future: 1 }, delivery: 'steer', priority: true, concurrencyCap: 3 };
+    for (const name of ops) {
+      await client.request(`superagent.${name}`, args);
+      expect(invoke).toHaveBeenLastCalledWith(`superagent_${name.replaceAll('.', '_')}`, { hostId: 'h1', args });
+    }
+    await client.request('superagent.stop', { projectId: 'p', taskId: 'a' });
+    expect(invoke).toHaveBeenLastCalledWith('superagent_stop', { hostId: 'h1', projectId: 'p', taskId: 'a' });
+  });
+});
+
 describe('tauri HostClient: session streams over chat.rs (WP-A2)', () => {
   it('maps open / new / fork to the chat.rs commands', () => {
     expect(openArgs('h1', { kind: 'open', session: 's1', sinceSeq: 42 })).toEqual({ command: 'session_open', args: { hostId: 'h1', session: 's1', sinceSeq: 42 } });
