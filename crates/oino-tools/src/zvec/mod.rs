@@ -2,6 +2,16 @@
 
 use std::path::{Path, PathBuf};
 
+mod client;
+/// Information about the pinned helper and its installation.
+#[must_use]
+pub fn capabilities(agent_dir: &Path) -> serde_json::Value {
+    client::capabilities(agent_dir)
+}
+/// Actionable refusal when the helper is absent.
+pub const INSTALL: &str =
+    "Semantic search is not installed. Open Settings › Search to install semantic search.";
+
 /// The only supported embedding model (local, CPU).
 pub const MODEL: &str = "local/potion-code-16m-v2";
 /// Actionable refusal shared by all search entry points.
@@ -71,8 +81,12 @@ pub async fn build_index(root: &Path, agent_dir: &Path, consent: bool) -> Result
     }
     #[cfg(not(feature = "zvec"))]
     {
-        let _ = (root, agent_dir);
-        Err("This build has no semantic search CPU engine (enable Cargo feature zvec)".into())
+        client::call(
+            agent_dir,
+            serde_json::json!({"op":"build_index", "root":root}),
+        )
+        .await
+        .map(|_| ())
     }
 }
 
@@ -101,10 +115,16 @@ pub async fn query(
     }
     #[cfg(not(feature = "zvec"))]
     {
-        let _ = (agent_dir, args, cancel);
-        Err(oino_agent::ToolError::new(
-            "Semantic search CPU engine is not included in this build. Use exact search or install a build with Cargo feature zvec.",
-        ))
+        let text = args
+            .get("pattern")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| oino_agent::ToolError::new("pattern is required"))?;
+        let request = serde_json::json!({"op":"query", "root":root, "text":text, "limit":args.get("head_limit")});
+        let result = tokio::select! {
+            () = cancel.cancelled() => return Err(oino_agent::ToolError::new("Search cancelled")),
+            result = client::call(agent_dir, request) => result.map_err(oino_agent::ToolError::new)?,
+        };
+        serde_json::from_value(result).map_err(|e| oino_agent::ToolError::new(e.to_string()))
     }
 }
 

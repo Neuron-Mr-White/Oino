@@ -113,6 +113,26 @@ async fn consent_and_missing_index() {
     assert!(!root.path().join(".zvec-grep").exists());
 }
 
+#[cfg(not(feature = "zvec"))]
+#[tokio::test]
+async fn missing_helper_points_to_settings() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".zvec-grep")).unwrap();
+    std::fs::write(root.path().join(".zvec-grep/manifest.json"), "{}").unwrap();
+    let mut config = config(root.path());
+    config.search.enabled = true;
+    assert!(
+        run(
+            &GrepTool::new(config),
+            json!({"pattern":"query", "search_mode":"semantic"})
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("Settings › Search")
+    );
+}
+
 #[tokio::test]
 async fn project_isolation_and_idle_unload() {
     let parent = tempfile::tempdir().unwrap();

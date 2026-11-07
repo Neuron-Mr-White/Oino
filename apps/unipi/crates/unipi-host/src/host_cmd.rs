@@ -33,8 +33,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn search_capabilities() -> Value {
-    json!({ "semanticSearch": cfg!(feature = "zvec") })
+fn search_capabilities(agent_dir: &std::path::Path) -> Value {
+    oino_core::builtin::search_capabilities(agent_dir)
 }
 
 fn failed(message: impl std::fmt::Display) -> AppErrorDto {
@@ -85,7 +85,7 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     // Package installs are file operations on the agent dir: no services needed (and a
     // broken extension set must not keep the user from removing the culprit).
     match cmd {
-        HostCmd::SearchCapabilities => return Ok(search_capabilities()),
+        HostCmd::SearchCapabilities => return Ok(search_capabilities(hub.agent_dir())),
         HostCmd::BuildSearchIndex { cwd, consent } => {
             let root = std::path::Path::new(&cwd);
             if !root.is_absolute() || !root.is_dir() {
@@ -801,8 +801,8 @@ mod search_capability_tests {
     #[test]
     fn reports_compiled_engine_not_user_toggle() {
         assert_eq!(
-            super::search_capabilities(),
-            serde_json::json!({"semanticSearch": cfg!(feature = "zvec")})
+            super::search_capabilities(std::path::Path::new("/nonexistent"))["installed"],
+            serde_json::json!(cfg!(feature = "zvec"))
         );
     }
 }

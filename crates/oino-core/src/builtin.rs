@@ -236,6 +236,12 @@ pub fn builtin_tool_entries_with_search(
         .collect()
 }
 
+/// Reports the semantic search helper capability for Settings.
+#[must_use]
+pub fn search_capabilities(agent_dir: &std::path::Path) -> serde_json::Value {
+    oino_tools::zvec::capabilities(agent_dir)
+}
+
 /// Settings-only entry point. Not registered in any model or session command catalog.
 /// # Errors
 /// Returns consent, engine availability, and indexing errors.
