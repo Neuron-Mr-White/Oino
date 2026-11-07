@@ -393,7 +393,8 @@ impl AgentTool for WorkerBoard {
 pub fn is_superagent_file(path: &std::path::Path) -> bool {
     use std::io::{BufRead, BufReader};
     use std::sync::Mutex;
-    static CACHE: OnceLock<Mutex<std::collections::HashMap<PathBuf, (std::time::SystemTime, u64, bool)>>> = OnceLock::new();
+    type Cache = std::collections::HashMap<PathBuf, (std::time::SystemTime, u64, bool)>;
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
     let Ok(meta) = std::fs::metadata(path) else { return false };
     let Ok(modified) = meta.modified() else { return false };
     let cache = CACHE.get_or_init(Default::default);
@@ -416,6 +417,28 @@ pub fn is_superagent_file(path: &std::path::Path) -> bool {
                 })
         });
     cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(path.to_path_buf(), (modified, meta.len(), result));
+    result
+}
+
+/// Read the worker marker near the session header, cached until the file changes.
+pub fn worker_file(path: &std::path::Path) -> Option<unipi_proto::session::WorkerCard> {
+    use std::io::{BufRead, BufReader};
+    use std::sync::Mutex;
+    type Cache = std::collections::HashMap<PathBuf, (std::time::SystemTime, u64, Option<unipi_proto::session::WorkerCard>)>;
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?;
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some((_, _, result)) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(path).filter(|(time, len, _)| *time == modified && *len == meta.len()) {
+        return result.clone();
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let result = BufReader::new(file).lines().take(32).map_while(Result::ok).find_map(|line| {
+        let value: serde_json::Value = serde_json::from_str(&line).ok()?;
+        if value["type"] != "custom" || value["customType"] != "oino:superagent-worker" { return None; }
+        serde_json::from_value(value["data"].clone()).ok()
+    });
+    cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(path.to_path_buf(), (modified, meta.len(), result.clone()));
     result
 }
 

@@ -45,6 +45,8 @@ pub use unipi_proto::session::CardChanges;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionCard {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker: Option<Box<unipi_proto::session::WorkerCard>>,
     /// Session id (header).
     pub session_id: String,
     /// Session file.
@@ -188,6 +190,7 @@ mod tests {
 
     fn card(id: &str, cwd: &str, updated_at: u64) -> SessionCard {
         SessionCard {
+            worker: None,
             session_id: id.to_owned(),
             file: PathBuf::from(format!("/sessions/{id}.jsonl")),
             name: None,

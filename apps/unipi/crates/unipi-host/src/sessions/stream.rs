@@ -633,6 +633,7 @@ fn wire_card(card: &HostCard) -> SessionCard {
         HubState::TakenOver { from } => (RunState::TakenOver, None, Some(from.clone())),
     };
     SessionCard {
+        worker: card.worker.as_deref().cloned(),
         session_id: card.session_id.clone(),
         file: card.file.display().to_string(),
         name: card.name.clone(),

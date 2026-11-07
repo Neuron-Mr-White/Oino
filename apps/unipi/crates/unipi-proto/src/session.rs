@@ -200,7 +200,16 @@ pub struct SessionMoveData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerCard {
+    pub task_id: String,
+    pub project_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionCard {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worker: Option<WorkerCard>,
     /// Session id (header).
     pub session_id: String,
     /// Session file (`""` for a session that has not written its first message yet).
@@ -803,6 +812,7 @@ mod tests {
         assert_eq!(value["error"]["message"], "boom");
 
         let card = SessionCard {
+            worker: None,
             session_id: "s1".into(),
             file: "/tmp/s1.jsonl".into(),
             name: None,

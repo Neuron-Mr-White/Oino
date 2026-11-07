@@ -113,6 +113,11 @@ describe('the row stats (owner-fix-8)', () => {
 });
 
 describe('SessionList', () => {
+  it('labels worker sessions with their task', async () => {
+    boot([card('worker', { worker: { taskId: 'task-42', projectId: 'project' } }), card('chat')]);
+    await waitFor(() => expect(screen.getByTestId('srow-worker').textContent).toContain('Worker · task-42'));
+    expect(screen.getByTestId('srow-chat').textContent).not.toContain('Worker ·');
+  });
   it('groups by host (This computer first, Z-8) and by project (D-9), ordered pinned → running → needs-you → recent (Z-9)', async () => {
     const cards = [
       card('idle-old', { updated_at: 100 }),

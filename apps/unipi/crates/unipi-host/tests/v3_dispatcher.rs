@@ -393,7 +393,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
         .await
         .unwrap();
     let session = runtime.session();
-    assert!(session.cwd().as_os_str().is_empty());
+    assert_eq!(session.cwd(), dir.path().join("agent/superagent"));
     assert_eq!(session.active_tool_names().len(), 6);
     let mut names: Vec<String> = session.all_tools().into_iter().map(|t| t.name).collect();
     names.sort();
@@ -428,7 +428,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
     let resumed = unipi_host::superagent_session::create_from(hub, Some(file))
         .await
         .unwrap();
-    assert!(resumed.session().cwd().as_os_str().is_empty());
+    assert_eq!(resumed.session().cwd(), dir.path().join("agent/superagent"));
     assert_eq!(resumed.session().all_tools().len(), 6);
     resumed.dispose().await;
 }
@@ -548,6 +548,7 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
     })
     .unwrap();
     let workers = HostWorkers::new(hub.clone(), f.layout.clone());
+    let mut events = hub.subscribe();
     let session_id = uuid::Uuid::now_v7().to_string();
     let task = unipi_kanboard::dispatcher::reserve(&f.layout, f.project.clone(), &id, &session_id)
         .unwrap();
@@ -555,9 +556,18 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         .launch(&f.project, &task, &session_id)
         .await
         .unwrap();
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv()).await.unwrap().unwrap();
+    assert!(matches!(event, unipi_host::sessions::hub::HubEvent::SessionChanged { card } if card.session_id == session_id && card.worker.is_some()));
+    let card = hub.list().await.unwrap().into_iter().find(|c| c.session_id == session_id).unwrap();
+    let worker = card.worker.unwrap();
+    assert_eq!(worker.task_id, id);
+    assert_eq!(worker.project_id, f.project.slug);
+    let path = card.file;
+    assert!(path.exists());
     let runtime = unipi_host::superagent_session::runtime(&session_id).unwrap();
     let session = runtime.session();
     session.wait_for_idle().await;
+    assert!(path.exists(), "worker transcript remains after end");
     assert_eq!(session.session_id(), session_id);
     assert_eq!(
         session.autonomy(),
@@ -631,16 +641,12 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
     }
     assert_eq!(f.task(&id).status, Status::Blocked);
     workers.stop(&session_id).await.unwrap();
+    assert!(path.exists(), "worker transcript remains after stop");
     assert!(cancelled.await.unwrap().is_err());
     assert!(!marker.exists());
-    unipi_kanboard::dispatcher::block(
-        &f.layout,
-        f.project.clone(),
-        &id,
-        &session_id,
-        "Worker stopped; move to todo to retry",
-    )
-    .unwrap();
+    let restarted = Dispatcher::acquire(f.layout.clone(), f.home.path().join("config.json"), Arc::new(HostWorkers::new(hub.clone(), f.layout.clone()))).await.unwrap();
+    assert!(path.exists(), "restart reconciliation preserves worker transcript");
+    drop(restarted);
     assert!(f.task(&id).run.is_none());
     assert_eq!(f.task(&id).status, Status::Blocked);
 }

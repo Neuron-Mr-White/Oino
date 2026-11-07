@@ -229,6 +229,9 @@ export function SessionRow(props: {
   );
   const chips = () => (
     <>
+      <Show when={props.card.worker}>
+        {(worker) => <span class="srow-chip">Worker · {worker().taskId}</span>}
+      </Show>
       <Show when={show('automation') && cron() && status() !== 'idle' && status() !== 'background'}>
         <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
           <Clock size={12} />

@@ -1032,6 +1032,11 @@ impl SessionHub {
         lease_holder(session_file).is_some()
     }
 
+    /// Announce a dispatcher-owned worker materialized outside the hub.
+    pub async fn announce_worker(&self, id: &str) {
+        self.inner.changed(id).await;
+    }
+
     /// A cron run just started (or finished): the run's session file is written by the
     /// `oino` subprocess directly, so nothing else emits a `SessionChanged` for it and the
     /// sidebar would only show the chat after a restart. Drops the cron cache (a just
@@ -1234,6 +1239,9 @@ impl SessionHub {
 
 impl Inner {
     fn emit(&self, event: HubEvent) {
+        if matches!(&event, HubEvent::SessionChanged { card } if self.is_superagent(&card.file)) {
+            return;
+        }
         // No receivers yet (no `events_open` client) is fine: hub events are a live channel.
         let _ = self.events.send(event);
     }
@@ -1277,6 +1285,7 @@ impl Inner {
         let cron = self.cron.owner_of(&info.id, &info.path);
         let activity = state.activity.get(&info.id);
         self.meta.onto(SessionCard {
+            worker: crate::superagent_session::worker_file(&info.path).map(Box::new),
             session_id: info.id.clone(),
             file: info.path.clone(),
             name: info.name.clone(),
@@ -1343,6 +1352,7 @@ impl Inner {
         }
         let now = epoch_ms(SystemTime::now());
         let mut card = SessionCard {
+            worker: None,
             session_id: id,
             file: PathBuf::new(),
             name: None,
@@ -1629,7 +1639,7 @@ impl Inner {
             return Ok(HubSession::new(Arc::downgrade(self), backend, card, None));
         }
         if let Ok(Some(card)) = oino_session::SessionManager::find_card(&self.sessions_root, target) {
-            if crate::superagent_session::is_superagent_file(&card.path) {
+            if self.is_superagent(&card.path) {
                 let runtime = crate::superagent_session::create_from(
                     // The public wrapper owns the Arc required by the restricted factory.
                     Arc::new(SessionHub { inner: Arc::clone(self) }), Some(card.path)
@@ -1835,12 +1845,14 @@ impl Inner {
             .archived_sessions()
             .await?
             .iter()
+            .filter(|info| !self.is_superagent(&info.path))
             .map(|info| {
                 let updated_at = info
                     .modified
                     .duration_since(UNIX_EPOCH)
                     .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
                 let card = SessionCard {
+                    worker: crate::superagent_session::worker_file(&info.path).map(Box::new),
                     session_id: info.id.clone(),
                     file: info.path.clone(),
                     name: info.name.clone(),
@@ -1901,6 +1913,7 @@ impl Inner {
             }
         }
         .unwrap_or_else(|| SessionCard {
+            worker: crate::superagent_session::worker_file(&entry.path).map(Box::new),
             session_id: entry.id.clone(),
             file: dest.clone(),
             name: entry.name.clone(),
@@ -2841,6 +2854,7 @@ impl Inner {
         let modified = epoch_ms(entry.modified);
         let cron = self.cron.owner_of(&entry.id, &dest);
         Ok(self.meta.onto(SessionCard {
+            worker: crate::superagent_session::worker_file(&dest).map(Box::new),
             session_id: entry.id.clone(),
             file: dest,
             name: entry.name.clone(),
@@ -2882,12 +2896,14 @@ impl Inner {
         }
         if query.scope != SessionsQueryScope::Live {
             for info in self.archived_sessions().await? {
+                if self.is_superagent(&info.path) { continue; }
                 let modified = epoch_ms(info.modified);
                 let created_ms = info
                     .created
                     .to_ms()
                     .unwrap_or_else(|| i64::try_from(modified).unwrap_or(i64::MAX));
                 let card = self.meta.onto(SessionCard {
+                    worker: crate::superagent_session::worker_file(&info.path).map(Box::new),
                     session_id: info.id.clone(),
                     file: info.path.clone(),
                     name: info.name.clone(),

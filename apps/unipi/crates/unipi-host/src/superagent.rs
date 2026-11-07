@@ -558,6 +558,7 @@ impl Workers for HostWorkers {
             session
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;
+            self.hub.announce_worker(id).await;
             let prompt = format!(
                 "Work ticket {} in project {}. Your claim is already reserved for session {}. Use the kanboard tool to read and transition the ticket. The tool carries your exact session id; do not override it with shell environment flags. Work unattended at the ticket autonomy. Finish to in_review with a summary, or move to blocked with a question. Never leave the ticket in_progress.\n\n{}\n{}",
                 task.id, project.slug, id, task.title, task.body
