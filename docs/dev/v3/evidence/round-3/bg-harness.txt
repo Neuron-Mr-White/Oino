@@ -1,0 +1,25 @@
+   Compiling unipi-bg-tasks-harness v0.0.0 (/home/oi/Projects/Personal/llm/oino/extensions/unipi/background-tasks/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src/lib.rs (target/debug/deps/unipi_bg_tasks_harness-e4659ca6b33adb3d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/wake.rs (target/debug/deps/wake-81766c741c673339)
+
+running 5 tests
+test bg_run_before_and_after_a_host_restart_both_wake ... ok
+test bg_run_completion_notifies_and_wakes ... ok
+test completion_survives_a_newer_load_of_the_extension_dying ... ok
+test execute_task_output_peek_block_stop_and_mixed_ids ... ok
+test task_service_policy_denial_precedes_all_side_effects ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.18s
+
+   Doc-tests unipi_bg_tasks_harness
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

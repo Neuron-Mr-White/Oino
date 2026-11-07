@@ -1,0 +1,30 @@
+{
+  "exit": 0,
+  "request_count": 3,
+  "prefix_bytes": 10566,
+  "prefix_sha256": [
+    "aede9cca97c8bf9c719620c286acccd063d311fe8d53a31d54f69fca10d6d6df",
+    "aede9cca97c8bf9c719620c286acccd063d311fe8d53a31d54f69fca10d6d6df",
+    "aede9cca97c8bf9c719620c286acccd063d311fe8d53a31d54f69fca10d6d6df"
+  ],
+  "prefix_identical": true,
+  "tool_results": [
+    {
+      "tool": "grep",
+      "error": false
+    },
+    {
+      "tool": "read",
+      "error": false
+    },
+    {
+      "tool": "bash",
+      "error": false
+    },
+    {
+      "tool": "edit",
+      "error": false
+    }
+  ],
+  "file_text": "gamma\nbeta\n"
+}

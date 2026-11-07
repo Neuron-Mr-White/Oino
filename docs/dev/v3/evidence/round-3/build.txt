@@ -1,0 +1,10 @@
+   Compiling oino-core v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-core)
+   Compiling oino-client v1.1.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-client)
+   Compiling oino-view v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-view)
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+   Compiling oino-tui v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-tui)
+   Compiling oino-acp v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-acp)
+   Compiling oino-rpc v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino-rpc)
+   Compiling oino-bench v1.0.0 (/home/oi/Projects/Personal/llm/oino/crates/oino-bench)
+   Compiling oino-cli v1.0.2 (/home/oi/Projects/Personal/llm/oino/crates/oino)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.65s

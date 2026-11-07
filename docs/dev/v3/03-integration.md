@@ -1,102 +1,98 @@
-# v3 integration gate — Round 2 (OIN-15)
+# v3 integration gate — Round 3 (OIN-15)
 
-## Verdict: FAIL
+## Verdict: FAIL — one host browser test remains unstable
 
-Linux x86_64, branch `v2`, starting at `dc5d3305`. All twelve implementation packages and the targeted audit fixes are now committed, verified with `git log --oneline --grep='\[v3/'`. Round 1 is retained in `03-integration-round-1.md`. No installation, board writes, stash, reset, or clean was performed. Existing unrelated files and the pre-existing dirty distribution checksum manifest were not staged.
+Branch `v2`, Linux x86_64, starting at `3e5bb5c5`. Verified all Round 3 commits using `git log --oneline 8d3205e3..HEAD`. Previous reports retained in `03-integration-round-{1,2}.md`. No installation, board writes, stash/reset/clean or supervisor restart was performed.
 
-## Integration changes
-
-- Handle new `CompactionState` in the Rust tree renderer and copy-summary path, restoring workspace compilation.
-- Add/register all six native Superagent commands. Five use existing authenticated `one_shot`; restricted session creation uses existing `open_session`, channel, stream registry and session command flow. No unrestricted session fallback. Native framing/registration regression passes. Live GUI-to-authenticated-host operation is still unverified.
-- Supply missing epoch field in host synthetic session fixture; update sidebar navigation assertion for the Superagent entry.
-- Give detach regression a canonical Medium shell call and a bounded wait. The old test waited indefinitely because legacy missing risk normalizes to High and is blocked. The corrected detach case passes; another checkpoint case in the same target still fails.
-- Add recorded-provider integration acceptance to `v3_prefix.rs`, exercising actual tool_search, subsequent deferred execution, forced host compaction and unattended denial in one session. Original declarations and immutable slots remain unchanged; loaded schemas append as suffixes.
+Only integration fix: `crates/oino-wasm-host/tests/probes.rs::services_bus_and_tasks_between_instances` explicitly authorizes the fixture's harmless platform shell (`sh` / `cmd`). After the task-service security fix, manifest grants alone correctly return `needs Autonomy High`. No production policy changed and no permission assertion was weakened. Probe target: 6 passed. The final full workspace run passes.
 
 ## Full gates
 
-All Cargo builds use `CARGO_BUILD_JOBS=8`. Root target grew from 8.8 to 19 GB, below the requested 30 GB trigger. No target GC was needed. Separate app/extension caches also consume disk. Available disk initially 636 GB and available RAM 38 GiB.
+All Cargo commands used `CARGO_BUILD_JOBS=8`. Root target started at 26 GB and finished at 27 GB, below the 30 GB GC trigger. Initial free disk 599 GB and available RAM 37 GiB. Separate app/extension caches remain substantial. Counts below sum Rust test-result summaries, including doctests; ignored tests are not counted as passes.
 
-| Gate | Result | Evidence under `evidence/round-2/` |
+| Gate / command | Result | Counts |
 |---|---|---|
-| `cargo build --workspace` | PASS after compaction renderer fix | `root-build-2.txt` |
-| `cargo clippy --workspace -- -D warnings` | FAIL: three client diagnostics | `clippy-final.txt` |
-| `cargo test --workspace --no-fail-fast` | FAIL: 20 targets, completed without hang after test fix | `root-test-final.txt` |
-| extensions workspace tests, `--no-fail-fast` | FAIL: provider `pi_fixtures` target, six API fixture cases | `extensions.txt` |
-| `cargo xtask wasm` | PASS: 37 components; all 100 distribution checksum entries verified | `wasm.txt` |
-| src-tauri `cargo check` | PASS | `tauri.txt` |
-| host/kanboard/proto tests, `--no-fail-fast` | FAIL: six existing host targets; dispatcher 9 and kanboard v3 4 pass | `host-final.txt` |
-| `npx tsc --noEmit` | PASS | `tsc.txt` |
-| `npx vitest run --pool threads --maxWorkers 4` | FAIL collection of one external QA fixture; 351 files / 3339 tests pass | `vitest-final.txt` |
-| core v3 acceptance after integration | PASS: 92 tests (12 autonomy, 4 codemode, 18 compaction, 6 replay, 48 prefix, 2 reminders, 2 search snapshot) | `v3-final.txt` |
-| tools v3 acceptance in workspace run | PASS: 4 execution, 7 filesystem, 4 default-feature zvec | full raw root log |
-| native Superagent framing/registration regression | PASS: 1 | `native-bridge.txt` |
-| Release script / deb build | PASS, NOT installed | `release.txt` |
+| `cargo build --workspace` | PASS | exit 0 |
+| `cargo clippy --workspace -- -D warnings` | PASS | exit 0, no diagnostics |
+| `cargo test --workspace --no-fail-fast` | PASS after fixture correction | **1002 passed, 0 failed, 1 ignored**, 126 result groups |
+| `cargo test --manifest-path extensions/Cargo.toml --workspace --no-fail-fast` | PASS | **672 passed, 0 failed, 6 ignored**, 72 result groups |
+| host/kanboard/proto `cargo test --manifest-path apps/unipi/Cargo.toml -p unipi-host -p unipi-kanboard -p unipi-proto --no-fail-fast` | FAIL | **819 passed, 1 failed, 8 ignored**, 81 result groups |
+| src-tauri `cargo check` | PASS | exit 0 |
+| `cd apps/unipi && npx tsc --noEmit` | PASS | exit 0 |
+| `cd apps/unipi && npx vitest run --pool threads --maxWorkers 4` | PASS with skips | **3341 passed, 4 skipped**, 351 files passed / 1 skipped |
+| `cargo xtask wasm` | PASS | 37 components, all 100 checksum entries verified |
+| Core v3 prefix/replay/autonomy/compaction/codemode/reminders/search tests | PASS | **92 passed** |
+| Real background-extension harness | PASS | **5 passed**, including task-service denial before side effects |
+| Native Superagent framing/registration | PASS | **1 passed** |
+| Release build script | PASS | deb and AppImage; 30 bundled extensions |
 
-The requested plain workspace test was attempted first and hit compilation failure. The final no-fail-fast command runs the same workspace tests and inventories all failures. One earlier run was terminated at the hung detach test binary; the final run completed normally with failure exit 101.
+Evidence: `evidence/round-3/{counts.json,build.txt,clippy-final.txt,root-final.txt,extensions.txt,host-final.txt,tauri.txt,vitest.txt,release.txt}`. Full logs and exit files: `/tmp/oino-v3-integrate-r3/`.
 
-### Remaining failures
+### Remaining failing target
 
-- **P1 release blockers:** strict clippy, workspace/extension/host test suites and complete end-to-end proof remain red or incomplete. Do not approve v3 from a successfully built bundle alone.
-- **P1 semantic packaging:** default release script builds without optional `zvec`; this deb is exact-search-only. Feature-enabled CPU engine runtime staging/attribution and clean-machine load checks are still required to ship decision I. See `wp-zvec-handoff.md`.
-- **P2 clippy:** `crates/oino-client/src/hub.rs:620` emits unused_async and unused_async_trait_impl; `in_process.rs:85` emits needless_pass_by_value. No suppressions or API refactor were added.
-- **P2 root failing targets:** agent `agent_loop_golden`; CLI `contract`, `dist`, `frontend`, `rpc`; client `hub`, `in_process_gui`; core `cwd_change`, `durability`, `gui_feeds`, `mode_tools_next_turn`, `runtime_flow`, `session_flow`, `session_golden`; resources `golden`, `loader`; tools `behaviour`, `golden_tools`; WASM host `bin_resolve`, `echo`.
-- **P2 host failing targets:** `instance`, `session_stream`, `sessions_hub`, `snapshot_bound`, `unipi_agents`, `unipi_settings`. Examples include fork message counts, renamed-card event, snapshot behavior, permission-gated memory process work and settings migration. Root causes were not all established.
-- **P2 legacy assertions:** several pi/provider fixtures still expect mutable system sections, old tool schemas, old event counts and unrestricted process imports. WASM `echo` now reports `needs Autonomy High`; do not restore manifest-as-consent behavior merely to pass those fixtures. Review and adapt expectations individually, preserving security assertions.
-- **P2 frontend external fixture:** `src/lib/zz-qa-update-android.test.tsx:13` reads absent `/tmp/qaupd/local/feeds/app/android/latest.json`; untouched. All collectable tests pass after navigation assertion fix.
+**P1 integration gate blocker:** `unipi-host --test browser::remote_browser_streams_frames_and_takes_input` fails in both complete host runs. First failure: `apps/unipi/crates/unipi-host/tests/browser.rs:116`, timeout waiting for a frame with Chromium 156 at `/snap/bin/chromium`. Standalone rerun passed (1 test, 10.76 seconds). Final complete run failed at `browser.rs:132`, frame acknowledgement returned `Stopped(0)`. This is intermittent browser/stream behavior, not a confirmed root cause. No timeout inflation, skip or production transport change was made. The full host gate remains FAIL despite the isolated pass.
 
-## A–L coverage table
+Four frontend tests skip only because the external Android QA feed is absent. Other ignored tests retain their repository configuration. Actual Windows gates are not covered by Linux passes.
 
-PASS here means scoped Linux acceptance, not full release closure.
+## A–L coverage
 
-| Decision | Implemented where / commit | Test | Status |
+PASS means scoped Linux implementation/acceptance evidence; it does not supersede the overall failed host gate.
+
+| Decision | Implemented where / commit evidence | Test | Status |
 |---|---|---|---|
-| A frozen prompt | resource system prompt, core prompt/tools, `9c5b1f3e`; legacy fix `465a6475` | 48 prefix cases incl forbidden content, resume and captured serializers | PASS scoped |
-| B tools/execution | tools FS `8b46ab8a`, atomic capabilities `eaa92525`, shared background `68ae3e5b` | 7 FS + 4 execution; ACP target passes; real model background smoke | PASS Linux scoped; Windows open |
-| C append-only context | core/session/provider kit `9c5b1f3e`, reminder bindings `f85ba69a`, image policies `465a6475` | real wire hash and combined prefix test; image-policy/reload tests | PASS scoped; complete byte-for-byte HTTP stream proof caveat below |
-| D skills | skill registry and reminder extensions `322cfc01` | reminder/retention and extension unit tests | PASS scoped; broad suite still red |
-| E autonomy | settings policy/core permission `2d3835a8`, UI `e73039cd` | 12 autonomy + combined denial test; AutonomyControl in passing frontend suite | PASS scoped; Windows/live disconnect gaps remain |
-| F compaction | session state/frontier, core compaction `c53b60e3` | 18 tests + forced compact in combined prefix test | PASS scoped; live-model/VCC roundtrip and model-catalog limitations open |
-| G loop guards | agent loop `bf1a3d2d` | v3 guards pass in workspace; old event golden fails | PASS scoped |
-| H codemode/deferred | tools JS/core declaration path `54b8025b` | 4 codemode + combined actual tool_search load/execute | PASS scoped; documented pi parity deviations remain |
-| I semantic grep | embedded optional CPU engine/settings `20114e99` | default-feature v3_zvec 4 + snapshot 2; feature-enabled prior worker evidence | PARTIAL: release lacks feature/runtime staging, no new feature-enabled test here |
-| J memory/dream | existing dream + usage metadata `322cfc01` | usage/prune/schedule extension tests pass | PASS unit scope; no live scheduled dream launched |
-| K sheet select | `8abc78b3`, shared regression tests | full collectable frontend suite | PASS scoped; actual Windows/UI QA not repeated |
-| L Superagent | dispatcher `1fe3aa36`, UI `dc5d3305`, native bridge in this integration | dispatcher 9 + board 4 + frontend tests + native bridge framing | PARTIAL: native bridge compiled/tested, live GUI/authenticated-host/Windows verification open |
+| A frozen prompt | resource prompt, core prompt/tools; `9c5b1f3e`, `465a6475`; Round 3 oracles | prefix 48, actual v2 replay, real request recording | PASS scoped |
+| B tools/execution | tools filesystem and atomic capabilities `eaa92525`; shared execution `68ae3e5b`; task authorization `e57559fd` | workspace tools, ACP, 5 real WASM background cases; real-model fireAndForget/output | PASS Linux scoped; Windows open |
+| C append-only context | session snapshots, provider serialization, per-entry image policy; reopen/continuation fix `4905f105` | recorded prefix, reload/image tests, combined discovery/compaction/deny | PASS scoped |
+| D skills | registry/reminder migration `322cfc01` | extension skill tests, reminders/reload/compaction retention, full workspace | PASS scoped |
+| E autonomy | host policy `2d3835a8`, option floors `5f06cde5`, task authorization `e57559fd`, UI `e73039cd` | 12 autonomy, shell option regressions, process denial, task-service no-side-effect repro | PASS scoped; real Windows/live GUI disconnect open |
+| F compaction | state/frontier/adaptive delta `c53b60e3` | 18 compaction + forced compact in captured combined test | PASS scoped; live VCC roundtrip/catalog limitations open |
+| G loop guards | agent loop `bf1a3d2d`, Round 3 reviewed steering golden | guards + full agent/workspace tests | PASS scoped |
+| H discovery/codemode | QuickJS and tool_search `54b8025b`, child declaration isolation `5e285596` | 4 codemode + actual deferred load/execute in recorded flow | PASS scoped; documented pi parity limitations retained |
+| I semantic grep | optional CPU engine `20114e99`, capability controls/size decision `37479f38` | default-feature acceptance, 5 SearchSettings cases, capability tests | RELEASE OFF by size decision; controls hidden when unsupported; no installed-screen verification |
+| J memory/dream | existing dream UI/backend, metadata usage `322cfc01` | full extension tests incl schedule/prune/migration, host memory tests | PASS unit scope; no live scheduled dream |
+| K sheet select | existing `8abc78b3` | frontend regression suite passes | PASS scoped |
+| L Superagent | dispatcher `1fe3aa36`, UI `dc5d3305`, native bridge `8d3205e3` | dispatcher/kanboard v3 pass, frontend suite, native framing test | PASS scoped; live native authenticated GUI and Windows tray unverified |
 
-## End-to-end and prefix evidence
+The feature-OFF release is now intentional under the supervisor's >40 MB size branch, not an accidental semantic packaging omission. `wp-zvec-release-size.md` records 85,055,680 bytes extra host/native runtime size and unsupported musl ONNX distribution. Search hides toggle/consent/index controls when the host reports unsupported. No semantic runtime libraries or model weights are shipped. Actual installed Search screen was not checked because installation is prohibited.
 
-### Real-model CLI run: PASS
+## End-to-end rerun
 
-Used OpenRouter `openai/gpt-4.1-mini` through a local HTTP recording proxy which forwards with the environment API key. Isolated HOME, agent and project directories under `/tmp/oino-v3-integrate-r2/recorded-background`; no owner session data opened. Headers/keys are not captured. Only explicitly selected provider/background packages were loaded, with distribution discovery disabled.
+### Real model: PASS with explicitly authorized background session
 
-The model successfully executed read, grep, edit, foreground bash, bash `echo background-ok` with `fireAndForget:true`, then `task_output` with the returned task id and `block:true`. Every tool result was non-error, process exit 0, file content became `gamma\nbeta\n`.
+Used OpenRouter `openai/gpt-4.1-mini` through a loopback recording proxy. HOME, agent, project and staged distribution are isolated under `/tmp/oino-v3-integrate-r3/recorded-background`. Only provider and background packages are staged. API key stays in environment/forwarded authorization header, not captures.
 
-Six actual provider request bodies had an identical canonical immutable-prefix byte vector of **11,479 bytes**, SHA-256 **`e2b1d2c7261f0ac834166e44e44b80df25f37b353759f59a56da1547503b9ffb`**. Compared fields are ordered tools plus the first two serialized messages (system and initial context). JSON field serialization is canonicalized by the recorder; this is equality of serialized prefix values, not a claim about arbitrary whitespace in raw HTTP bodies. Summary: `recorded-background-summary.json`. A separate four-tool real run also passed with four matching request prefixes (`recorded-real-summary.json`). An initial background experiment incorrectly used `-ne`, excluding the extension; corrected setup passed and replaced that experiment's result.
+Successful calls: read, grep, edit, foreground bash, bash `echo background-ok` with `fireAndForget:true`, then `task_output` with returned task id and `block:true`. All tool results non-error, CLI exit 0, file changed from `alpha\nbeta\n` to `gamma\nbeta\n`.
 
-### Recorded-provider combined flow: PASS
+Five main-model request bodies share the same **11,479-byte canonical immutable-prefix vector**, SHA-256 **`093b33bb36a46128d6f2394af44a58f05fc2437b90245e004d211351e3a25707`**. Compared ordered declarations plus first two messages; JSON values are canonicalized by the recorder, so this does not claim raw HTTP whitespace equality. `recorded-background-summary.json` is durable evidence. A separate four-tool real-model run also passes (`recorded-real-summary.json`).
 
-`crates/oino-core/tests/v3_prefix.rs::integration_discovery_compaction_autonomy_prefix` runs real host session machinery with a scripted provider. It calls tool_search to load deferred `mcp_integration_probe`, executes it, calls forced host compaction, then attempts unattended High `sudo true`. Policy rejects the call before execution with `needs Autonomy High`. Captured Anthropic and completions payloads (`integration-wire.json`, 12 payloads) preserve exact immutable slot text and original declaration bytes, allowing suffix declarations and excluding movable Anthropic cache-control hints. Summarizer requests correctly use a different prompt and are not compared to the main session prefix.
+Initial attempt using explicit non-bundled extension paths and default Medium failed closed (`process.allow:/bin/bash`, then `needs Autonomy High`). Corrected setup uses the release-style bundled distribution and an explicit High ceiling in the isolated agent settings, because WASM process imports conservatively classify High. No production ceiling was raised and the failure was not concealed as a passing run. Recorder scripts are committed alongside summaries for reproduction.
 
-### Real format-v2 replay: PASS
+### Recorded provider: PASS
 
-`v3_legacy_replay::actual_format_v2_preserves_source_bytes_on_open_append_and_reopen` opens the actual format-v2 fixture, asserts original bytes identical after open, appends v3 snapshot/reminder, checks original prefix unchanged and reopens without a second snapshot or any rewrite. All six replay tests pass. This closes the Round 1 inspected migration defect. ACP test target also passes, closing Round 1's client-write routing regression.
+`v3_prefix::integration_discovery_compaction_autonomy_prefix` performs actual `tool_search` loading `mcp_integration_probe`, executes the loaded tool, forces host compaction, then attempts unattended High `sudo true`. It receives `needs Autonomy High` before execution. Both production serializers preserve immutable slot text and original declaration bytes, permitting suffix-only schemas and excluding movable cache hints. Twelve payload captures: `integration-wire.json`. Summarizer uses its own prompt and is excluded from main-session comparisons.
 
-### Explicitly not proved
+### Format-v2 and bypass regressions: PASS
 
-Discovery/compaction/autonomy used a recorded fake provider rather than the working real provider. Their real host paths and serializers execute, but there is no single real-model session containing every requested scenario. VCC and LLM both have state/trigger tests; a full live VCC extension roundtrip was not run. Original format-v2 byte preservation is tested independently, not as part of the shared captured network session. Do not claim literal cached-prefix identity across independent sessions, whose initial context intentionally differs.
+`v3_legacy_replay::actual_format_v2_preserves_source_bytes_on_open_append_and_reopen` passes: actual version-2 header/source bytes survive open, v3 append and reopen unchanged as a prefix, with exactly one snapshot. All 6 replay tests pass. No owner sessions were opened.
 
-## Release artifact — do NOT install automatically
+The real background harness executes `task_service_policy_denial_precedes_all_side_effects`: the audit command is refused with no marker, output directory or registry entry. All 5 harness tests pass, including output/stop, completion delivery and wake routing.
 
-Built with `CARGO_BUILD_JOBS=8 UNIPI_RELEASE_IDENTITY=1 bash scripts/unipi-build.sh`, following repository release staging/sidecar/Tauri steps. The script produced deb and AppImage, verified 30 extensions, and did not install or restart the supervisor.
+### Unverified e2e scope
 
-- Deb: `apps/unipi/src-tauri/target/release/bundle/deb/UniPi Oino_1.0.1_amd64.deb`
-- SHA-256: **`67cb74a40cc5aa2e99f523e208d5b5634eb98807b0d830588cb9edd99bbbd077`**
-- Size reported by bundler: 82.88 MiB. Existing version preserved; no publication/version bump.
-- Includes native Superagent bridge and compaction renderer fix. Later edits affect regression tests/report only.
-- Exact-only build: semantic CPU feature/runtime delivery remains an explicit packaging gap.
+Discovery/forced compaction/autonomy use a recorded fake provider, not the working real model. No single live-model session spans every scenario. VCC state/trigger acceptance passes, but no live VCC extension roundtrip was performed. Format-v2 preservation is an independent replay test, not the same captured network session. Independent sessions have intentionally different initial context, so no identical-prefix claim is made between sessions.
 
-## Evidence retention and next step
+## Release deb — built, NOT installed
 
-Committed log tails, gate exit summary, real-run prefix summaries and combined serializer captures are in `evidence/round-2/`. Full logs, real request bodies/events and recorder scripts remain in `/tmp/oino-v3-integrate-r2/`; preserve before cleanup if needed. The pre-existing dirty checksum manifest was saved there before rebuilding, verified after rebuilding, and left unstaged.
+Exact command: `CARGO_BUILD_JOBS=8 UNIPI_RELEASE_IDENTITY=1 bash scripts/unipi-build.sh`.
 
-Resolve the 20 root and six host failing targets and strict lint without weakening permission/data-safety checks. Complete live native bridge and all-real-model/VCC scenarios, feature-enabled semantic packaging, and actual Windows/MSVC/PowerShell/process-tree/tray gates. Supervisor owns any installation decision. Overall release gate remains FAIL.
+- Path: `apps/unipi/src-tauri/target/release/bundle/deb/UniPi Oino_1.0.1_amd64.deb`
+- SHA-256: **`1fa3c12e99154b1d7d8869b31b62c97769b85015a1b06ce377b711793ff20fe5`**
+- Size: **86,931,114 bytes (82.90 MiB)**.
+- 30 bundled extensions, feature-OFF lean release identity. Version retained at 1.0.1. AppImage also generated.
+- No install, publication or supervisor restart. The only subsequent source change is a test fixture, so runtime binary matches final runtime source.
+
+## Distribution provenance and open gates
+
+The working tree already contained modified workflow WASM/extension manifest and checksum manifest on entry. Saved binary diff: `/tmp/oino-v3-integrate-r3/preexisting-dist.patch`. Rebuilding all components did not change that dirty set; every one of 100 working-tree checksum entries matches disk. These pre-existing artifacts are intentionally **not staged or committed by this integration task**. The deb contains this verified working-tree distribution, so it is not reproducible from the integration commit alone until the distribution owner reconciles/commits those files. This is an explicit shipment/provenance gate.
+
+Next: investigate the browser frame/ack instability and rerun the full host gate. Coordinate dirty workflow/checksum ownership. Complete real Windows/MSVC/PowerShell/process-tree/tray acceptance, live native GUI transport and remaining live-model/VCC checks. Do not treat passing Linux workspace tests or the built deb as full release approval. Supervisor owns installation.

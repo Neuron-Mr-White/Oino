@@ -1,0 +1,3 @@
+    Checking unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+    Checking unipi-mobile v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.52s

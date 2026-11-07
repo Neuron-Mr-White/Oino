@@ -1,0 +1,107 @@
+{
+  "build": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "clippy-final": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "root-final": {
+    "exit": "0",
+    "passed": 1002,
+    "failed": 0,
+    "ignored": 1,
+    "result_groups": 126
+  },
+  "extensions": {
+    "exit": "0",
+    "passed": 672,
+    "failed": 0,
+    "ignored": 6,
+    "result_groups": 72
+  },
+  "host-final": {
+    "exit": "101",
+    "passed": 819,
+    "failed": 1,
+    "ignored": 8,
+    "result_groups": 81
+  },
+  "tauri": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "tsc": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "vitest": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "wasm": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "release": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "e2e-core": {
+    "exit": "0",
+    "passed": 92,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 7
+  },
+  "bg-harness": {
+    "exit": "0",
+    "passed": 5,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 3
+  },
+  "background-e2e-final": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "real-e2e": {
+    "exit": "0",
+    "passed": 0,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 0
+  },
+  "native-bridge": {
+    "exit": "0",
+    "passed": 1,
+    "failed": 0,
+    "ignored": 0,
+    "result_groups": 1
+  }
+}

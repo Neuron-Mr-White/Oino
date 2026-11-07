@@ -280,6 +280,9 @@ async fn deadlines_cancellation_and_trap_restart() {
 #[tokio::test(flavor = "multi_thread")]
 async fn services_bus_and_tasks_between_instances() {
     let h = Harness::new().unwrap();
+    // Decision E: authorize this harmless shell fixture explicitly; grants alone
+    // must not authorize task-service execution.
+    h.host.allow_process_command(if cfg!(windows) { "cmd" } else { "sh" });
     let a = loaded(&h, "async-probe").await;
     let echo = loaded(&h, "echo").await;
     let cmd = |ext: &Arc<dyn ExtensionInstance>, args: &str| {

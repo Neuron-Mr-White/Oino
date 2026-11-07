@@ -1,0 +1,10 @@
+   Compiling unipi-mobile v1.0.1 (/home/oi/Projects/Personal/llm/oino/apps/unipi/src-tauri)
+   Compiling unipi-proto v1.0.0 (/home/oi/Projects/Personal/llm/oino/apps/unipi/crates/unipi-proto)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.39s
+     Running unittests src/lib.rs (apps/unipi/src-tauri/target/debug/deps/unipi_mobile_lib-d86ee2c0851e4225)
+
+running 1 test
+test chat::tests::superagent_requests_use_authenticated_hello_framing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 123 filtered out; finished in 0.00s
+

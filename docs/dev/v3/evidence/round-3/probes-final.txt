@@ -1,0 +1,14 @@
+   Compiling oino-wasm-host v1.0.1 (/home/oi/Projects/Personal/llm/oino/crates/oino-wasm-host)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.10s
+     Running tests/probes.rs (target/debug/deps/probes-7b75d81f8ec890f9)
+
+running 6 tests
+test provider_faux_streams_script ... ok
+test tool_waits_on_dialog_while_events_run ... ok
+test ui_probe_round_trips_every_request ... ok
+test agent_preopen_exposes_pi_mcp_json_only ... ok
+test services_bus_and_tasks_between_instances ... ok
+test deadlines_cancellation_and_trap_restart ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+

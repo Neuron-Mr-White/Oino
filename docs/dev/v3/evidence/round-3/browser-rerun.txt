@@ -1,0 +1,11 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+     Running tests/browser.rs (apps/unipi/target/debug/deps/browser-c6c8e1ae92eaea91)
+
+running 1 test
+test remote_browser_streams_frames_and_takes_input ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.76s
+
