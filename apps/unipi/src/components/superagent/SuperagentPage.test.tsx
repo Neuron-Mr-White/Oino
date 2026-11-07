@@ -60,11 +60,19 @@ describe('v3 Superagent', () => {
   });
   it('removes a stale approval and shows an inline notice', async () => {
     const parked = { ...status, needsYou: [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked' as const, workerSessionId: 'worker-14', requestId: 'req-stale', sessionId: 'worker-14', tool: 'bash', ceiling: 'medium' as const, reason: 'needs Autonomy High' }] };
-    vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: false, error: { code: 'E_BOARD_REJECTED', message: 'Already answered', retryable: false } });
+    vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: false, error: { code: 'E_BOARD_REJECTED', message: 'stale or wrong-session approval response', retryable: false, detail: { code: 'E_APPROVAL' } } });
     mount(parked);
     fireEvent.click(await screen.findByText('Allow once'));
     await screen.findByText('This request is no longer pending');
     expect(screen.queryByTestId('approval-card')).toBeNull();
+  });
+  it('keeps an approval visible when the host is unavailable', async () => {
+    const parked = { ...status, needsYou: [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked' as const, workerSessionId: 'worker-14', requestId: 'req-1', sessionId: 'worker-14', tool: 'bash', ceiling: 'medium' as const, reason: 'needs Autonomy High' }] };
+    vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: false, error: { code: 'E_TRANSPORT', message: 'Host offline', retryable: true } });
+    mount(parked);
+    fireEvent.click(await screen.findByText('Allow once'));
+    await screen.findByText('Host offline');
+    expect(screen.getByTestId('approval-card')).toBeTruthy();
   });
   it('watcher_and_relay', async () => {
     const configure = vi.spyOn(superagentApi, 'configure').mockResolvedValue({ ok: true, value: { enabled: true, concurrencyCap: 2 } });
