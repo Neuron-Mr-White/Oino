@@ -42,7 +42,15 @@ export function resolveHostId(hosts: readonly HostInfo[], host: string | undefin
 /** Opens a session's route from anywhere (the HashRouter follows the hash
  *  change; `useNavigate` needs a component scope). */
 export function openSessionRoute(hostId: string, sessionId: string): void {
-  location.hash = `#${sessionHref(hostId, sessionId)}`;
+  // The ordinary session route presents Superagent as a workspace chat. Resolve
+  // its identity first so notification actions return to the restricted view.
+  void import('../components/superagent/api').then(async ({ superagentApi }) => {
+    const result = await superagentApi.sessions(hostId);
+    const superagent = result.ok && result.value.some((row) => row.sessionId === sessionId);
+    location.hash = superagent
+      ? `#/superagent?host=${encodeURIComponent(hostId)}&session=${encodeURIComponent(sessionId)}`
+      : `#${sessionHref(hostId, sessionId)}`;
+  }).catch(() => { location.hash = `#${sessionHref(hostId, sessionId)}`; });
 }
 
 /** Opens the session a `unipi://s/<host>/<session>` (or v1

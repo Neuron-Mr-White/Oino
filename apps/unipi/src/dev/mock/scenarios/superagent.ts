@@ -16,6 +16,7 @@ let stopped = false;
 export const superagent: MockScenario = {
   name: 'superagent',
   hosts: [{ id: 'pc-coffee', name: 'coffee', conn: { state: 'connected' }, newSessionFrom: 'superagent-chat', sessions: { 'superagent-chat': chat, 'worker-14': worker }, ops: {
+    'superagent.sessions': () => [{ sessionId: 'superagent-chat', title: 'Superagent conversation', createdAt: '2026-11-07', updatedAt: '2026-11-07', path: '/mock/superagent-chat' }],
     'superagent.status': () => ({ enabled, concurrencyCap, workers: stopped ? [] : [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'medium', step: 'Running focused UI tests', tool: 'bash', startedAt: new Date(Date.now() - 420000).toISOString(), cost: 0.42 }], needsYou: [{ projectId: 'oino', taskId: 'OIN-12', status: 'in_review', question: null }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Should the staging deployment use the existing domain, or should I create a separate preview domain?' }] }),
     'superagent.configure': (args) => { enabled = args.enabled as boolean; concurrencyCap = args.concurrencyCap as number; return { enabled, concurrencyCap }; },
     'superagent.stop': () => { stopped = true; return { stopped: true }; },

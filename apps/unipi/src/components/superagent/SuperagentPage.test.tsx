@@ -135,6 +135,24 @@ describe('v3 Superagent', () => {
     expect(screen.queryByTestId('workspace-picker')).toBeNull();
     expect(screen.queryByLabelText(/Plan mode/)).toBeNull();
   });
+  it('opens history and starts another restricted session', async () => {
+    const world = createMockHost(superagent);
+    setHostClientFactory(world.client);
+    setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    fireEvent.click(await screen.findByLabelText('Superagent history'));
+    fireEvent.click(await screen.findByText('Superagent conversation'));
+    expect(location.hash).toContain('session=superagent-chat');
+    fireEvent.click(screen.getByLabelText('New superagent chat'));
+    await waitFor(() => expect(world.log.some((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toBe(true));
+  });
+  it('routes superagent attention to the restricted page', async () => {
+    const world = createMockHost(superagent); setHostClientFactory(world.client);
+    const { openSessionRoute } = await import('../../lib/notifyInit');
+    openSessionRoute('pc-coffee', 'superagent-chat');
+    await waitFor(() => expect(location.hash).toContain('#/superagent?host=pc-coffee&session=superagent-chat'));
+  });
   it('restricted_session_and_host_ops_use_the_exact_protocol', async () => {
     const world = createMockHost(superagent);
     setHostClientFactory(world.client);
