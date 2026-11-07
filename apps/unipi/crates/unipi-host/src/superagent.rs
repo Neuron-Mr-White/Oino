@@ -57,8 +57,11 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
-        if self.concurrency_cap == 0 {
-            return Err(fail("E_SCHEMA", "concurrencyCap must be an integer >= 1"));
+        if !(1..=3).contains(&self.concurrency_cap) {
+            return Err(fail(
+                "E_SCHEMA",
+                "concurrencyCap must be an integer between 1 and 3",
+            ));
         }
         Ok(())
     }

@@ -15,6 +15,29 @@ use unipi_kanboard::{
     model::{Actor, ChainGate, Priority, Status, Task},
 };
 
+#[test]
+fn concurrency_cap_is_limited_to_one_through_three() {
+    for cap in 1..=3 {
+        assert!(
+            Config {
+                enabled: true,
+                concurrency_cap: cap
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+    for cap in [0, 4, usize::MAX] {
+        let error = Config {
+            enabled: true,
+            concurrency_cap: cap,
+        }
+        .validate()
+        .unwrap_err();
+        assert!(error.to_string().contains("between 1 and 3"));
+    }
+}
+
 #[derive(Default)]
 struct Fake {
     live: Mutex<HashSet<String>>,
@@ -556,9 +579,20 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         .launch(&f.project, &task, &session_id)
         .await
         .unwrap();
-    let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv()).await.unwrap().unwrap();
-    assert!(matches!(event, unipi_host::sessions::hub::HubEvent::SessionChanged { card } if card.session_id == session_id && card.worker.is_some()));
-    let card = hub.list().await.unwrap().into_iter().find(|c| c.session_id == session_id).unwrap();
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(event, unipi_host::sessions::hub::HubEvent::SessionChanged { card } if card.session_id == session_id && card.worker.is_some())
+    );
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|c| c.session_id == session_id)
+        .unwrap();
     let worker = card.worker.unwrap();
     assert_eq!(worker.task_id, id);
     assert_eq!(worker.project_id, f.project.slug);
@@ -644,8 +678,17 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
     assert!(path.exists(), "worker transcript remains after stop");
     assert!(cancelled.await.unwrap().is_err());
     assert!(!marker.exists());
-    let restarted = Dispatcher::acquire(f.layout.clone(), f.home.path().join("config.json"), Arc::new(HostWorkers::new(hub.clone(), f.layout.clone()))).await.unwrap();
-    assert!(path.exists(), "restart reconciliation preserves worker transcript");
+    let restarted = Dispatcher::acquire(
+        f.layout.clone(),
+        f.home.path().join("config.json"),
+        Arc::new(HostWorkers::new(hub.clone(), f.layout.clone())),
+    )
+    .await
+    .unwrap();
+    assert!(
+        path.exists(),
+        "restart reconciliation preserves worker transcript"
+    );
     drop(restarted);
     assert!(f.task(&id).run.is_none());
     assert_eq!(f.task(&id).status, Status::Blocked);
