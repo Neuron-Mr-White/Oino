@@ -317,6 +317,20 @@ describe('side chat tab (Z-31)', () => {
     expect(sessionCmds.some((l) => l.op === '_oino/service_call' && (l.args as { name?: string }).name === 'btw.ask')).toBe(true);
   });
 
+  it('renders a plain-object service rejection message', async () => {
+    await openHandle();
+    const handle = sessions().ensure(HOST, S);
+    await waitFor(() => expect(handle.state.conn).toBe('live'));
+    const real = handle.cmd.bind(handle);
+    (handle as { cmd: unknown }).cmd = (c: { name?: string }) => c.name === 'btw.ask' ? Promise.reject({ message: 'Provider unavailable' }) : real(c as never);
+    withRouter(() => <BtwTab {...tab('btw', {})} />);
+    const field = screen.getByPlaceholderText('Ask a quick side question…') as HTMLTextAreaElement;
+    field.value = 'question';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    screen.getByTestId('btw-ask').click();
+    await waitFor(() => expect(screen.getByTestId('btw-error').textContent).toBe('Provider unavailable'));
+  });
+
   it('supports multiline questions and does not send during IME composition', async () => {
     await openHandle();
     withRouter(() => <BtwTab {...tab('btw', {})} />);

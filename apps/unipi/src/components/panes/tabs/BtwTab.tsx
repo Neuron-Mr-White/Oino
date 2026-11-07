@@ -14,6 +14,7 @@ import { sessions, type SessionHandle } from '../../../lib/session/store';
 import { setPaneComponent, type PaneTabProps } from '../../../lib/panes/kinds';
 import { MdBlock } from '../../chat/MdBlock';
 import { tabBaseOf } from './sessionTabs';
+import { errorText } from './tree';
 import './tabs.css';
 
 /** One `btw.list` page (the extension's `list_page` shape). */
@@ -23,7 +24,7 @@ export type BtwPage = {
   answer: string;
   done: boolean;
   running: boolean;
-  error?: string;
+  error?: unknown;
   toolLines?: string[];
   thinking?: string;
 };
@@ -34,7 +35,7 @@ const listPages = (s: SessionHandle): Promise<BtwPage[]> =>
     .then((reply) => (Array.isArray(reply) ? (reply as BtwPage[]).filter((p) => p && typeof p.id === 'string') : []));
 
 const askBtw = (s: SessionHandle, question: string) =>
-  s.cmd<{ id?: string; answer?: string; error?: string }>({ type: '_oino/service_call', target: 'unipi.btw', name: 'btw.ask', payload: { question } });
+  s.cmd<{ id?: string; answer?: string; error?: unknown }>({ type: '_oino/service_call', target: 'unipi.btw', name: 'btw.ask', payload: { question } });
 
 export function BtwTab(props: PaneTabProps) {
   const base = () => tabBaseOf(props.tab.params, { hostId: props.hostId, sessionId: props.sessionId });
@@ -78,9 +79,9 @@ export function BtwTab(props: PaneTabProps) {
     setQuestion('');
     try {
       const reply = await askBtw(s, q);
-      if (reply?.error) setError(reply.error);
+      if (reply?.error) setError(errorText(reply.error));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorText(e));
     } finally {
       setAsking(false);
       await refresh();
@@ -138,7 +139,7 @@ export function BtwTab(props: PaneTabProps) {
                 </Show>
               </Show>
               <Show when={page.error}>
-                <p class="btab-error">{page.error}</p>
+                <p class="btab-error">{errorText(page.error)}</p>
               </Show>
               <Show when={page.answer}>
                 <div class="btab-answer md" data-testid="btw-answer">
