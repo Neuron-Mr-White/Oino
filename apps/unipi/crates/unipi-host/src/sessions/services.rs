@@ -388,6 +388,15 @@ impl HostLoader {
     /// `--exclude-extension`.
     #[must_use]
     pub fn build(agent_dir: &Path, cwd: &Path, no_extensions: bool, excluded: &[String]) -> Self {
+        Self::build_filtered(agent_dir, cwd, no_extensions, excluded, false)
+    }
+
+    /// Restricted router: load only the normal memory extension, never project extensions.
+    pub fn memory_only(agent_dir: &Path) -> Self {
+        Self::build_filtered(agent_dir, agent_dir, false, &[], true)
+    }
+
+    fn build_filtered(agent_dir: &Path, cwd: &Path, no_extensions: bool, excluded: &[String], memory_only: bool) -> Self {
         // The UniPi reserved-panel table is host registration, not SDK data (§8).
         crate::ui_panels::register();
         let context = SourcesContext {
@@ -409,6 +418,7 @@ impl HostLoader {
         let packages: Vec<SourcedPackage> = resolved
             .packages
             .into_iter()
+            .filter(|source| !memory_only || (!source.project && source.package.manifest.id.as_str() == "unipi.memory"))
             .map(|source| SourcedPackage {
                 package: source.package,
                 project: source.project,

@@ -1,4 +1,4 @@
-//! Restricted Superagent chat: no workspace, extensions, filesystem or shell tools.
+//! Restricted Superagent chat: memory extension only, no filesystem or shell tools.
 use futures_util::future::BoxFuture;
 use oino_agent::{
     AgentTool, AgentToolResult, ToolDefinitionMeta, ToolError, ToolInvocation, UpdateSink,
@@ -36,19 +36,13 @@ pub async fn create_from(
         mode: oino_core::extensions::api::ExtensionMode::Desktop,
         has_ui: true,
         flags: ResourceFlags {
-            no_extensions: true,
             no_context_files: true,
             no_skills: true,
             no_prompt_templates: true,
             ..ResourceFlags::default()
         },
         extension_flag_values: Default::default(),
-        loader: Arc::new(crate::sessions::services::HostLoader::build(
-            hub.agent_dir(),
-            hub.agent_dir(),
-            true,
-            &[],
-        )),
+        loader: Arc::new(crate::sessions::services::HostLoader::memory_only(hub.agent_dir())),
         approve: Some(false),
         models: Some(base.models.clone()),
         settings: None,

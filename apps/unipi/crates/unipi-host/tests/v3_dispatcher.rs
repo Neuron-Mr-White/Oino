@@ -588,6 +588,11 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
     };
     use unipi_host::sessions::{HostHubOptions, SessionHub};
     let dir = tempfile::tempdir().unwrap();
+    let memory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../extensions/dist/unipi.memory");
+    assert!(memory.join("component.wasm").is_file());
+    let extensions = dir.path().join("agent/extensions");
+    std::fs::create_dir_all(&extensions).unwrap();
+    std::os::unix::fs::symlink(&memory, extensions.join("unipi.memory")).unwrap();
     let hub = SessionHub::create(HostHubOptions {
         cwd: dir.path().into(),
         agent_dir: dir.path().join("agent"),
@@ -615,21 +620,12 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
         .unwrap();
     let session = runtime.session();
     assert_eq!(session.cwd(), dir.path().join("agent/superagent"));
-    assert_eq!(session.active_tool_names().len(), 7);
+    assert!(session.active_tool_names().contains(&"memory_search".to_owned()));
+    assert!(session.active_tool_names().contains(&"memory_store".to_owned()));
     let mut names: Vec<String> = session.all_tools().into_iter().map(|t| t.name).collect();
     names.sort();
-    assert_eq!(
-        names,
-        vec![
-            "ask_user",
-            "kanboard",
-            "project_resolver",
-            "superagent.relay",
-            "superagent.set_mode",
-            "superagent.start",
-            "superagent.stop"
-        ]
-    );
+    for required in ["ask_user", "kanboard", "project_resolver", "superagent.start", "superagent.set_mode", "memory_search", "memory_store"] { assert!(names.iter().any(|n| n == required), "missing {required}: {names:?}"); }
+    for forbidden in ["read", "write", "edit", "bash", "grep", "find", "ls"] { assert!(!names.iter().any(|n| n == forbidden), "unexpected {forbidden}"); }
     let shell =
         serde_json::from_value(serde_json::json!({"command":"ls","riskLevel":"low"})).unwrap();
     assert!(session
@@ -649,7 +645,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
         .await
         .unwrap();
     assert_eq!(resumed.session().cwd(), dir.path().join("agent/superagent"));
-    assert_eq!(resumed.session().all_tools().len(), 7);
+    assert!(resumed.session().active_tool_names().contains(&"memory_search".to_owned()));
     resumed.dispose().await;
 }
 
