@@ -259,6 +259,13 @@ pub fn uninstall_search(agent_dir: &std::path::Path) -> Result<(), String> {
     oino_tools::zvec::uninstall_helper(agent_dir)
 }
 
+/// Inspect a project index without modifying it.
+/// # Errors
+/// Returns inspection errors.
+pub async fn search_index_status(root: &std::path::Path, agent_dir: &std::path::Path) -> Result<serde_json::Value, String> {
+    oino_tools::zvec::index_status(root, agent_dir).await
+}
+
 /// Settings-only entry point. Not registered in any model or session command catalog.
 /// # Errors
 /// Returns consent, engine availability, and indexing errors.

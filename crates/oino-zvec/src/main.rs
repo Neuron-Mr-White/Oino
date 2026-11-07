@@ -10,6 +10,9 @@ use tokio_util::sync::CancellationToken;
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
     Status,
+    IndexStatus {
+        root: PathBuf,
+    },
     BuildIndex {
         root: PathBuf,
     },
@@ -41,6 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let result: Result<Value, String> = match request {
             Ok(Request::Status) => {
                 Ok(json!({"loadedModels": oino_tools::zvec::loaded_models().await}))
+            }
+            Ok(Request::IndexStatus { root }) => {
+                oino_tools::zvec::index_status(&root, &agent_dir).await
             }
             Ok(Request::BuildIndex { root }) => {
                 oino_tools::zvec::build_index(&root, &agent_dir, true)

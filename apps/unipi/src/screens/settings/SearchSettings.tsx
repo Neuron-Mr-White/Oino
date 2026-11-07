@@ -44,6 +44,15 @@ export default function SearchSettings() {
   const [consent, setConsent] = createSignal(false);
   const [error, setError] = createSignal<string>();
   const [status, setStatus] = createSignal<string>();
+  const [indexStatus, setIndexStatus] = createSignal<{ state: string; files?: number | null; updated?: number | null }>();
+  const refreshIndex = async () => {
+    const cwd = settingsProjectCwd();
+    if (!cwd || !supported()) return;
+    const result = await requestParsed(hostClient(settingsHostId()), 'host_cmd', { cmd: { kind: 'search_index_status', cwd } }, z.object({ state: z.string(), files: z.number().nullable().optional(), updated: z.number().nullable().optional() }));
+    if (result.ok) setIndexStatus(result.value);
+  };
+  const indexTimer = setInterval(() => void refreshIndex(), 3000);
+  onCleanup(() => clearInterval(indexTimer));
   const enabled = () => {
     const result = settings();
     return result?.ok && (result.value.search as { semanticEnabled?: unknown } | undefined)?.semanticEnabled === true;
@@ -68,6 +77,7 @@ export default function SearchSettings() {
       if (!reply.ok) throw new Error(reply.error.message);
       setStatus('Index ready. Semantic search is available in new enabled sessions.');
       setConsent(false);
+      await refreshIndex();
     } catch (e) { setStatus(undefined); setError(e instanceof Error ? e.message : 'Could not build index'); }
     finally { setSaving(false); }
   };
@@ -86,6 +96,7 @@ export default function SearchSettings() {
           </fieldset>
         </Row>
         <div class="p-4 space-y-3">
+          <Show when={indexStatus()}>{(index) => <p class="text-sm text-text-muted">Index: {index().state}{index().files != null ? ` · ${index().files} files` : ''}{index().updated ? ` · updated ${new Date(index().updated!).toLocaleString()}` : ''}</p>}</Show>
           <p class="text-sm text-text-dim whitespace-normal">Open Project settings for the folder to index. Building downloads the local CPU model (local/potion-code-16m-v2, about 31 MB) and creates .zvec-grep/ in that project.</p>
           <Show when={settingsProjectCwd()} fallback={<p class="text-sm text-text-muted">Choose a project using its Project settings first.</p>}>
             <label class="flex items-start gap-2 text-sm text-text whitespace-normal">

@@ -173,6 +173,8 @@ pub struct HostSettingsSetRequest {
 pub enum HostCmd {
     /// Compiled semantic-search support of this host, independent of user settings.
     SearchCapabilities,
+    /// Inspect a project's index without modifying it.
+    SearchIndexStatus { cwd: String },
     /// Install the optional search helper after user consent.
     InstallSearch { consent: bool },
     /// Cancel an active helper installation.
@@ -304,6 +306,7 @@ impl HostCmd {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::SearchCapabilities => "search_capabilities",
+            Self::SearchIndexStatus { .. } => "search_index_status",
             Self::InstallSearch { .. } => "install_search",
             Self::CancelSearchInstall => "cancel_search_install",
             Self::UninstallSearch => "uninstall_search",

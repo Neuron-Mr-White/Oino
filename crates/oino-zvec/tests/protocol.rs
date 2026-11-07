@@ -26,7 +26,13 @@ fn index_and_query_fixture() {
         assert_eq!(response["ok"], true, "{response}");
         response
     };
+    let none = request(serde_json::json!({"op":"index_status", "root":project.path()}));
+    assert_eq!(none["result"]["state"], "none");
     request(serde_json::json!({"op":"build_index", "root":project.path()}));
+    let ready = request(serde_json::json!({"op":"index_status", "root":project.path()}));
+    assert_eq!(ready["result"]["state"], "ready", "{ready}");
+    assert!(ready["result"]["files"].as_u64().unwrap() > 0);
+    assert!(ready["result"]["updated"].as_u64().unwrap() > 0);
     let response = request(
         serde_json::json!({"op":"query", "root":project.path(), "text":"authenticate password", "limit":10}),
     );

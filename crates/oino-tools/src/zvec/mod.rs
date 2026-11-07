@@ -89,6 +89,29 @@ pub fn project_root(root: &Path) -> Result<PathBuf, String> {
     Ok(root)
 }
 
+/// Inspect project index status without creating or updating an index.
+/// # Errors
+/// Returns filesystem or helper errors.
+pub async fn index_status(root: &Path, agent_dir: &Path) -> Result<serde_json::Value, String> {
+    let root = project_root(root)?;
+    if !root.join(".zvec-grep/manifest.json").is_file() {
+        return Ok(serde_json::json!({"state":"none"}));
+    }
+    #[cfg(feature = "zvec")]
+    {
+        let _ = agent_dir;
+        native::status(root).await
+    }
+    #[cfg(not(feature = "zvec"))]
+    {
+        client::call(
+            agent_dir,
+            serde_json::json!({"op":"index_status", "root":root}),
+        )
+        .await
+    }
+}
+
 /// Build from the trusted Settings action. No tool exposes this operation.
 /// # Errors
 /// Refuses absent explicit consent, unavailable CPU support, or engine failures.

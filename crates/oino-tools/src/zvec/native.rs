@@ -219,6 +219,24 @@ pub(super) async fn query(
     .await
 }
 
+pub(super) async fn status(root: PathBuf) -> Result<serde_json::Value, String> {
+    use zg_engine::api::info::InfoOptions;
+    let engine = engine();
+    let mut slot = engine.lock().await;
+    let zg = slot.get_or_insert_with(ZvecGrep::new);
+    let info = zg
+        .info(InfoOptions {
+            root: Some(root),
+            include_status: true,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    let state = info.index_status().as_str();
+    Ok(
+        serde_json::json!({"state": state, "files": info.status.as_ref().map(|s| s.files_indexed), "updated": info.workspace_index.as_ref().map(|i| i.updated_epoch_ms)}),
+    )
+}
+
 /// Runtime diagnostics without loading an engine or model.
 pub(super) async fn loaded_models() -> usize {
     engine()

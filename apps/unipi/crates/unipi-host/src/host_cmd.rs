@@ -34,6 +34,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 static SEARCH_INSTALL: Mutex<Option<tokio_util::sync::CancellationToken>> = Mutex::new(None);
+static SEARCH_BUILD: Mutex<Option<String>> = Mutex::new(None);
 
 fn search_capabilities(agent_dir: &std::path::Path) -> Value {
     let mut value = oino_core::builtin::search_capabilities(agent_dir);
@@ -93,6 +94,12 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     // broken extension set must not keep the user from removing the culprit).
     match cmd {
         HostCmd::SearchCapabilities => return Ok(search_capabilities(hub.agent_dir())),
+        HostCmd::SearchIndexStatus { cwd } => {
+            let root = std::path::Path::new(&cwd);
+            if !root.is_absolute() || !root.is_dir() { return Err(invalid("Choose an existing project folder")); }
+            if lock(&SEARCH_BUILD).as_deref() == Some(cwd.as_str()) { return Ok(json!({"state":"building"})); }
+            return oino_core::builtin::search_index_status(root, hub.agent_dir()).await.map_err(failed);
+        }
         HostCmd::InstallSearch { consent } => {
             let token = tokio_util::sync::CancellationToken::new();
             {
@@ -118,9 +125,11 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
             if !root.is_absolute() || !root.is_dir() {
                 return Err(invalid("Choose an existing project folder"));
             }
-            oino_core::builtin::build_search_index(root, hub.agent_dir(), consent)
-                .await
-                .map_err(failed)?;
+            if !consent { return Err(invalid("Explicit consent is required")); }
+            { let mut active = lock(&SEARCH_BUILD); if active.is_some() { return Err(invalid("Index build already running")); } *active = Some(cwd.clone()); }
+            let result = oino_core::builtin::build_search_index(root, hub.agent_dir(), consent).await;
+            *lock(&SEARCH_BUILD) = None;
+            result.map_err(failed)?;
             return Ok(json!({ "success": true }));
         }
         HostCmd::InstallExtension { path, replace } => {
@@ -451,6 +460,7 @@ async fn dispatch(
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
         // Served before the services spin up (`run`).
         HostCmd::SearchCapabilities
+        | HostCmd::SearchIndexStatus { .. }
         | HostCmd::InstallSearch { .. }
         | HostCmd::CancelSearchInstall
         | HostCmd::UninstallSearch

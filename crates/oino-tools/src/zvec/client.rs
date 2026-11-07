@@ -35,6 +35,7 @@ fn asset_from(source: &str) -> Option<(String, Value)> {
     ))
 }
 
+#[cfg(not(feature = "zvec"))]
 pub(super) fn helper(agent_dir: &Path) -> Option<PathBuf> {
     helper_for(agent_dir, asset())
 }
