@@ -48,6 +48,6 @@
   },
   "component": "component.wasm",
   "checksums": {
-    "component.wasm": "sha256:fe4ff049e2a18ea7af253bb2e052c92137264b1ecb956f22ba168ca11f035848"
+    "component.wasm": "sha256:6badd6924f0cce49a7458868d1a73db368c7aa03a797f23303dd055101b85628"
   }
 }
