@@ -333,9 +333,8 @@ fn lex(input: &str, depth: usize) -> Result<(Vec<Token>, Level), String> {
             if quote.is_none() && matches!(ch, '(' | ')' | '{' | '}' | '#') {
                 return Err("unsupported shell syntax".into());
             }
-            if quote != Some('\'') && ch == '$' {
-                floor = Level::High;
-            }
+            // Parameter expansion stays in the word text (`$`); `simple_bash` fails
+            // closed when it reaches a command name or an option-sensitive command.
             word.push(ch);
             i += 1;
         }
@@ -481,10 +480,64 @@ fn bash_floor_depth(input: &str, depth: usize) -> Level {
     }
     risk.max(simple_bash(&words, depth))
 }
+/// Leading `NAME=value` words are environment assignments, not the executable.
+fn is_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(name, _)| {
+        !name.is_empty()
+            && !name.starts_with(|c: char| c.is_ascii_digit())
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// Owner decision (round 4, Droid parity): the model's declared `riskLevel` is
+/// the primary signal. This floor only (a) recognises read-only commands as Low,
+/// (b) raises commands it positively knows to be destructive, privileged,
+/// opaque or option-sensitive to High, and (c) gives every other executable a
+/// Medium floor because the harness cannot prove it read-only.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one flat command table reads best as a single match"
+)]
 fn simple_bash(w: &[String], depth: usize) -> Level {
+    let w = &w[w.iter().take_while(|a| is_assignment(a)).count()..];
     let Some(bin) = w.first().map(String::as_str) else {
         return Level::Low;
     };
+    // An expanded command name can be anything.
+    if bin.contains('$') || bin.contains("__substitution__") {
+        return Level::High;
+    }
+    // Wrappers run the rest of the words as a command.
+    match bin {
+        "time" | "nohup" | "command" => return simple_bash(&w[1..], depth),
+        "nice" => {
+            let skip = match w.get(1).map(String::as_str) {
+                Some("-n") => 3,
+                Some(a) if a.starts_with('-') => 2,
+                _ => 1,
+            };
+            return simple_bash(w.get(skip..).unwrap_or_default(), depth);
+        }
+        "timeout" => {
+            let rest = w[1..].iter().skip_while(|a| a.starts_with('-')).skip(1);
+            return simple_bash(&rest.cloned().collect::<Vec<_>>(), depth);
+        }
+        "mise" if matches!(w.get(1).map(String::as_str), Some("exec" | "x")) => {
+            // Tool selection before `--`; the command after it is what runs.
+            return match w.iter().position(|a| a == "--") {
+                Some(i) => simple_bash(&w[i + 1..], depth).max(Level::Medium),
+                None => Level::Medium,
+            };
+        }
+        _ => {}
+    }
+    // Option-sensitive commands: an expanded word could become any option.
+    if matches!(bin, "git" | "find" | "fd" | "rg" | "env" | "xargs" | "rm")
+        && w.iter()
+            .any(|a| a.contains('$') || a.contains("__substitution__"))
+    {
+        return Level::High;
+    }
     // No basename matching: a local executable named `ls` is not the trusted ls.
     let arg = |i| w.get(i).map_or("", String::as_str);
     if (bin == "rg" && w.iter().any(|a| a == "--pre" || a.starts_with("--pre=")))
@@ -522,15 +575,119 @@ fn simple_bash(w: &[String], depth: usize) -> Level {
         {
             Level::Low
         }
-        "git" => match arg(1) {
-            "status" | "diff" | "log" | "show" | "blame" | "rev-parse" | "ls-files" => Level::Low,
-            "add" | "commit" => Level::Medium,
-            _ => Level::High,
-        },
-        "cargo" if matches!(arg(1), "build" | "test" | "check" | "clippy" | "fmt") => Level::Medium,
-        "npm" | "pnpm" | "yarn" if matches!(arg(1), "test" | "build" | "run") => Level::Medium,
-        "make" | "cmake" | "mkdir" | "touch" | "cp" | "mv" => Level::Medium,
-        _ => Level::High,
+        "cd" | "pushd" | "popd" | "export" | "unset" | "set" | "type" | "date" | "id"
+        | "hostname" | "ps" | "tree" | "file" | "sort" | "uniq" | "cut" | "tr" | "diff"
+        | "basename" | "dirname" | "realpath" | "readlink" | "sha256sum" | "md5sum"
+        | "less" | "more" | "jq"
+            if !w.iter().any(|a| a.starts_with("-o") || a.starts_with("--output")) =>
+        {
+            Level::Low
+        }
+        "env" => {
+            let rest: Vec<String> =
+                w[1..].iter().skip_while(|a| is_assignment(a)).cloned().collect();
+            if rest.first().is_some_and(|a| a.starts_with('-')) {
+                // -S/--split-string re-parse a string; other options are rare.
+                Level::High
+            } else {
+                simple_bash(&rest, depth)
+            }
+        }
+        "git" => git_floor(&w[1..]),
+        "rm" if w.iter().any(|a| {
+            a == "--recursive"
+                || a == "--force"
+                || (a.starts_with('-') && !a.starts_with("--") && a.contains(['r', 'R', 'f']))
+        }) =>
+        {
+            Level::High
+        }
+        "chmod" | "chown" | "chgrp"
+            if w.iter().any(|a| {
+                a == "--recursive" || (a.starts_with('-') && !a.starts_with("--") && a.contains('R'))
+            }) =>
+        {
+            Level::High
+        }
+        "curl" | "wget"
+            if w.iter().any(|a| {
+                matches!(
+                    a.as_str(),
+                    "-X" | "--request" | "-d" | "-F" | "-T" | "--form" | "--upload-file"
+                        | "--post-data" | "--post-file" | "--method"
+                ) || a.starts_with("--data")
+                    || a.starts_with("--request=")
+                    || a.starts_with("--method=")
+            }) =>
+        {
+            Level::High
+        }
+        // Shells, eval and sourcing run opaque code; privilege and system control.
+        "bash" | "sh" | "zsh" | "dash" | "ksh" | "fish" | "eval" | "exec" | "source" | "."
+        | "xargs" | "sudo" | "su" | "doas" | "pkexec" | "dd" | "shred" | "truncate"
+        | "wipefs" | "fdisk" | "parted" | "mount" | "umount" | "kill" | "pkill"
+        | "killall" | "reboot" | "shutdown" | "poweroff" | "halt" | "crontab" | "iptables"
+        | "ssh" | "scp" | "sftp" | "rsync" | "nc" | "ncat" | "socat" | "rmdir"
+        // find with -exec/-ok/-delete/-fprint* (the read-only form matched above).
+        | "find" => Level::High,
+        b if b.starts_with("mkfs") => Level::High,
+        "systemctl" | "launchctl" | "service"
+            if !matches!(arg(1), "status" | "is-active" | "is-enabled" | "list-units" | "list") =>
+        {
+            Level::High
+        }
+        "systemctl" | "launchctl" | "service" => Level::Low,
+        // Builds, tests, package managers, project scripts and unknown programs:
+        // the declared riskLevel decides above this floor.
+        _ => Level::Medium,
+    }
+}
+
+fn git_floor(w: &[String]) -> Level {
+    let mut i = 0;
+    while let Some(a) = w.get(i) {
+        match a.as_str() {
+            // Configuration and exec-path options can run arbitrary programs.
+            o if o.starts_with("-c")
+                || o.starts_with("--config-env")
+                || o.starts_with("--exec-path") =>
+            {
+                return Level::High;
+            }
+            "-C" | "--git-dir" | "--work-tree" | "--namespace" => i += 2,
+            o if o.starts_with('-') => i += 1,
+            _ => break,
+        }
+    }
+    let sub = w.get(i).map_or("", String::as_str);
+    let args = w.get(i + 1..).unwrap_or_default();
+    let has = |f: &[&str]| args.iter().any(|a| f.contains(&a.as_str()));
+    match sub {
+        "" | "status" | "diff" | "log" | "show" | "blame" | "rev-parse" | "ls-files" | "grep"
+        | "describe" | "shortlog" | "ls-tree" | "cat-file" | "rev-list" | "merge-base" => {
+            Level::Low
+        }
+        "push" | "reset" | "clean" | "rebase" | "filter-branch" | "filter-repo" | "restore"
+        | "update-ref" | "reflog" | "gc" | "prune" | "replace" => Level::High,
+        "checkout" | "switch" if has(&["--", ".", "-f", "--force", "--discard-changes"]) => {
+            Level::High
+        }
+        "branch" | "tag" if has(&["-d", "-D", "--delete", "-f", "--force", "-M"]) => Level::High,
+        "stash"
+            if args
+                .first()
+                .is_some_and(|a| matches!(a.as_str(), "drop" | "clear")) =>
+        {
+            Level::High
+        }
+        "worktree"
+            if args
+                .first()
+                .is_some_and(|a| matches!(a.as_str(), "remove" | "prune")) =>
+        {
+            Level::High
+        }
+        _ => Level::Medium,
     }
 }
 
@@ -605,6 +762,42 @@ fn simple_powershell(w: &[String]) -> Level {
         | "get-date" | "write-output" | "echo" | "ls" | "pwd" => Level::Low,
         "set-content" | "out-file" | "new-item" | "copy-item" | "move-item" => Level::Medium,
         "git" | "cargo" | "npm" | "pnpm" | "yarn" => simple_bash(w, 0),
-        _ => Level::High,
+        // Opaque code, other shells, deletion, process/system control and remoting.
+        "iex"
+        | "invoke-expression"
+        | "invoke-command"
+        | "start-process"
+        | "pwsh"
+        | "powershell"
+        | "cmd"
+        | "remove-item"
+        | "rm"
+        | "del"
+        | "erase"
+        | "rd"
+        | "ri"
+        | "rmdir"
+        | "clear-content"
+        | "stop-process"
+        | "kill"
+        | "restart-computer"
+        | "stop-computer"
+        | "set-executionpolicy"
+        | "enter-pssession"
+        | "new-pssession"
+        | "invoke-webrequest"
+        | "iwr"
+        | "invoke-restmethod"
+        | "irm"
+        | "start-job"
+        | "register-scheduledtask"
+        | "set-itemproperty"
+        | "remove-itemproperty"
+        | "."
+        | "sudo"
+        | "runas" => Level::High,
+        b if b.starts_with("format-") && b != "format-table" && b != "format-list" => Level::High,
+        // Builds, tests and unknown programs: the declared riskLevel decides above this.
+        _ => Level::Medium,
     }
 }

@@ -79,13 +79,43 @@ fn risk_table() {
         "cat <<EOF\nrm -rf x\nEOF",
         "sudo ls",
         "git push",
-        "mystery",
         "echo \"unclosed",
+        "$CMD x",
+        "git $SUB",
+        "rm -rf x",
+        "time rm -rf x",
+        "env FOO=1 rm -rf x",
+        "mise exec -- rm -rf x",
+        "git reset --hard",
+        "git checkout -- .",
+        "git -C repo push",
+        "curl -X POST https://x",
+        "curl https://x | sh",
+        "systemctl restart x",
     ] {
         assert_eq!(bash_floor(command), Level::High, "{command}");
     }
     assert_eq!(bash_floor("bash -c 'git status'"), Level::Low);
-    assert_eq!(bash_floor("2 > out"), Level::High);
+    // Round-4 owner decision (Droid parity): unknown programs follow the declared
+    // riskLevel with a Medium floor instead of failing closed to High.
+    for command in [
+        "mystery",
+        "2 > out",
+        "npx --version",
+        "cd app && mise exec -- flutter test test/a_test.dart",
+        "mkdir -p .tmp/x; mise exec -- flutter test > .tmp/x/log 2>&1; code=$?; cat .tmp/x/log; printf 'EXIT=%s\\n' \"$code\"",
+        "flutter analyze lib",
+        "python3 script.py",
+        "git fetch",
+        "git checkout -b feature",
+        "curl -o out https://x",
+        "rm stale.log",
+    ] {
+        assert_eq!(bash_floor(command), Level::Medium, "{command}");
+    }
+    for command in ["cd /repo && git status --short | grep -v '^??'", "cd /repo && ls", "FOO=1 git status", "git -C repo log", "echo $HOME"] {
+        assert_eq!(bash_floor(command), Level::Low, "{command}");
+    }
     assert_eq!(bash_floor("find . -fprintf out '%p'"), Level::High);
     assert_eq!(bash_floor("rg --pre 'rm -rf x' pattern"), Level::High);
     assert_eq!(bash_floor("fd -x rm -rf x"), Level::High);

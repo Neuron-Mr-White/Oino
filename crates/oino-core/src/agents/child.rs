@@ -1024,7 +1024,12 @@ impl AgentSession {
                 router: agents.router.get().cloned(),
             }),
         });
-        session.set_autonomy(spec.autonomy.unwrap_or_default().min(self.autonomy()));
+        // A child without its own level inherits the parent's; it can never exceed it.
+        session.set_autonomy(
+            spec.autonomy
+                .unwrap_or(oino_settings::autonomy::Level::High)
+                .min(self.autonomy()),
+        );
         if !matches!(spec.ui, super::UiPolicy::Forward) {
             session.set_unattended();
         }
