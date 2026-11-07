@@ -45,8 +45,19 @@ pub(super) fn helper(agent_dir: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(not(feature = "zvec"))]
-pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, String> {
-    let path = helper(agent_dir).ok_or(super::INSTALL)?;
+struct Process {
+    child: tokio::process::Child,
+    input: tokio::process::ChildStdin,
+    output: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+}
+
+#[cfg(not(feature = "zvec"))]
+type Pool = std::collections::HashMap<(PathBuf, PathBuf), Process>;
+#[cfg(not(feature = "zvec"))]
+static POOL: std::sync::OnceLock<tokio::sync::Mutex<Pool>> = std::sync::OnceLock::new();
+
+#[cfg(not(feature = "zvec"))]
+fn spawn(agent_dir: &Path, path: &Path) -> Result<Process, String> {
     let library_dir = path.parent().ok_or("Invalid helper path")?;
     let library_var = if cfg!(target_os = "macos") {
         "DYLD_LIBRARY_PATH"
@@ -60,7 +71,7 @@ pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, Stri
         paths.extend(std::env::split_paths(&existing));
     }
     let library_path = std::env::join_paths(paths).map_err(|e| e.to_string())?;
-    let mut child = tokio::process::Command::new(&path)
+    let mut child = tokio::process::Command::new(path)
         .env(library_var, library_path)
         .env("OINO_AGENT_DIR", agent_dir)
         .stdin(Stdio::piped())
@@ -69,18 +80,55 @@ pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, Stri
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| e.to_string())?;
-    let mut input = child.stdin.take().ok_or("helper stdin unavailable")?;
-    input
-        .write_all(format!("{request}\n").as_bytes())
-        .await
-        .map_err(|e| e.to_string())?;
-    let output = child.stdout.take().ok_or("helper stdout unavailable")?;
-    let mut lines = BufReader::new(output).lines();
-    let line = lines
-        .next_line()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("helper exited without response")?;
+    let input = child.stdin.take().ok_or("helper stdin unavailable")?;
+    let output = BufReader::new(child.stdout.take().ok_or("helper stdout unavailable")?).lines();
+    Ok(Process {
+        child,
+        input,
+        output,
+    })
+}
+
+#[cfg(not(feature = "zvec"))]
+pub(super) async fn call(agent_dir: &Path, request: Value) -> Result<Value, String> {
+    let path = helper(agent_dir).ok_or(super::INSTALL)?;
+    let root = request
+        .get("root")
+        .and_then(Value::as_str)
+        .ok_or("helper root missing")?;
+    let key = (agent_dir.to_path_buf(), PathBuf::from(root));
+    let pool = POOL.get_or_init(|| tokio::sync::Mutex::new(Pool::new()));
+    let mut pool = pool.lock().await;
+    if let Some(process) = pool.get_mut(&key)
+        && process.child.try_wait().map_err(|e| e.to_string())?.is_some()
+    {
+        pool.remove(&key);
+    }
+    if !pool.contains_key(&key) {
+        pool.insert(key.clone(), spawn(agent_dir, &path)?);
+    }
+    let process = pool.get_mut(&key).ok_or("helper unavailable")?;
+    let response = async {
+        process
+            .input
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+        process
+            .output
+            .next_line()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("helper exited without response".to_string())
+    }
+    .await;
+    let line = match response {
+        Ok(line) => line,
+        Err(error) => {
+            pool.remove(&key);
+            return Err(error);
+        }
+    };
     let reply: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
     if reply["ok"] == true {
         Ok(reply["result"].clone())
