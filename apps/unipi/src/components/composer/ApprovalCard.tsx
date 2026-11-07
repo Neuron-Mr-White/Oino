@@ -6,16 +6,17 @@ import type { ApprovalRequest, ApprovalDecision } from '../../lib/session/autono
 import './autonomy.css';
 
 /** Host requests only: never infer consent from tool output or a transcript entry. */
-export function ApprovalCard(props: { request: ApprovalRequest; session: SessionHandle; disabled?: boolean }) {
+export function ApprovalCard(props: { request: ApprovalRequest; session?: SessionHandle; onDecision?: (decision: ApprovalDecision) => Promise<void>; disabled?: boolean }) {
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal<string>();
   const [answered, setAnswered] = createSignal(false);
   const decide = async (decision: ApprovalDecision) => {
-    if (pending() || answered() || props.disabled || props.session.state.conn !== 'live') return;
+    if (pending() || answered() || props.disabled || (!props.onDecision && props.session?.state.conn !== 'live')) return;
     setPending(true);
     setError(undefined);
     try {
-      await props.session.cmd({ type: 'approval_response', requestId: props.request.requestId, decision });
+      if (props.onDecision) await props.onDecision(decision);
+      else await props.session!.cmd({ type: 'approval_response', requestId: props.request.requestId, decision });
       setAnswered(true);
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not send approval. The command remains blocked.'); }
     finally { setPending(false); }
@@ -35,7 +36,7 @@ export function ApprovalCard(props: { request: ApprovalRequest; session: Session
     <Show when={!answered()} fallback={<p role="status">Response sent</p>}>
       <div class="ap-options autonomy-approval-actions">
         <For each={['allow_once', 'always', 'deny'] as const}>{(decision) =>
-          <button type="button" class={`dlg-btn ap-btn ${decision === 'allow_once' ? 'primary' : decision === 'always' ? 'ghost' : 'danger ghost'}`} disabled={props.disabled || pending() || props.session.state.conn !== 'live'}
+          <button type="button" class={`dlg-btn ap-btn ${decision === 'allow_once' ? 'primary' : decision === 'always' ? 'ghost' : 'danger ghost'}`} disabled={props.disabled || pending() || (!props.onDecision && props.session?.state.conn !== 'live')}
             title={decision === 'always' ? 'Allow this exact command in interactive chats in this project only' : undefined}
             onClick={() => void decide(decision)}>{decision === 'allow_once' ? 'Allow once' : decision === 'always' ? 'Always allow' : 'Deny'}</button>
         }</For>

@@ -10,7 +10,7 @@ const WorkerSchema = z.object({
 });
 export const StatusSchema = z.object({
   enabled: z.boolean(), concurrencyCap: z.number().int().min(1), workers: z.array(WorkerSchema),
-  needsYou: z.array(z.object({ projectId: z.string(), taskId: z.string(), status: z.enum(['blocked', 'in_review']), question: z.string().nullish() })),
+  needsYou: z.array(z.object({ projectId: z.string(), taskId: z.string(), status: z.enum(['blocked', 'in_review', 'waiting_for_approval']), question: z.string().nullish(), workerSessionId: z.string().optional(), requestId: z.string().optional(), sessionId: z.string().optional(), tool: z.string().optional(), command: z.string().nullish(), summary: z.string().nullish(), risk: AutonomySchema.nullish(), ceiling: AutonomySchema.optional(), reason: z.string().optional() })),
 });
 export type SuperagentStatus = z.infer<typeof StatusSchema>;
 export type Worker = z.infer<typeof WorkerSchema>;
@@ -21,6 +21,7 @@ export const superagentApi = {
   configure: (host: string, config: z.infer<typeof ConfigSchema>) => hostCall(host, 'superagent.configure', ConfigSchema.parse(config), ConfigSchema),
   start: (host: string, projectId: string, taskId: string) => hostCall(host, 'superagent.start', { projectId, taskId }, z.object({ sessionId: z.string() })),
   stop: (host: string, projectId: string, taskId: string) => hostCall(host, 'superagent.stop', { projectId, taskId }, z.object({ stopped: z.boolean() })),
+  approvalResponse: (host: string, projectId: string, taskId: string, workerSessionId: string, requestId: string, decision: 'allow_once' | 'always' | 'deny') => hostCall(host, 'superagent.approval_response', { projectId, taskId, workerSessionId, requestId, decision }, z.object({ accepted: z.literal(true) })),
   relay: (host: string, projectId: string, taskId: string, text: string) => hostCall(host, 'superagent.relay', { projectId, taskId, text: RelayTextSchema.parse(text) }, z.object({ commentId: z.string(), sessionId: z.string(), delivered: z.boolean(), error: z.unknown().optional() })),
 };
 

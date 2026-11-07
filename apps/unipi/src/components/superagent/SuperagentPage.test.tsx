@@ -46,6 +46,17 @@ describe('v3 Superagent', () => {
     fireEvent.click(screen.getByText('Which domain should I use?')); expect(onTicket).toHaveBeenCalledWith('website', 'WEB-8');
     fireEvent.click(screen.getByText('OIN-12 · Title OIN-12')); expect(onTicket).toHaveBeenCalledWith('oino', 'OIN-12');
   });
+  it('accepts parked approval status and opens the worker', async () => {
+    const parked = { ...status, needsYou: [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked' as const, workerSessionId: 'worker-14', requestId: 'req-1', sessionId: 'worker-14', tool: 'bash', command: 'git push', summary: 'Push branch', risk: 'high' as const, ceiling: 'medium' as const, reason: 'needs Autonomy High' }] };
+    const { StatusSchema } = await import('./api');
+    expect(StatusSchema.parse(parked).needsYou[0]?.requestId).toBe('req-1');
+    const respond = vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: true, value: { accepted: true } });
+    const { onOpen } = mount(parked);
+    fireEvent.click(await screen.findByText('Open worker'));
+    expect(onOpen).toHaveBeenCalledWith('worker-14');
+    fireEvent.click(screen.getByText('Allow once'));
+    await waitFor(() => expect(respond).toHaveBeenCalledWith('pc-coffee', 'oino', 'OIN-14', 'worker-14', 'req-1', 'allow_once'));
+  });
   it('watcher_and_relay', async () => {
     const configure = vi.spyOn(superagentApi, 'configure').mockResolvedValue({ ok: true, value: { enabled: true, concurrencyCap: 2 } });
     const relay = vi.spyOn(superagentApi, 'relay').mockResolvedValue({ ok: true, value: { commentId: 'c', sessionId: 'worker-14', delivered: true } });
