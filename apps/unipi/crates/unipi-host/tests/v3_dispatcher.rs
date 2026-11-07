@@ -319,6 +319,37 @@ async fn auto_start_batches_all_ready_tickets() {
 }
 
 #[tokio::test]
+async fn completed_lead_retires_and_new_work_starts_fresh() {
+    let f = Fixture::new();
+    let a = f.add("review", &[]);
+    let b = f.add("blocked", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let lead = d.start_tasks(&f.project.slug, &[a.clone(), b.clone()], None, Default::default()).await.unwrap();
+    commands::finish(&f.layout, f.project.clone(), ChainGate::InReview, &a, &lead, "done", &[], chrono::Utc::now()).unwrap();
+    unipi_kanboard::dispatcher::approval_transition(&f.layout, f.project.clone(), &b, &lead, Some("Which option?")).unwrap();
+    *fake.last.lock().unwrap() = Some("last message".into());
+    d.tick().await.unwrap();
+    assert_eq!(f.task(&a).status, Status::InReview);
+    assert_eq!(f.task(&b).status, Status::Blocked);
+    assert!(f.task(&b).run.is_none());
+    assert_eq!(d.status().await.unwrap()["needsYou"][0]["question"], "Which option?");
+    *fake.last.lock().unwrap() = None;
+    let c = f.add("fresh", &[]);
+    assert_ne!(d.start(&f.project.slug, &c).await.unwrap(), lead);
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn ended_lead_blocks_every_in_progress_ticket_with_last_message() {
+    let f = Fixture::new(); let a = f.add("a", &[]); let b = f.add("b", &[]);
+    let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
+    d.start_tasks(&f.project.slug, &[a.clone(), b.clone()], None, Default::default()).await.unwrap();
+    *fake.last.lock().unwrap() = Some("Need clarification".into()); d.tick().await.unwrap();
+    for id in [a, b] { let t = f.task(&id); assert_eq!(t.status, Status::Blocked); assert!(t.run.is_none()); assert!(t.activity.last().unwrap().text.contains("Need clarification")); }
+}
+
+#[tokio::test]
 async fn parked_claim_protocol_stop_and_restart() {
     use oino_core::session::permission::{
         ApprovalDecision, ApprovalRequest, ApprovalResponse, Level,

@@ -433,7 +433,9 @@ impl Dispatcher {
                     continue;
                 }
                 if let Some(last) = self.workers.ended(&run.session).await {
-                    let question = if last.trim().is_empty() {
+                    let question = if task.status == Status::Blocked {
+                        task.activity.iter().rev().find_map(|entry| entry.text.strip_prefix("blocked: ")).unwrap_or("Worker ended while blocked; move to todo to retry")
+                    } else if last.trim().is_empty() {
                         "Worker ended without a transition; move to todo to retry"
                     } else {
                         &last
@@ -448,6 +450,7 @@ impl Dispatcher {
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .remove(&id);
+                    self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
                     self.workers.retire(&id).await;
                 }
             }
