@@ -68,6 +68,38 @@ impl Config {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Delivery { Queue, Steer }
+impl Delivery {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value { "queue" => Ok(Self::Queue), "steer" => Ok(Self::Steer), _ => Err(fail("E_SCHEMA", "delivery must be queue or steer")) }
+    }
+}
+
+fn lead_brief(project: &Project, tasks: &[Task]) -> String {
+    let tickets = tasks.iter().map(|task| format!("{} — {}\n{}", task.id, task.title, task.body.chars().take(2000).collect::<String>())).collect::<Vec<_>>().join("\n\n");
+    format!("Lead work for project {}. Claim each ticket with your kanboard tool, work them using your mode to parallelise where appropriate, and finish each to in_review with a summary or to blocked with a question. Never leave a ticket in_progress.\n\n{}", project.slug, tickets)
+}
+
+#[cfg(test)]
+mod lead_tests {
+    #[test]
+    fn brief_contains_all_ticket_details_and_instructions() {
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let layout = unipi_kanboard::Layout::with_home(home.path().to_owned());
+        let project = unipi_kanboard::Project::create(&layout, root.path(), Some("test"), Some("T")).unwrap();
+        let common = unipi_kanboard::commands::Common::new(unipi_kanboard::model::Actor::User, unipi_kanboard::model::ChainGate::InReview);
+        let mut tasks = Vec::new();
+        for (title, body) in [("Alpha", "Body A"), ("Beta", "Body B")] {
+            let value = unipi_kanboard::commands::add(&layout, project.clone(), &common, title, Some(body), Some(unipi_kanboard::model::Status::Todo), unipi_kanboard::model::Priority::Medium, &[], &[], &[], false).unwrap();
+            tasks.push(unipi_kanboard::board::Board::open(&layout, project.clone()).unwrap().get(value["id"].as_str().unwrap()).unwrap());
+        }
+        let brief = super::lead_brief(&project, &tasks);
+        for text in [&tasks[0].id, &tasks[1].id, "Alpha", "Beta", "Body A", "Body B", "Claim each ticket", "parallelise", "in_review", "blocked"] { assert!(brief.contains(text), "missing {text}"); }
+    }
+}
+
 /// Runtime boundary used by production and deterministic crash/concurrency tests.
 pub trait Workers: Send + Sync {
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool>;
@@ -86,6 +118,12 @@ pub trait Workers: Send + Sync {
         _preset: &'a Preset,
     ) -> BoxFuture<'a, std::result::Result<(), String>> {
         self.launch(project, task, id)
+    }
+    fn launch_lead<'a>(&'a self, project: &'a Project, tasks: &'a [Task], id: &'a str, preset: &'a Preset) -> BoxFuture<'a, std::result::Result<(), String>> {
+        self.launch_preset(project, &tasks[0], id, preset)
+    }
+    fn relay_delivery<'a>(&'a self, id: &'a str, text: &'a str, _delivery: Delivery) -> BoxFuture<'a, std::result::Result<(), String>> {
+        self.relay(id, text)
     }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, std::result::Result<(), String>>;
     fn relay<'a>(
@@ -282,18 +320,21 @@ impl Dispatcher {
         preset_id: Option<&str>,
         overrides: Overrides,
     ) -> Result<String> {
-        self.start_transaction(project_id, task_id, false, preset_id, overrides)
-            .await
+        self.start_tasks(project_id, &[task_id.to_owned()], preset_id, overrides).await
+    }
+    pub async fn start_tasks(&self, project_id: &str, task_ids: &[String], preset_id: Option<&str>, overrides: Overrides) -> Result<String> {
+        self.start_transaction(project_id, task_ids, false, preset_id, overrides).await
     }
     async fn start_transaction(
         &self,
         project_id: &str,
-        task_id: &str,
+        task_ids: &[String],
         watcher: bool,
         preset_id: Option<&str>,
         overrides: Overrides,
     ) -> Result<String> {
         let config = self.transaction.lock().await;
+        if task_ids.is_empty() || task_ids.iter().collect::<std::collections::HashSet<_>>().len() != task_ids.len() { return Err(fail("E_SCHEMA", "taskIds must be nonempty and unique")); }
         if watcher && !config.enabled {
             return Err(fail(
                 "E_WATCHER_OFF",
@@ -325,11 +366,22 @@ impl Dispatcher {
                 occupied.insert(run.session, project.slug);
             }
         }
-        if occupied.values().any(|p| p == project_id) {
-            return Err(fail(
-                "E_PROJECT_WORKER",
-                "Project has an active worker; wait for it to end or stop it",
-            ));
+        let project = Project::load(&self.layout, project_id).map_err(storage)?;
+        if let Some((id, _)) = occupied.iter().find(|(_, p)| p.as_str() == project_id) {
+            if !self.workers.live(id).await || self.workers.ended(id).await.is_some() { return Err(fail("E_WORKER_NOT_LIVE", "Lead has ended; retry after it is retired")); }
+            let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
+            let ids: Vec<String> = task_ids.iter().filter(|task_id| !board.get(task_id).ok().is_some_and(|task| dispatcher::matches_claim(&task, id))).cloned().collect();
+            if ids.is_empty() { return Ok(id.clone()); }
+            let tasks = dispatcher::reserve_many(&self.layout, project.clone(), &ids, id).map_err(|e| fail("E_WORKER_REFUSED", e))?;
+            let text = lead_brief(&project, &tasks);
+            for task in &tasks {
+                dispatcher::relay(&self.layout, project.clone(), &task.id, id, &text, &uuid::Uuid::now_v7().to_string()).map_err(storage)?;
+            }
+            if let Err(e) = self.workers.relay_delivery(id, &text, Delivery::Queue).await {
+                for task in &tasks { dispatcher::block(&self.layout, project.clone(), &task.id, id, &format!("Lead delivery failed: {e}; move to todo to retry")).map_err(storage)?; }
+                return Err(fail("E_RELAY_DELIVERY", e));
+            }
+            return Ok(id.clone());
         }
         if occupied.len() >= config.concurrency_cap {
             return Err(fail(
@@ -337,9 +389,8 @@ impl Dispatcher {
                 "Worker cap reached; wait for a worker or raise concurrencyCap",
             ));
         }
-        let project = Project::load(&self.layout, project_id).map_err(storage)?;
         let id = uuid::Uuid::now_v7().to_string();
-        let task = dispatcher::reserve(&self.layout, project.clone(), task_id, &id)
+        let tasks = dispatcher::reserve_many(&self.layout, project.clone(), task_ids, &id)
             .map_err(|e| fail("E_WORKER_REFUSED", e))?;
         self.active
             .lock()
@@ -347,17 +398,12 @@ impl Dispatcher {
             .insert(id.clone(), project_id.into());
         if let Err(e) = self
             .workers
-            .launch_preset(&project, &task, &id, &preset)
+            .launch_lead(&project, &tasks, &id, &preset)
             .await
         {
-            dispatcher::block(
-                &self.layout,
-                project,
-                task_id,
-                &id,
-                &format!("Worker could not start: {e}; move to todo to retry"),
-            )
-            .map_err(storage)?;
+            for task in &tasks {
+                dispatcher::block(&self.layout, project.clone(), &task.id, &id, &format!("Worker could not start: {e}; move to todo to retry")).map_err(storage)?;
+            }
             self.active
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -413,22 +459,11 @@ impl Dispatcher {
             if project.archived {
                 continue;
             }
-            for task in Board::open(&self.layout, project.clone())
-                .map_err(storage)?
-                .tasks()
-                .map_err(storage)?
-            {
-                if task.status == Status::Todo {
-                    let _ = self
-                        .start_transaction(
-                            &project.slug,
-                            &task.id,
-                            true,
-                            None,
-                            Overrides::default(),
-                        )
-                        .await;
-                }
+            let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
+            let tasks = board.tasks().map_err(storage)?;
+            let ids: Vec<String> = tasks.iter().filter(|task| unipi_kanboard::deps::is_ready(task, &board.dep_lookup(&tasks), unipi_kanboard::model::ChainGate::InReview)).map(|task| task.id.clone()).collect();
+            if !ids.is_empty() {
+                let _ = self.start_transaction(&project.slug, &ids, true, None, Overrides::default()).await;
             }
         }
         Ok(())
@@ -455,45 +490,31 @@ impl Dispatcher {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&run.session);
-        dispatcher::block(
-            &self.layout,
-            project,
-            task_id,
-            &run.session,
-            "Worker stopped; move to todo to retry",
-        )
-        .map_err(storage)
+        for (claimed_project, claimed) in self.claims()? {
+            if claimed_project.slug == project_id && claimed.run.as_ref().is_some_and(|r| r.session == run.session) {
+                dispatcher::block(&self.layout, claimed_project, &claimed.id, &run.session, "Worker stopped; move to todo to retry").map_err(storage)?;
+            }
+        }
+        Ok(true)
     }
     pub async fn relay(&self, project_id: &str, task_id: &str, text: &str) -> Result<Value> {
+        self.relay_to_lead(project_id, text, &[task_id.to_owned()], Delivery::Queue, false).await
+    }
+    pub async fn relay_to_lead(&self, project_id: &str, text: &str, task_ids: &[String], delivery: Delivery, priority: bool) -> Result<Value> {
         let _transaction = self.transaction.lock().await;
+        if text.trim().is_empty() { return Err(fail("E_SCHEMA", "Relay text must not be empty")); }
         let project = Project::load(&self.layout, project_id).map_err(storage)?;
-        let task = Board::open(&self.layout, project.clone())
-            .map_err(storage)?
-            .get(task_id)
-            .map_err(storage)?;
-        let run = task
-            .run
-            .as_ref()
-            .filter(|r| dispatcher::matches_claim(&task, &r.session))
-            .ok_or_else(|| {
-                fail(
-                    "E_WORKER_CLAIM",
-                    "Ticket has no dispatcher worker; refresh the board",
-                )
-            })?;
-        if !self.workers.live(&run.session).await
-            || self.workers.ended(&run.session).await.is_some()
-        {
-            return Err(fail(
-                "E_WORKER_NOT_LIVE",
-                "Worker has ended; refresh the board before relaying",
-            ));
-        }
+        let id = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(_, p)| p.as_str() == project_id).map(|(id, _)| id.clone()).ok_or_else(|| fail("E_WORKER_CLAIM", "Project has no active lead"))?;
+        if !self.workers.live(&id).await || self.workers.ended(&id).await.is_some() { return Err(fail("E_WORKER_NOT_LIVE", "Lead has ended; refresh the board before relaying")); }
+        let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
+        let ids: Vec<String> = if task_ids.is_empty() { board.tasks().map_err(storage)?.into_iter().filter(|t| dispatcher::matches_claim(t, &id)).map(|t| t.id).collect() } else { task_ids.to_vec() };
+        let text = if priority { format!("URGENT: schedule this first / add it as the first graph item\n\n{text}") } else { text.to_owned() };
         let comment = uuid::Uuid::now_v7().to_string();
-        let mut reply =
-            dispatcher::relay(&self.layout, project, task_id, &run.session, text, &comment)
-                .map_err(storage)?;
-        match self.workers.relay(&run.session, text).await {
+        for task_id in &ids {
+            dispatcher::relay(&self.layout, project.clone(), task_id, &id, &text, &comment).map_err(storage)?;
+        }
+        let mut reply = json!({"commentId": if ids.is_empty() { None } else { Some(comment) }, "sessionId":id});
+        match self.workers.relay_delivery(&id, &text, delivery).await {
             Ok(()) => reply["delivered"] = json!(true),
             Err(e) => {
                 reply["delivered"] = json!(false);
@@ -563,7 +584,12 @@ impl Dispatcher {
                             .get(&run.session)
                             .cloned();
                         lead = Some(run.session.clone());
-                        leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":"none","ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
+                        if let Some(existing) = leads.iter_mut().find(|entry: &&mut Value| entry["sessionId"] == run.session) {
+                            if let Some(ids) = existing["ticketIds"].as_array_mut() { ids.push(json!(task.id)); }
+                            existing["progress"]["running"] = json!(existing["ticketIds"].as_array().map_or(0, Vec::len));
+                        } else {
+                            leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":"none","ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
+                        }
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
                             "autonomy":dispatcher::autonomy(&task),"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"]}));
                         if dispatcher::matches_claim(&task, &run.session)
@@ -638,7 +664,11 @@ impl Workers for HostWorkers {
         id: &'a str,
         preset: &'a Preset,
     ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        self.launch_lead(project, std::slice::from_ref(task), id, preset)
+    }
+    fn launch_lead<'a>(&'a self, project: &'a Project, tasks: &'a [Task], id: &'a str, preset: &'a Preset) -> BoxFuture<'a, std::result::Result<(), String>> {
         Box::pin(async move {
+            let task = &tasks[0];
             let mut runtimes = self.runtimes.lock().await;
             if runtimes.contains_key(id) {
                 return Ok(());
@@ -701,7 +731,6 @@ impl Workers for HostWorkers {
             session.set_superagent_worker();
             let layout = self.layout.clone();
             let project_for_approval = project.clone();
-            let task_id = task.id.clone();
             let worker_id = id.to_owned();
             session.set_worker_approval_transition(Arc::new(move |request, park| {
                 let command = request
@@ -713,14 +742,13 @@ impl Workers for HostWorkers {
                     "Approval needed: {} (risk: {:?}, ceiling: {:?}; {}). Command: {}",
                     request.tool, request.risk_level, request.ceiling, request.reason, command
                 );
-                dispatcher::approval_transition(
-                    &layout,
-                    project_for_approval.clone(),
-                    &task_id,
-                    &worker_id,
-                    park.then_some(question.as_str()),
-                )
-                .map_err(|e| e.to_string())
+                let board = Board::open(&layout, project_for_approval.clone()).map_err(|e| e.to_string())?;
+                for task in board.tasks().map_err(|e| e.to_string())? {
+                    if dispatcher::matches_claim(&task, &worker_id) {
+                        dispatcher::approval_transition(&layout, project_for_approval.clone(), &task.id, &worker_id, park.then_some(question.as_str())).map_err(|e| e.to_string())?;
+                    }
+                }
+                Ok(())
             }));
             let ceiling =
                 serde_json::from_value(json!(preset.autonomy)).map_err(|e| e.to_string())?;
@@ -730,10 +758,7 @@ impl Workers for HostWorkers {
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;
             self.hub.announce_worker(id).await;
-            let prompt = format!(
-                "Work ticket {} in project {}. Your claim is already reserved for session {}. Use the kanboard tool to read and transition the ticket. The tool carries your exact session id; do not override it with shell environment flags. Work unattended at the ticket autonomy. Finish to in_review with a summary, or move to blocked with a question. Never leave the ticket in_progress.\n\n{}\n{}",
-                task.id, project.slug, id, task.title, task.body
-            );
+            let prompt = lead_brief(project, tasks);
             if !attaching {
                 session
                     .prompt(
@@ -772,6 +797,9 @@ impl Workers for HostWorkers {
         id: &'a str,
         text: &'a str,
     ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        self.relay_delivery(id, text, Delivery::Queue)
+    }
+    fn relay_delivery<'a>(&'a self, id: &'a str, text: &'a str, delivery: Delivery) -> BoxFuture<'a, std::result::Result<(), String>> {
         Box::pin(async move {
             let runtime = self
                 .runtimes
@@ -792,7 +820,7 @@ impl Workers for HostWorkers {
             session.send_custom_message(oino_core::extensions::host::CustomMessageDraft {
             custom_type: "oino:superagent-relay".into(), content: oino_ai::UserContentField::Text(text.into()),
             display: true, details: Some(json!({"author":"superagent", "oinoProvenance":{"kind":"superagent","author":"superagent"}})),
-        }, true, Some(oino_core::extensions::host::Delivery::FollowUp)).await.map_err(|e| e.to_string())?;
+        }, true, Some(match delivery { Delivery::Queue => oino_core::extensions::host::Delivery::FollowUp, Delivery::Steer => oino_core::extensions::host::Delivery::Steer })).await.map_err(|e| e.to_string())?;
             Ok(())
         })
     }
@@ -955,27 +983,24 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             } else {
                 task_ids
             };
-            if tasks.len() != 1 {
-                return Err(fail("E_SCHEMA", "Step 1 supports exactly one task"));
-            }
+            if tasks.is_empty() { return Err(fail("E_SCHEMA", "taskIds must not be empty")); }
             let overrides = overrides
                 .map(serde_json::from_value)
                 .transpose()
                 .map_err(|e| fail("E_SCHEMA", e))?
                 .unwrap_or_default();
             Ok(
-                json!({"sessionId":dispatcher.start_with_preset(&project_id, &tasks[0], preset_id.as_deref(), overrides).await?}),
+                json!({"sessionId":dispatcher.start_tasks(&project_id, &tasks, preset_id.as_deref(), overrides).await?}),
             )
         }
         Request::SuperagentStop {
             project_id,
             task_id,
         } => Ok(json!({"stopped":dispatcher.stop(&project_id, &task_id).await?})),
-        Request::SuperagentRelay {
-            project_id,
-            task_id,
-            text,
-        } => dispatcher.relay(&project_id, &task_id, &text).await,
+        Request::SuperagentRelay { project_id, task_id, text, mut task_ids, delivery, priority } => {
+            if let Some(task) = task_id { if !task_ids.is_empty() { return Err(fail("E_SCHEMA", "Use taskId or taskIds, not both")); } task_ids.push(task); }
+            dispatcher.relay_to_lead(&project_id, &text, &task_ids, Delivery::parse(delivery.as_deref().unwrap_or("queue"))?, priority).await
+        },
         Request::SuperagentApprovalResponse {
             project_id,
             task_id,

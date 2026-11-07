@@ -71,9 +71,9 @@ pub async fn create_from(
         ),
         (
             "superagent.start",
-            "Start one explicit todo ticket through the dispatcher.",
-            json!({"projectId":{"type":"string"},"taskId":{"type":"string"},"presetId":{"type":"string"},"overrides":{"type":"object"}}),
-            vec!["projectId", "taskId"],
+            "Start or queue ready tickets with the project's lead.",
+            json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"presetId":{"type":"string"},"overrides":{"type":"object"}}),
+            vec!["projectId", "taskIds"],
         ),
         (
             "superagent.stop",
@@ -83,9 +83,9 @@ pub async fn create_from(
         ),
         (
             "superagent.relay",
-            "Persist a comment and relay to the ticket's current claiming session.",
-            json!({"projectId":{"type":"string"},"taskId":{"type":"string"},"text":{"type":"string"}}),
-            vec!["projectId", "taskId", "text"],
+            "Relay to the project lead. Dependent work: queue; complementary work: steer; urgent work: priority true.",
+            json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"delivery":{"type":"string","enum":["queue","steer"]},"priority":{"type":"boolean"}}),
+            vec!["projectId", "text", "delivery"],
         ),
         (
             "ask_user",
@@ -125,7 +125,7 @@ pub async fn create_from(
         .with_manager(|m| {
             if !m.branch(None).iter().any(|e| matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent")) {
                 m.append_custom_entry("oino:superagent", Some(json!({"workspace":null})))?;
-                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch workers; ask the user if project selection is ambiguous.".into()), false, Some(json!({"author":"host"})))?;
+                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch leads; ask the user if project selection is ambiguous. Relay dependent work with queue, complementary work with steer, and urgent work with priority.".into()), false, Some(json!({"author":"host"})))?;
             }
             m.materialize()
         })
@@ -297,7 +297,6 @@ impl AgentTool for ChatTool {
                 }
                 _ => {
                     let project = field("projectId")?;
-                    let task = field("taskId")?;
                     let dispatcher =
                         crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
                     match name.as_str() {
@@ -309,15 +308,17 @@ impl AgentTool for ChatTool {
                                 .transpose()
                                 .map_err(|e| ToolError::new(format!("Invalid overrides: {e}")))?
                                 .unwrap_or_default();
-                            json!({"sessionId":dispatcher.start_with_preset(&project, &task, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?})
+                            let tasks: Vec<String> = serde_json::from_value(args["taskIds"].clone()).map_err(|e| ToolError::new(e.to_string()))?;
+                            json!({"sessionId":dispatcher.start_tasks(&project, &tasks, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }
                         "superagent.stop" => {
-                            json!({"stopped":dispatcher.stop(&project, &task).await.map_err(|e| ToolError::new(e.to_string()))?})
+                            json!({"stopped":dispatcher.stop(&project, &field("taskId")?).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }
-                        "superagent.relay" => dispatcher
-                            .relay(&project, &task, &field("text")?)
-                            .await
-                            .map_err(|e| ToolError::new(e.to_string()))?,
+                        "superagent.relay" => {
+                            let tasks: Vec<String> = args.get("taskIds").cloned().map(serde_json::from_value).transpose().map_err(|e| ToolError::new(format!("Invalid taskIds: {e}")))?.unwrap_or_default();
+                            let delivery = crate::superagent::Delivery::parse(&field("delivery")?).map_err(|e| ToolError::new(e.to_string()))?;
+                            dispatcher.relay_to_lead(&project, &field("text")?, &tasks, delivery, args["priority"].as_bool().unwrap_or(false)).await.map_err(|e| ToolError::new(e.to_string()))?
+                        },
                         _ => return Err(ToolError::new("Unknown Superagent tool")),
                     }
                 }

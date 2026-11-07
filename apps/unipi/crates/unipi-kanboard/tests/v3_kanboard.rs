@@ -9,6 +9,17 @@ use unipi_kanboard::{
 };
 
 #[test]
+fn batch_validation_does_not_partially_claim() {
+    let f = Fixture::new();
+    let a = f.add_with("ready", Status::Todo, Priority::Medium, &[]);
+    let b = f.add_with("waiting", Status::Todo, Priority::Medium, std::slice::from_ref(&a.id));
+    assert!(dispatcher::reserve_many(&f.layout, f.project.clone(), &[a.id.clone(), b.id.clone()], "lead").is_err());
+    let board = unipi_kanboard::board::Board::open(&f.layout, f.project.clone()).unwrap();
+    assert_eq!(board.get(&a.id).unwrap().status, Status::Todo);
+    assert!(board.get(&a.id).unwrap().run.is_none());
+}
+
+#[test]
 fn dispatcher_session_reserves_multiple_idempotently_and_reaper_keeps_them() {
     let f = Fixture::new();
     let a = f.add_with("a", Status::Todo, Priority::Medium, &[]);

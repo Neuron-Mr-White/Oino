@@ -12,52 +12,34 @@ use serde_json::{Value, json};
 
 /// Atomically reserve a ready ticket, enforcing project exclusion even against CLI claims.
 pub fn reserve(layout: &Layout, project: Project, id: &str, session: &str) -> Result<Task> {
+    reserve_many(layout, project, &[id.to_owned()], session).map(|mut tasks| tasks.remove(0))
+}
+
+/// Reserve a batch under one board lock after validating every requested ticket.
+pub fn reserve_many(layout: &Layout, project: Project, ids: &[String], session: &str) -> Result<Vec<Task>> {
     let _lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
     let tasks = board.tasks()?;
-    let mut task = board.get(id)?;
-    if matches_claim(&task, session) {
-        return Ok(task);
+    if ids.is_empty() { return Err(Error::usage("At least one ticket is required")); }
+    if ids.iter().collect::<std::collections::HashSet<_>>().len() != ids.len() { return Err(Error::usage("Duplicate ticket id")); }
+    let mut selected = Vec::with_capacity(ids.len());
+    for id in ids {
+        let task = board.get(id)?;
+        if !matches_claim(&task, session) {
+            if tasks.iter().filter_map(|t| t.run.as_ref()).any(|run| run.owner != RunOwner::Dispatcher || run.session != session) { return Err(Error::rule("Project already has a worker; finish or stop it first")); }
+            if task.status != Status::Todo { return Err(Error::rule("Move the task to todo before starting a worker")); }
+            if deps::pending_deps_regardless_of_status(&task, &board.dep_lookup(&tasks), ChainGate::InReview).is_some() { return Err(Error::rule("Finish the ticket dependencies before starting a worker")); }
+        }
+        selected.push(task);
     }
-    if tasks.iter().filter_map(|t| t.run.as_ref()).any(|run| run.owner != RunOwner::Dispatcher || run.session != session) {
-        return Err(Error::rule(
-            "Project already has a worker; finish or stop it first",
-        ));
+    for task in &mut selected {
+        if matches_claim(task, session) { continue; }
+        task.status = Status::InProgress;
+        task.run = Some(Run { session: session.into(), pid: std::process::id(), host: commands::hostname(), mode: RunMode::None, goal: None, started: Utc::now(), owner: RunOwner::Dispatcher });
+        task.push_activity_session(Utc::now(), Actor::System, None, format!("dispatcher reserved session {session}"));
+        board.save(task)?;
     }
-    if task.status != Status::Todo {
-        return Err(Error::rule(
-            "Move the task to todo before starting a worker",
-        ));
-    }
-    if deps::pending_deps_regardless_of_status(
-        &task,
-        &board.dep_lookup(&tasks),
-        ChainGate::InReview,
-    )
-    .is_some()
-    {
-        return Err(Error::rule(
-            "Finish the ticket dependencies before starting a worker",
-        ));
-    }
-    task.status = Status::InProgress;
-    task.run = Some(Run {
-        session: session.into(),
-        pid: std::process::id(),
-        host: commands::hostname(),
-        mode: RunMode::None,
-        goal: None,
-        started: Utc::now(),
-        owner: RunOwner::Dispatcher,
-    });
-    task.push_activity_session(
-        Utc::now(),
-        Actor::System,
-        None,
-        format!("dispatcher reserved session {session}"),
-    );
-    board.save(&task)?;
-    Ok(task)
+    Ok(selected)
 }
 
 /// Block only the still-matching dispatcher claim; never overwrite a worker's finish.

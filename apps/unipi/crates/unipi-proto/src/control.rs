@@ -617,7 +617,7 @@ pub enum Request {
     #[serde(rename = "superagent.stop", rename_all = "camelCase")]
     SuperagentStop { project_id: String, task_id: String },
     #[serde(rename = "superagent.relay", rename_all = "camelCase")]
-    SuperagentRelay { project_id: String, task_id: String, text: String },
+    SuperagentRelay { project_id: String, #[serde(default)] task_id: Option<String>, text: String, #[serde(default)] task_ids: Vec<String>, #[serde(default)] delivery: Option<String>, #[serde(default)] priority: bool },
     #[serde(rename = "superagent.approval_response", rename_all = "camelCase")]
     SuperagentApprovalResponse { project_id: String, task_id: String, worker_session_id: String, request_id: String, decision: String },
     /// UNI-317: the add/edit form's live preview — resolves plain
@@ -1094,6 +1094,7 @@ mod tests {
             serde_json::json!({"op":"superagent.start","projectId":"p","taskIds":["T-1"],"presetId":"feature","overrides":{"autonomy":"low"}}),
             serde_json::json!({"op":"superagent.start","projectId":"p","taskId":"T-1"}),
             serde_json::json!({"op":"superagent.configure_project","projectId":"p","autoStart":true}),
+            serde_json::json!({"op":"superagent.relay","projectId":"p","taskIds":["T-1"],"text":"urgent","delivery":"steer","priority":true}),
             serde_json::json!({"op":"superagent.presets.list"}),
             serde_json::json!({"op":"superagent.presets.save","preset":{"id":"x"}}),
             serde_json::json!({"op":"superagent.presets.delete","presetId":"x"}),

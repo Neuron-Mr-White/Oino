@@ -758,7 +758,7 @@ pub async fn superagent_relay(
     task_id: String,
     text: String,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SuperagentRelay { project_id, task_id, text }, REPLY_TIMEOUT).await
+    one_shot(&app, &state, &host_id, Request::SuperagentRelay { project_id, task_id: Some(task_id), text, task_ids: vec![], delivery: None, priority: false }, REPLY_TIMEOUT).await
 }
 
 /// Answer a pending approval on a live dispatcher worker.
@@ -1262,7 +1262,7 @@ mod tests {
             (Request::SuperagentConfigure { enabled: false, concurrency_cap: 2 }, "superagent.configure"),
             (Request::SuperagentStart { project_id: "p".into(), task_id: Some("t".into()), task_ids: vec![], preset_id: None, overrides: None }, "superagent.start"),
             (Request::SuperagentStop { project_id: "p".into(), task_id: "t".into() }, "superagent.stop"),
-            (Request::SuperagentRelay { project_id: "p".into(), task_id: "t".into(), text: "hello".into() }, "superagent.relay"),
+            (Request::SuperagentRelay { project_id: "p".into(), task_id: Some("t".into()), text: "hello".into(), task_ids: vec![], delivery: None, priority: false }, "superagent.relay"),
             (Request::SuperagentApprovalResponse { project_id: "p".into(), task_id: "t".into(), worker_session_id: "w".into(), request_id: "r".into(), decision: "deny".into() }, "superagent.approval_response"),
         ];
         for (request, op) in requests {

@@ -1,6 +1,6 @@
 # Superagent host protocol
 
-This is the target contract for the redesign. Step 1 implements status, configuration and presets plus single-ticket start; multi-ticket leads, delivery selection and mode switching arrive in Step 2. Memory arrives in Step 3. Clients must not assume future operations already exist.
+This is the target contract for the redesign. Multi-ticket leads and delivery selection are implemented; mode switching and memory are not yet implemented. Clients must not assume future operations already exist.
 
 Requests use the authenticated host control stream: `{"type":"hello","proto":"2.0.0","req":REQUEST}`. Successful replies are `{"type":"ok","data":REPLY}`; errors are `{"type":"err","error":{"code":"E_BOARD_REJECTED","message":"...","retryable":false,"detail":{"code":"E_..."}}}`. Fields shown as `null` are nullable; optional request fields may be omitted. Examples use illustrative values. No operation broadcasts a separate status event; clients poll status. Existing session events, including approval events, remain on their session streams.
 
@@ -16,11 +16,11 @@ Reply data:
 
 ## Start and control
 
-`{"op":"superagent.start","projectId":"heartpick","taskIds":["HP-1","HP-2"],"presetId":"bug-batch","overrides":{"model":"provider/model","thinking":"high","autonomy":"high","mode":"swarm","maxParallel":4,"review":"light","profiles":["work"]}}` → `{"sessionId":"session"}`. `presetId` and `overrides` are optional; overrides are partial preset fields. A running project lead receives new tasks rather than spawning another lead. Step 1 accepts legacy `taskId` and only one task.
+`{"op":"superagent.start","projectId":"heartpick","taskIds":["HP-1","HP-2"],"presetId":"bug-batch","overrides":{"model":"provider/model","thinking":"high","autonomy":"high","mode":"swarm","maxParallel":4,"review":"light","profiles":["work"]}}` → `{"sessionId":"session"}`. `presetId` and `overrides` are optional; overrides are partial preset fields. A running project lead receives new tasks rather than spawning another lead. Legacy single `taskId` is also accepted, but cannot be combined with `taskIds`.
 
 `{"op":"superagent.stop","projectId":"heartpick","taskId":"HP-1"}` → `{"stopped":true}`. The task identifies the lead's claim; false means no matching claim.
 
-`{"op":"superagent.relay","projectId":"heartpick","taskId":"HP-1","text":"Please also check tests","delivery":"queue","taskIds":["HP-2"],"priority":false}` → `{"commentId":"comment","sessionId":"session","delivered":true}`. `delivery` is `queue` or `steer`; `taskIds` and `priority` are optional, defaulting to `[]` and false. Queue is a follow-up; steer is read at the next step. A failed delivery is not reported as successful.
+`{"op":"superagent.relay","projectId":"heartpick","text":"Please also check tests","delivery":"queue","taskIds":["HP-2"],"priority":false}` → `{"commentId":"comment","sessionId":"session","delivered":true}`. `delivery` is `queue` or `steer`; `taskIds` and `priority` are optional, defaulting to `[]` and false. Queue is a follow-up; steer is read at the next step. Omitting taskIds comments on all currently claimed tickets; if there are none, commentId is null. Explicit ticket IDs must be claimed by the lead. A failed delivery is not reported as successful.
 
 `{"op":"superagent.set_mode","projectId":"heartpick","mode":"graph"}` → `{"sessionId":"session","mode":"graph"}`. Mode is `none`, `goal`, `ralph`, `swarm`, or `graph`; mid-run application occurs at a step boundary.
 

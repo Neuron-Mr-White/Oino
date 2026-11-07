@@ -46,6 +46,8 @@ struct Fake {
     last: Mutex<Option<String>>,
     approvals: Mutex<Vec<oino_core::session::permission::ApprovalRequest>>,
     presets: Mutex<Vec<unipi_host::superagent_presets::Preset>>,
+    batches: Mutex<Vec<Vec<String>>>,
+    deliveries: Mutex<Vec<(String, unipi_host::superagent::Delivery)>>,
 }
 impl Workers for Fake {
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
@@ -75,6 +77,14 @@ impl Workers for Fake {
     ) -> BoxFuture<'a, Result<(), String>> {
         self.presets.lock().unwrap().push(preset.clone());
         self.launch(project, task, id)
+    }
+    fn launch_lead<'a>(&'a self, project: &'a Project, tasks: &'a [Task], id: &'a str, preset: &'a unipi_host::superagent_presets::Preset) -> BoxFuture<'a, Result<(), String>> {
+        self.batches.lock().unwrap().push(tasks.iter().map(|t| t.id.clone()).collect());
+        self.launch_preset(project, &tasks[0], id, preset)
+    }
+    fn relay_delivery<'a>(&'a self, id: &'a str, text: &'a str, delivery: unipi_host::superagent::Delivery) -> BoxFuture<'a, Result<(), String>> {
+        self.deliveries.lock().unwrap().push((text.to_owned(), delivery));
+        self.relay(id, text)
     }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async move {
@@ -269,6 +279,46 @@ async fn watcher_requires_project_toggle_and_status_separates_review() {
 }
 
 #[tokio::test]
+async fn multiple_tasks_feed_one_lead_and_route_delivery() {
+    use unipi_host::superagent::Delivery;
+    let f = Fixture::new();
+    let a = f.add("first", &[]); let b = f.add("second", &[]); let c = f.add("third", &[]);
+    let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
+    let id = d.start_tasks(&f.project.slug, &[a.clone(), b.clone()], None, Default::default()).await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+    let status = d.status().await.unwrap();
+    assert_eq!(status["leads"].as_array().unwrap().len(), 1);
+    assert_eq!(status["leads"][0]["ticketIds"].as_array().unwrap().len(), 2);
+    assert_eq!(fake.batches.lock().unwrap()[0], vec![a.clone(), b.clone()]);
+    assert_eq!(f.task(&a).run.unwrap().session, id);
+    assert_eq!(f.task(&b).run.unwrap().session, id);
+    assert_eq!(d.start(&f.project.slug, &c).await.unwrap(), id);
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+    assert_eq!(fake.deliveries.lock().unwrap()[0].1, Delivery::Queue);
+    d.relay_to_lead(&f.project.slug, "complement", &[b.clone()], Delivery::Steer, true).await.unwrap();
+    d.relay_to_lead(&f.project.slug, "dependent", &[c.clone()], Delivery::Queue, false).await.unwrap();
+    let deliveries = fake.deliveries.lock().unwrap();
+    assert_eq!(deliveries[1].1, Delivery::Steer);
+    assert!(deliveries[1].0.starts_with("URGENT: schedule this first / add it as the first graph item"));
+    assert_eq!(deliveries[2], ("dependent".into(), Delivery::Queue));
+    assert!(f.task(&b).activity.iter().any(|a| a.text.contains("[superagent]") && a.text.contains("complement")));
+    drop(deliveries);
+    let root = tempfile::tempdir().unwrap();
+    let other = Project::create(&f.layout, root.path(), Some("other"), Some("OT")).unwrap();
+    let task = commands::add(&f.layout, other.clone(), &Common::new(Actor::User, ChainGate::InReview), "other", None, Some(Status::Todo), Priority::Medium, &[], &[], &[], false).unwrap();
+    assert!(d.start(&other.slug, task["id"].as_str().unwrap()).await.is_err());
+}
+
+#[tokio::test]
+async fn auto_start_batches_all_ready_tickets() {
+    let f = Fixture::new(); let a = f.add("first", &[]); let b = f.add("second", &[]); let _blocked = f.add("wait", std::slice::from_ref(&a));
+    let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
+    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap(); d.configure_project(&f.project.slug, true).await.unwrap();
+    d.tick().await.unwrap();
+    let batches = fake.batches.lock().unwrap(); assert_eq!(batches.len(), 1); assert_eq!(batches[0].len(), 2); assert!(batches[0].contains(&a)); assert!(batches[0].contains(&b));
+}
+
+#[tokio::test]
 async fn parked_claim_protocol_stop_and_restart() {
     use oino_core::session::permission::{
         ApprovalDecision, ApprovalRequest, ApprovalResponse, Level,
@@ -389,7 +439,7 @@ async fn two_todos_one_project_worker() {
     .await
     .unwrap();
     let (a, b) = tokio::join!(d.start(&f.project.slug, &a), d.start(&f.project.slug, &b));
-    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert_eq!(a.unwrap(), b.unwrap());
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
 }
 #[tokio::test]
