@@ -31,6 +31,14 @@ fn index_and_query_fixture() {
         serde_json::json!({"op":"query", "root":project.path(), "text":"authenticate password", "limit":10}),
     );
     assert!(response.to_string().contains("auth.rs"), "{response}");
+    let filtered = request(
+        serde_json::json!({"op":"query", "root":project.path(), "args":{"pattern":"authenticate password", "search_mode":"hybrid", "glob_pattern":"*.rs", "output_mode":"content", "line_numbers":true, "head_limit":1, "path":"auth.rs"}}),
+    );
+    assert!(filtered.to_string().contains("auth.rs:"), "{filtered}");
+    let excluded = request(
+        serde_json::json!({"op":"query", "root":project.path(), "args":{"pattern":"authenticate password", "search_mode":"semantic", "glob_pattern":"*.py"}}),
+    );
+    assert!(!excluded.to_string().contains("auth.rs"), "{excluded}");
     request(serde_json::json!({"op":"shutdown"}));
     assert!(child.wait().unwrap().success());
 }

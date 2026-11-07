@@ -15,8 +15,12 @@ enum Request {
     },
     Query {
         root: PathBuf,
-        text: String,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
         limit: Option<usize>,
+        #[serde(default)]
+        args: Option<serde_json::Map<String, Value>>,
     },
     Shutdown,
 }
@@ -43,8 +47,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .await
                     .map(|()| json!({}))
             }
-            Ok(Request::Query { root, text, limit }) => {
-                let args = json!({"pattern": text, "search_mode": "semantic", "head_limit": limit});
+            Ok(Request::Query {
+                root,
+                text,
+                limit,
+                args,
+            }) => {
+                let args = args.map(Value::Object).unwrap_or_else(
+                    || json!({"pattern": text, "search_mode": "semantic", "head_limit": limit}),
+                );
                 match args.as_object() {
                     Some(args) => {
                         oino_tools::zvec::query(&root, &agent_dir, args, CancellationToken::new())

@@ -143,11 +143,7 @@ pub async fn query(
     }
     #[cfg(not(feature = "zvec"))]
     {
-        let text = args
-            .get("pattern")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| oino_agent::ToolError::new("pattern is required"))?;
-        let request = serde_json::json!({"op":"query", "root":root, "text":text, "limit":args.get("head_limit")});
+        let request = serde_json::json!({"op":"query", "root":root, "args":args});
         let result = tokio::select! {
             () = cancel.cancelled() => return Err(oino_agent::ToolError::new("Search cancelled")),
             result = client::call(agent_dir, request) => result.map_err(oino_agent::ToolError::new)?,
