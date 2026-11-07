@@ -48,6 +48,7 @@ struct Fake {
     presets: Mutex<Vec<unipi_host::superagent_presets::Preset>>,
     batches: Mutex<Vec<Vec<String>>>,
     deliveries: Mutex<Vec<(String, unipi_host::superagent::Delivery)>>,
+    modes: Mutex<Vec<String>>,
 }
 impl Workers for Fake {
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
@@ -80,11 +81,15 @@ impl Workers for Fake {
     }
     fn launch_lead<'a>(&'a self, project: &'a Project, tasks: &'a [Task], id: &'a str, preset: &'a unipi_host::superagent_presets::Preset) -> BoxFuture<'a, Result<(), String>> {
         self.batches.lock().unwrap().push(tasks.iter().map(|t| t.id.clone()).collect());
+        self.modes.lock().unwrap().push(preset.mode.clone());
         self.launch_preset(project, &tasks[0], id, preset)
     }
     fn relay_delivery<'a>(&'a self, id: &'a str, text: &'a str, delivery: unipi_host::superagent::Delivery) -> BoxFuture<'a, Result<(), String>> {
         self.deliveries.lock().unwrap().push((text.to_owned(), delivery));
         self.relay(id, text)
+    }
+    fn set_mode<'a>(&'a self, _: &'a str, mode: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move { self.modes.lock().unwrap().push(mode.into()); Ok(()) })
     }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async move {
@@ -316,6 +321,19 @@ async fn auto_start_batches_all_ready_tickets() {
     d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap(); d.configure_project(&f.project.slug, true).await.unwrap();
     d.tick().await.unwrap();
     let batches = fake.batches.lock().unwrap(); assert_eq!(batches.len(), 1); assert_eq!(batches[0].len(), 2); assert!(batches[0].contains(&a)); assert!(batches[0].contains(&b));
+}
+
+#[tokio::test]
+async fn preset_mode_and_switch_reach_lead_and_status() {
+    let f = Fixture::new(); let task = f.add("mode", &[]);
+    let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
+    let id = d.start_tasks(&f.project.slug, &[task], Some("feature"), Default::default()).await.unwrap();
+    assert_eq!(fake.modes.lock().unwrap().as_slice(), ["graph"]);
+    assert_eq!(d.status().await.unwrap()["leads"][0]["mode"], "graph");
+    assert_eq!(d.set_mode(&f.project.slug, "swarm").await.unwrap(), serde_json::json!({"sessionId":id,"mode":"swarm"}));
+    assert_eq!(fake.modes.lock().unwrap().as_slice(), ["graph", "swarm"]);
+    assert_eq!(d.status().await.unwrap()["leads"][0]["mode"], "swarm");
+    assert!(d.set_mode(&f.project.slug, "invalid").await.is_err());
 }
 
 #[tokio::test]
@@ -597,7 +615,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
         .unwrap();
     let session = runtime.session();
     assert_eq!(session.cwd(), dir.path().join("agent/superagent"));
-    assert_eq!(session.active_tool_names().len(), 6);
+    assert_eq!(session.active_tool_names().len(), 7);
     let mut names: Vec<String> = session.all_tools().into_iter().map(|t| t.name).collect();
     names.sort();
     assert_eq!(
@@ -607,6 +625,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
             "kanboard",
             "project_resolver",
             "superagent.relay",
+            "superagent.set_mode",
             "superagent.start",
             "superagent.stop"
         ]
@@ -630,7 +649,7 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
         .await
         .unwrap();
     assert_eq!(resumed.session().cwd(), dir.path().join("agent/superagent"));
-    assert_eq!(resumed.session().all_tools().len(), 6);
+    assert_eq!(resumed.session().all_tools().len(), 7);
     resumed.dispose().await;
 }
 

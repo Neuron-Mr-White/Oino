@@ -1103,6 +1103,7 @@ impl Handler {
             Request::SuperagentStatus
             | Request::SuperagentConfigure { .. }
             | Request::SuperagentConfigureProject { .. }
+            | Request::SuperagentSetMode { .. }
             | Request::SuperagentPresetsList
             | Request::SuperagentPresetsSave { .. }
             | Request::SuperagentPresetsDelete { .. }

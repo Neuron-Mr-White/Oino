@@ -3230,6 +3230,12 @@ impl Lh {
                             let mut st = self.state.borrow_mut();
                             st.pending_explicit.insert(session.to_owned(), mode);
                             st.session_override.insert(session.to_owned(), mode);
+                            st.session_display.insert(session.to_owned(), mode);
+                            st.display = Some(mode);
+                            drop(st);
+                            if control::is_idle() { apply_mode_tools(mode); }
+                            self.save();
+                            self.publish();
                             json!({"ok": true, "mode": m})
                         }
                     }

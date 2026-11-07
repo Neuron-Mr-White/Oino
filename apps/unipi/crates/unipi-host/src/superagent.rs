@@ -125,6 +125,7 @@ pub trait Workers: Send + Sync {
     fn relay_delivery<'a>(&'a self, id: &'a str, text: &'a str, _delivery: Delivery) -> BoxFuture<'a, std::result::Result<(), String>> {
         self.relay(id, text)
     }
+    fn set_mode<'a>(&'a self, _id: &'a str, _mode: &'a str) -> BoxFuture<'a, std::result::Result<(), String>> { Box::pin(async { Ok(()) }) }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, std::result::Result<(), String>>;
     fn relay<'a>(
         &'a self,
@@ -296,6 +297,14 @@ impl Dispatcher {
         next.save(&self.preferences_path).map_err(storage)?;
         *prefs = next;
         Ok(json!({"deleted":deleted}))
+    }
+    pub async fn set_mode(&self, project_id: &str, mode: &str) -> Result<Value> {
+        if !matches!(mode, "none" | "goal" | "ralph" | "swarm" | "graph") { return Err(fail("E_SCHEMA", "Invalid long-horizon mode")); }
+        let _transaction = self.transaction.lock().await;
+        let id = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(_, p)| p.as_str() == project_id).map(|(id, _)| id.clone()).ok_or_else(|| fail("E_WORKER_CLAIM", "Project has no active lead"))?;
+        self.workers.set_mode(&id, mode).await.map_err(|e| fail("E_MODE", e))?;
+        if let Some(preset) = self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(&id) { preset.mode = mode.into(); }
+        Ok(json!({"sessionId":id,"mode":mode}))
     }
     pub async fn preset_set_default(&self, id: &str) -> Result<Value> {
         let mut prefs = self.preferences.lock().await;
@@ -591,7 +600,7 @@ impl Dispatcher {
                             if let Some(ids) = existing["ticketIds"].as_array_mut() { ids.push(json!(task.id)); }
                             existing["progress"]["running"] = json!(existing["ticketIds"].as_array().map_or(0, Vec::len));
                         } else {
-                            leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":"none","ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
+                            leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":preset.as_ref().map_or("none", |p| &p.mode),"ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
                         }
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
                             "autonomy":dispatcher::autonomy(&task),"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"]}));
@@ -628,6 +637,15 @@ impl Dispatcher {
             json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
         )
     }
+}
+
+async fn apply_mode(session: &oino_core::session::AgentSession, mode: &str) -> std::result::Result<(), String> {
+    use oino_core::extensions::{api::CallKind, host::HostOp};
+    if mode == "none" && session.runner().command("lh-mode").is_none() { return Ok(()); }
+    let cx = session.runner().call_context().with_kind(CallKind::Command);
+    let result = session.host_call("unipi.long-horizon", &cx, HostOp::InvokeCommand { name: "lh-mode".into(), args: json!({"mode":mode}).to_string() }).await.map_err(|e| e.to_string())?;
+    if result["ok"] != true { return Err(result["reason"].as_str().unwrap_or("Mode switch refused").into()); }
+    Ok(())
 }
 
 /// Production runtime adapter. Session files are created/attached by exact reserved id.
@@ -761,6 +779,7 @@ impl Workers for HostWorkers {
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;
             self.hub.announce_worker(id).await;
+            apply_mode(&session, &preset.mode).await?;
             let prompt = lead_brief(project, tasks);
             if !attaching {
                 session
@@ -777,6 +796,12 @@ impl Workers for HostWorkers {
             crate::superagent_session::register(Arc::clone(&runtime));
             runtimes.insert(id.into(), runtime);
             Ok(())
+        })
+    }
+    fn set_mode<'a>(&'a self, id: &'a str, mode: &'a str) -> BoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async move {
+            let runtime = self.runtimes.lock().await.get(id).cloned().ok_or("Lead is not live")?;
+            apply_mode(&runtime.session(), mode).await
         })
     }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, std::result::Result<(), String>> {
@@ -959,6 +984,7 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             project_id,
             auto_start,
         } => dispatcher.configure_project(&project_id, auto_start).await,
+        Request::SuperagentSetMode { project_id, mode } => dispatcher.set_mode(&project_id, &mode).await,
         Request::SuperagentPresetsList => Ok(dispatcher.presets_list().await),
         Request::SuperagentPresetsSave { preset } => {
             dispatcher

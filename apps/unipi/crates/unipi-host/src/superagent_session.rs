@@ -88,6 +88,12 @@ pub async fn create_from(
             vec!["projectId", "text", "delivery"],
         ),
         (
+            "superagent.set_mode",
+            "Switch the lead mode; ask the user first when practical, but the switch is not technically gated.",
+            json!({"projectId":{"type":"string"},"mode":{"type":"string","enum":["none","goal","ralph","swarm","graph"]}}),
+            vec!["projectId", "mode"],
+        ),
+        (
             "ask_user",
             "Ask the user for missing project selection or a consequential decision.",
             json!({"question":{"type":"string"}}),
@@ -125,7 +131,7 @@ pub async fn create_from(
         .with_manager(|m| {
             if !m.branch(None).iter().any(|e| matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent")) {
                 m.append_custom_entry("oino:superagent", Some(json!({"workspace":null})))?;
-                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch leads; ask the user if project selection is ambiguous. Relay dependent work with queue, complementary work with steer, and urgent work with priority.".into()), false, Some(json!({"author":"host"})))?;
+                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch leads; ask the user if project selection is ambiguous. Relay dependent work with queue, complementary work with steer, and urgent work with priority. Ask the user before switching a lead's mode when practical; switching is not technically gated.".into()), false, Some(json!({"author":"host"})))?;
             }
             m.materialize()
         })
@@ -311,6 +317,7 @@ impl AgentTool for ChatTool {
                             let tasks: Vec<String> = serde_json::from_value(args["taskIds"].clone()).map_err(|e| ToolError::new(e.to_string()))?;
                             json!({"sessionId":dispatcher.start_tasks(&project, &tasks, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }
+                        "superagent.set_mode" => dispatcher.set_mode(&project, &field("mode")?).await.map_err(|e| ToolError::new(e.to_string()))?,
                         "superagent.stop" => {
                             json!({"stopped":dispatcher.stop(&project, &field("taskId")?).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }

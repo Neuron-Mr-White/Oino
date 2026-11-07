@@ -585,6 +585,19 @@ fn walk(dir: &Path) -> Vec<PathBuf> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn long_horizon_mode_runner_switches_without_prompt() {
+    let ids = ["unipi.core", "unipi.long-horizon"];
+    assert!(available(&ids), "long-horizon wasm must be built");
+    let env = Env::new(&ids, Vec::new(), json!({})).await;
+    let before = env.session().messages().len();
+    let result = env.command("unipi.long-horizon", "lh-mode", &json!({"mode":"graph"}).to_string()).await;
+    assert_eq!(result, json!({"ok":true,"mode":"graph"}));
+    assert_eq!(env.session().messages().len(), before);
+    let result = env.command("unipi.long-horizon", "lh-mode", &json!({"mode":"none"}).to_string()).await;
+    assert_eq!(result, json!({"ok":true,"mode":"none"}));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn long_horizon_goal_continues_through_the_arbiter() {
     let ids = ["unipi.core", "unipi.long-horizon"];
     if !available(&ids) {

@@ -604,6 +604,8 @@ pub enum Request {
     SuperagentConfigure { enabled: bool, concurrency_cap: usize },
     #[serde(rename = "superagent.start", rename_all = "camelCase")]
     SuperagentStart { project_id: String, #[serde(default)] task_id: Option<String>, #[serde(default)] task_ids: Vec<String>, #[serde(default)] preset_id: Option<String>, #[serde(default)] overrides: Option<serde_json::Value> },
+    #[serde(rename = "superagent.set_mode", rename_all = "camelCase")]
+    SuperagentSetMode { project_id: String, mode: String },
     #[serde(rename = "superagent.configure_project", rename_all = "camelCase")]
     SuperagentConfigureProject { project_id: String, auto_start: bool },
     #[serde(rename = "superagent.presets.list")]
