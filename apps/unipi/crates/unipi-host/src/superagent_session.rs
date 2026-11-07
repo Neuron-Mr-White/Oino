@@ -99,6 +99,8 @@ pub async fn create_from(
         meta: ToolDefinitionMeta::new(name, name, description, json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})),
         hub: Arc::clone(&hub), session: Arc::clone(&session),
     }), Some(description.into()), Vec::new())).collect();
+    let cwd = hub.agent_dir().join("superagent");
+    std::fs::create_dir_all(&cwd).map_err(|e| e.to_string())?;
     let runtime = Arc::new(
         AgentSessionRuntime::create_for_hub(
             services,
@@ -107,7 +109,7 @@ pub async fn create_from(
                     oino_core::runtime::SessionSource::New,
                     oino_core::runtime::SessionSource::Open,
                 ),
-                cwd: Some(PathBuf::new()),
+                cwd: Some(cwd),
                 session_dir: Some(hub.sessions_root().to_path_buf()),
                 name: Some("Superagent".into()),
                 tools: ToolSelection::NoBuiltin,
@@ -390,10 +392,18 @@ impl AgentTool for WorkerBoard {
 /// A bounded header-prefix check, not a generic session wake (which could expose shell tools).
 pub fn is_superagent_file(path: &std::path::Path) -> bool {
     use std::io::{BufRead, BufReader};
+    use std::sync::Mutex;
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<PathBuf, (std::time::SystemTime, u64, bool)>>> = OnceLock::new();
+    let Ok(meta) = std::fs::metadata(path) else { return false };
+    let Ok(modified) = meta.modified() else { return false };
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some((_, _, result)) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(path).filter(|(time, len, _)| *time == modified && *len == meta.len()) {
+        return *result;
+    }
     let Ok(file) = std::fs::File::open(path) else {
         return false;
     };
-    BufReader::new(file)
+    let result = BufReader::new(file)
         .lines()
         .take(32)
         .filter_map(Result::ok)
@@ -404,7 +414,9 @@ pub fn is_superagent_file(path: &std::path::Path) -> bool {
                     (v["type"] == "custom" && v["customType"] == "oino:superagent")
                         || (v["type"] == "session" && v["cwd"].as_str() == Some(""))
                 })
-        })
+        });
+    cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(path.to_path_buf(), (modified, meta.len(), result));
+    result
 }
 
 pub fn unregister(id: &str) {

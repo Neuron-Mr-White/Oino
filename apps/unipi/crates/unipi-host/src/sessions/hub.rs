@@ -706,6 +706,16 @@ impl SessionHub {
         Ok(cards)
     }
 
+    /// List dedicated and legacy Superagent transcripts without waking them.
+    pub async fn superagent_sessions(&self) -> Result<serde_json::Value, HubError> {
+        let records = self.inner.core.list().await?;
+        let sessions: Vec<_> = records.into_iter().filter(|r| self.inner.is_superagent(&r.info.path)).map(|r| {
+            let info = r.info;
+            serde_json::json!({"sessionId": info.id, "title": info.name.unwrap_or_else(|| "Superagent".into()), "createdAt": info.created.to_ms().unwrap_or(0), "updatedAt": epoch_ms(info.modified), "path": info.path})
+        }).collect();
+        Ok(serde_json::json!({"sessions": sessions}))
+    }
+
     /// Background pass over the sessions the card index only sampled (big files: head +
     /// tail): reads them whole once, niced on the blocking pool, and re-announces every
     /// card whose name, folder or count changed (`SessionChanged`). One pass at a time;
@@ -1228,11 +1238,17 @@ impl Inner {
         let _ = self.events.send(event);
     }
 
+    fn is_superagent(&self, path: &Path) -> bool {
+        let dir = oino_session::manager::cwd_session_dir(&self.sessions_root, &self.agent_dir.join("superagent"));
+        path.parent() == Some(dir.as_path()) || crate::superagent_session::is_superagent_file(path)
+    }
+
     async fn list(&self) -> Result<Vec<SessionCard>, HubError> {
         let records = self.core.list().await?;
         let state = lock(&self.state);
         Ok(records
             .into_iter()
+            .filter(|record| !self.is_superagent(&record.info.path))
             .map(|record| self.card_from(&state, &record))
             .collect())
     }
@@ -1377,7 +1393,9 @@ impl Inner {
     /// Emits the current card of `session_id` (state/name changed).
     async fn changed(&self, session_id: &str) {
         if let Ok(Some(card)) = self.card(session_id).await {
-            self.emit(HubEvent::SessionChanged { card });
+            if !self.is_superagent(&card.file) {
+                self.emit(HubEvent::SessionChanged { card });
+            }
         }
     }
 
@@ -2853,7 +2871,7 @@ impl Inner {
         if query.scope != SessionsQueryScope::Archived {
             let records = self.core.list().await?;
             let state = lock(&self.state);
-            rows.extend(records.iter().map(|record| QueryRow {
+            rows.extend(records.iter().filter(|record| !self.is_superagent(&record.info.path)).map(|record| QueryRow {
                 card: self.card_from(&state, record),
                 archived: false,
                 first_message: record.info.first_message.clone(),

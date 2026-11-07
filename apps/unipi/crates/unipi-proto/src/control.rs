@@ -598,6 +598,8 @@ pub enum Request {
     SuperagentStatus,
     #[serde(rename = "superagent.session")]
     SuperagentSession,
+    #[serde(rename = "superagent.sessions")]
+    SuperagentSessions,
     #[serde(rename = "superagent.configure", rename_all = "camelCase")]
     SuperagentConfigure { enabled: bool, concurrency_cap: usize },
     #[serde(rename = "superagent.start", rename_all = "camelCase")]

@@ -1143,6 +1143,7 @@ impl Handler {
             // session owner (`serve` installs it); a handler without one (tests, a CLI
             // path) says so instead of silently succeeding.
             Request::SuperagentSession
+            | Request::SuperagentSessions
             | Request::SessionsList { .. }
             | Request::SessionSearch { .. }
             | Request::MemoryBrowse { .. }

@@ -113,6 +113,31 @@ fn write_session(f: &Fixture, n: usize, cwd: &str, name: Option<&str>, first: &s
     id
 }
 
+#[tokio::test]
+async fn superagent_sessions_are_isolated_from_sidebar() {
+    use std::io::Write;
+    let f = fixture();
+    let cwd = f.cwd.to_str().unwrap();
+    let legacy = write_session(&f, 1, cwd, Some("Old Superagent"), "legacy");
+    let chat = write_session(&f, 2, cwd, Some("Chat"), "hello");
+    let dir = oino_session::manager::cwd_session_dir(&f.sessions, &f.cwd);
+    let legacy_path = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).find(|p| p.to_string_lossy().contains(&legacy)).unwrap();
+    writeln!(std::fs::OpenOptions::new().append(true).open(&legacy_path).unwrap(), "{}", serde_json::json!({"type":"custom","customType":"oino:superagent","data":{}})).unwrap();
+    let hub = f.hub();
+    let created = hub.create_superagent().await.unwrap();
+    let path = created.card().file.clone();
+    assert_eq!(path.parent(), Some(oino_session::manager::cwd_session_dir(&f.sessions, &f.agent_dir.join("superagent")).as_path()));
+    let listed = hub.list().await.unwrap();
+    assert!(listed.iter().any(|c| c.session_id == chat));
+    assert!(!listed.iter().any(|c| c.session_id == legacy || c.file == path));
+    let sessions = hub.superagent_sessions().await.unwrap();
+    let sessions = sessions["sessions"].as_array().unwrap();
+    assert!(sessions.iter().any(|s| s["sessionId"] == legacy));
+    assert!(sessions.iter().any(|s| s["path"] == path.to_str().unwrap()));
+    let hits = hub.query(&SessionsQuery::default()).await.unwrap();
+    assert!(!hits.hits.iter().any(|h| h.card.session_id == legacy));
+}
+
 fn files_in(dir: &std::path::Path) -> usize {
     walk(dir).len()
 }
