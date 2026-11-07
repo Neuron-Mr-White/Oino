@@ -8,6 +8,8 @@
  */
 import { createSignal } from 'solid-js';
 import type { SessionHandle } from '../session/store';
+import { cachedModels, rememberModels } from '../../components/draft/hostCache';
+import { parseModels, type ModelInfo } from './picker';
 
 /** pi's levels in order (`ThinkingLevel::ALL`). */
 export const THINKING_ORDER = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -89,6 +91,8 @@ export const canThink = (levels: readonly string[] | undefined): boolean => (lev
 
 const [cache, setCache] = createSignal<Record<string, string[]>>({}, { equals: false });
 const inFlight = new Set<string>();
+const [catalogues, setCatalogues] = createSignal<Record<string, ModelInfo[]>>({});
+const cataloguesInFlight = new Set<string>();
 
 /** The cache key: the model is part of it (its levels change with it). */
 export const levelsKey = (s: SessionHandle): string => {
@@ -98,7 +102,10 @@ export const levelsKey = (s: SessionHandle): string => {
 
 /** The levels already known for the session's current model. */
 export function thinkingLevels(s: SessionHandle): string[] | undefined {
-  return cache()[levelsKey(s)];
+  const model = s.state.model;
+  const rows = catalogues()[s.hostId] ?? cachedModels(s.hostId);
+  const row = rows?.find((m) => m.provider === model?.provider && m.id === model?.id);
+  return cache()[levelsKey(s)] ?? levelsOfModel(row);
 }
 
 /**
@@ -109,6 +116,18 @@ export function thinkingLevels(s: SessionHandle): string[] | undefined {
 export function ensureThinkingLevels(s: SessionHandle): void {
   if (s.state.conn !== 'live') return;
   const key = levelsKey(s);
+  // Fetch independently of the level request: either can hang or fail, and the
+  // catalog also supplies the next model immediately after a switch.
+  if (!catalogues()[s.hostId] && !cataloguesInFlight.has(s.hostId)) {
+    cataloguesInFlight.add(s.hostId);
+    void s.cmd<unknown>({ type: 'get_available_models' }).then((reply) => {
+      const rows = parseModels(reply);
+      if (rows.length) {
+        rememberModels(s.hostId, rows);
+        setCatalogues((cur) => ({ ...cur, [s.hostId]: rows }));
+      }
+    }).catch(() => undefined).finally(() => cataloguesInFlight.delete(s.hostId));
+  }
   if (cache()[key] || inFlight.has(key)) return;
   inFlight.add(key);
   void s
@@ -134,5 +153,7 @@ export async function cycleThinkingLevel(s: SessionHandle): Promise<void> {
 /** Tests/support: forget every cached list. */
 export function resetThinkingLevels(): void {
   inFlight.clear();
+  cataloguesInFlight.clear();
   setCache({});
+  setCatalogues({});
 }

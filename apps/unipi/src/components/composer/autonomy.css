@@ -14,3 +14,7 @@
 .autonomy-approval-actions button { min-height: 40px; min-width: 40px; }
 /* Toolbar compression must keep all three bars and the explicit label. */
 html[data-shell=phone] .tl-composer .comp-bar .tb-slot[data-slot=permission] .tb-chip-autonomy { min-height: 40px; height: 40px; width: auto; }
+@media (max-width: 420px) {
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-permission] .tb-chip-autonomy > span:first-child { display: none; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-permission] .tb-chip-autonomy { padding: 0 7px; }
+}

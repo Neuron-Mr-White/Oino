@@ -111,6 +111,16 @@ describe('toolbar compression (Z-64)', () => {
     expect(seven.hasAttribute('data-c-model')).toBe(true);
   });
 
+  it('keeps the thinking slot mounted across every width from 360 to 1280', () => {
+    const { bar, view } = mount(360);
+    for (let width = 360; width <= 1280; width++) {
+      bar.dataset.cw = String(width);
+      fireEvent(window, new Event('resize'));
+      expect(view.container.querySelector('[data-slot="think"]')?.textContent).toBe('think');
+      if (Number(bar.dataset.step) >= 4) expect(['lite', 'square']).toContain(bar.dataset.cThink);
+    }
+  });
+
   it('restores in reverse when the bar widens again', () => {
     const { bar } = mount(260);
     expect(bar.dataset.step).toBe('7');

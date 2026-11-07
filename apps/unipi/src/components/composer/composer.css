@@ -600,6 +600,20 @@ html[data-shell=phone] .tl-composer-wrap:has(.cmenu) .tl-composer.tl-composer-do
 html[data-shell=phone] .tl-composer .comp-bar .tl-composer-send,
 html[data-shell=phone] .tl-composer .comp-bar .tl-composer-stop { width: 44px; height: 44px; min-height: 44px; }
 html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 28px; height: 44px; min-height: 44px; }
+@media (max-width: 420px) {
+  html[data-shell=phone] .tl-composer .comp-bar { gap: 2px; }
+  html[data-shell=phone] .tl-composer .comp-bar .composer-plus-btn { width: 32px; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-think] .tb-slot[data-slot=think] .tb-chip { width: 32px; padding: 0; justify-content: center; }
+  html[data-shell=phone] .tl-composer .comp-bar .tl-composer-send,
+  html[data-shell=phone] .tl-composer .comp-bar .tl-composer-stop { width: 40px; height: 40px; min-height: 40px; }
+  html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 20px; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) { height: auto; flex-wrap: wrap; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) .tb-spacer { display: none; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) > .tb-item:last-child { flex-basis: 100%; justify-content: flex-end; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-slot[data-slot=model] { flex: 0 0 auto; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .ctx-ring { width: 28px; min-width: 28px; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .tb-chip-model { min-width: 20px; padding: 0 4px 0 0; }
+}
 @media (max-height: 479px) {
   html[data-shell=phone] .tl-composer .ph-field { max-height: calc(var(--vvh, 100dvh) * 0.4); }
 }
