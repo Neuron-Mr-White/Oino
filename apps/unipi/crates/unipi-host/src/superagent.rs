@@ -85,6 +85,19 @@ pub trait Workers: Send + Sync {
     fn retire<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, ()> {
         Box::pin(async {})
     }
+    fn approvals<'a>(
+        &'a self,
+        _id: &'a str,
+    ) -> BoxFuture<'a, Vec<oino_core::session::permission::ApprovalRequest>> {
+        Box::pin(async { Vec::new() })
+    }
+    fn approval_response<'a>(
+        &'a self,
+        _id: &'a str,
+        _response: oino_core::session::permission::ApprovalResponse,
+    ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async { Err("Worker is not live".into()) })
+    }
     fn progress<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, Value> {
         Box::pin(async { json!({"step":null,"tool":null,"cost":null}) })
     }
@@ -164,7 +177,7 @@ impl Dispatcher {
                 .tasks()
                 .map_err(storage)?
             {
-                if task.status == Status::InProgress
+                if matches!(task.status, Status::InProgress | Status::Blocked)
                     && task
                         .run
                         .as_ref()
@@ -378,6 +391,42 @@ impl Dispatcher {
         }
         Ok(reply)
     }
+    pub async fn approval_response(
+        &self,
+        project_id: &str,
+        task_id: &str,
+        session_id: &str,
+        response: oino_core::session::permission::ApprovalResponse,
+    ) -> Result<()> {
+        let _transaction = self.transaction.lock().await;
+        let project = Project::load(&self.layout, project_id).map_err(storage)?;
+        let task = Board::open(&self.layout, project)
+            .map_err(storage)?
+            .get(task_id)
+            .map_err(storage)?;
+        let owned = self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(session_id)
+            .is_some_and(|p| p == project_id);
+        if !owned
+            || !task.run.as_ref().is_some_and(|r| {
+                r.session == session_id && dispatcher::matches_claim(&task, session_id)
+            })
+            || !self.workers.live(session_id).await
+            || self.workers.ended(session_id).await.is_some()
+        {
+            return Err(fail(
+                "E_WORKER_CLAIM",
+                "Ticket has no live dispatcher worker",
+            ));
+        }
+        self.workers
+            .approval_response(session_id, response)
+            .await
+            .map_err(|e| fail("E_APPROVAL", e))
+    }
     pub async fn status(&self) -> Result<Value> {
         let config = self.transaction.lock().await;
         let mut workers = Vec::new();
@@ -393,9 +442,17 @@ impl Dispatcher {
                         let progress = self.workers.progress(&run.session).await;
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
                             "autonomy":dispatcher::autonomy(&task),"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"]}));
+                        if dispatcher::matches_claim(&task, &run.session)
+                            && self.workers.live(&run.session).await
+                            && self.workers.ended(&run.session).await.is_none()
+                        {
+                            for approval in self.workers.approvals(&run.session).await {
+                                needs_you.push(json!({"projectId":project.slug,"taskId":task.id,"status":"blocked", "workerSessionId":run.session, "requestId":approval.request_id, "sessionId":approval.session_id, "tool":approval.tool, "command":approval.arguments.get("command"), "summary":approval.arguments.get("summary"), "risk":approval.risk_level, "ceiling":approval.ceiling, "reason":approval.reason}));
+                            }
+                        }
                     }
                 }
-                if matches!(task.status, Status::Blocked | Status::InReview) {
+                if matches!(task.status, Status::Blocked | Status::InReview) && task.run.is_none() {
                     needs_you.push(json!({"projectId":project.slug,"taskId":task.id,"status":task.status,
                         "question":task.activity.iter().rev().find(|a| a.text.starts_with("blocked:")).map(|a| a.text.trim_start_matches("blocked: "))}));
                 }
@@ -410,12 +467,14 @@ impl Dispatcher {
 /// Production runtime adapter. Session files are created/attached by exact reserved id.
 pub struct HostWorkers {
     hub: Arc<crate::sessions::SessionHub>,
+    layout: Layout,
     runtimes: Mutex<HashMap<String, Arc<AgentSessionRuntime>>>,
 }
 impl HostWorkers {
-    pub fn new(hub: Arc<crate::sessions::SessionHub>) -> Self {
+    pub fn new(hub: Arc<crate::sessions::SessionHub>, layout: Layout) -> Self {
         Self {
             hub,
+            layout,
             runtimes: Mutex::new(HashMap::new()),
         }
     }
@@ -468,6 +527,30 @@ impl Workers for HostWorkers {
             );
             let session = runtime.session();
             session.set_unattended();
+            session.set_superagent_worker();
+            let layout = self.layout.clone();
+            let project_for_approval = project.clone();
+            let task_id = task.id.clone();
+            let worker_id = id.to_owned();
+            session.set_worker_approval_transition(Arc::new(move |request, park| {
+                let command = request
+                    .arguments
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let question = format!(
+                    "Approval needed: {} (risk: {:?}, ceiling: {:?}; {}). Command: {}",
+                    request.tool, request.risk_level, request.ceiling, request.reason, command
+                );
+                dispatcher::approval_transition(
+                    &layout,
+                    project_for_approval.clone(),
+                    &task_id,
+                    &worker_id,
+                    park.then_some(question.as_str()),
+                )
+                .map_err(|e| e.to_string())
+            }));
             let ceiling = serde_json::from_value(json!(dispatcher::autonomy(task)))
                 .map_err(|e| e.to_string())?;
             session.set_autonomy(ceiling);
@@ -550,6 +633,33 @@ impl Workers for HostWorkers {
             }
         })
     }
+    fn approvals<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> BoxFuture<'a, Vec<oino_core::session::permission::ApprovalRequest>> {
+        Box::pin(async move {
+            self.runtimes
+                .lock()
+                .await
+                .get(id)
+                .map_or_else(Vec::new, |r| r.session().pending_approvals())
+        })
+    }
+    fn approval_response<'a>(
+        &'a self,
+        id: &'a str,
+        response: oino_core::session::permission::ApprovalResponse,
+    ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async move {
+            self.runtimes
+                .lock()
+                .await
+                .get(id)
+                .ok_or("Worker is not live")?
+                .session()
+                .approval_response(response)
+        })
+    }
     fn progress<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Value> {
         Box::pin(async move {
             let runtime = self.runtimes.lock().await.get(id).cloned();
@@ -602,10 +712,11 @@ pub fn current() -> Result<&'static Arc<Dispatcher>> {
 }
 /// Install before serving clients. A second host can serve other operations but not dispatch.
 pub async fn install(hub: Arc<crate::sessions::SessionHub>, config: &Path) -> Result<()> {
+    let layout = Layout::from_env().map_err(storage)?;
     let dispatcher = Dispatcher::acquire(
-        Layout::from_env().map_err(storage)?,
+        layout.clone(),
         config.to_path_buf(),
-        Arc::new(HostWorkers::new(hub)),
+        Arc::new(HostWorkers::new(hub, layout)),
     )
     .await?;
     DISPATCHER
@@ -654,6 +765,27 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             task_id,
             text,
         } => dispatcher.relay(&project_id, &task_id, &text).await,
+        Request::SuperagentApprovalResponse {
+            project_id,
+            task_id,
+            worker_session_id,
+            request_id,
+            decision,
+        } => {
+            let decision = serde_json::from_value(json!(decision)).map_err(storage)?;
+            dispatcher
+                .approval_response(
+                    &project_id,
+                    &task_id,
+                    &worker_session_id,
+                    oino_core::session::permission::ApprovalResponse {
+                        request_id,
+                        decision,
+                    },
+                )
+                .await?;
+            Ok(json!({"accepted":true}))
+        }
         _ => Err(fail("E_SCHEMA", "Unknown superagent operation")),
     }
 }

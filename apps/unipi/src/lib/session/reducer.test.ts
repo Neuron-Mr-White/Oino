@@ -39,6 +39,17 @@ function fromFresh(): SessionState {
   return s;
 }
 
+describe('worker approval synchronization', () => {
+  it('clears the matching card when answered on another surface', () => {
+    const s = fresh();
+    const approval = { type: 'approval_request', requestId: 'r1', sessionId: 'child', tool: 'bash', arguments: { command: 'git push' }, riskLevel: 'high', ceiling: 'medium', reason: 'needs approval' };
+    applyEvent(s, { session: 's1', seq: 1, event: approval });
+    applyEvent(s, { session: 's1', seq: 2, event: { ...approval, requestId: 'r2' } });
+    applyEvent(s, { session: 's1', seq: 3, event: { type: 'approval_cleared', requestId: 'r1' } });
+    expect(s.approvals?.map((r) => r.requestId)).toEqual(['r2']);
+  });
+});
+
 describe('session reducer: H4 contract fixtures', () => {
   it('full snapshot seeds entries, leaf, commands, topics, run and the ui hand-off', () => {
     const s = fresh();

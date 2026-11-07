@@ -588,6 +588,7 @@ pub enum NoticeLevel {
 /// What `events_open` streams, one per connection (host.md §7.4; ui-protocol §9.2 for `Ui`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant, reason = "wire event keeps its existing public data representation")]
 pub enum HubEvent {
     /// A card was created, renamed, changed state or became idle: keeps the Sessions list
     /// live without polling. `run_state` tells created/state/needs-you apart.

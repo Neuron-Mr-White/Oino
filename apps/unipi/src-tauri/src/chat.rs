@@ -751,6 +751,21 @@ pub async fn superagent_relay(
     one_shot(&app, &state, &host_id, Request::SuperagentRelay { project_id, task_id, text }, REPLY_TIMEOUT).await
 }
 
+/// Answer a pending approval on a live dispatcher worker.
+#[tauri::command]
+pub async fn superagent_approval_response(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+    project_id: String,
+    task_id: String,
+    worker_session_id: String,
+    request_id: String,
+    decision: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentApprovalResponse { project_id, task_id, worker_session_id, request_id, decision }, REPLY_TIMEOUT).await
+}
+
 /// Opens the restricted Superagent through the existing authenticated session stream.
 #[tauri::command]
 pub async fn superagent_session(
@@ -1237,6 +1252,7 @@ mod tests {
             (Request::SuperagentStart { project_id: "p".into(), task_id: "t".into() }, "superagent.start"),
             (Request::SuperagentStop { project_id: "p".into(), task_id: "t".into() }, "superagent.stop"),
             (Request::SuperagentRelay { project_id: "p".into(), task_id: "t".into(), text: "hello".into() }, "superagent.relay"),
+            (Request::SuperagentApprovalResponse { project_id: "p".into(), task_id: "t".into(), worker_session_id: "w".into(), request_id: "r".into(), decision: "deny".into() }, "superagent.approval_response"),
         ];
         for (request, op) in requests {
             let bytes = hello_frame(request).unwrap();

@@ -49,8 +49,13 @@ pub struct ApprovalResponse {
     /// Decision.
     pub decision: ApprovalDecision,
 }
+/// Durable dispatcher callback invoked before publishing and before resolving an approval.
+pub type WorkerApprovalTransition =
+    std::sync::Arc<dyn Fn(&ApprovalRequest, bool) -> Result<(), String> + Send + Sync>;
+
 struct Pending {
     tx: oneshot::Sender<ApprovalDecision>,
+    request: ApprovalRequest,
 }
 /// Per-session state. All frontends start without approval capability.
 #[derive(Default)]
@@ -58,6 +63,8 @@ pub(crate) struct PermissionState {
     level: Option<Level>,
     unattended: bool,
     approval_ui: bool,
+    worker: bool,
+    worker_transition: Option<WorkerApprovalTransition>,
     pending: HashMap<String, Pending>,
 }
 struct PendingGuard<'a> {
@@ -66,7 +73,13 @@ struct PendingGuard<'a> {
 }
 impl Drop for PendingGuard<'_> {
     fn drop(&mut self) {
-        lock(self.state).pending.remove(&self.id);
+        let mut state = lock(self.state);
+        if let Some(pending) = state.pending.remove(&self.id)
+            && state.pending.is_empty()
+            && let Some(transition) = &state.worker_transition
+        {
+            let _ = transition(&pending.request, false);
+        }
     }
 }
 
@@ -122,19 +135,48 @@ impl AgentSession {
         state.approval_ui = false;
         state.pending.clear();
     }
+    /// Enable dispatcher-owned worker approvals independently of chat connections.
+    pub fn set_superagent_worker(&self) {
+        lock(&self.inner.permission).worker = true;
+    }
+
+    /// Install the dispatcher's durable park/resume transition before starting the worker.
+    pub fn set_worker_approval_transition(&self, transition: WorkerApprovalTransition) {
+        lock(&self.inner.permission).worker_transition = Some(transition);
+    }
+
+    pub(crate) fn subscribe_with_approvals(&self) -> crate::hub::EventStream {
+        let state = lock(&self.inner.permission);
+        let stream = self.inner.hub.subscribe();
+        for pending in state.pending.values() {
+            stream.enqueue(crate::events::OinoEvent::ApprovalRequest { request: pending.request.clone() });
+        }
+        stream
+    }
+
+    /// Snapshot requests for the owning worker's dispatcher and newly opened chats.
+    #[must_use]
+    pub fn pending_approvals(&self) -> Vec<ApprovalRequest> {
+        lock(&self.inner.permission)
+            .pending
+            .values()
+            .map(|p| p.request.clone())
+            .collect()
+    }
+
     /// Only a transport with an actual approval implementation may opt in.
     /// Tool availability, extension UI presence and child profiles never opt in.
     pub fn set_approval_ui(&self, available: bool) {
         let mut state = lock(&self.inner.permission);
         state.approval_ui = available && !state.unattended;
-        if !state.approval_ui {
+        if !state.approval_ui && !state.worker {
             state.pending.clear();
         }
     }
     fn approval_owner(&self) -> Option<Self> {
         let state = lock(&self.inner.permission);
         let persisted = self.with_manager(|m| m.branch(None).iter().any(|e| matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:unattended")));
-        if state.unattended || persisted {
+        if (state.unattended || persisted) && !state.worker {
             return None;
         }
         if let Some(link) = &self.inner.agents.link {
@@ -145,7 +187,7 @@ impl AgentSession {
             drop(state);
             return Self::from_inner(parent).approval_owner();
         }
-        state.approval_ui.then(|| self.clone())
+        (state.approval_ui || state.worker).then(|| self.clone())
     }
     /// Consume a pending response exactly once. Wrong-session, stale, duplicate and
     /// unattended responses are errors. The session owning the parent UI owns child requests.
@@ -158,19 +200,40 @@ impl AgentSession {
     )]
     pub fn approval_response(&self, response: ApprovalResponse) -> Result<(), String> {
         let mut state = lock(&self.inner.permission);
-        if state.unattended || !state.approval_ui {
+        if !state.worker && (state.unattended || !state.approval_ui) {
             return Err("approval response on unattended session".into());
         }
-        state
+        let pending = state
+            .pending
+            .get(&response.request_id)
+            .ok_or("stale or wrong-session approval response")?;
+        if state.pending.len() == 1
+            && let Some(transition) = &state.worker_transition
+        {
+            transition(&pending.request, false)?;
+        }
+        let pending = state
             .pending
             .remove(&response.request_id)
-            .ok_or("stale or wrong-session approval response")?
+            .ok_or("stale or wrong-session approval response")?;
+        pending
             .tx
             .send(response.decision)
-            .map_err(|_| "approval request cancelled".into())
+            .map_err(|_| "approval request cancelled".to_string())?;
+        self.inner
+            .hub
+            .publish(crate::events::OinoEvent::ApprovalCleared {
+                request_id: response.request_id,
+            });
+        Ok(())
     }
     pub(crate) fn cancel_approvals(&self) {
-        lock(&self.inner.permission).pending.clear();
+        let mut state = lock(&self.inner.permission);
+        for (request_id, _) in state.pending.drain() {
+            self.inner
+                .hub
+                .publish(crate::events::OinoEvent::ApprovalCleared { request_id });
+        }
     }
 
     fn permission_project(&self) -> String {
@@ -344,36 +407,46 @@ impl AgentSession {
         };
         let id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
-        {
+        let request = ApprovalRequest {
+            request_id: id.clone(),
+            session_id: self.session_id(),
+            tool: tool.into(),
+            arguments: args.clone(),
+            risk_level: risk,
+            ceiling,
+            reason: reason.clone(),
+        };
+        let worker = {
             let mut state = lock(&owner.inner.permission);
-            if state.unattended || !state.approval_ui {
+            if !state.worker && (state.unattended || !state.approval_ui) {
                 return Err(reason);
             }
-            state.pending.insert(id.clone(), Pending { tx });
-        }
+            if let Some(transition) = &state.worker_transition {
+                transition(&request, true)?;
+            }
+            state.pending.insert(
+                id.clone(),
+                Pending {
+                    tx,
+                    request: request.clone(),
+                },
+            );
+            owner.inner.hub.publish(crate::events::OinoEvent::ApprovalRequest { request });
+            state.worker
+        };
         let _guard = PendingGuard {
             state: &owner.inner.permission,
             id: id.clone(),
         };
-        owner
-            .inner
-            .hub
-            .publish(crate::events::OinoEvent::ApprovalRequest {
-                request: ApprovalRequest {
-                    request_id: id,
-                    session_id: self.session_id(),
-                    tool: tool.into(),
-                    arguments: args.clone(),
-                    risk_level: risk,
-                    ceiling,
-                    reason: reason.clone(),
-                },
-            });
-        let decision = tokio::time::timeout(std::time::Duration::from_secs(300), rx)
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .ok_or_else(|| reason.clone())?;
+        let decision = if worker {
+            rx.await.ok()
+        } else {
+            tokio::time::timeout(std::time::Duration::from_secs(300), rx)
+                .await
+                .ok()
+                .and_then(Result::ok)
+        }
+        .ok_or_else(|| reason.clone())?;
         // A disconnect or background transition invalidates grants even if a response raced it.
         if self.approval_owner().is_none() {
             return Err(reason);

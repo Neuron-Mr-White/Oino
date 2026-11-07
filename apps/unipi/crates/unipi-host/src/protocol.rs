@@ -1104,7 +1104,8 @@ impl Handler {
             | Request::SuperagentConfigure { .. }
             | Request::SuperagentStart { .. }
             | Request::SuperagentStop { .. }
-            | Request::SuperagentRelay { .. } => {
+            | Request::SuperagentRelay { .. }
+            | Request::SuperagentApprovalResponse { .. } => {
                 let result = crate::superagent::request(req).await.map_err(|e| {
                     error(AppErrorCode::E_BOARD_REJECTED, e.message).with_detail(serde_json::json!({"code":e.code}))
                 })?;

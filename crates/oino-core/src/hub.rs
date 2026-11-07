@@ -384,6 +384,10 @@ impl std::fmt::Debug for EventStream {
 }
 
 impl EventStream {
+    pub(crate) fn enqueue(&self, event: impl Into<ClientEvent>) {
+        lock(&self.queue).push(event.into(), SUBSCRIBER_CAPACITY);
+    }
+
     /// Takes every queued event without waiting.
     #[must_use]
     pub fn drain_now(&self) -> Vec<ClientEvent> {

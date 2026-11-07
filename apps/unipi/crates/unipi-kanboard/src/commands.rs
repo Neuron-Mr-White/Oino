@@ -1035,6 +1035,9 @@ pub fn start(
         .iter()
         .find(|task| task.id == id)
         .ok_or_else(|| Error::not_found(format!("start {id}: no such task")))?;
+    if task.status == Status::Blocked && task.run.as_ref().is_some_and(|run| run.owner == RunOwner::Dispatcher && run.session == args.session) {
+        return Ok(task_json(&board, task, &tasks, gate));
+    }
     if task.status == Status::InProgress {
         let owner = task.run.as_ref();
         if owner.is_some_and(|run| run.session == args.session) {
@@ -1306,6 +1309,9 @@ pub fn move_task_undoable(
     let before = read.clone();
     let mut task = read;
     let from = task.status;
+    if from == Status::Blocked && task.run.as_ref().is_some_and(|r| r.owner == RunOwner::Dispatcher) {
+        return Err(Error::rule("Worker is waiting for approval; answer or stop it first"));
+    }
     let staleness = staleness_of(&task);
     // The self-claim moves have their own commands: `move` would skip the
     // claim bookkeeping (run block, ownership, summary).
@@ -1694,7 +1700,9 @@ pub fn validate(layout: &Layout, project: Project, fix: bool) -> Result<Validate
                 "in_progress without a run block (release it, or re-claim)",
             ));
         }
-        if task.status != Status::InProgress && task.run.is_some() {
+        if task.status != Status::InProgress && task.run.is_some()
+            && !(task.status == Status::Blocked && task.run.as_ref().is_some_and(|r| r.owner == RunOwner::Dispatcher))
+        {
             problems.push(crate::error::Problem::new(
                 board.task_path(&task.id).to_string_lossy(),
                 1,

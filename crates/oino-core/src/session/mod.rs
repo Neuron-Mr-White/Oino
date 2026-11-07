@@ -705,7 +705,7 @@ impl AgentSession {
     /// Ordered client event stream (bounded, coalescing).
     #[must_use]
     pub fn subscribe(&self) -> EventStream {
-        self.inner.hub.subscribe()
+        self.subscribe_with_approvals()
     }
 
     /// The event hub (runtime rebinding).

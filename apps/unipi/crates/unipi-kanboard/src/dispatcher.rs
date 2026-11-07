@@ -78,6 +78,36 @@ pub fn block(
     Ok(true)
 }
 
+/// Park or resume an approval without releasing the dispatcher's durable claim.
+pub fn approval_transition(
+    layout: &Layout,
+    project: Project,
+    id: &str,
+    session: &str,
+    question: Option<&str>,
+) -> Result<()> {
+    let _lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    if !matches_claim(&task, session) {
+        return Err(Error::rule(
+            "Worker claim changed; cannot transition approval",
+        ));
+    }
+    if let Some(question) = question {
+        task.status = Status::Blocked;
+        task.push_activity(Utc::now(), Actor::System, format!("blocked: {question}"));
+    } else if task.status == Status::Blocked {
+        task.status = Status::InProgress;
+        task.push_activity(
+            Utc::now(),
+            Actor::System,
+            "Approval answered; worker resumed",
+        );
+    }
+    board.save(&task)
+}
+
 /// Validate and persist an explicit author-tagged relay under the claim lock.
 /// Delivery must use the returned session, not a previously cached claimant.
 pub fn relay(
@@ -111,7 +141,7 @@ pub fn relay(
 /// Dispatcher ownership, status and session are all required for control operations.
 #[must_use]
 pub fn matches_claim(task: &Task, session: &str) -> bool {
-    task.status == Status::InProgress
+    matches!(task.status, Status::InProgress | Status::Blocked)
         && task
             .run
             .as_ref()

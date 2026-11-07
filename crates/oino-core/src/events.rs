@@ -416,6 +416,12 @@ pub enum OinoEvent {
         #[serde(flatten)]
         request: crate::session::permission::ApprovalRequest,
     },
+    /// A pending permission request was answered or cancelled.
+    #[serde(rename_all = "camelCase")]
+    ApprovalCleared {
+        /// The single-use request that is no longer pending.
+        request_id: String,
+    },
     /// The runtime replaced the session; clients reset view state.
     #[serde(rename_all = "camelCase")]
     SessionReplaced {

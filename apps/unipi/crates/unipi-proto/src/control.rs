@@ -606,6 +606,8 @@ pub enum Request {
     SuperagentStop { project_id: String, task_id: String },
     #[serde(rename = "superagent.relay", rename_all = "camelCase")]
     SuperagentRelay { project_id: String, task_id: String, text: String },
+    #[serde(rename = "superagent.approval_response", rename_all = "camelCase")]
+    SuperagentApprovalResponse { project_id: String, task_id: String, worker_session_id: String, request_id: String, decision: String },
     /// UNI-317: the add/edit form's live preview — resolves plain
     /// language or a machine schedule to its 6-field cron (or `at:`) form
     /// plus the next [`crate::cron::CRON_PARSE_PREVIEW`] fires.

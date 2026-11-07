@@ -139,6 +139,7 @@ pub fn run() {
             chat::superagent_start,
             chat::superagent_stop,
             chat::superagent_relay,
+            chat::superagent_approval_response,
             chat::superagent_session,
             chat::session_fork,
             chat::session_cmd,

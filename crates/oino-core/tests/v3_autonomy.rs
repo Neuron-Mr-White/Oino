@@ -243,6 +243,36 @@ async fn unattended_and_child_ceiling() {
 }
 
 #[tokio::test]
+async fn worker_approvals_park_route_and_cancel() {
+    let worker = session(json!({})).await;
+    worker.set_unattended();
+    worker.set_superagent_worker();
+    let mut events = worker.subscribe();
+    let child = worker.spawn_agent("", AgentSpec { label: "foreground".into(), ui: UiPolicy::Forward, ..Default::default() }).await.unwrap();
+    let child = child.session().unwrap();
+    for (agent, decision) in [(worker.clone(), ApprovalDecision::AllowOnce), (child.clone(), ApprovalDecision::Deny)] {
+        let id = agent.session_id();
+        let run = tokio::spawn(async move { agent.check_permission("bash", &shell("git push")).await });
+        let pending = request(&mut events).await;
+        assert_eq!(pending.session_id, id);
+        assert!(!run.is_finished());
+        assert_eq!(worker.pending_approvals(), vec![pending.clone()]);
+        let mut late = worker.subscribe();
+        assert_eq!(request(&mut late).await, pending);
+        let request_id = pending.request_id;
+        worker.approval_response(ApprovalResponse { request_id: request_id.clone(), decision }).unwrap();
+        assert!(late.drain_now().iter().any(|event| matches!(event, ClientEvent::Oino(OinoEvent::ApprovalCleared { request_id: id }) if id == &request_id)));
+        let result = run.await.unwrap();
+        if decision == ApprovalDecision::AllowOnce { assert!(result.is_ok()); } else { assert_eq!(result.unwrap_err(), "blocked by permission (user denied)"); }
+    }
+    let agent = worker.clone();
+    let run = tokio::spawn(async move { agent.check_permission("bash", &shell("git push")).await });
+    request(&mut events).await;
+    worker.abort().await;
+    assert!(run.await.unwrap().is_err());
+}
+
+#[tokio::test]
 async fn approval_protocol() {
     let s = session(json!({})).await;
     s.set_approval_ui(true);

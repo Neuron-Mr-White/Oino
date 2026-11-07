@@ -23,6 +23,7 @@ struct Fake {
     fail_relay: AtomicBool,
     relays: Mutex<Vec<String>>,
     last: Mutex<Option<String>>,
+    approvals: Mutex<Vec<oino_core::session::permission::ApprovalRequest>>,
 }
 impl Workers for Fake {
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
@@ -55,6 +56,27 @@ impl Workers for Fake {
                 return Err("offline".into());
             }
             self.relays.lock().unwrap().push(id.into());
+            Ok(())
+        })
+    }
+    fn approvals<'a>(
+        &'a self,
+        _: &'a str,
+    ) -> BoxFuture<'a, Vec<oino_core::session::permission::ApprovalRequest>> {
+        Box::pin(async { self.approvals.lock().unwrap().clone() })
+    }
+    fn approval_response<'a>(
+        &'a self,
+        _: &'a str,
+        response: oino_core::session::permission::ApprovalResponse,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let mut approvals = self.approvals.lock().unwrap();
+            let i = approvals
+                .iter()
+                .position(|a| a.request_id == response.request_id)
+                .ok_or("stale")?;
+            approvals.remove(i);
             Ok(())
         })
     }
@@ -116,6 +138,99 @@ impl Fixture {
             .unwrap()
     }
 }
+#[tokio::test]
+async fn parked_claim_protocol_stop_and_restart() {
+    use oino_core::session::permission::{
+        ApprovalDecision, ApprovalRequest, ApprovalResponse, Level,
+    };
+    let f = Fixture::new();
+    let id = f.add("park", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let session = d.start(&f.project.slug, &id).await.unwrap();
+    let request = ApprovalRequest {
+        request_id: "request".into(),
+        session_id: "child".into(),
+        tool: "bash".into(),
+        arguments: serde_json::from_value(
+            serde_json::json!({"command":"git push", "summary":"push"}),
+        )
+        .unwrap(),
+        risk_level: Some(Level::High),
+        ceiling: Level::Medium,
+        reason: "needs Autonomy High".into(),
+    };
+    fake.approvals.lock().unwrap().push(request);
+    unipi_kanboard::dispatcher::approval_transition(
+        &f.layout,
+        f.project.clone(),
+        &id,
+        &session,
+        Some("git push risk high ceiling medium needs approval"),
+    )
+    .unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(f.task(&id).status, Status::Blocked);
+    assert_eq!(f.task(&id).run.unwrap().session, session);
+    let item = d.status().await.unwrap()["needsYou"][0].clone();
+    assert_eq!(
+        item,
+        serde_json::json!({"projectId":f.project.slug,"taskId":id,"status":"blocked","workerSessionId":session,"requestId":"request","sessionId":"child","tool":"bash","command":"git push","summary":"push","risk":"high","ceiling":"medium","reason":"needs Autonomy High"})
+    );
+    let response = ApprovalResponse {
+        request_id: "request".into(),
+        decision: ApprovalDecision::Deny,
+    };
+    assert!(
+        d.approval_response(&f.project.slug, &id, "wrong", response.clone())
+            .await
+            .is_err()
+    );
+    assert!(
+        d.approval_response(
+            &f.project.slug,
+            &id,
+            &session,
+            ApprovalResponse {
+                request_id: "stale".into(),
+                ..response.clone()
+            }
+        )
+        .await
+        .is_err()
+    );
+    d.approval_response(&f.project.slug, &id, &session, response.clone())
+        .await
+        .unwrap();
+    assert!(
+        d.approval_response(&f.project.slug, &id, &session, response)
+            .await
+            .is_err()
+    );
+    assert!(d.stop(&f.project.slug, &id).await.unwrap());
+    assert_eq!(f.task(&id).status, Status::Blocked);
+    assert!(f.task(&id).run.is_none());
+
+    let another = f.add("restart", &[]);
+    let session = d.start(&f.project.slug, &another).await.unwrap();
+    unipi_kanboard::dispatcher::approval_transition(
+        &f.layout,
+        f.project.clone(),
+        &another,
+        &session,
+        Some("pending"),
+    )
+    .unwrap();
+    fake.live.lock().unwrap().remove(&session);
+    drop(d);
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let _restarted = f.dispatcher(fake).await;
+    let task = f.task(&another);
+    assert_eq!(task.status, Status::Blocked);
+    assert!(task.run.is_none());
+    assert!(task.activity.last().unwrap().text.contains(INTERRUPTED));
+}
+
 #[tokio::test]
 async fn watcher_manual_race_one_run() {
     let f = Fixture::new();
@@ -432,7 +547,7 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         host_data_dir: None,
     })
     .unwrap();
-    let workers = HostWorkers::new(hub.clone());
+    let workers = HostWorkers::new(hub.clone(), f.layout.clone());
     let session_id = uuid::Uuid::now_v7().to_string();
     let task = unipi_kanboard::dispatcher::reserve(&f.layout, f.project.clone(), &id, &session_id)
         .unwrap();
@@ -449,19 +564,53 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         oino_core::session::permission::Level::Medium
     );
     session.set_approval_ui(true); // sticky unattended cannot be undone by opening the UI
-    assert_eq!(
-        session
+    let marker = f.home.path().join("allowed-ran");
+    let command = format!("touch {}", marker.display());
+    let agent = session.clone();
+    let call = tokio::spawn(async move { agent.execute_bash(command, false, None).await });
+    while session.pending_approvals().is_empty() {
+        tokio::task::yield_now().await;
+    }
+    assert!(!call.is_finished());
+    assert_eq!(f.task(&id).status, Status::Blocked);
+    assert!(f.task(&id).run.is_some());
+    let request = session.pending_approvals().pop().unwrap();
+    session
+        .approval_response(oino_core::session::permission::ApprovalResponse {
+            request_id: request.request_id,
+            decision: oino_core::session::permission::ApprovalDecision::AllowOnce,
+        })
+        .unwrap();
+    assert!(call.await.unwrap().is_ok());
+    assert!(marker.exists());
+    assert_eq!(f.task(&id).status, Status::InProgress);
+    let agent = session.clone();
+    let denied = tokio::spawn(async move {
+        agent
             .check_permission(
                 "bash",
                 &serde_json::from_value(
-                    serde_json::json!({"command":"git push","riskLevel":"high"})
+                    serde_json::json!({"command":"git push","riskLevel":"high"}),
                 )
-                .unwrap()
+                .unwrap(),
             )
             .await
-            .unwrap_err(),
-        "needs Autonomy High"
+    });
+    while session.pending_approvals().is_empty() {
+        tokio::task::yield_now().await;
+    }
+    let request = session.pending_approvals().pop().unwrap();
+    session
+        .approval_response(oino_core::session::permission::ApprovalResponse {
+            request_id: request.request_id,
+            decision: oino_core::session::permission::ApprovalDecision::Deny,
+        })
+        .unwrap();
+    assert_eq!(
+        denied.await.unwrap().unwrap_err(),
+        "blocked by permission (user denied)"
     );
+    assert_eq!(f.task(&id).status, Status::InProgress);
     workers
         .launch(&f.project, &task, &session_id)
         .await
@@ -473,7 +622,27 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         .unwrap();
     session.wait_for_idle().await;
     assert!(session.entries().iter().any(|e| matches!(&e.kind, oino_session::EntryKind::CustomMessage { custom_type, details:Some(details), .. } if custom_type == "oino:superagent-relay" && details["author"] == "superagent")));
-    workers.retire(&session_id).await;
+    let marker = f.home.path().join("must-not-run");
+    let command = format!("touch {}", marker.display());
+    let agent = session.clone();
+    let cancelled = tokio::spawn(async move { agent.execute_bash(command, false, None).await });
+    while session.pending_approvals().is_empty() {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(f.task(&id).status, Status::Blocked);
+    workers.stop(&session_id).await.unwrap();
+    assert!(cancelled.await.unwrap().is_err());
+    assert!(!marker.exists());
+    unipi_kanboard::dispatcher::block(
+        &f.layout,
+        f.project.clone(),
+        &id,
+        &session_id,
+        "Worker stopped; move to todo to retry",
+    )
+    .unwrap();
+    assert!(f.task(&id).run.is_none());
+    assert_eq!(f.task(&id).status, Status::Blocked);
 }
 
 #[test]

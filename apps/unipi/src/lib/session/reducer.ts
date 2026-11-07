@@ -546,6 +546,12 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       if (topic) s.topics[topic] = { data: event.data, sticky: event.sticky !== false, publisher: str(event.publisher) ?? '' };
       return {};
     }
+    case 'approval_cleared': {
+      if (dto.session === s.sessionId && typeof event.requestId === 'string') {
+        s.approvals = (s.approvals ?? []).filter((r) => r.requestId !== event.requestId);
+      }
+      return {};
+    }
     case 'approval_request': {
       if (dto.session !== s.sessionId || typeof event.sessionId !== 'string' || typeof event.requestId !== 'string' || typeof event.tool !== 'string'
         || !isObject(event.arguments) || typeof event.reason !== 'string'
