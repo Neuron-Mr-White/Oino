@@ -82,18 +82,19 @@ Old sessions must still replay (alias old names/args where needed).
 ## K. Bugs to fix in this round
 - K1. Settings › Subagents › Edit agent sheet: picking a value in the Thinking dropdown (any Kobalte Select inside a SheetFrame/BoardSheet) closes the sheet before Save. Cause: the select's portaled listbox counts as an outside click. Fix it for all selects inside sheets.
 
-## L. Superagent (dsh-superagent concepts, adapted)
-- L1. New sidebar tab "Superagent" (in the top nav with New chat / Search / Board / Cron). A chat with NO workspace.
-- L2. Kanboard is the ticket store across all projects. The superagent reads and writes every project's board (add to backlog, start = move to todo, edit, order, add dependencies, set per-ticket autonomy, summarize boards). Replaces `/kanboard-do` and per-session `/kanboard-autowork`.
-- L3. It chooses the target project from recent projects (sidebar projects + zoxide); if it cannot tell, it asks the user.
-- L4. No git worktrees (Rust targets don't like them). Parallel-vs-serial is judged by the superagent; serialize with kanboard dependencies. The dispatcher runs at most 1 active worker per project by default.
-- L5. Host-side work watcher (dispatcher), runs in unipi-oino-host (always alive like cron): watches `todo` tasks whose dependencies are met, starts a worker session in that project at the ticket's autonomy, the worker claims → works → finishes to in_review (or blocked with a question). An on/off toggle and a concurrency cap live in the Superagent UI. With the watcher OFF the superagent still manages the board and can start a specific task on command.
-- L6. Superagent page: center = chat; side pane = live workers (task, project, autonomy, current step/tool, elapsed, cost, stop/open), "Needs you" (in_review + blocked across projects, blocked shows its question), watcher toggle + cap.
-- L7. Relaying to a running worker: the superagent finds the claiming session (kanboard records `Run.session`) and sends it a follow-up, and also records a ticket comment. Host-authored/agent-authored messages must NOT show the user "Steer" chip; label them by author (fix `isSteer()` in apps/unipi/src/lib/session/turns.ts). Board comments auto-reaching workers = v2, not now.
+## L. Superagent (owner-approved router and leads)
+- L1. Superagent is a workspace-free router chat. It identifies the right project, asking if ambiguous, writes tickets to that project's kanboard (the work record), picks a preset and delegates to its lead. No worktrees.
+- L2. At most one unattended normal lead chat per project, in the project directory and visible in the sidebar. The lead can hold several dispatcher-owned ticket claims and works them using its long-horizon mode; it finishes each to in_review with a summary or blocked with a question.
+- L3. New work for a live lead is relayed to it: dependent work queues, complementary work steers, urgent work is marked priority. Relay comments are author-tagged. Ask before a mode switch as a soft gate, but allow the switch without asking.
+- L4. The host has a master enabled switch and per-project autoStart (default off). Auto-start feeds ready todo tickets to that project's lead. Manual starts always work. A global lead cap is 1–3, default 1; lowering it never kills leads.
+- L5. Host-persisted presets configure model, thinking, autonomy, mode, parallelism, review and allowed profiles. Defaults are quick-fix, bug-batch, feature, urgent and research. Lead and Superagent-created ticket autonomy defaults High; preset autonomy wins.
+- L6. Needs you contains pending approvals and blocked questions only; in_review is a separate review list. Status includes lead progress and projects. Pending approvals park and resume safely.
+- L7. Leads finish when their run and queue end with tickets terminal; remaining in_progress tickets become blocked with the last message. Restart blocks interrupted dispatcher claims for manual retry. Old worker transcripts remain readable.
+- L8. The router gets normal memory recall and save behavior, including all-project search and memory tools, but no filesystem, shell or other extensions.
 
 ## Accepted reviewer decisions (2026-11-07, owner may override)
 - E "always" approval = project-scoped allow rule for the exact normalized command; applies to interactive sessions of that project only; never raises the ceiling; unattended runs ignore it. No session scope.
-- E default level = Medium for the global interactive default, legacy tickets without a level, and new tickets without one.
+- E default level = Medium for the global interactive default and legacy tickets without a level; Superagent-created tickets and dispatcher leads default High (L5).
 
 ## Out of scope for this graph
 - Windows install defects found on coffee (separate graph).

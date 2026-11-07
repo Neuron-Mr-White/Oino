@@ -1,6 +1,6 @@
 # Superagent host protocol
 
-This is the target contract for the redesign. Multi-ticket leads and delivery selection are implemented; mode switching and memory are not yet implemented. Clients must not assume future operations already exist.
+This is the host contract for the Superagent router and project leads.
 
 Requests use the authenticated host control stream: `{"type":"hello","proto":"2.0.0","req":REQUEST}`. Successful replies are `{"type":"ok","data":REPLY}`; errors are `{"type":"err","error":{"code":"E_BOARD_REJECTED","message":"...","retryable":false,"detail":{"code":"E_..."}}}`. Fields shown as `null` are nullable; optional request fields may be omitted. Examples use illustrative values. No operation broadcasts a separate status event; clients poll status. Existing session events, including approval events, remain on their session streams.
 
