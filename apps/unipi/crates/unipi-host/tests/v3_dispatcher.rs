@@ -3,29 +3,27 @@ use futures_util::future::BoxFuture;
 use std::{
     collections::HashSet,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
     },
 };
-use unipi_host::superagent::{Config, Dispatcher, INTERRUPTED, Workers};
+use unipi_host::superagent::{Config, Dispatcher, Workers, INTERRUPTED};
 use unipi_kanboard::{
-    Layout, Project,
     board::Board,
     commands::{self, Common},
     model::{Actor, ChainGate, Priority, Status, Task},
+    Layout, Project,
 };
 
 #[test]
 fn concurrency_cap_is_limited_to_one_through_three() {
     for cap in 1..=3 {
-        assert!(
-            Config {
-                enabled: true,
-                concurrency_cap: cap
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(Config {
+            enabled: true,
+            concurrency_cap: cap
+        }
+        .validate()
+        .is_ok());
     }
     for cap in [0, 4, usize::MAX] {
         let error = Config {
@@ -47,6 +45,7 @@ struct Fake {
     relays: Mutex<Vec<String>>,
     last: Mutex<Option<String>>,
     approvals: Mutex<Vec<oino_core::session::permission::ApprovalRequest>>,
+    presets: Mutex<Vec<unipi_host::superagent_presets::Preset>>,
 }
 impl Workers for Fake {
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
@@ -66,6 +65,16 @@ impl Workers for Fake {
             self.live.lock().unwrap().insert(id.into());
             Ok(())
         })
+    }
+    fn launch_preset<'a>(
+        &'a self,
+        project: &'a Project,
+        task: &'a Task,
+        id: &'a str,
+        preset: &'a unipi_host::superagent_presets::Preset,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        self.presets.lock().unwrap().push(preset.clone());
+        self.launch(project, task, id)
     }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async move {
@@ -162,6 +171,104 @@ impl Fixture {
     }
 }
 #[tokio::test]
+async fn presets_persist_and_apply_overrides_to_launch() {
+    use unipi_host::superagent_presets::Overrides;
+    let f = Fixture::new();
+    let task = f.add("preset", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let list = d.presets_list().await;
+    assert_eq!(list["defaultPresetId"], "quick-fix");
+    assert_eq!(list["presets"].as_array().unwrap().len(), 5);
+    let mut custom = unipi_host::superagent_presets::Store::default()
+        .resolve(Some("feature"), Overrides::default())
+        .unwrap();
+    custom.id = "custom".into();
+    custom.model = Some("faux/example".into());
+    custom.thinking = Some("high".into());
+    d.preset_save(custom).await.unwrap();
+    d.preset_set_default("custom").await.unwrap();
+    assert!(d.preset_delete("custom").await.is_err());
+    d.start_with_preset(
+        &f.project.slug,
+        &task,
+        None,
+        Overrides {
+            autonomy: Some("low".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let preset = fake.presets.lock().unwrap()[0].clone();
+    assert_eq!(preset.model.as_deref(), Some("faux/example"));
+    assert_eq!(preset.thinking.as_deref(), Some("high"));
+    assert_eq!(preset.autonomy, "low");
+    assert_eq!(preset.mode, "graph");
+    d.preset_set_default("quick-fix").await.unwrap();
+    assert_eq!(d.preset_delete("custom").await.unwrap()["deleted"], true);
+    drop(d);
+    let reopened = f.dispatcher(fake).await;
+    assert_eq!(
+        reopened.presets_list().await["presets"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn watcher_requires_project_toggle_and_status_separates_review() {
+    let f = Fixture::new();
+    let task = f.add("ready", &[]);
+    let review = f.add("review", &[]);
+    let blocked = f.add("blocked", &[]);
+    let board = Board::open(&f.layout, f.project.clone()).unwrap();
+    let mut t = board.get(&review).unwrap();
+    t.status = Status::InReview;
+    board.save(&t).unwrap();
+    let mut t = board.get(&blocked).unwrap();
+    t.status = Status::Blocked;
+    t.push_activity(
+        chrono::Utc::now(),
+        Actor::System,
+        "blocked: Need a decision",
+    );
+    board.save(&t).unwrap();
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.configure(Config {
+        enabled: true,
+        concurrency_cap: 1,
+    })
+    .await
+    .unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    d.configure_project(&f.project.slug, true).await.unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+    let status = d.status().await.unwrap();
+    assert_eq!(status["projects"][0]["autoStart"], true);
+    assert_eq!(status["leads"][0]["ticketIds"], serde_json::json!([task]));
+    assert_eq!(status["leads"][0]["presetId"], "quick-fix");
+    assert_eq!(
+        status["leads"][0]["progress"],
+        serde_json::json!({"running":1,"queued":0,"done":0})
+    );
+    assert_eq!(status["needsYou"].as_array().unwrap().len(), 1);
+    assert_eq!(status["needsYou"][0]["question"], "Need a decision");
+    assert_eq!(status["review"][0]["taskId"], review);
+    drop(d);
+    let reopened = f.dispatcher(fake).await;
+    assert_eq!(
+        reopened.status().await.unwrap()["projects"][0]["autoStart"],
+        true
+    );
+}
+
+#[tokio::test]
 async fn parked_claim_protocol_stop_and_restart() {
     use oino_core::session::permission::{
         ApprovalDecision, ApprovalRequest, ApprovalResponse, Level,
@@ -204,13 +311,12 @@ async fn parked_claim_protocol_stop_and_restart() {
         request_id: "request".into(),
         decision: ApprovalDecision::Deny,
     };
-    assert!(
-        d.approval_response(&f.project.slug, &id, "wrong", response.clone())
-            .await
-            .is_err()
-    );
-    assert!(
-        d.approval_response(
+    assert!(d
+        .approval_response(&f.project.slug, &id, "wrong", response.clone())
+        .await
+        .is_err());
+    assert!(d
+        .approval_response(
             &f.project.slug,
             &id,
             &session,
@@ -220,16 +326,14 @@ async fn parked_claim_protocol_stop_and_restart() {
             }
         )
         .await
-        .is_err()
-    );
+        .is_err());
     d.approval_response(&f.project.slug, &id, &session, response.clone())
         .await
         .unwrap();
-    assert!(
-        d.approval_response(&f.project.slug, &id, &session, response)
-            .await
-            .is_err()
-    );
+    assert!(d
+        .approval_response(&f.project.slug, &id, &session, response)
+        .await
+        .is_err());
     assert!(d.stop(&f.project.slug, &id).await.unwrap());
     assert_eq!(f.task(&id).status, Status::Blocked);
     assert!(f.task(&id).run.is_none());
@@ -266,6 +370,7 @@ async fn watcher_manual_race_one_run() {
     })
     .await
     .unwrap();
+    d.configure_project(&f.project.slug, true).await.unwrap();
     let (_, _) = tokio::join!(d.tick(), d.start(&f.project.slug, &id));
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
     assert!(f.task(&id).run.is_some());
@@ -279,7 +384,7 @@ async fn two_todos_one_project_worker() {
     let d = f.dispatcher(fake.clone()).await;
     d.configure(Config {
         enabled: false,
-        concurrency_cap: 4,
+        concurrency_cap: 3,
     })
     .await
     .unwrap();
@@ -312,14 +417,13 @@ async fn crash_mid_launch_blocks_without_second_session() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let restarted = f.dispatcher(fake.clone()).await;
     assert_eq!(f.task(&id).status, Status::Blocked);
-    assert!(
-        f.task(&id)
-            .activity
-            .last()
-            .unwrap()
-            .text
-            .contains(INTERRUPTED)
-    );
+    assert!(f
+        .task(&id)
+        .activity
+        .last()
+        .unwrap()
+        .text
+        .contains(INTERRUPTED));
     assert!(restarted.start(&f.project.slug, &id).await.is_err());
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
 }
@@ -330,15 +434,13 @@ async fn advisory_owner_cap_dependencies_and_relay() {
     let id = f.add("dependent", std::slice::from_ref(&dep));
     let fake = Arc::new(Fake::default());
     let d = f.dispatcher(fake.clone()).await;
-    assert!(
-        Dispatcher::acquire(
-            f.layout.clone(),
-            f.home.path().join("config.json"),
-            fake.clone()
-        )
-        .await
-        .is_err()
-    );
+    assert!(Dispatcher::acquire(
+        f.layout.clone(),
+        f.home.path().join("config.json"),
+        fake.clone()
+    )
+    .await
+    .is_err());
     assert!(d.start(&f.project.slug, &id).await.is_err());
     let session = d.start(&f.project.slug, &dep).await.unwrap();
     assert!(d.start(&f.project.slug, &id).await.is_err());
@@ -351,14 +453,13 @@ async fn advisory_owner_cap_dependencies_and_relay() {
         d.relay(&f.project.slug, &dep, "persist me").await.unwrap()["delivered"],
         false
     );
-    assert!(
-        f.task(&dep)
-            .activity
-            .last()
-            .unwrap()
-            .text
-            .contains("persist me")
-    );
+    assert!(f
+        .task(&dep)
+        .activity
+        .last()
+        .unwrap()
+        .text
+        .contains("persist me"));
     assert!(d.relay(&f.project.slug, &id, "wrong worker").await.is_err());
 }
 #[cfg(windows)]
@@ -368,15 +469,13 @@ async fn windows_tray_dispatcher() {
     let id = f.add("tray", &[]);
     let fake = Arc::new(Fake::default());
     let d = f.dispatcher(fake.clone()).await;
-    assert!(
-        Dispatcher::acquire(
-            f.layout.clone(),
-            f.home.path().join("config.json"),
-            fake.clone()
-        )
-        .await
-        .is_err()
-    );
+    assert!(Dispatcher::acquire(
+        f.layout.clone(),
+        f.home.path().join("config.json"),
+        fake.clone()
+    )
+    .await
+    .is_err());
     d.start(&f.project.slug, &id).await.unwrap();
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
 }
@@ -433,13 +532,11 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
     );
     let shell =
         serde_json::from_value(serde_json::json!({"command":"ls","riskLevel":"low"})).unwrap();
-    assert!(
-        session
-            .check_permission("bash", &shell)
-            .await
-            .unwrap_err()
-            .contains("no workspace")
-    );
+    assert!(session
+        .check_permission("bash", &shell)
+        .await
+        .unwrap_err()
+        .contains("no workspace"));
     assert!(session.change_cwd(dir.path().into()).await.is_err());
     let file = session.with_manager(|m| m.session_file().unwrap().to_path_buf());
     assert!(unipi_host::superagent_session::is_superagent_file(&file));
@@ -511,14 +608,13 @@ async fn global_cap_lowering_and_worker_exit_question() {
     *fake.last.lock().unwrap() = Some("Which API key should I use?".into());
     d.tick().await.unwrap();
     assert_eq!(f.task(&a).status, Status::Blocked);
-    assert!(
-        f.task(&a)
-            .activity
-            .last()
-            .unwrap()
-            .text
-            .contains("Which API key should I use?")
-    );
+    assert!(f
+        .task(&a)
+        .activity
+        .last()
+        .unwrap()
+        .text
+        .contains("Which API key should I use?"));
     assert_eq!(
         Board::open(&f.layout, project)
             .unwrap()
@@ -575,8 +671,13 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
     let session_id = uuid::Uuid::now_v7().to_string();
     let task = unipi_kanboard::dispatcher::reserve(&f.layout, f.project.clone(), &id, &session_id)
         .unwrap();
+    let mut preset = unipi_host::superagent_presets::Store::default()
+        .resolve(Some("research"), Default::default())
+        .unwrap();
+    preset.model = Some("faux/faux-1".into());
+    preset.thinking = Some("off".into());
     workers
-        .launch(&f.project, &task, &session_id)
+        .launch_preset(&f.project, &task, &session_id, &preset)
         .await
         .unwrap();
     let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
@@ -603,6 +704,8 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
     session.wait_for_idle().await;
     assert!(path.exists(), "worker transcript remains after end");
     assert_eq!(session.session_id(), session_id);
+    assert_eq!(session.model().unwrap().id, "faux-1");
+    assert_eq!(session.thinking_level().to_string(), "off");
     assert_eq!(
         session.autonomy(),
         oino_core::session::permission::Level::Medium
@@ -748,27 +851,24 @@ async fn process_crash_releases_os_lock_and_blocks_durable_reservation() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     let fake = Arc::new(Fake::default());
-    assert!(
-        Dispatcher::acquire(
-            f.layout.clone(),
-            f.home.path().join("config.json"),
-            fake.clone()
-        )
-        .await
-        .is_err()
-    );
+    assert!(Dispatcher::acquire(
+        f.layout.clone(),
+        f.home.path().join("config.json"),
+        fake.clone()
+    )
+    .await
+    .is_err());
     child.kill().unwrap();
     child.wait().unwrap();
     let d = f.dispatcher(fake.clone()).await;
     assert_eq!(f.task(&id).status, Status::Blocked);
-    assert!(
-        f.task(&id)
-            .activity
-            .last()
-            .unwrap()
-            .text
-            .contains(INTERRUPTED)
-    );
+    assert!(f
+        .task(&id)
+        .activity
+        .last()
+        .unwrap()
+        .text
+        .contains(INTERRUPTED));
     assert!(d.start(&f.project.slug, &id).await.is_err());
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
 }

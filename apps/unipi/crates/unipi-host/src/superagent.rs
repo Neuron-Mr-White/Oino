@@ -1,12 +1,13 @@
 //! Machine-wide Superagent dispatcher. The kernel lock covers the entire owner lifetime;
 //! the async transaction lock covers watcher/manual reservation through session launch.
+use crate::superagent_presets::{Overrides, Preset, Store};
 use futures_util::future::BoxFuture;
 use oino_core::{
     runtime::{AgentSessionRuntime, SessionOptions, SessionSource},
     session::{InputSource, PromptOptions},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
@@ -15,10 +16,10 @@ use std::{
 };
 use tokio::sync::Mutex;
 use unipi_kanboard::{
-    Layout, Project,
     board::Board,
     dispatcher,
     model::{RunOwner, Status, Task},
+    Layout, Project,
 };
 
 pub const INTERRUPTED: &str = "Worker was interrupted; move to todo to retry";
@@ -77,6 +78,15 @@ pub trait Workers: Send + Sync {
         task: &'a Task,
         id: &'a str,
     ) -> BoxFuture<'a, std::result::Result<(), String>>;
+    fn launch_preset<'a>(
+        &'a self,
+        project: &'a Project,
+        task: &'a Task,
+        id: &'a str,
+        _preset: &'a Preset,
+    ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        self.launch(project, task, id)
+    }
     fn stop<'a>(&'a self, id: &'a str) -> BoxFuture<'a, std::result::Result<(), String>>;
     fn relay<'a>(
         &'a self,
@@ -113,6 +123,9 @@ pub struct Dispatcher {
     transaction: Mutex<Config>,
     workers: Arc<dyn Workers>,
     active: std::sync::Mutex<HashMap<String, String>>,
+    preferences: Mutex<Store>,
+    preferences_path: PathBuf,
+    launch_presets: std::sync::Mutex<HashMap<String, Preset>>,
 }
 impl Dispatcher {
     /// Reconcile all local durable reservations before accepting any dispatch.
@@ -148,7 +161,12 @@ impl Dispatcher {
             Err(e) => return Err(storage(e)),
         };
         config.validate()?;
+        let preferences_path = layout.home.join("superagent-preferences.json");
+        let preferences = Store::load(&preferences_path).map_err(storage)?;
         let this = Arc::new(Self {
+            preferences: Mutex::new(preferences),
+            preferences_path,
+            launch_presets: std::sync::Mutex::new(HashMap::new()),
             _owner: owner,
             layout,
             config_path,
@@ -205,15 +223,75 @@ impl Dispatcher {
         *current = config.clone();
         Ok(config)
     }
+    pub async fn configure_project(&self, project_id: &str, auto_start: bool) -> Result<Value> {
+        Project::load(&self.layout, project_id).map_err(storage)?;
+        let mut prefs = self.preferences.lock().await;
+        let mut next = prefs.clone();
+        next.projects.insert(project_id.into(), auto_start);
+        next.save(&self.preferences_path).map_err(storage)?;
+        *prefs = next;
+        Ok(json!({"projectId":project_id,"autoStart":auto_start}))
+    }
+    pub async fn presets_list(&self) -> Value {
+        let prefs = self.preferences.lock().await;
+        json!({"defaultPresetId":prefs.default_preset_id,"presets":prefs.presets})
+    }
+    pub async fn preset_save(&self, preset: Preset) -> Result<Value> {
+        preset.validate().map_err(|e| fail("E_SCHEMA", e))?;
+        let mut prefs = self.preferences.lock().await;
+        let mut next = prefs.clone();
+        next.presets.retain(|p| p.id != preset.id);
+        next.presets.push(preset.clone());
+        next.save(&self.preferences_path).map_err(storage)?;
+        *prefs = next;
+        Ok(json!({"preset":preset}))
+    }
+    pub async fn preset_delete(&self, id: &str) -> Result<Value> {
+        let mut prefs = self.preferences.lock().await;
+        if prefs.default_preset_id == id {
+            return Err(fail("E_SCHEMA", "Cannot delete the default preset"));
+        }
+        let mut next = prefs.clone();
+        let before = next.presets.len();
+        next.presets.retain(|p| p.id != id);
+        let deleted = before != next.presets.len();
+        next.save(&self.preferences_path).map_err(storage)?;
+        *prefs = next;
+        Ok(json!({"deleted":deleted}))
+    }
+    pub async fn preset_set_default(&self, id: &str) -> Result<Value> {
+        let mut prefs = self.preferences.lock().await;
+        if !prefs.presets.iter().any(|p| p.id == id) {
+            return Err(fail("E_SCHEMA", "Unknown preset"));
+        }
+        let mut next = prefs.clone();
+        next.default_preset_id = id.into();
+        next.save(&self.preferences_path).map_err(storage)?;
+        *prefs = next;
+        Ok(json!({"defaultPresetId":id}))
+    }
     /// Shared watcher/manual transaction. Reservation is durable before runtime creation.
     pub async fn start(&self, project_id: &str, task_id: &str) -> Result<String> {
-        self.start_transaction(project_id, task_id, false).await
+        self.start_with_preset(project_id, task_id, None, Overrides::default())
+            .await
+    }
+    pub async fn start_with_preset(
+        &self,
+        project_id: &str,
+        task_id: &str,
+        preset_id: Option<&str>,
+        overrides: Overrides,
+    ) -> Result<String> {
+        self.start_transaction(project_id, task_id, false, preset_id, overrides)
+            .await
     }
     async fn start_transaction(
         &self,
         project_id: &str,
         task_id: &str,
         watcher: bool,
+        preset_id: Option<&str>,
+        overrides: Overrides,
     ) -> Result<String> {
         let config = self.transaction.lock().await;
         if watcher && !config.enabled {
@@ -222,6 +300,20 @@ impl Dispatcher {
                 "Watcher is disabled; manually start a ticket or enable it",
             ));
         }
+        let preferences = self.preferences.lock().await;
+        if watcher
+            && !preferences
+                .projects
+                .get(project_id)
+                .copied()
+                .unwrap_or(false)
+        {
+            return Err(fail("E_WATCHER_OFF", "Project autoStart is disabled"));
+        }
+        let preset = preferences
+            .resolve(preset_id, overrides)
+            .map_err(|e| fail("E_SCHEMA", e))?;
+        drop(preferences);
         let claims = self.claims()?;
         let mut occupied: HashMap<String, String> = self
             .active
@@ -253,7 +345,11 @@ impl Dispatcher {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(id.clone(), project_id.into());
-        if let Err(e) = self.workers.launch(&project, &task, &id).await {
+        if let Err(e) = self
+            .workers
+            .launch_preset(&project, &task, &id, &preset)
+            .await
+        {
             dispatcher::block(
                 &self.layout,
                 project,
@@ -268,6 +364,10 @@ impl Dispatcher {
                 .remove(&id);
             return Err(fail("E_WORKER_LAUNCH", e));
         }
+        self.launch_presets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id.clone(), preset);
         Ok(id)
     }
     /// Reap completed workers, then offer ready todo tickets through start's transaction.
@@ -319,7 +419,15 @@ impl Dispatcher {
                 .map_err(storage)?
             {
                 if task.status == Status::Todo {
-                    let _ = self.start_transaction(&project.slug, &task.id, true).await;
+                    let _ = self
+                        .start_transaction(
+                            &project.slug,
+                            &task.id,
+                            true,
+                            None,
+                            Overrides::default(),
+                        )
+                        .await;
                 }
             }
         }
@@ -433,8 +541,13 @@ impl Dispatcher {
     pub async fn status(&self) -> Result<Value> {
         let config = self.transaction.lock().await;
         let mut workers = Vec::new();
+        let mut leads = Vec::new();
+        let mut projects = Vec::new();
+        let mut review = Vec::new();
+        let prefs = self.preferences.lock().await;
         let mut needs_you = Vec::new();
         for project in self.layout.list_projects().map_err(storage)? {
+            let mut lead = None;
             for task in Board::open(&self.layout, project.clone())
                 .map_err(storage)?
                 .tasks()
@@ -443,6 +556,14 @@ impl Dispatcher {
                 if let Some(run) = &task.run {
                     if run.owner == RunOwner::Dispatcher {
                         let progress = self.workers.progress(&run.session).await;
+                        let preset = self
+                            .launch_presets
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .get(&run.session)
+                            .cloned();
+                        lead = Some(run.session.clone());
+                        leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":"none","ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
                             "autonomy":dispatcher::autonomy(&task),"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"]}));
                         if dispatcher::matches_claim(&task, &run.session)
@@ -455,14 +576,27 @@ impl Dispatcher {
                         }
                     }
                 }
-                if matches!(task.status, Status::Blocked | Status::InReview) && task.run.is_none() {
-                    needs_you.push(json!({"projectId":project.slug,"taskId":task.id,"status":task.status,
-                        "question":task.activity.iter().rev().find(|a| a.text.starts_with("blocked:")).map(|a| a.text.trim_start_matches("blocked: "))}));
+                if task.status == Status::InReview {
+                    review.push(
+                        json!({"projectId":project.slug,"taskId":task.id,"status":"in_review"}),
+                    );
+                } else if task.status == Status::Blocked && task.run.is_none() {
+                    if let Some(question) = task
+                        .activity
+                        .iter()
+                        .rev()
+                        .find(|a| a.text.starts_with("blocked:"))
+                        .map(|a| a.text.trim_start_matches("blocked: "))
+                        .filter(|q| !q.trim().is_empty())
+                    {
+                        needs_you.push(json!({"projectId":project.slug,"taskId":task.id,"status":"blocked","question":question}));
+                    }
                 }
             }
+            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead}));
         }
         Ok(
-            json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"needsYou":needs_you}),
+            json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
         )
     }
 }
@@ -493,6 +627,18 @@ impl Workers for HostWorkers {
         id: &'a str,
     ) -> BoxFuture<'a, std::result::Result<(), String>> {
         Box::pin(async move {
+            let preset = Store::default().resolve(None, Overrides::default())?;
+            self.launch_preset(project, task, id, &preset).await
+        })
+    }
+    fn launch_preset<'a>(
+        &'a self,
+        project: &'a Project,
+        task: &'a Task,
+        id: &'a str,
+        preset: &'a Preset,
+    ) -> BoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async move {
             let mut runtimes = self.runtimes.lock().await;
             if runtimes.contains_key(id) {
                 return Ok(());
@@ -502,6 +648,26 @@ impl Workers for HostWorkers {
                 .core_services_for(&project.root)
                 .await
                 .map_err(|e| e.to_string())?;
+            let model = preset
+                .model
+                .as_ref()
+                .map(|name| {
+                    let (provider, id) = name.split_once('/').ok_or("model must be provider/id")?;
+                    services
+                        .models
+                        .find(provider, id)
+                        .ok_or_else(|| format!("Unknown model: {name}"))
+                })
+                .transpose()?;
+            let thinking_level = preset
+                .thinking
+                .as_ref()
+                .map(|level| {
+                    level
+                        .parse()
+                        .map_err(|_| format!("Invalid thinking level: {level}"))
+                })
+                .transpose()?;
             let existing = oino_session::SessionManager::find_by_id(
                 &project.root,
                 id,
@@ -516,6 +682,8 @@ impl Workers for HostWorkers {
                     services,
                     SessionOptions {
                         source,
+                        model,
+                        thinking_level,
                         custom_tools: vec![crate::superagent_session::worker_board(
                             project.clone(),
                             id.into(),
@@ -554,8 +722,8 @@ impl Workers for HostWorkers {
                 )
                 .map_err(|e| e.to_string())
             }));
-            let ceiling = serde_json::from_value(json!(dispatcher::autonomy(task)))
-                .map_err(|e| e.to_string())?;
+            let ceiling =
+                serde_json::from_value(json!(preset.autonomy)).map_err(|e| e.to_string())?;
             session.set_autonomy(ceiling);
             session.with_manager(|m| m.append_custom_entry("oino:superagent-worker", Some(json!({"projectId":project.slug,"taskId":task.id,"author":"superagent"})))).map_err(|e| e.to_string())?;
             session
@@ -683,7 +851,7 @@ impl Workers for HostWorkers {
                                     .map(str::to_owned)
                             })
                         });
-                    json!({"step":format!("{:?}",session.run_state()).to_lowercase(),"tool":tool,"cost":session.session_stats().cost})
+                    json!({"step":format!("{:?}",session.run_state()).to_lowercase(),"tool":tool,"cost":session.session_stats().cost,"model":session.model().map(|m| format!("{}/{}", m.provider, m.id)),"thinking":session.thinking_level().to_string(),"autonomy":session.autonomy()})
                 }
                 None => json!({"step":null,"tool":null,"cost":null}),
             }
@@ -756,10 +924,49 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
                 .await?,
         )
         .map_err(storage),
+        Request::SuperagentConfigureProject {
+            project_id,
+            auto_start,
+        } => dispatcher.configure_project(&project_id, auto_start).await,
+        Request::SuperagentPresetsList => Ok(dispatcher.presets_list().await),
+        Request::SuperagentPresetsSave { preset } => {
+            dispatcher
+                .preset_save(serde_json::from_value(preset).map_err(|e| fail("E_SCHEMA", e))?)
+                .await
+        }
+        Request::SuperagentPresetsDelete { preset_id } => {
+            dispatcher.preset_delete(&preset_id).await
+        }
+        Request::SuperagentPresetsSetDefault { preset_id } => {
+            dispatcher.preset_set_default(&preset_id).await
+        }
         Request::SuperagentStart {
             project_id,
             task_id,
-        } => Ok(json!({"sessionId":dispatcher.start(&project_id, &task_id).await?})),
+            task_ids,
+            preset_id,
+            overrides,
+        } => {
+            let tasks = if let Some(task) = task_id {
+                if !task_ids.is_empty() {
+                    return Err(fail("E_SCHEMA", "Use taskId or taskIds, not both"));
+                }
+                vec![task]
+            } else {
+                task_ids
+            };
+            if tasks.len() != 1 {
+                return Err(fail("E_SCHEMA", "Step 1 supports exactly one task"));
+            }
+            let overrides = overrides
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|e| fail("E_SCHEMA", e))?
+                .unwrap_or_default();
+            Ok(
+                json!({"sessionId":dispatcher.start_with_preset(&project_id, &tasks[0], preset_id.as_deref(), overrides).await?}),
+            )
+        }
         Request::SuperagentStop {
             project_id,
             task_id,

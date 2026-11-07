@@ -40,5 +40,6 @@ pub mod update;
 pub mod usage_stats;
 
 pub mod superagent;
+pub mod superagent_presets;
 
 pub mod superagent_session;

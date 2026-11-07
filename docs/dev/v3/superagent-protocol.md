@@ -2,7 +2,7 @@
 
 This is the target contract for the redesign. Step 1 implements status, configuration and presets plus single-ticket start; multi-ticket leads, delivery selection and mode switching arrive in Step 2. Memory arrives in Step 3. Clients must not assume future operations already exist.
 
-Requests use the authenticated host control stream: `{"type":"hello","proto":"2.0.0","req":REQUEST}`. Successful replies are `{"type":"ok","data":REPLY}`; errors are `{"type":"err","error":{"code":"E_BOARD_REJECTED","message":"...","detail":{"code":"E_..."}}}`. Fields shown as `null` are nullable; optional request fields may be omitted. Examples use illustrative values. No operation broadcasts a separate status event; clients poll status. Existing session events, including approval events, remain on their session streams.
+Requests use the authenticated host control stream: `{"type":"hello","proto":"2.0.0","req":REQUEST}`. Successful replies are `{"type":"ok","data":REPLY}`; errors are `{"type":"err","error":{"code":"E_BOARD_REJECTED","message":"...","retryable":false,"detail":{"code":"E_..."}}}`. Fields shown as `null` are nullable; optional request fields may be omitted. Examples use illustrative values. No operation broadcasts a separate status event; clients poll status. Existing session events, including approval events, remain on their session streams.
 
 ## Status
 
@@ -44,4 +44,11 @@ Shipped defaults: quick-fix (none, high, review none), bug-batch (swarm, high, m
 
 ## Approvals and events
 
-`{"op":"superagent.approval_response","projectId":"heartpick","taskId":"HP-1","workerSessionId":"session","requestId":"request","decision":"allow_once"}` → `{"accepted":true}`. Decisions are `allow_once`, `always`, or `deny`; responses are single use and require a live claim. The existing worker session `approval_cleared` event carries the request id. See `worker-approvals-protocol.md` for the existing approval event and parking behavior; these are unchanged.
+`{"op":"superagent.approval_response","projectId":"heartpick","taskId":"HP-1","workerSessionId":"session","requestId":"request","decision":"allow_once"}` → `{"accepted":true}`. Decisions are `allow_once`, `always`, or `deny`; responses are single use and require a live claim. Session streams deliver the existing events in batches (other session events may share the batch):
+
+```json
+{"type":"events","items":[{"session":"session","seq":1,"event":{"type":"approval_request","requestId":"request","sessionId":"session","tool":"bash","arguments":{"command":"git push"},"riskLevel":"high","ceiling":"medium","reason":"needs Autonomy High"}}]}
+{"type":"events","items":[{"session":"session","seq":2,"event":{"type":"approval_cleared","requestId":"request"}}]}
+```
+
+The existing approval parking behavior is unchanged; see `worker-approvals-protocol.md`.

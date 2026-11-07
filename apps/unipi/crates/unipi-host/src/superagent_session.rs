@@ -72,7 +72,7 @@ pub async fn create_from(
         (
             "superagent.start",
             "Start one explicit todo ticket through the dispatcher.",
-            json!({"projectId":{"type":"string"},"taskId":{"type":"string"}}),
+            json!({"projectId":{"type":"string"},"taskId":{"type":"string"},"presetId":{"type":"string"},"overrides":{"type":"object"}}),
             vec!["projectId", "taskId"],
         ),
         (
@@ -136,6 +136,30 @@ pub async fn create_from(
     register(Arc::clone(&runtime));
     Ok(runtime)
 }
+fn default_ticket_autonomy(argv: &mut Vec<String>) {
+    if argv.first().is_some_and(|s| s == "add")
+        && !argv.iter().any(|arg| arg == "--autonomy" || arg.starts_with("--autonomy="))
+    {
+        argv.push("--autonomy".into());
+        argv.push("high".into());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ticket_default_autonomy_is_high_but_explicit_values_win() {
+        for (mut argv, expected) in [
+            (vec!["add", "ticket"], vec!["add", "ticket", "--autonomy", "high"]),
+            (vec!["add", "ticket", "--autonomy=low"], vec!["add", "ticket", "--autonomy=low"]),
+            (vec!["edit", "T-1"], vec!["edit", "T-1"]),
+        ].map(|(a, b)| (a.into_iter().map(str::to_owned).collect::<Vec<_>>(), b)) {
+            super::default_ticket_autonomy(&mut argv);
+            assert_eq!(argv, expected);
+        }
+    }
+}
+
 struct ChatTool {
     meta: ToolDefinitionMeta,
     hub: Arc<crate::sessions::SessionHub>,
@@ -199,7 +223,7 @@ impl AgentTool for ChatTool {
                         .map_err(|e| ToolError::new(e.to_string()))?;
                     let project = unipi_kanboard::Project::load(&layout, &project_id)
                         .map_err(|e| ToolError::new(e.to_string()))?;
-                    let argv: Vec<String> = serde_json::from_value(args["argv"].clone())
+                    let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
                         .map_err(|e| ToolError::new(e.to_string()))?;
                     let command = argv.first().map(String::as_str).unwrap_or("");
                     if !matches!(
@@ -239,6 +263,7 @@ impl AgentTool for ChatTool {
                     }) {
                         return Err(ToolError::new("Global board overrides are not allowed"));
                     }
+                    default_ticket_autonomy(&mut argv);
                     unipi_kanboard::service::exec(&unipi_kanboard::service::ExecRequest {
                         argv: [
                             vec![
@@ -277,7 +302,14 @@ impl AgentTool for ChatTool {
                         crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
                     match name.as_str() {
                         "superagent.start" => {
-                            json!({"sessionId":dispatcher.start(&project, &task).await.map_err(|e| ToolError::new(e.to_string()))?})
+                            let overrides = args
+                                .get("overrides")
+                                .cloned()
+                                .map(serde_json::from_value)
+                                .transpose()
+                                .map_err(|e| ToolError::new(format!("Invalid overrides: {e}")))?
+                                .unwrap_or_default();
+                            json!({"sessionId":dispatcher.start_with_preset(&project, &task, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }
                         "superagent.stop" => {
                             json!({"stopped":dispatcher.stop(&project, &task).await.map_err(|e| ToolError::new(e.to_string()))?})

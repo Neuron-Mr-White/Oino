@@ -603,7 +603,17 @@ pub enum Request {
     #[serde(rename = "superagent.configure", rename_all = "camelCase")]
     SuperagentConfigure { enabled: bool, concurrency_cap: usize },
     #[serde(rename = "superagent.start", rename_all = "camelCase")]
-    SuperagentStart { project_id: String, task_id: String },
+    SuperagentStart { project_id: String, #[serde(default)] task_id: Option<String>, #[serde(default)] task_ids: Vec<String>, #[serde(default)] preset_id: Option<String>, #[serde(default)] overrides: Option<serde_json::Value> },
+    #[serde(rename = "superagent.configure_project", rename_all = "camelCase")]
+    SuperagentConfigureProject { project_id: String, auto_start: bool },
+    #[serde(rename = "superagent.presets.list")]
+    SuperagentPresetsList,
+    #[serde(rename = "superagent.presets.save")]
+    SuperagentPresetsSave { preset: serde_json::Value },
+    #[serde(rename = "superagent.presets.delete", rename_all = "camelCase")]
+    SuperagentPresetsDelete { preset_id: String },
+    #[serde(rename = "superagent.presets.set_default", rename_all = "camelCase")]
+    SuperagentPresetsSetDefault { preset_id: String },
     #[serde(rename = "superagent.stop", rename_all = "camelCase")]
     SuperagentStop { project_id: String, task_id: String },
     #[serde(rename = "superagent.relay", rename_all = "camelCase")]
@@ -1077,6 +1087,22 @@ impl Control {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn superagent_step_one_requests_decode() {
+        for value in [
+            serde_json::json!({"op":"superagent.start","projectId":"p","taskIds":["T-1"],"presetId":"feature","overrides":{"autonomy":"low"}}),
+            serde_json::json!({"op":"superagent.start","projectId":"p","taskId":"T-1"}),
+            serde_json::json!({"op":"superagent.configure_project","projectId":"p","autoStart":true}),
+            serde_json::json!({"op":"superagent.presets.list"}),
+            serde_json::json!({"op":"superagent.presets.save","preset":{"id":"x"}}),
+            serde_json::json!({"op":"superagent.presets.delete","presetId":"x"}),
+            serde_json::json!({"op":"superagent.presets.set_default","presetId":"x"}),
+        ] {
+            let request: Request = serde_json::from_value(value.clone()).expect("request parses");
+            assert_eq!(serde_json::to_value(request).unwrap()["op"], value["op"]);
+        }
+    }
 
     #[test]
     fn hello_pair_round_trips() {

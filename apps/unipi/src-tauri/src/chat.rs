@@ -733,7 +733,7 @@ pub async fn superagent_start(
     project_id: String,
     task_id: String,
 ) -> Result<serde_json::Value, AppErrorDto> {
-    one_shot(&app, &state, &host_id, Request::SuperagentStart { project_id, task_id }, REPLY_TIMEOUT).await
+    one_shot(&app, &state, &host_id, Request::SuperagentStart { project_id, task_id: Some(task_id), task_ids: vec![], preset_id: None, overrides: None }, REPLY_TIMEOUT).await
 }
 
 /// Authenticated Superagent dispatcher operation.
@@ -1260,7 +1260,7 @@ mod tests {
             (Request::SuperagentSessions, "superagent.sessions"),
             (Request::SuperagentSession, "superagent.session"),
             (Request::SuperagentConfigure { enabled: false, concurrency_cap: 2 }, "superagent.configure"),
-            (Request::SuperagentStart { project_id: "p".into(), task_id: "t".into() }, "superagent.start"),
+            (Request::SuperagentStart { project_id: "p".into(), task_id: Some("t".into()), task_ids: vec![], preset_id: None, overrides: None }, "superagent.start"),
             (Request::SuperagentStop { project_id: "p".into(), task_id: "t".into() }, "superagent.stop"),
             (Request::SuperagentRelay { project_id: "p".into(), task_id: "t".into(), text: "hello".into() }, "superagent.relay"),
             (Request::SuperagentApprovalResponse { project_id: "p".into(), task_id: "t".into(), worker_session_id: "w".into(), request_id: "r".into(), decision: "deny".into() }, "superagent.approval_response"),
