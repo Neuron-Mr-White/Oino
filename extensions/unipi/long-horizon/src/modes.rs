@@ -148,7 +148,8 @@ impl Mode {
                 "agent_swarm_status",
                 "todowrite",
             ],
-            Self::None => &[],
+            // Droid parity: the todo list works in every mode, including plain chats.
+            Self::None => &["todowrite"],
         }
     }
     /// Delegation tools fully exposed.
@@ -644,6 +645,7 @@ mod tests {
         assert_eq!(next, ["read", "ralph_done", "loop_status", "todowrite"]);
         assert!(sync_mode_tools(&next, Mode::Ralph).is_none());
         assert!(hidden_tools(Mode::None).contains(&"get_goal"));
+        assert!(!hidden_tools(Mode::None).contains(&"todowrite"));
         assert!(!hidden_tools(Mode::Goal).contains(&"todowrite"));
         assert_eq!(Mode::parse("swarm"), Some(Mode::Swarm));
         assert_eq!(OwnerKind::RalphLoop.mode(), Mode::Ralph);
