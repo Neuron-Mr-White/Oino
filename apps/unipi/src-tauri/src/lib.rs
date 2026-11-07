@@ -135,6 +135,7 @@ pub fn run() {
             chat::session_open,
             chat::session_new,
             chat::superagent_status,
+            chat::superagent_sessions,
             chat::superagent_configure,
             chat::superagent_start,
             chat::superagent_stop,

@@ -692,6 +692,16 @@ pub async fn session_new(
     .await
 }
 
+/// List restricted Superagent sessions on this host.
+#[tauri::command]
+pub async fn superagent_sessions(
+    app: tauri::AppHandle,
+    state: State<'_, NetState>,
+    host_id: String,
+) -> Result<serde_json::Value, AppErrorDto> {
+    one_shot(&app, &state, &host_id, Request::SuperagentSessions, REPLY_TIMEOUT).await
+}
+
 /// Authenticated Superagent dispatcher operation.
 #[tauri::command]
 pub async fn superagent_status(
@@ -1247,6 +1257,7 @@ mod tests {
     fn superagent_requests_use_authenticated_hello_framing() {
         let requests = [
             (Request::SuperagentStatus, "superagent.status"),
+            (Request::SuperagentSessions, "superagent.sessions"),
             (Request::SuperagentSession, "superagent.session"),
             (Request::SuperagentConfigure { enabled: false, concurrency_cap: 2 }, "superagent.configure"),
             (Request::SuperagentStart { project_id: "p".into(), task_id: "t".into() }, "superagent.start"),

@@ -3,6 +3,7 @@
  * session; the v1 `unipi://chat?host=&session=` form still opens it; anything
  * without a session lands on the Chat list. */
 import { afterEach, describe, expect, it } from 'vitest';
+import { waitFor } from '@solidjs/testing-library';
 import { openChatFromDeepLink, openSessionRoute, resolveHostId } from './notifyInit';
 import type { HostInfo } from './schemas';
 
@@ -13,28 +14,28 @@ afterEach(() => {
 });
 
 describe('openSessionRoute', () => {
-  it('sets the conversation route hash (ids are URL-encoded)', () => {
+  it('sets the conversation route hash (ids are URL-encoded)', async () => {
     openSessionRoute('host-1', 's-4242');
-    expect(location.hash).toBe('#/s/host-1/s-4242');
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/s-4242'));
     openSessionRoute('my pc', 'abc/def');
-    expect(location.hash).toBe(`#/s/${encodeURIComponent('my pc')}/${encodeURIComponent('abc/def')}`);
+    await waitFor(() => expect(location.hash).toBe(`#/s/${encodeURIComponent('my pc')}/${encodeURIComponent('abc/def')}`));
   });
 });
 
 describe('openChatFromDeepLink', () => {
-  it('a v2 path link opens the session route', () => {
+  it('a v2 path link opens the session route', async () => {
     openChatFromDeepLink([host], 'unipi://s/host-1/s-4242');
-    expect(location.hash).toBe('#/s/host-1/s-4242');
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/s-4242'));
   });
 
-  it('host names resolve like ids; ids are decoded', () => {
+  it('host names resolve like ids; ids are decoded', async () => {
     openChatFromDeepLink([host], `unipi://s/${encodeURIComponent('oi')}/s-1`);
-    expect(location.hash).toBe('#/s/host-1/s-1');
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/s-1'));
   });
 
-  it('the v1 query form still opens the session', () => {
+  it('the v1 query form still opens the session', async () => {
     openChatFromDeepLink([host], 'unipi://chat?host=host-1&session=s99');
-    expect(location.hash).toBe('#/s/host-1/s99');
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/s99'));
   });
 
   it('links without a session (v1 pid, unknown host) go to the Chat list', () => {

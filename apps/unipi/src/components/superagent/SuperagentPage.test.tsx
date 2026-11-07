@@ -173,6 +173,11 @@ describe('v3 Superagent', () => {
     openSessionRoute('pc-coffee', 'superagent-chat');
     await waitFor(() => expect(location.hash).toContain('#/superagent?host=pc-coffee&session=superagent-chat'));
   });
+  it('accepts the host wrapped history response with numeric timestamps', async () => {
+    const world = createMockHost({ ...superagent, hosts: [{ ...superagent.hosts[0]!, ops: { ...superagent.hosts[0]!.ops, 'superagent.sessions': () => ({ sessions: [{ sessionId: 's', title: 'Old', createdAt: 1, updatedAt: 2, path: '/s' }] }) } }] });
+    setHostClientFactory(world.client);
+    expect(await superagentApi.sessions('pc-coffee')).toMatchObject({ ok: true, value: [{ sessionId: 's', updatedAt: 2 }] });
+  });
   it('restricted_session_and_host_ops_use_the_exact_protocol', async () => {
     const world = createMockHost(superagent);
     setHostClientFactory(world.client);
