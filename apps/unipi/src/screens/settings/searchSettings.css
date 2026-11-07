@@ -1,7 +1,7 @@
 .search-settings-details { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 12px 16px 16px 58px; color: var(--color-text-muted); font-size: calc(13px * var(--ui-font-scale)); line-height: 1.5; }
 .search-settings-details p { margin: 0; white-space: normal; }
 .search-settings-consent { display: flex; align-items: flex-start; gap: 8px; color: var(--color-text); white-space: normal; cursor: pointer; }
-.search-settings-consent input { flex: none; margin: 3px 0 0; }
+.search-settings-consent input { flex: none; width: 16px; height: 16px; min-height: 0; margin: 2px 0 0; accent-color: var(--color-shell); }
 .search-settings-consent span { min-width: 0; }
 html:not([data-shell=desktop]) .search-settings-details { padding-left: 16px; }
 html:not([data-shell=desktop]) .search-settings-details .settings-btn { min-height: 40px; }
