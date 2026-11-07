@@ -1,3 +1,30 @@
+# sa-ui r5 — lead model redesign (v3/r5-saui)
+
+Superseded sections below describe the r4 worker pane; the code now follows DESIGN.md.
+
+## What changed
+- `api.ts`: lead-shaped `superagent.status` (leads, needsYou, review, projects) normalized in
+  one place (`normalizeStatus`); old `workers[]` still parses and renders (legacy leads).
+  New calls: `setMode`, `configureProject`, `start(taskIds, presetId)`, `relay{delivery,priority}`,
+  `presets.{list,save,remove,setDefault}`. Cap schema is 1–3.
+- `state.ts` owns polling (5s), ticket titles, presets and every mutation; created in the page so
+  the phone badge works while the sheet is closed. Pane files: `SuperagentPane`, `NeedsYou`,
+  `Leads`, `Projects` (+ Start sheet), `Review`, `Presets` (picker + manager), `parts`, `format`.
+- `lib/host/tauri.ts`: `superagent.presets.list` → `superagent_presets_list` (all dots, not only the first).
+- Mock scenario `?scenario=superagent-leads` (2 leads, 3 approvals, 2 questions, 3 review, 5 projects).
+- Tests: `SuperagentPage.test.tsx` (lead model, mutations, legacy), `SuperagentPhone.test.tsx` (badge, sheet tabs).
+
+## Open items
+- Native bridge: `src-tauri/src/chat.rs` only wraps status/configure/start(taskId)/stop/relay(taskId)/
+  approval. It has no `superagent_set_mode`, `superagent_configure_project`, `superagent_presets_*`
+  and its start/relay commands cannot send `taskIds`, `presetId`, `delivery`, `priority`. The new
+  controls work in capture/mock and any host client that forwards ops, but not in the Tauri app
+  until those commands exist.
+- Protocol: no op to accept/reject a review ticket (Review only opens the ticket); relay to an
+  unclaimed blocked ticket cannot name the ticket, so replies are sent to the lead with `Re <id>:`;
+  `stop` takes one ticket id (the first claimed) and it is unspecified whether it stops the whole lead.
+- Reply delivery defaults to `steer` for blocked answers (owner may prefer `queue`).
+
 # sa-ui / OIN-14
 
 ## Outcome

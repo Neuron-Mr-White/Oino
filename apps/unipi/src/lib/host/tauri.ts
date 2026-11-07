@@ -70,7 +70,7 @@ export function createTauriHost(hostId: string): HostClient {
   const [conn, setConn] = createSignal<HostConn>({ state: hostId === APP_HOST ? 'connected' : 'connecting' });
   const request = async <T,>(op: string, args?: Record<string, unknown>): Promise<T> => {
     try {
-      const command = op.startsWith('superagent.') ? op.replace('.', '_') : op;
+      const command = op.startsWith('superagent.') ? op.replaceAll('.', '_') : op;
       const value = (await (hostId === APP_HOST ? invoke(command, args) : withWireId(hostId, (id) => invoke(command, { hostId: id, ...(args ?? {}) })))) as T;
       if (conn().state !== 'connected') setConn({ state: 'connected' });
       return value;

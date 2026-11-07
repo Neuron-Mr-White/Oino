@@ -1,4 +1,5 @@
 import { superagent } from './superagent';
+import { superagentLeads } from './superagent-leads';
 /** Capture/test scenarios by name (`?scenario=<name>`). Later WPs append theirs. */
 import { autonomy } from './autonomy';
 import type { MockScenario } from '../host';
@@ -47,6 +48,7 @@ import {
 export const SCENARIOS: Record<string, MockScenario> = {
   autonomy,
   superagent,
+  'superagent-leads': superagentLeads,
   empty,
   'turn-files': turnFiles,
   'turn-files-undo': turnFilesUndo,
