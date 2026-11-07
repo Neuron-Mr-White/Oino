@@ -9,6 +9,25 @@ use unipi_kanboard::{
 };
 
 #[test]
+fn dispatcher_session_reserves_multiple_idempotently_and_reaper_keeps_them() {
+    let f = Fixture::new();
+    let a = f.add_with("a", Status::Todo, Priority::Medium, &[]);
+    let b = f.add_with("b", Status::Todo, Priority::Medium, &[]);
+    dispatcher::reserve(&f.layout, f.project.clone(), &a.id, "lead").unwrap();
+    dispatcher::reserve(&f.layout, f.project.clone(), &a.id, "lead").unwrap();
+    dispatcher::reserve(&f.layout, f.project.clone(), &b.id, "lead").unwrap();
+    assert!(dispatcher::reserve(&f.layout, f.project.clone(), &b.id, "other").is_err());
+    let board = unipi_kanboard::board::Board::open(&f.layout, f.project.clone()).unwrap();
+    for id in [&a.id, &b.id] {
+        let mut task = board.get(id).unwrap();
+        task.run.as_mut().unwrap().pid = u32::MAX;
+        board.save(&task).unwrap();
+    }
+    commands::reap(&f.layout, f.project.clone(), false, f.common.now).unwrap();
+    for id in [&a.id, &b.id] { assert_eq!(board.get(id).unwrap().run.unwrap().session, "lead"); }
+}
+
+#[test]
 fn dispatcher_reaper_does_not_requeue() {
     let f = Fixture::new();
     let t = f.add_with("dispatch", Status::Todo, Priority::Medium, &[]);

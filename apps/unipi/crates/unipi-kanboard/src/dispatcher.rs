@@ -16,7 +16,10 @@ pub fn reserve(layout: &Layout, project: Project, id: &str, session: &str) -> Re
     let board = Board::open(layout, project)?;
     let tasks = board.tasks()?;
     let mut task = board.get(id)?;
-    if tasks.iter().any(|t| t.run.is_some()) {
+    if matches_claim(&task, session) {
+        return Ok(task);
+    }
+    if tasks.iter().filter_map(|t| t.run.as_ref()).any(|run| run.owner != RunOwner::Dispatcher || run.session != session) {
         return Err(Error::rule(
             "Project already has a worker; finish or stop it first",
         ));
