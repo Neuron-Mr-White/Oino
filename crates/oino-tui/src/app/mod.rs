@@ -780,6 +780,12 @@ impl App {
                     self.session.waiting_on = waiting_on.unwrap_or_default();
                 }
                 OinoEvent::CommandsChanged => self.send(Tag::Commands, AgentCommand::GetCommands),
+                OinoEvent::ApprovalCleared { request_id } => {
+                    if self.approvals.remove(&request_id) {
+                        self.ui.dismiss(&request_id);
+                        self.sync_dialog();
+                    }
+                }
                 OinoEvent::ExtensionUiDismiss { id, .. } => {
                     self.ui.dismiss(&id);
                     self.registry.dismiss_dialog(&id);
