@@ -70,7 +70,7 @@ describe('host autonomy replaces legacy permission mode', () => {
   it('ignores old Full entries and defaults to Medium', async () => {
     const s = await open({ status: { planMode: false, permissionMode: 'full' } });
     const view = render(() => <PermissionControl session={s} onCommand={() => {}} />);
-    expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯');
+    expect(view.getByTestId('permission-chip').querySelectorAll('.autonomy-bar[data-filled]').length).toBe(2);
   });
   it('is available without the workflow extension, while Plan is separate', async () => {
     const s = await open({ commands: [] });
@@ -135,9 +135,9 @@ describe('plan toggle (G-6)', () => {
       </>
     ));
     await b.cmd({ type: 'set_autonomy', level: 'high' });
-    expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▮');
+    expect(view.getByTestId('permission-chip').querySelectorAll('.autonomy-bar[data-filled]').length).toBe(3);
     setCur(a);
-    await waitFor(() => expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯'));
+    await waitFor(() => expect(view.getByTestId('permission-chip').querySelectorAll('.autonomy-bar[data-filled]').length).toBe(2));
 
     // Click Plan twice on A: sends /plan on then /plan off.
     fireEvent.click(view.getByTestId('plan-toggle'));
@@ -151,7 +151,7 @@ describe('plan toggle (G-6)', () => {
     await draft.cmd({ type: 'set_autonomy', level: 'low' });
     expect(draft.choices().autonomy).toBe('low');
     setCur(draft);
-    await waitFor(() => expect(view.getByTestId('permission-chip').textContent).toContain('▮▯▯'));
+    await waitFor(() => expect(view.getByTestId('permission-chip').querySelectorAll('.autonomy-bar[data-filled]').length).toBe(1));
 
     // 7f8a79a6: per-session `unipi:workflow:status:<sessionId>` beats a polluted global `unipi:workflow:status`.
     world.push(HOST, 's-a', [
@@ -161,7 +161,7 @@ describe('plan toggle (G-6)', () => {
     setCur(a);
     await waitFor(() => {
       expect(view.getByTestId('plan-toggle').getAttribute('aria-pressed')).toBe('true');
-      expect(view.getByTestId('permission-chip').textContent).toContain('▮▮▯');
+      expect(view.getByTestId('permission-chip').querySelectorAll('.autonomy-bar[data-filled]').length).toBe(2);
     });
   });
 });

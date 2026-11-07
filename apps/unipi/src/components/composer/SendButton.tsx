@@ -32,7 +32,7 @@ export function SendButton(props: {
   const [menu, setMenu] = createSignal(false);
   const close = () => setMenu(false);
   /** Z-116: a disabled Send still explains itself ("Type something to send"). */
-  const sendTip = () => (props.running ? 'Stop this run' : props.empty ? 'Type something to send' : props.blocked ? (props.blockedReason ?? 'Send is held') : 'Send');
+  const sendTip = () => (props.running && props.empty ? 'Stop this run' : props.empty ? 'Type something to send' : props.blocked ? (props.blockedReason ?? 'Send is held') : 'Send');
 
   // A pointerdown elsewhere closes the menu (capture phase, so it wins over
   // the menu's own clicks travelling up).
@@ -99,7 +99,7 @@ export function SendButton(props: {
         </div>
       </Show>
       <div class="send-btn-main">
-        <Show when={props.options !== false}>
+        <Show when={props.options !== false && !(props.running && props.empty)}>
           <button
             type="button"
             class="send-btn-chevron"
@@ -115,7 +115,7 @@ export function SendButton(props: {
         </Show>
         {/* The wrapper keeps the tip alive on the disabled state (Z-116: tooltips work on disabled controls). */}
         <Tooltip label={sendTip()}>
-          {props.running ? (
+          {props.running && props.empty ? (
             <button type="button" class="tl-composer-send tl-composer-stop" aria-label="Stop" onClick={() => props.onStop()} disabled={props.disabled} data-testid="send-stop">
               <Square size={12} fill="currentColor" stroke-width={0} />
             </button>
@@ -132,6 +132,13 @@ export function SendButton(props: {
             </button>
           )}
         </Tooltip>
+        <Show when={props.running && !props.empty}>
+          <Tooltip label="Stop this run">
+            <button type="button" class="tl-composer-send tl-composer-stop" aria-label="Stop" onClick={() => props.onStop()} disabled={props.disabled} data-testid="send-stop">
+              <Square size={12} fill="currentColor" stroke-width={0} />
+            </button>
+          </Tooltip>
+        </Show>
       </div>
     </div>
   );

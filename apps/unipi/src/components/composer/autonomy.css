@@ -1,9 +1,15 @@
 /* Reuse toolbar/dock tokens and shared button feedback; no new travel motion. */
 .tb-chip-autonomy { flex: 0 0 auto; gap: 6px; }
-.autonomy-meter { color: var(--color-claw); letter-spacing: 1px; white-space: nowrap; }
-.autonomy-approval { padding: 12px; background: var(--color-surface-1); border: 1px solid var(--color-line); border-radius: 12px; min-width: 0; }
-.autonomy-approval p { margin: 6px 0; white-space: normal; overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 12px; }
-.autonomy-approval pre { max-height: 24vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: var(--color-surface-2); border-radius: 6px; font-size: 12px; }
+.autonomy-meter { display: inline-flex; gap: 2px; align-items: center; }
+.autonomy-bar { box-sizing: border-box; width: 5px; height: 12px; border: 1px solid var(--color-text-muted); border-radius: 1px; }
+.autonomy-bar[data-filled] { background: var(--color-claw); border-color: var(--color-claw); }
+.autonomy-approval { min-width: 0; }
+.autonomy-approval p { white-space: normal; overflow-wrap: anywhere; }
+.autonomy-command { display: flex; align-items: start; gap: 4px; }
+.autonomy-command .ap-cmd { flex: 1; min-width: 0; }
+.autonomy-risk { margin-left: auto; padding: 2px 8px; border-radius: 999px; font-size: 12px; text-transform: capitalize; color: var(--color-text-muted); background: var(--color-surface-3); }
+.autonomy-risk[data-risk='medium'] { color: var(--color-claw); }
+.autonomy-risk[data-risk='high'] { color: var(--color-danger, #d95757); }
 .autonomy-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .autonomy-approval-actions button { min-height: 40px; min-width: 40px; }
 /* Toolbar compression must keep all three bars and the explicit label. */

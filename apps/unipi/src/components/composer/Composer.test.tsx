@@ -181,11 +181,11 @@ describe('phone field (phone spec §3.5, PH-11)', () => {
     await waitFor(() => expect(field.value).toBe(''));
   });
 
-  it('the toolbar has no Plan toggle or Thinking chip on the phone (they live in sheets)', async () => {
+  it('keeps Plan in the sheet and shows thinking on the phone when supported', async () => {
     const s = await openSession(1);
     const c = mountComposer(s, { phone: true });
     expect(c.view.container.querySelector('[data-testid="plan-toggle"]')).toBeNull();
-    expect(c.view.container.querySelector('[data-testid="thinking-chip"]')).toBeNull();
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="thinking-chip"]')).not.toBeNull());
   });
 });
 

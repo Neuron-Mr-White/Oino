@@ -250,7 +250,7 @@ describe('inline attachment chips (Z-60 states, owner spec 2026-11-03)', () => {
     });
     await waitFor(() => expect(transport.calls).toHaveLength(1));
     await waitFor(() => expect(c.chips()[0]?.getAttribute('data-status')).toBe('uploading'));
-    expect(c.view.container.querySelector('[data-testid="send-send"]')).toBeNull();
+    expect((c.view.container.querySelector('[data-testid="send-send"]') as HTMLButtonElement).disabled).toBe(true);
     const stop = c.view.container.querySelector('[data-testid="send-stop"]') as HTMLButtonElement;
     expect(stop.disabled).toBe(false);
     transport.calls.shift()!.resolve();
@@ -278,14 +278,14 @@ describe('inline attachment chips (Z-60 states, owner spec 2026-11-03)', () => {
     await waitFor(() => expect(c.chips()[0]?.getAttribute('data-status')).toBe('done'));
   });
 
-  it('caps the chips at 8', async () => {
+  it('caps the chips at 20', async () => {
     const transport = pendingTransport();
     setBlobTransport(transport.t);
     const s = await open(A);
     const c = mountComposer(s);
-    const files = Array.from({ length: 10 }, (_, i) => new File([new Uint8Array(4)], `f${i}.bin`, { type: 'application/octet-stream' }));
+    const files = Array.from({ length: 22 }, (_, i) => new File([new Uint8Array(4)], `f${i}.bin`, { type: 'application/octet-stream' }));
     fireEvent.change(c.view.container.querySelector('input[aria-label="Attach a file"]')!, { target: { files } });
-    await waitFor(() => expect(c.chips().length).toBe(8));
+    await waitFor(() => expect(c.chips().length).toBe(20));
   });
 });
 

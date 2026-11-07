@@ -24,12 +24,25 @@ describe('v3 autonomy', () => {
     const session = handle();
     const view = render(() => <PermissionControl session={session} onCommand={() => {}} />);
     const chip = view.getByTestId('permission-chip');
-    for (const [level, bars] of [['low', '▮▯▯'], ['medium', '▮▮▯'], ['high', '▮▮▮'], ['low', '▮▯▯']]) {
-      await waitFor(() => expect(chip.textContent).toContain(bars));
+    for (const [level, bars] of [['low', 1], ['medium', 2], ['high', 3], ['low', 1]] as const) {
+      await waitFor(() => expect(chip.querySelectorAll('.autonomy-bar[data-filled]')).toHaveLength(bars));
+      expect(chip.querySelectorAll('.autonomy-bar')).toHaveLength(3);
       expect(chip.getAttribute('data-tip')).toBe(`Autonomy: ${level === 'low' ? 'Low (read-only commands)' : level === 'medium' ? 'Medium (reversible commands)' : 'High (allow all commands)'}`);
       if (vi.mocked(session.cmd).mock.calls.length < 3) fireEvent.click(chip);
     }
     expect(vi.mocked(session.cmd).mock.calls.map(([c]) => c)).toEqual([{ type: 'set_autonomy', level: 'medium' }, { type: 'set_autonomy', level: 'high' }, { type: 'set_autonomy', level: 'low' }]);
+  });
+  it('focuses the approval card and does not approve on Enter or stop on Escape', () => {
+    const session = handle();
+    const view = render(() => <ApprovalCard session={session} request={request} />);
+    const card = view.getByTestId('approval-card');
+    expect(document.activeElement).toBe(card);
+    let escaped = false;
+    view.container.addEventListener('keydown', () => { escaped = true; });
+    fireEvent.keyDown(card, { key: 'Escape' });
+    expect(escaped).toBe(false);
+    fireEvent.keyDown(card, { key: 'Enter' });
+    expect(session.cmd).not.toHaveBeenCalled();
   });
   it('approval_allow_once_always_deny', async () => {
     for (const [label, decision] of [['Allow once', 'allow_once'], ['Always allow', 'always'], ['Deny', 'deny']]) {

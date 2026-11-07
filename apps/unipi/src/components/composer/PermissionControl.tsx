@@ -56,7 +56,7 @@ export function PermissionControl(props: { session: SessionHandle; onCommand: (c
       aria-label={AUTONOMY_HINT[level()]} data-tip={AUTONOMY_HINT[level()]} title={AUTONOMY_HINT[level()]}
       disabled={props.disabled || pending()} aria-busy={pending()}
       onClick={() => void pick(AUTONOMY_LEVELS[(AUTONOMY_LEVELS.indexOf(level()) + 1) % 3]!)}>
-      <span>Autonomy</span><span class="autonomy-meter" aria-hidden="true">{level() === 'low' ? '▮▯▯' : level() === 'medium' ? '▮▮▯' : '▮▮▮'}</span>
+      <span>Autonomy</span><span class="autonomy-meter" aria-hidden="true"><For each={AUTONOMY_LEVELS}>{(_, index) => <span class="autonomy-bar" data-filled={index() <= AUTONOMY_LEVELS.indexOf(level()) ? '' : undefined} />}</For></span>
     </button>
     <Show when={props.phone}>
       <Sheet open={modeSheetFor() === props.session.key} onClose={() => setModeSheetFor(undefined)} label="Autonomy" title="Autonomy" testId="mode-sheet">

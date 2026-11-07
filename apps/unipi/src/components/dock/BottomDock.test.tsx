@@ -162,10 +162,10 @@ describe('BottomDock · WP-A11 (queue, steering, stop)', () => {
     const s = await open(w);
     startRun(w);
     render(() => <BottomDock session={s} />);
+    const input = screen.getByPlaceholderText('Keep typing to queue…') as HTMLInputElement;
+    fireEvent.input(input, { target: { value: 'now the default is steer' } });
     fireEvent.click(screen.getByTestId('send-chevron'));
     fireEvent.click(screen.getByTestId('send-mode-steer'));
-    const input = screen.getByPlaceholderText('Keep typing to steer…') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: 'now the default is steer' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(cmds(w, 'prompt')).toHaveLength(1));
     expect(cmds(w, 'prompt')[0]).toMatchObject({ message: 'now the default is steer', streamingBehavior: 'steer' });

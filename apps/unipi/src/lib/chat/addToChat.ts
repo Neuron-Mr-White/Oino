@@ -84,7 +84,7 @@ export async function addToChat(chat: RefChat, item: ChatItem): Promise<void> {
     file = fileFromDataUrl((await chat.media(item.mediaRef, item.mime)).dataUrl, item.name, item.mime);
   } else file = await pcFile(chat, item.path, item.name);
   const { added } = attach(key, chat.hostId, [file]);
-  if (!added.length) throw new Error('This message already has 8 attachments');
+  if (!added.length) throw new Error('This message already has 20 attachments');
   focusComposer(key);
 }
 

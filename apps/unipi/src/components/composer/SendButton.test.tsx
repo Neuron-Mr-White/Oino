@@ -23,9 +23,20 @@ describe('SendButton', () => {
     expect(screen.getByTestId('send-send')).toBeTruthy();
     expect(screen.queryByTestId('send-stop')).toBeNull();
     cleanup();
-    render(() => <SendButton running onSend={() => {}} onStop={() => {}} />);
+    render(() => <SendButton running empty onSend={() => {}} onStop={() => {}} />);
     expect(screen.getByTestId('send-stop')).toBeTruthy();
     expect(screen.queryByTestId('send-send')).toBeNull();
+  });
+
+  it('offers Send and Stop together for a follow-up', () => {
+    const onSend = vi.fn();
+    const onStop = vi.fn();
+    render(() => <SendButton running empty={false} onSend={onSend} onStop={onStop} />);
+    fireEvent.click(screen.getByTestId('send-send'));
+    fireEvent.click(screen.getByTestId('send-stop'));
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onStop).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('send-chevron')).toBeTruthy();
   });
 
   it('sends and stops', () => {

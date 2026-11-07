@@ -183,12 +183,12 @@ describe('attachment states (Z-60)', () => {
     expect(pendingAttachmentsFor('chat-a')[0]!.status).toBe('ready');
   });
 
-  it('caps a chat at 8 attachments (Z-60)', () => {
+  it('caps a chat at 20 attachments (Z-60)', () => {
     setBlobTransport(transport().t);
-    const files = Array.from({ length: 10 }, (_, i) => fakeFile(`f${i}.txt`));
+    const files = Array.from({ length: 22 }, (_, i) => fakeFile(`f${i}.txt`));
     const { added, overLimit } = attach('chat-a', 'pc', files);
-    expect(MAX_ATTACHMENTS).toBe(8);
-    expect(added).toHaveLength(8);
+    expect(MAX_ATTACHMENTS).toBe(20);
+    expect(added).toHaveLength(20);
     expect(overLimit).toBe(2);
     expect(attachmentRoom('chat-a')).toBe(0);
     expect(attach('chat-a', 'pc', [fakeFile('x.txt')]).overLimit).toBe(1);

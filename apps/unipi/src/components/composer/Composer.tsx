@@ -14,7 +14,7 @@
  * Shift+Enter is a newline, Esc stops a running turn (after closing a menu;
  * WP-A9's rules until WP-A11 refines them).
  *
- * WP-A13 owns the frame around that: attachments with upload states, max 8
+ * WP-A13 owns the frame around that: attachments with upload states, max 20
  * and the send gate (Z-60, `lib/composer/attachments.ts` — a per-chat store,
  * so a picked image survives a chat switch, D-6), the image editor's ellipse
  * tool (D-5, `./ImageEditor`), the toolbar with the seven-step compression
@@ -1307,7 +1307,7 @@ export function Composer(props: ComposerProps) {
                 empty={empty()}
                 blocked={!canSend()}
                 blockedReason={props.busy ? 'Starting the chat…' : held() ? held() : 'Waiting for the attachments — Send unlocks when they are ready'}
-                onSend={() => send()}
+                onSend={() => send(running() ? (followUpMode() === 'steer' ? 'steer' : 'followUp') : undefined)}
                 onStop={stop}
                 onSendNow={sendNow}
                 options={!props.draft}
@@ -1323,10 +1323,10 @@ export function Composer(props: ComposerProps) {
             <ToolbarSlot slot="plan">
               <Show when={!props.superagent}><PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} /></Show>
             </ToolbarSlot>
-            <ToolbarSlot slot="think">
-              <ThinkingChip session={props.session} disabled={props.readOnly} />
-            </ToolbarSlot>
           </Show>
+          <ToolbarSlot slot="think">
+            <ThinkingChip session={props.session} disabled={props.readOnly} />
+          </ToolbarSlot>
           {/* Owner 2026-11-04: the flexible slot — ring · model in one capsule, wide up to
               its cap, down to a floor before the other chips fold. */}
           <ToolbarSlot slot="model" min={props.phone ? CAPSULE_MIN_PHONE : CAPSULE_MIN}>

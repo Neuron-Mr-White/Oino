@@ -20,7 +20,7 @@
  *                 └─ → failed → user retry (a fresh retry budget)
  *
  * Concurrency is at most 2 uploads in flight; progress is monotonic and
- * stops at 99 % until the upload commits; at most `MAX_ATTACHMENTS` (8)
+ * stops at 99 % until the upload commits; at most `MAX_ATTACHMENTS` (20)
  * attachments per chat; the composer's send is gated until every attachment
  * is `ready` (`attachmentsGate`).
  */
@@ -29,8 +29,8 @@ import { blobToBase64, shrinkImage } from '../imageShrink';
 import { uploadPicked } from '../blob';
 import type { OutboxImage } from '../session/types';
 
-/** Z-60: at most 8 attachments per chat. */
-export const MAX_ATTACHMENTS = 8;
+/** Z-60: at most 20 attachments per chat. */
+export const MAX_ATTACHMENTS = 20;
 /** Z-60: one automatic retry, then the user's manual retry. */
 export const MAX_AUTO_RETRIES = 1;
 /** Z-60: wait before the automatic retry. */

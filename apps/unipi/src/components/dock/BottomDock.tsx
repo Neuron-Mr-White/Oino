@@ -185,7 +185,7 @@ export function DockComposer(props: { session: SessionHandle; readOnly?: boolean
           }
         }}
       />
-      <SendButton running={running()} disabled={props.readOnly} empty={!text().trim()} onSend={() => send()} onStop={stop} onSendNow={sendNow} />
+      <SendButton running={running()} disabled={props.readOnly} empty={!text().trim()} onSend={() => send(running() ? (followUpMode() === 'steer' ? 'steer' : 'followUp') : undefined)} onStop={stop} onSendNow={sendNow} />
     </div>
   );
 }
