@@ -5,6 +5,10 @@ import { piSettings, setPiSetting } from '../../settings/hostCmd';
 import { settingsHostId, settingsProjectCwd } from '../../settings/target';
 import { hostClient, requestParsed } from '../../lib/host';
 import { Row, Section, Segmented } from './rows';
+import './searchSettings.css';
+
+/** The Settings small secondary button; disabled reads as disabled (no global rule exists). */
+const BTN = 'btn-secondary settings-btn inline-flex items-center justify-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed';
 
 /** Uses the existing Settings primitives. Build is intentionally a host-only action. */
 export default function SearchSettings() {
@@ -83,29 +87,31 @@ export default function SearchSettings() {
   };
   return <Section title="Search" id="sec-search" icon={<Search size={14} />}>
     <Show when={!settings.loading && !capabilities.loading} fallback={<p class="p-4 text-text-muted" role="status">Loading search settings…</p>}>
-      <Show when={supported()} fallback={<div class="p-4 space-y-3"><p>Semantic search</p><Show when={available()} fallback={<p class="text-text-muted">Semantic search is not available for this build.</p>}>
+      <Show when={supported()} fallback={<><Row label="Semantic search" description={available() ? "Download the local semantic search helper." : "Semantic search is not available for this build."} /><Show when={available()}><div class="search-settings-details">
         <p>Download size: {size() ? `${(size()! / 1_000_000).toFixed(1)} MB` : 'unknown'}</p>
-        <label><input type="checkbox" checked={installConsent()} disabled={installing()} onChange={(e) => setInstallConsent(e.currentTarget.checked)} /> I consent to download and install semantic search.</label>
-        <Show when={installing()} fallback={<button type="button" class="btn-secondary" disabled={!installConsent()} onClick={() => void action('install_search')}>Install semantic search</button>}>
-          <p role="status">Installing semantic search… {progress().total ? `${Math.min(100, Math.floor(progress().downloaded * 100 / progress().total))}% (${(progress().downloaded / 1_000_000).toFixed(1)} / ${(progress().total / 1_000_000).toFixed(1)} MB)` : ''}</p><button type="button" onClick={() => void action('cancel_search_install')}>Cancel</button>
+        <label class="search-settings-consent"><input type="checkbox" checked={installConsent()} disabled={installing()} onChange={(e) => setInstallConsent(e.currentTarget.checked)} /><span>I consent to download and install semantic search.</span></label>
+        <Show when={installing()} fallback={<button type="button" class={BTN} disabled={!installConsent()} onClick={() => void action('install_search')}>Install semantic search</button>}>
+          <p role="status">Installing semantic search… {progress().total ? `${Math.min(100, Math.floor(progress().downloaded * 100 / progress().total))}% (${(progress().downloaded / 1_000_000).toFixed(1)} / ${(progress().total / 1_000_000).toFixed(1)} MB)` : ''}</p><button type="button" class={BTN} onClick={() => void action('cancel_search_install')}>Cancel</button>
         </Show>
-      </Show></div>}>
+      </div></Show></>}>
         <Row label="Semantic search (zvec-grep)" description="Default off. Changes apply to new sessions. Exact search always works without an index.">
           <fieldset disabled={saving() || settings()?.ok === false}>
             <Segmented label="Semantic search" options={['off', 'on'] as const} value={enabled() ? 'on' : 'off'} labels={{ off: 'Off', on: 'On' }} onChange={(v) => void save(v)} />
           </fieldset>
         </Row>
-        <div class="p-4 space-y-3">
+        <div class="search-settings-details">
           <Show when={indexStatus()}>{(index) => <p class="text-sm text-text-muted">Index: {index().state}{index().files != null ? ` · ${index().files} files` : ''}{index().updated ? ` · updated ${new Date(index().updated!).toLocaleString()}` : ''}</p>}</Show>
           <p class="text-sm text-text-dim whitespace-normal">Open Project settings for the folder to index. Building downloads the local CPU model (local/potion-code-16m-v2, about 31 MB) and creates .zvec-grep/ in that project.</p>
           <Show when={settingsProjectCwd()} fallback={<p class="text-sm text-text-muted">Choose a project using its Project settings first.</p>}>
-            <label class="flex items-start gap-2 text-sm text-text whitespace-normal">
+            <label class="search-settings-consent">
               <input type="checkbox" checked={consent()} disabled={saving()} onChange={(e) => setConsent(e.currentTarget.checked)} />
-              I consent to download the model and index this project locally.
+              <span>I consent to download the model and index this project locally.</span>
             </label>
           </Show>
-          <button type="button" class="btn-secondary min-h-10" disabled={!consent() || !settingsProjectCwd() || saving()} onClick={() => void build()}>Build index</button>
-          <button type="button" class="btn-secondary min-h-10" disabled={saving()} onClick={() => void action('uninstall_search')}>Uninstall</button>
+          <div class="flex flex-wrap items-center gap-2" data-testid="search-actions">
+            <button type="button" class={BTN} disabled={!consent() || !settingsProjectCwd() || saving()} onClick={() => void build()}>Build index</button>
+            <button type="button" class={BTN} disabled={saving()} onClick={() => void action('uninstall_search')}>Uninstall</button>
+          </div>
           <Show when={status()}><p role="status" class="text-sm text-text-muted whitespace-normal">{status()}</p></Show>
         </div>
       </Show>
