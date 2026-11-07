@@ -252,13 +252,22 @@ pub fn merge(global: &[AgentFile], project: &[AgentFile]) -> (Vec<Profile>, Vec<
 /// The profile a call without one runs (long-horizon's graph default too).
 pub const DEFAULT_PROFILE: &str = "subagent_general";
 
+/// Internal general-purpose fallback, not a selectable profile.
+pub const GENERAL_FALLBACK: &str = "__general_default";
+
+/// General tools and prompt with the configured default model resolution.
+#[must_use]
+pub fn general_fallback() -> Profile {
+    let mut profile = builtins().remove(1);
+    profile.id = GENERAL_FALLBACK.into();
+    profile
+}
+
 /// Settings key of the disabled profile names (`subagents.disabled: [names]`, global with a
 /// project override like every namespace key).
 pub const DISABLED_KEY: &str = "disabled";
 
 /// The profiles offered to the model: `all` minus the `disabled` names, in `all` order.
-/// Never empty while `all` is not: a list that disables everything keeps the first profile
-/// (at least one profile stays enabled).
 #[must_use]
 pub fn offered(all: &[Profile], disabled: &[String]) -> Vec<Profile> {
     let on: Vec<Profile> = all
@@ -266,9 +275,6 @@ pub fn offered(all: &[Profile], disabled: &[String]) -> Vec<Profile> {
         .filter(|p| !disabled.iter().any(|d| d == &p.id))
         .cloned()
         .collect();
-    if on.is_empty() {
-        return all.first().cloned().into_iter().collect();
-    }
     on
 }
 
@@ -349,7 +355,14 @@ pub fn pick(
 ) -> Result<Profile, PickError> {
     let name = name.trim();
     let enabled = || offered.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
-    if name.is_empty() || (default_fallback && name == DEFAULT_PROFILE) {
+    if name.is_empty() {
+        return Ok(offered
+            .iter()
+            .find(|p| p.id == DEFAULT_PROFILE)
+            .cloned()
+            .unwrap_or_else(general_fallback));
+    }
+    if default_fallback && name == DEFAULT_PROFILE {
         if let Some(p) = offered.iter().find(|p| p.id == name) {
             return Ok(p.clone());
         }
@@ -523,16 +536,22 @@ mod tests {
         );
         let off = offered(&all, &["subagent_general".into(), "ghost".into()]);
         assert_eq!(ids(&off), ["subagent_explore", "rev"]);
-        // At least one stays enabled.
+        // No disabled profile is silently re-enabled.
         let every: Vec<String> = ids(&all);
-        assert_eq!(ids(&offered(&all, &every)), ["subagent_explore"]);
+        assert!(offered(&all, &every).is_empty());
         // Default: subagent_general while on, else the first enabled.
         assert_eq!(
             default_profile(&offered(&all, &[])).unwrap().id,
             DEFAULT_PROFILE
         );
         assert_eq!(default_profile(&off).unwrap().id, "subagent_explore");
-        assert_eq!(pick(&all, &off, "", false).unwrap().id, "subagent_explore");
+        let fallback = pick(&all, &off, "", false).unwrap();
+        assert_eq!(fallback.id, GENERAL_FALLBACK);
+        assert!(fallback.tools.is_none());
+        assert_eq!(
+            pick(&all, &offered(&all, &[]), "", false).unwrap().id,
+            DEFAULT_PROFILE
+        );
         assert_eq!(pick(&all, &off, "rev", false).unwrap().id, "rev");
         let e = pick(&all, &off, "subagent_general", false).unwrap_err();
         assert_eq!(e.code(), "subagents.profile.disabled");
@@ -557,10 +576,7 @@ mod tests {
             e.message(),
             "Unknown profile \"nope\". Available: subagent_explore, rev"
         );
-        assert_eq!(
-            pick(&[], &[], "", false).unwrap_err(),
-            PickError::NoneEnabled
-        );
+        assert_eq!(pick(&[], &[], "", false).unwrap().id, GENERAL_FALLBACK);
     }
 
     #[test]

@@ -1423,7 +1423,7 @@ impl GraphFile {
                         operator_id: op.clone(),
                     },
                     None => Target::NewPreset {
-                        subagent_id: w.profile.clone().unwrap_or_else(|| DEFAULT_PROFILE.into()),
+                        subagent_id: w.profile.clone().unwrap_or_default(),
                     },
                 },
                 input_ids: w.input_ids.clone(),
@@ -3179,7 +3179,7 @@ mod tests {
         assert_eq!(f.runnable(30_999), []);
         assert_eq!(
             f.runnable(31_000)[0],
-            ("a".into(), DEFAULT_PROFILE.into(), Some("op".into()))
+            ("a".into(), String::new(), Some("op".into()))
         );
         // Second transient error: the budget is used → errored, operator + mapping kept.
         f.started("a", Ok("op".into()), 31_000);

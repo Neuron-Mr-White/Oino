@@ -1544,12 +1544,7 @@ impl Lh {
             .await
             {
                 Ok(v) => match serde_json::from_value::<Vec<String>>(v) {
-                    Ok(p) if !p.is_empty() => return Ok(p),
-                    Ok(_) => {
-                        last = "subagents answered with no profiles for this session \
-                                (subagents are disabled in /settings → subagents)"
-                            .into();
-                    }
+                    Ok(p) => return Ok(p),
                     Err(e) => last = format!("subagents.profiles answered garbage: {e}"),
                 },
                 Err(e) => last = format!("subagents.profiles failed: {e}"),
@@ -1643,7 +1638,7 @@ impl Lh {
         };
         // The profile list is only needed to schedule or run work: stop / fail / finish
         // also work while subagents are down.
-        let available = match if matches!(op, "add_work" | "continue") {
+        let _available = match if op == "add_work" {
             Self::profiles().await
         } else {
             Ok(Vec::new())
@@ -1673,13 +1668,26 @@ impl Lh {
             {
                 let profile = s(w, "profile");
                 if s(w, "operator_id").is_none()
-                    && profile.as_ref().is_some_and(|p| !available.contains(p))
+                    && let Some(name) = &profile
                 {
-                    return err(format!(
-                        "Unknown profile \"{}\". Available: {}.",
-                        profile.unwrap_or_default(),
-                        available.join(", ")
-                    ));
+                    let checked = services::call(
+                        Some(unipi_kit::suite::pkg::SUBAGENTS.id),
+                        "subagents.validate-profile",
+                        &json!({"profile": name}),
+                        Some(Duration::from_secs(10)),
+                    )
+                    .await;
+                    match checked {
+                        Ok(v) if v.get("ok").and_then(Value::as_bool) == Some(true) => {}
+                        Ok(v) => {
+                            return err(v
+                                .get("error")
+                                .and_then(Value::as_str)
+                                .unwrap_or("Profile validation failed.")
+                                .to_owned());
+                        }
+                        Err(e) => return err(format!("Profile validation unavailable: {e}")),
+                    }
                 }
                 add.push(AddWork {
                     work_id: s(w, "work_id").map(|x| x.trim().to_owned()),

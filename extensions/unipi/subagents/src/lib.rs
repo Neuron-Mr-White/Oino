@@ -449,7 +449,7 @@ impl Subagents {
         }
     }
 
-    /// The profiles offered in `sid` (settings `disabled` applied; never empty).
+    /// The profiles offered in `sid` (settings `disabled` applied).
     fn offered(&self, sid: &str) -> (Vec<Profile>, Vec<Profile>) {
         let all = self.sessions.with(sid, |s| {
             if s.profiles.is_empty() {
@@ -1062,14 +1062,16 @@ impl Subagents {
             .map(str::trim)
             .filter(|r| !r.is_empty())
             .map(ToOwned::to_owned);
-        let profile_name = resume
-            .as_deref()
-            .and_then(|r| self.record(&sid, r))
-            .map_or(profile_arg.clone(), |r| r.profile);
+        let resumed = resume.as_deref().and_then(|r| self.record(&sid, r));
+        let profile_name = resumed
+            .as_ref()
+            .map_or(profile_arg.clone(), |r| r.profile.clone());
         let (all, offered) = self.offered(&sid);
         // A resume continues an existing run whatever its profile's state; a new run must
         // name an enabled profile (or none: the default).
-        let picked = if resume.is_some() && profile_name != profile_arg {
+        let picked = if resumed.is_some() && profile_name == profiles::GENERAL_FALLBACK {
+            Ok(profiles::general_fallback())
+        } else if resumed.is_some() {
             all.iter()
                 .find(|p| p.id == profile_name)
                 .cloned()
@@ -1936,16 +1938,16 @@ impl Subagents {
             .as_deref()
             .and_then(|r| self.record(&sid, r))
             .map(|r| r.profile);
-        // A resumed operator keeps its profile; new work needs an enabled one, and the
-        // graph's filled-in default falls back to the first enabled profile.
+        // A resumed operator keeps its profile; new work needs an enabled one.
         let picked = match &resumed {
+            Some(name) if name == profiles::GENERAL_FALLBACK => Ok(profiles::general_fallback()),
             Some(name) => all.iter().find(|p| &p.id == name).cloned().ok_or_else(|| {
                 profiles::PickError::Unknown {
                     name: name.clone(),
                     enabled: offered.iter().map(|p| p.id.clone()).collect(),
                 }
             }),
-            None => profiles::pick(&all, &offered, &s("profile"), true),
+            None => profiles::pick(&all, &offered, &s("profile"), false),
         };
         let profile = match picked {
             Ok(p) => p,
@@ -2151,6 +2153,20 @@ impl Extension for Subagents {
         cx.service(
             point::SUBAGENTS_GRAPH_RUN,
             |ext, p, _caller, cx| async move { Ok(ext.graph_run(&p, &cx).await) },
+        );
+        cx.service(
+            "subagents.validate-profile",
+            |ext, p, _caller, cx| async move {
+                if !ext.config().enabled || cx.is_child() {
+                    return Ok(json!({"error": "subagents are disabled in this session"}));
+                }
+                let (all, offered) = ext.offered(cx.session_id());
+                let name = p.get("profile").and_then(Value::as_str).unwrap_or_default();
+                Ok(match profiles::pick(&all, &offered, name, false) {
+                    Ok(_) => json!({"ok": true}),
+                    Err(e) => json!({"error": e.message(), "code": e.code()}),
+                })
+            },
         );
         cx.service(PROFILES_SERVICE, |ext, _p, _caller, cx| async move {
             let on = ext.config().enabled && !cx.is_child();

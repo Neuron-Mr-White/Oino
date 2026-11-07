@@ -46,6 +46,6 @@
   },
   "component": "component.wasm",
   "checksums": {
-    "component.wasm": "sha256:27e265730cbdea5c0e4b22ebb15dfef64c1a557c3599d5c4ccfc0236ebcb6ef8"
+    "component.wasm": "sha256:acf90ce07628f08a21988acd432902a7973738e68698ccffed964f9cb50ba80e"
   }
 }
