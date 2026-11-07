@@ -173,6 +173,12 @@ pub struct HostSettingsSetRequest {
 pub enum HostCmd {
     /// Compiled semantic-search support of this host, independent of user settings.
     SearchCapabilities,
+    /// Install the optional search helper after user consent.
+    InstallSearch { consent: bool },
+    /// Cancel an active helper installation.
+    CancelSearchInstall,
+    /// Remove the optional helper.
+    UninstallSearch,
     /// User-only Settings action, deliberately absent from session/model commands.
     BuildSearchIndex { cwd: String, consent: bool },
     /// `_oino/get_settings`: the merged pi settings object, or one dot-path
@@ -298,6 +304,9 @@ impl HostCmd {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::SearchCapabilities => "search_capabilities",
+            Self::InstallSearch { .. } => "install_search",
+            Self::CancelSearchInstall => "cancel_search_install",
+            Self::UninstallSearch => "uninstall_search",
             Self::BuildSearchIndex { .. } => "build_search_index",
             Self::GetSettings { .. } => "get_settings",
             Self::SetSetting { .. } => "set_setting",

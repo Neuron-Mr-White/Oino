@@ -45,21 +45,32 @@ it('keeps build errors visible', async () => {
   await waitFor(() => expect(view.getByRole('alert').textContent).toContain('CPU engine not included'));
 });
 
-it('hides semantic controls when the running host has no engine', async () => {
+it('shows unavailable state when the running host has no asset', async () => {
   vi.mocked(piSettings).mockResolvedValue({ ok: true, value: { search: { semanticEnabled: true } } });
   vi.mocked(requestParsed).mockResolvedValue({ ok: true, value: { semanticSearch: false } });
   const view = render(() => <SearchSettings />);
-  await view.findByText(/This host does not include/);
+  await view.findByText(/not available for this build/);
   expect(view.queryByRole('radiogroup', { name: 'Semantic search' })).toBeNull();
   expect(view.queryByRole('button', { name: 'Build index' })).toBeNull();
   expect(view.queryByRole('checkbox')).toBeNull();
   expect(setPiSetting).not.toHaveBeenCalled();
 });
+it('offers a consented install when an asset is available', async () => {
+  vi.mocked(piSettings).mockResolvedValue({ ok: true, value: {} });
+  vi.mocked(requestParsed).mockImplementation(async (_client, _op, args) => ({ ok: true, value: (args as { cmd: { kind: string } }).cmd.kind === 'search_capabilities' ? { semanticSearch: false, available: true, installed: false, size: 85000000 } : { success: true } }) as never);
+  const view = render(() => <SearchSettings />);
+  const button = await view.findByRole('button', { name: 'Install semantic search' });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(view.getByText(/85.0 MB/)).toBeTruthy();
+  fireEvent.click(view.getByRole('checkbox'));
+  fireEvent.click(button);
+  await waitFor(() => expect(requestParsed).toHaveBeenCalledWith(expect.anything(), 'host_cmd', { cmd: { kind: 'install_search', consent: true } }, expect.anything()));
+});
 it('fails closed for older or unreachable hosts', async () => {
   vi.mocked(piSettings).mockResolvedValue({ ok: true, value: {} });
   vi.mocked(requestParsed).mockResolvedValue({ ok: false, error: { code: 'E_UNSUPPORTED', message: 'unknown command', retryable: false } });
   const view = render(() => <SearchSettings />);
-  await view.findByText(/This host does not include/);
+  await view.findByText(/not available for this build/);
   expect(view.queryByRole('radiogroup')).toBeNull();
   expect(view.queryByRole('button', { name: 'Build index' })).toBeNull();
 });

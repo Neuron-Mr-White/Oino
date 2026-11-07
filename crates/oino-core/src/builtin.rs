@@ -242,6 +242,19 @@ pub fn search_capabilities(agent_dir: &std::path::Path) -> serde_json::Value {
     oino_tools::zvec::capabilities(agent_dir)
 }
 
+/// Install the optional search helper with user consent.
+/// # Errors
+/// Returns installation errors.
+pub async fn install_search(agent_dir: &std::path::Path, consent: bool, cancel: tokio_util::sync::CancellationToken) -> Result<(), String> {
+    oino_tools::zvec::install_helper(agent_dir, consent, cancel).await
+}
+/// Remove the optional helper.
+/// # Errors
+/// Returns filesystem errors.
+pub fn uninstall_search(agent_dir: &std::path::Path) -> Result<(), String> {
+    oino_tools::zvec::uninstall_helper(agent_dir)
+}
+
 /// Settings-only entry point. Not registered in any model or session command catalog.
 /// # Errors
 /// Returns consent, engine availability, and indexing errors.

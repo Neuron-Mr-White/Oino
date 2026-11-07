@@ -33,6 +33,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+static SEARCH_INSTALL: Mutex<Option<tokio_util::sync::CancellationToken>> = Mutex::new(None);
+
 fn search_capabilities(agent_dir: &std::path::Path) -> Value {
     oino_core::builtin::search_capabilities(agent_dir)
 }
@@ -86,6 +88,26 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
     // broken extension set must not keep the user from removing the culprit).
     match cmd {
         HostCmd::SearchCapabilities => return Ok(search_capabilities(hub.agent_dir())),
+        HostCmd::InstallSearch { consent } => {
+            let token = tokio_util::sync::CancellationToken::new();
+            {
+                let mut active = lock(&SEARCH_INSTALL);
+                if active.is_some() { return Err(invalid("Installation already in progress")); }
+                *active = Some(token.clone());
+            }
+            let result = oino_core::builtin::install_search(hub.agent_dir(), consent, token).await;
+            *lock(&SEARCH_INSTALL) = None;
+            result.map_err(failed)?;
+            return Ok(json!({"success": true}));
+        }
+        HostCmd::CancelSearchInstall => {
+            if let Some(token) = lock(&SEARCH_INSTALL).as_ref() { token.cancel(); }
+            return Ok(json!({"success": true}));
+        }
+        HostCmd::UninstallSearch => {
+            oino_core::builtin::uninstall_search(hub.agent_dir()).map_err(failed)?;
+            return Ok(json!({"success": true}));
+        }
         HostCmd::BuildSearchIndex { cwd, consent } => {
             let root = std::path::Path::new(&cwd);
             if !root.is_absolute() || !root.is_dir() {
@@ -424,6 +446,9 @@ async fn dispatch(
         HostCmd::GetShortcuts => Ok(json!({ "shortcuts": shortcuts(services) })),
         // Served before the services spin up (`run`).
         HostCmd::SearchCapabilities
+        | HostCmd::InstallSearch { .. }
+        | HostCmd::CancelSearchInstall
+        | HostCmd::UninstallSearch
         | HostCmd::BuildSearchIndex { .. }
         | HostCmd::InstallExtension { .. }
         | HostCmd::RemoveExtension { .. }
