@@ -26,6 +26,11 @@ ignore.workspace = true
 image.workspace = true
 oino-agent = { path = "../oino-agent", version = "1.0.2" }
 oino-ai = { path = "../oino-ai", version = "1.0.2" }
+reqwest.workspace = true
+sha2.workspace = true
+flate2 = "1"
+tar = "0.4"
+tempfile.workspace = true
 regex.workspace = true
 rquickjs = { version = "0.11", features = ["futures", "parallel"] }
 uuid.workspace = true

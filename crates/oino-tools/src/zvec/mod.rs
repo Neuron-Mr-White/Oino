@@ -3,6 +3,29 @@
 use std::path::{Path, PathBuf};
 
 mod client;
+mod install;
+/// Install a pinned helper after explicit consent.
+/// # Errors
+/// Returns download, integrity, or installation errors.
+pub async fn install_helper(
+    agent_dir: &Path,
+    consent: bool,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<(), String> {
+    install::install(agent_dir, consent, cancel).await
+}
+/// Remove the pinned helper without deleting models or indexes.
+/// # Errors
+/// Returns filesystem errors.
+pub fn uninstall_helper(agent_dir: &Path) -> Result<(), String> {
+    if let Some((version, _)) = client::asset() {
+        let path = agent_dir.join("tools/zvec").join(version);
+        if path.exists() {
+            std::fs::remove_dir_all(path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
 /// Information about the pinned helper and its installation.
 #[must_use]
 pub fn capabilities(agent_dir: &Path) -> serde_json::Value {
