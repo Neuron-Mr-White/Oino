@@ -83,7 +83,7 @@ function session(): MockSession {
         asked.push(String(((c as { payload?: { question?: string } }).payload ?? {}).question ?? ''));
         return { id: `p${asked.length}`, answer: btWAnswer, done: true };
       }
-      if (name === 'btw.delete') { const id = (c as { payload: { id: string } }).payload.id; const index = Number(id.slice(1)) - 1; asked.splice(index, 1); return { deleted: true }; }
+      if (name === 'btw.delete') { const id = (c as unknown as { payload: { id: string } }).payload.id; const index = Number(id.slice(1)) - 1; asked.splice(index, 1); return { deleted: true }; }
       if (name === 'btw.list') return asked.map((q, i) => ({ id: `p${i + 1}`, question: q, answer: btWAnswer, done: true }));
       return {};
     },
