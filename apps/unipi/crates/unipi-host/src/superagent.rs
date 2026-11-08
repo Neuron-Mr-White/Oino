@@ -1054,7 +1054,6 @@ impl Workers for HostWorkers {
             session
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;
-            self.hub.announce_worker(id).await;
             apply_mode(&session, &preset.mode).await?;
             let prompt = lead_brief(project, tasks);
             if !attaching {
@@ -1070,6 +1069,7 @@ impl Workers for HostWorkers {
                     .map_err(|e| e.to_string())?;
             }
             crate::superagent_session::register(Arc::clone(&runtime));
+            self.hub.announce_worker(Arc::clone(&runtime)).await;
             runtimes.insert(id.into(), runtime);
             Ok(())
         })
@@ -1125,6 +1125,7 @@ impl Workers for HostWorkers {
             custom_type: "oino:superagent-relay".into(), content: oino_ai::UserContentField::Text(text.into()),
             display: true, details: Some(json!({"author":"superagent", "oinoProvenance":{"kind":"superagent","author":"superagent"}})),
         }, true, Some(match delivery { Delivery::Queue => oino_core::extensions::host::Delivery::FollowUp, Delivery::Steer => oino_core::extensions::host::Delivery::Steer })).await.map_err(|e| e.to_string())?;
+            self.hub.announce_worker(runtime).await;
             Ok(())
         })
     }
@@ -1199,10 +1200,9 @@ impl Workers for HostWorkers {
             if session.is_streaming() || session.pending_message_count() > 0 {
                 return None;
             }
-            // Graph nodes, background subagents and shell tasks report their work via
-            // arbiter wait sources, including quiet tasks that do not wake the session.
+            // Use the same wake/quiet split as core's waiting state and session cards.
             // Query directly rather than relying on the periodically refreshed UI state.
-            if !session.runner().arbiter_wait_reasons().await.is_empty()
+            if !oino_core::events::split_wait_reasons(session.runner().arbiter_wait_reasons().await).0.is_empty()
                 || has_long_horizon_owner(session.agent_dir(), &session.work_cwd(), id)
                 || session.is_streaming()
                 || session.pending_message_count() > 0

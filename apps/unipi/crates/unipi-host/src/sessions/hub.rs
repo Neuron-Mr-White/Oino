@@ -1033,9 +1033,10 @@ impl SessionHub {
         lease_holder(session_file).is_some()
     }
 
-    /// Announce a dispatcher-owned worker materialized outside the hub.
-    pub async fn announce_worker(&self, id: &str) {
-        self.inner.changed(id).await;
+    /// Supervise a dispatcher-owned worker, including when no client has opened it.
+    pub async fn announce_worker(&self, runtime: Arc<oino_core::runtime::AgentSessionRuntime>) {
+        let backend: Arc<dyn SessionBackend> = Arc::new(oino_client::in_process::InProcessBackend::new(runtime));
+        self.inner.ensure_supervisor(backend);
     }
 
     /// A cron run just started (or finished): the run's session file is written by the
@@ -1296,7 +1297,9 @@ impl Inner {
             message_count: info.message_count,
             // owner-fix-6 P2-1: a cron run in flight is run by its `oino -p` subprocess,
             // not here — the run record is what says the chat is Working.
-            state: match Self::state_of(state, &info.id, record.state) {
+            // Dispatcher runtimes live outside the core hub, so its record is not Live
+            // even while the host owns and supervises the worker.
+            state: match Self::state_of(state, &info.id, if crate::superagent_session::runtime(&info.id).is_some() { CoreHubState::Live } else { record.state }) {
                 HubState::Idle if cron.as_ref().is_some_and(|c| c.running) => HubState::Working,
                 other => other,
             },
@@ -1636,6 +1639,9 @@ impl Inner {
         if let Some(runtime) = crate::superagent_session::runtime(target) {
             let cwd = runtime.session().cwd().to_path_buf();
             let backend: Arc<dyn SessionBackend> = Arc::new(oino_client::in_process::InProcessBackend::new(runtime));
+            if probe(&backend).await.busy() {
+                self.ensure_supervisor(Arc::clone(&backend));
+            }
             let card = self.card_for(&backend, &cwd).await;
             return Ok(HubSession::new(Arc::downgrade(self), backend, card, None));
         }

@@ -1459,3 +1459,63 @@ fn preferences_without_project_leads_load() {
     let store = unipi_host::superagent_presets::Store::load(&path).unwrap();
     assert!(store.project_leads.is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unattached_lead_tracks_waking_but_not_quiet_work() {
+    use oino_core::{
+        extensions::api::{ExtensionInstance, ExtensionMode, Registration},
+        runtime::ToolSelection,
+        services::{ResourceFlags, StaticLoader},
+        testing::{FakeExtension, FauxComponent, FauxProvider, FauxResponse},
+    };
+    use unipi_host::{sessions::{HostHubOptions, SessionHub}, superagent::HostWorkers};
+    let f = Fixture::new();
+    let id = f.add("background lead", &[]);
+    let wait = Arc::new(Mutex::new(Some("subagent working".to_owned())));
+    let source = {
+        let wait = Arc::clone(&wait);
+        FakeExtension::new("waiter", Registration::default()).on_wait(move |_| wait.lock().unwrap().clone())
+    };
+    let provider = FauxProvider::new(vec![FauxResponse::Text("yielded".into())]);
+    let models = oino_models::ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.set_runtime_api_key("faux", "test-key");
+    let hub = SessionHub::create(HostHubOptions {
+        cwd: f.project.root.clone(), agent_dir: f.home.path().join("agent"), docs_root: None,
+        session_dir: Some(f.home.path().join("sessions")), mode: ExtensionMode::Desktop,
+        has_ui: true, approve: Some(false), flags: ResourceFlags { no_context_files: true, ..Default::default() },
+        loader: Arc::new(StaticLoader(vec![Arc::new(FauxComponent(provider)) as Arc<dyn ExtensionInstance>, Arc::new(source)])),
+        models: Some(models), tools: ToolSelection::Default, exclude_tools: Vec::new(), services_cap: None, host_data_dir: None,
+    }).unwrap();
+    let workers = Arc::new(HostWorkers::new(hub.clone(), f.layout.clone()));
+    let session_id = uuid::Uuid::now_v7().to_string();
+    let task = unipi_kanboard::dispatcher::reserve(&f.layout, f.project.clone(), &id, &session_id).unwrap();
+    let mut preset = unipi_host::superagent_presets::Store::default().resolve(Some("research"), Default::default()).unwrap();
+    preset.model = Some("faux/faux-1".into());
+    workers.launch_preset(&f.project, &task, &session_id, &preset).await.unwrap();
+    let session = unipi_host::superagent_session::runtime(&session_id).unwrap().session();
+    session.wait_for_idle().await;
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    let card = hub.list().await.unwrap().into_iter().find(|c| c.session_id == session_id).unwrap();
+    assert!(card.state.is_working(), "{card:?}");
+    assert_eq!(card.pending_work.as_deref(), Some("subagent working"));
+    assert!(workers.ended(&session_id).await.is_none());
+    let dispatcher = Dispatcher::acquire(f.layout.clone(), f.home.path().join("config.json"), workers.clone()).await.unwrap();
+    let status = dispatcher.status().await.unwrap();
+    assert_eq!(status["leads"][0]["sessionId"], session_id);
+    assert_eq!(status["projects"][0]["lead"], session_id);
+    *wait.lock().unwrap() = Some("bg: build".into());
+    assert!(workers.ended(&session_id).await.is_none());
+    *wait.lock().unwrap() = Some("quiet: bg: server".into());
+    assert!(workers.ended(&session_id).await.is_some());
+    let status = dispatcher.status().await.unwrap();
+    assert!(status["leads"].as_array().unwrap().is_empty());
+    assert!(status["projects"][0]["lead"].is_null());
+    tokio::time::timeout(std::time::Duration::from_secs(15), async {
+        loop {
+            let card = hub.list().await.unwrap().into_iter().find(|c| c.session_id == session_id).unwrap();
+            if !card.state.is_working() && card.background_work.as_deref() == Some("bg: server") { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }).await.expect("quiet task must not keep the lead working");
+    workers.stop(&session_id).await.unwrap();
+}
