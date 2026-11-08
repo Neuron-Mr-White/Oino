@@ -53,9 +53,9 @@ pub async fn create_from(
     let specs = [
         (
             "kanboard",
-            "Read or mutate an explicit project board. Supply projectId and CLI argv; never guess a project.",
+            "Read or mutate a project board with projectId and CLI argv. For onboarding use argv [\"project\",\"add\",\"/absolute/path\"] (requires user confirmation); project list and show are also available.",
             json!({"projectId":{"type":"string"},"argv":{"type":"array","items":{"type":"string"}}}),
-            vec!["projectId", "argv"],
+            vec!["argv"],
         ),
         (
             "project_resolver",
@@ -143,6 +143,19 @@ fn default_ticket_autonomy(argv: &mut Vec<String>) {
         argv.push("high".into());
     }
 }
+fn project_command(argv: &[String]) -> Result<Option<&str>, ToolError> {
+    if argv.first().is_none_or(|s| s != "project") { return Ok(None); }
+    match (argv.get(1).map(String::as_str), argv.len()) {
+        (Some("add"), 3) => {
+            let path = std::path::Path::new(&argv[2]);
+            if !path.is_absolute() || !path.is_dir() { return Err(ToolError::new("path must be an absolute directory")); }
+            Ok(Some("add"))
+        }
+        (Some("list"), 2) => Ok(Some("list")),
+        (Some("show"), 2) => Ok(Some("show")),
+        _ => Err(ToolError::new("Only project add, list and show are allowed")),
+    }
+}
 fn alias_comment(argv: &mut [String]) {
     if argv.first().is_some_and(|s| s == "comment") {
         argv[0] = "note".into();
@@ -160,6 +173,17 @@ mod tests {
         ].map(|(a, b)| (a.into_iter().map(str::to_owned).collect::<Vec<_>>(), b)) {
             super::default_ticket_autonomy(&mut argv);
             assert_eq!(argv, expected);
+        }
+    }
+
+    #[test]
+    fn project_commands_are_narrow_and_validate_paths() {
+        let args = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(super::project_command(&args(&["project", "list"])).unwrap(), Some("list"));
+        assert_eq!(super::project_command(&args(&["project", "show"])).unwrap(), Some("show"));
+        assert_eq!(super::project_command(&args(&["project", "add", std::env::temp_dir().to_str().unwrap()])).unwrap(), Some("add"));
+        for v in [&["project", "add", "relative"][..], &["project", "archive", "x"], &["project", "list", "--home=x"]] {
+            assert!(super::project_command(&args(v)).is_err());
         }
     }
 
@@ -233,6 +257,38 @@ impl AgentTool for ChatTool {
                     json!({"registered":registered,"recent":recent,"zoxide":zoxide,"instruction":"Use an explicit registered projectId. Ask the user if ambiguous; do not guess."})
                 }
                 "kanboard" => {
+                    let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
+                        .map_err(|e| ToolError::new(e.to_string()))?;
+                    if let Some(command) = project_command(&argv)? {
+                        match command {
+                            "add" => {
+                                let path = std::path::Path::new(&argv[2]);
+                                let Some(ui) = session.get().filter(|ui| ui.has_ui()) else { return Err(ToolError::new("Project registration requires user confirmation")); };
+                                if !crate::sessions::SessionService::shared().is_some_and(|service| service.feed(ui.session_id()).subscriber_count() > 0) {
+                                    return Err(ToolError::new("Project registration requires user confirmation"));
+                                }
+                                let params = serde_json::from_value(json!({"title":"Set up Kanboard project?","message":format!("Register workspace {}?", path.display())})).map_err(|e| ToolError::new(e.to_string()))?;
+                                let answer = tokio::time::timeout(std::time::Duration::from_secs(120), ui.dialog(Some("superagent"), "confirm", params, Some(cancel.clone()))).await.map_err(|_| ToolError::new("Project registration confirmation timed out"))?;
+                                if answer != oino_core::ui::UiAnswer::Confirmed(true) { return Err(ToolError::new("Project registration declined")); }
+                                let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                                let result = dispatcher.enable("register", None, Some(&argv[2])).await.map_err(|e| ToolError::new(e.to_string()))?;
+                                return Ok(AgentToolResult::text(result.to_string()));
+                            }
+                            "list" => {
+                                let layout = unipi_kanboard::Layout::from_env().map_err(|e| ToolError::new(e.to_string()))?;
+                                let result = unipi_kanboard::commands::project_list(&layout).map_err(|e| ToolError::new(e.to_string()))?;
+                                return Ok(AgentToolResult::text(result.to_string()));
+                            }
+                            "show" => {
+                                let project_id = field("projectId")?;
+                                let layout = unipi_kanboard::Layout::from_env().map_err(|e| ToolError::new(e.to_string()))?;
+                                let project = unipi_kanboard::Project::load(&layout, &project_id).map_err(|e| ToolError::new(e.to_string()))?;
+                                let result = unipi_kanboard::commands::project_show(&layout, &project).map_err(|e| ToolError::new(e.to_string()))?;
+                                return Ok(AgentToolResult::text(result.to_string()));
+                            }
+                            _ => return Err(ToolError::new("Only project add, list and show are allowed")),
+                        }
+                    }
                     let project_id = field("projectId")?;
                     let layout = unipi_kanboard::Layout::from_env()
                         .map_err(|e| ToolError::new(e.to_string()))?;
@@ -247,8 +303,6 @@ impl AgentTool for ChatTool {
                     if project.archived {
                         return Err(ToolError::new("Project is archived"));
                     }
-                    let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
-                        .map_err(|e| ToolError::new(e.to_string()))?;
                     alias_comment(&mut argv);
                     let command = argv.first().map(String::as_str).unwrap_or("");
                     let help = (argv.len() == 1
