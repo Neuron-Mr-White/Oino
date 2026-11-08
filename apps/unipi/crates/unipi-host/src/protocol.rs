@@ -262,16 +262,31 @@ impl Handler {
                 | Request::PairStatus { .. }
                 | Request::DevicesList
                 | Request::DeviceRevoke { .. }
-                // v2 (host.md §9.9): switching host settings on (forwarding,
-                // browser, cron, …) stays the PC owner's decision, so a paired
-                // phone may read them but never write them.
-                | Request::HostSettingsSet(..)
         ) && peer != Peer::Local
         {
             return Err(error(
                 AppErrorCode::E_UNAUTHORIZED,
                 "Only this computer can manage its host",
             ));
+        }
+        // Open-ended blocks and whole-object replacements can contain access
+        // lists or future security keys. Only explicitly reviewed leaves may be
+        // changed by paired peers; local callers retain full control.
+        if peer != Peer::Local {
+            if let Request::HostSettingsSet(request) = &req {
+                if !matches!(
+                    request.key.as_str(),
+                    "term.max" | "update.mode" | "lsp.enabled" | "lsp.idle_minutes"
+                        | "browser.headless" | "browser.idle_minutes" | "browser.engine"
+                        | "browser.max_running" | "browser.path" | "browser.cloak_path"
+                        | "browser.cloak_version"
+                ) {
+                    return Err(error(
+                        AppErrorCode::E_UNAUTHORIZED,
+                        "Only this computer can change access-sensitive host settings",
+                    ));
+                }
+            }
         }
         let device_name = matches!(
             req,

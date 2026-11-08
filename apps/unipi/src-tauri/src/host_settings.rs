@@ -8,7 +8,7 @@
 //! ```
 //!
 //! All three are one request/reply op on a fresh stream (`chat::one_shot`);
-//! `host_settings_set` is local-only (the host refuses paired devices itself).
+//! The host permits paired devices to write reviewed non-security settings.
 
 use tauri::State;
 use unipi_proto::{

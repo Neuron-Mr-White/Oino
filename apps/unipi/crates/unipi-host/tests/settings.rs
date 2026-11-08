@@ -1,7 +1,7 @@
 //! v2 (host.md §9.9): `host_settings_get` / `host_settings_set` over a stream.
 //!
 //! Local ("this computer") may read and write the host settings; a paired
-//! phone may read the (masked) object but never write it; unknown dotted keys
+//! phone may read and write non-security settings; unknown dotted keys
 //! and wrong-typed values are `E_SCHEMA` and leave `config.json` untouched.
 use tokio::io::AsyncWriteExt;
 use unipi_host::{
@@ -169,7 +169,7 @@ async fn unknown_keys_and_bad_values_are_schema_errors_and_change_nothing() {
 }
 
 #[tokio::test]
-async fn phones_may_read_but_never_write_host_settings() {
+async fn paired_phone_may_write_normal_settings_but_not_access_controls() {
     let temp = tempfile::tempdir().unwrap();
     let paths = HostPaths::from_dir(temp.path());
     paths.ensure_dir().unwrap();
@@ -185,6 +185,38 @@ async fn phones_may_read_but_never_write_host_settings() {
     let read = request(handler(paths.clone()), phone, Request::HostSettingsGet).await;
     let reply = data(read);
     assert_eq!(reply["forwarding"]["enabled"], true);
+
+    let normal = request(
+        handler(paths.clone()),
+        phone,
+        Request::HostSettingsSet(unipi_proto::HostSettingsSetRequest {
+            key: "term.max".to_string().try_into().unwrap(),
+            value: serde_json::json!(32),
+        }),
+    )
+    .await;
+    assert_eq!(data(normal)["term"]["max"], 32);
+
+    // Entire blocks and individual access lists must both be refused.
+    for key in [
+        "forwarding",
+        "forwarding.devices",
+        "relay",
+        "browser.devices",
+        "cron.enabled",
+        "sharing.token",
+    ] {
+        let write = request(
+            handler(paths.clone()),
+            phone,
+            Request::HostSettingsSet(unipi_proto::HostSettingsSetRequest {
+                key: key.to_string().try_into().unwrap(),
+                value: serde_json::json!({}),
+            }),
+        )
+        .await;
+        assert_eq!(error_code(write), AppErrorCode::E_UNAUTHORIZED, "{key}");
+    }
 
     let write = request(
         handler(paths.clone()),

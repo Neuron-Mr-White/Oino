@@ -1,8 +1,8 @@
 /**
  * Host config section (WP-A24): This computer's host settings (`config.json`)
  * over `host_settings_get/set` — relay, port forwarding, push, file-access
- * scope, terminals, updates. Writes are local-only (the host refuses paired
- * devices with `E_UNAUTHORIZED`); values apply at once (read fresh per call).
+ * scope, terminals, updates. Access-sensitive writes are local-only; values
+ * apply at once (read fresh per call).
  */
 import { Show, createResource, createSignal } from 'solid-js';
 import { Cpu, RefreshCw } from 'lucide-solid';

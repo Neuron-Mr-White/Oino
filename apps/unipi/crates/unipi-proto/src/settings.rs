@@ -20,7 +20,8 @@
 //! - `host_settings_set{key, value}` → one dotted key ([`HostSettingsKey`]);
 //!   the merged `config.json` is validated before it is written, so an
 //!   unknown key or a value of the wrong shape is `E_SCHEMA` and changes
-//!   nothing. Only this computer may change its host settings.
+//!   nothing. Paired devices may change non-access-sensitive host settings;
+//!   access controls remain local-only.
 //!
 //! App settings (`closeAction`, autostart, UI prefs) live in the app's own
 //! config dir and never travel here; pi agent settings and extension settings

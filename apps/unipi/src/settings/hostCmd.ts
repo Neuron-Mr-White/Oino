@@ -210,7 +210,7 @@ export function hostSettingsGet(hostId = settingsHostId()): Promise<HostResult<H
   return requestParsed(hostClient(hostId), 'host_settings_get', undefined, HostSettingsSchema);
 }
 
-/** `host_settings_set{key, value}` → the updated object. Local host only. */
+/** `host_settings_set{key, value}` → the updated object. Access-sensitive keys are local only. */
 export function hostSettingsSet(key: string, value: unknown, hostId = settingsHostId()): Promise<HostResult<HostSettings>> {
   return requestParsed(hostClient(hostId), 'host_settings_set', { key, value }, HostSettingsSchema);
 }
