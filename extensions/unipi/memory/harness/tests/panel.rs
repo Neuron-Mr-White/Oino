@@ -221,6 +221,27 @@ impl Env {
     }
 }
 
+#[tokio::test]
+async fn workspace_free_superagent_search_reads_known_memory() {
+    let env = Env::new();
+    let ext = env.load().await;
+    env.store(&ext, "Known workspace memory", "A unique cobalt badger detail beyond the title.").await;
+    let mut cx = env.cx(CallKind::Tool);
+    cx.cwd = PathBuf::new();
+    for name in ["memory_search", "global_memory_search"] {
+        let inv = ToolInvocation {
+            tool_call_id: format!("workspace-free-{name}"),
+            name: name.into(),
+            args: RawJson::from(json!({"query":"cobalt badger", "scope":"all"})),
+            parent_tool_call_id: None,
+        };
+        let result = ext.run_tool(inv, CancellationToken::new(), cx.clone()).await.unwrap().to_value();
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("Known workspace memory"), "{name}: {text}");
+        assert!(text.contains("A unique cobalt badger detail beyond the title."), "{name}: {text}");
+    }
+}
+
 /// All text of a node tree (the rows the frontend would draw).
 fn text_of(node: &Value) -> String {
     let mut out = String::new();

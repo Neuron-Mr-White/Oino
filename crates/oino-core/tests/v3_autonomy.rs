@@ -496,6 +496,12 @@ async fn workspace_free_memory_access_is_read_only() {
         assert!(s.check_permission(tool, &args(json!({}))).await.is_ok(), "{tool}");
     }
     assert!(s.check_permission("read", &args(json!({}))).await.is_err());
+    let marked = session(json!({})).await;
+    marked.with_manager(|m| m.append_custom_entry("oino:superagent", Some(json!({"workspace":null})))).unwrap();
+    for tool in ["memory_search", "global_memory_search", "global_memory_list"] {
+        assert!(marked.check_permission(tool, &args(json!({}))).await.is_ok(), "{tool}");
+    }
+    assert!(marked.check_permission("read", &args(json!({}))).await.is_err());
 }
 
 #[tokio::test]
