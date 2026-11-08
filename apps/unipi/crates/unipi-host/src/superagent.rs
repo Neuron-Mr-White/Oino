@@ -765,7 +765,7 @@ impl Workers for HostWorkers {
                             id.into(),
                         )],
                         session_dir: Some(self.hub.sessions_root().to_path_buf()),
-                        name: Some(format!("Worker {}", task.id)),
+                        name: Some(format!("Lead · {}", if project.name.is_empty() { &project.slug } else { &project.name })),
                         ..SessionOptions::default()
                     },
                 )
@@ -799,7 +799,7 @@ impl Workers for HostWorkers {
             let ceiling =
                 serde_json::from_value(json!(preset.autonomy)).map_err(|e| e.to_string())?;
             session.set_autonomy(ceiling);
-            session.with_manager(|m| m.append_custom_entry("oino:superagent-worker", Some(json!({"projectId":project.slug,"taskId":task.id,"author":"superagent"})))).map_err(|e| e.to_string())?;
+            session.with_manager(|m| m.append_custom_entry("oino:superagent-worker", Some(json!({"projectId":project.slug,"projectName":project.name,"taskId":task.id,"author":"superagent"})))).map_err(|e| e.to_string())?;
             session
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;

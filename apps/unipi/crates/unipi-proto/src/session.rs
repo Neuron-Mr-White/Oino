@@ -202,6 +202,8 @@ pub struct SessionMoveData {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkerCard {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
     pub task_id: String,
     pub project_id: String,
 }

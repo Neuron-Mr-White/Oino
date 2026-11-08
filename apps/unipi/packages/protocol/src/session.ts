@@ -74,7 +74,7 @@ export const SessionCardSchema = z
     /** Last activity, epoch milliseconds. */
     updated_at: z.number().optional(),
     message_count: z.number().int().min(0).optional(),
-    worker: z.object({ taskId: z.string(), projectId: z.string() }).optional(),
+    worker: z.object({ taskId: z.string(), projectId: z.string(), projectName: z.string().optional() }).optional(),
     run_state: RunStateSchema.default("idle"),
     /** A dialog waits for the user. */
     needs_you: z.boolean().optional(),
