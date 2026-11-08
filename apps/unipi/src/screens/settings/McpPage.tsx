@@ -7,12 +7,10 @@
 import { Plug } from 'lucide-solid';
 import { CapabilityPage } from './CapabilityPage';
 import { McpServers } from '../../components/mcp/McpServers';
-import { useHostsOptional } from '../../hosts/context';
 import { settingsHostId } from '../../settings/target';
 
 export function McpPage() {
-  const hosts = useHostsOptional();
-  const hostId = () => hosts?.hosts().find((h) => h.transport === 'local')?.id ?? settingsHostId();
+  const hostId = () => settingsHostId();
   return (
     <CapabilityPage
       page="mcp"

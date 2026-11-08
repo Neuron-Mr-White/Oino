@@ -9,7 +9,6 @@ import { createSignal, Show } from 'solid-js';
 import { ChevronRight, Sparkles } from 'lucide-solid';
 import { CapabilityPage } from './CapabilityPage';
 import { SkillsManager } from '../../components/skills/SkillsManager';
-import { useHostsOptional } from '../../hosts/context';
 import { settingsHostId } from '../../settings/target';
 
 /** Opens the manager from anywhere (a project's context menu passes its folder). */
@@ -26,8 +25,7 @@ export function SkillsManagerLayer() {
 }
 
 export function SkillsPage() {
-  const hosts = useHostsOptional();
-  const hostId = () => hosts?.hosts().find((h) => h.transport === 'local')?.id ?? settingsHostId();
+  const hostId = () => settingsHostId();
   return (
     <CapabilityPage
       page="skills"

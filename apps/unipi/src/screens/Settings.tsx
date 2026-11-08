@@ -353,7 +353,7 @@ export default function Settings() {
         {(section) => (
           <PageScaffold
             title={phoneSectionTitle(section, params.sub)}
-            subtitle={pcScoped(section) && pc() ? <>{pc()!.name}</> : undefined}
+            subtitle={pcScoped(section) ? <>{settingsHostId() === 'local' ? 'This phone' : hosts.hosts().find((h) => h.id === settingsHostId())?.name ?? 'Your PC'}</> : undefined}
             back={params.sub ? `/settings/${section.id}` : '/settings'}
             testId="settings-page"
           >

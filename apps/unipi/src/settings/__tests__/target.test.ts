@@ -6,6 +6,9 @@ describe('resolveSettingsHost (PH-04)', () => {
   it('keeps this computer when the app has a local host (desktop unchanged)', () => {
     expect(resolveSettingsHost([{ id: 'a', transport: 'iroh' }, { id: 'me', transport: 'local' }], 'a')).toBe('local');
   });
+  it('prefers a paired PC even if the phone has a local host', () => {
+    expect(resolveSettingsHost([{ id: 'phone', transport: 'local' }, { id: 'pc', transport: 'iroh' }], 'phone', true)).toBe('pc');
+  });
   it('follows the selected PC on a phone', () => {
     expect(resolveSettingsHost([{ id: 'a', transport: 'iroh' }, { id: 'b', transport: 'iroh' }], 'b')).toBe('b');
   });

@@ -117,6 +117,12 @@ function searchFor(query: string): void {
   setTimeout(() => clearInterval(untilMounted), 5000);
 }
 
+export const settingsRemote: MockScenario = {
+  name: 'settings-remote',
+  hosts: [host(), host({ id: 'pc', name: 'oi', transport: 'iroh' })],
+  setup: () => { if (!location.hash.startsWith('#/settings')) goSettings(); },
+};
+
 export const settingsNav: MockScenario = {
   name: 'settings-nav',
   hosts: [host()],

@@ -11,6 +11,7 @@ import { createEffect, createSignal } from 'solid-js';
 import { LOCAL_HOST } from '../lib/host/client';
 import { resolveHostId } from '../lib/host/localId';
 import type { HostsApi } from '../hosts/context';
+import { desktopShell } from '../lib/layout';
 
 const [target, setTarget] = createSignal<string>(LOCAL_HOST);
 
@@ -25,14 +26,21 @@ export function settingsTargetsRemote(): boolean {
 }
 
 /** Pure rule (tested): this computer when there is one, else the selected PC. */
-export function resolveSettingsHost(hosts: ReadonlyArray<{ id: string; transport?: string }>, selected: string | undefined): string {
-  if (hosts.length === 0 || hosts.some((h) => h.transport === 'local')) return LOCAL_HOST;
-  return (selected && hosts.some((h) => h.id === selected) ? selected : hosts[0]?.id) ?? LOCAL_HOST;
+export function resolveSettingsHost(hosts: ReadonlyArray<{ id: string; transport?: string }>, selected: string | undefined, phone = false): string {
+  if (!phone && hosts.some((h) => h.transport === 'local')) return LOCAL_HOST;
+  const remote = hosts.filter((h) => h.transport !== 'local');
+  return (selected && remote.some((h) => h.id === selected) ? selected : remote[0]?.id) ?? LOCAL_HOST;
+}
+
+/** Explicit Settings selection, independent of the active chat/board host. */
+export function selectSettingsHost(id: string): void {
+  setProjectScope(undefined);
+  setTarget(id);
 }
 
 /** Keeps the target in step with the hosts store (mounted once, app-wide). */
 export function syncSettingsHost(hosts: Pick<HostsApi, 'hosts' | 'selectedId'>): void {
-  createEffect(() => setTarget(resolveSettingsHost(hosts.hosts(), hosts.selectedId())));
+  createEffect(() => setTarget(resolveSettingsHost(hosts.hosts(), hosts.selectedId(), !desktopShell())));
 }
 
 /** Tests only. */

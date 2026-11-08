@@ -9,13 +9,12 @@ import { CapabilityPage } from './CapabilityPage';
 import { openMemoryBrowserFor } from '../../components/memory/MemoryBrowser';
 import { DreamPanel } from '../../components/memory/DreamPanel';
 import '../../components/memory/memory.css';
-import { useHostsOptional } from '../../hosts/context';
 import { settingsHostId } from '../../settings/target';
 
 export function MemoryPage() {
-  const hosts = useHostsOptional();
+
   // The same host the page's form and rows act on (This computer first).
-  const hostId = () => hosts?.hosts().find((h) => h.transport === 'local')?.id ?? settingsHostId();
+  const hostId = () => settingsHostId();
   return (
     <CapabilityPage
       page="memory"

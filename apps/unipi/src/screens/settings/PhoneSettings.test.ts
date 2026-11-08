@@ -11,7 +11,7 @@ describe('phone Settings root (§3.9)', () => {
   it('groups: this phone / PC / PCs & connection / about, in spec order', () => {
     const g = ids(phoneSettingsGroups(all, { desktopApp: false, sharing: false, hosts: true }));
     expect(g.phone).toEqual(['appearance', 'input', 'terminal', 'notifications', 'unicrab']);
-    expect(g.pc).toEqual(['providers', 'agent', 'profiles', 'skills', 'subagents', 'extensions', 'mcp', 'memory', 'board', 'ports']);
+    expect(g.pc).toEqual(['providers', 'autonomy', 'compaction', 'search', 'agent', 'profiles', 'skills', 'subagents', 'extensions', 'mcp', 'memory', 'board', 'ports']);
     expect(g.pcs).toEqual(['hosts', 'connection', 'pcsends']);
     expect(g.about).toEqual(['about']);
   });

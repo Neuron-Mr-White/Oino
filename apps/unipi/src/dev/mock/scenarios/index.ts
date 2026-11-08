@@ -31,7 +31,7 @@ import { composerAttachments, composerNarrow, imageEditorEllipse } from './compo
 import { editorConflict, editorLsp, filesPreview, filesSearch, filesTree } from './files';
 import { cmdkEmpty, cmdkFiles, findBar, shortcutsList } from './command';
 import { settingsUsage, settingsUsageEmpty, settingsUsageLoading, settingsUsageOld } from './settings-usage';
-import { settingsExtensions, settingsForm, settingsFormAdvanced, settingsFormAgent, settingsFormList, settingsNav, settingsSafeMode, settingsSearch } from './settings';
+import { settingsExtensions, settingsForm, settingsFormAdvanced, settingsFormAgent, settingsFormList, settingsNav, settingsRemote, settingsSafeMode, settingsSearch } from './settings';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
@@ -153,6 +153,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'settings-usage-empty': settingsUsageEmpty,
   'settings-usage-old': settingsUsageOld,
   'settings-nav': settingsNav,
+  'settings-remote': settingsRemote,
   'settings-search': settingsSearch,
   'settings-extensions': settingsExtensions,
   'settings-safe-mode': settingsSafeMode,

@@ -15,6 +15,7 @@ import { useHostsOptional } from '../../hosts/context';
 import { hostConnState } from '../../components/ConnectionState';
 import { updateState } from '../../lib/update';
 import { railItems } from '../../components/shell/Rail';
+import { selectSettingsHost, settingsHostId } from '../../settings/target';
 
 type Icon = Component<{ size?: number | string }>;
 
@@ -24,7 +25,7 @@ export type PhoneEntry = { id: string; label: string; href: string; icon: Icon; 
 /** The phone root's order per group (§3.9). `profiles` and `pcsends` are links into a section. */
 export const PHONE_ORDER: Record<PhoneGroupId, string[]> = {
   phone: ['appearance', 'input', 'terminal', 'notifications', 'unicrab'],
-  pc: ['providers', 'agent', 'profiles', 'skills', 'subagents', 'extensions', 'mcp', 'memory', 'board', 'ports'],
+  pc: ['providers', 'autonomy', 'compaction', 'search', 'agent', 'profiles', 'skills', 'subagents', 'extensions', 'mcp', 'memory', 'board', 'ports'],
   pcs: ['hosts', 'connection', 'sharing', 'pcsends'],
   about: ['about'],
 };
@@ -85,18 +86,27 @@ export function phoneSections(): SettingsSection[] {
 export function PhoneSettingsRoot(props: { pcName?: string; pcId?: string; search: Component }) {
   const hosts = useHostsOptional();
   const groups = () => phoneSettingsGroups(phoneSections(), { desktopApp: isTauriDesktop(), sharing: can('localSharing'), hosts: can('hosts') });
-  const pcOffline = () => !!props.pcId && hostConnState(props.pcId)?.state === 'offline';
-  const pcStatus = () => (!props.pcId ? 'No PC paired' : hostConnState(props.pcId)?.state === 'connected' ? 'Connected' : pcOffline() ? 'Offline' : 'Connecting…');
+  const selectedHost = () => hosts?.hosts().find((h) => h.id === settingsHostId());
+  const targetName = () => settingsHostId() === 'local' ? 'This phone' : selectedHost()?.name ?? props.pcName ?? 'Your PC';
+  const pcOffline = () => settingsHostId() !== 'local' && hostConnState(settingsHostId())?.state === 'offline';
+  const pcStatus = () => (hostConnState(settingsHostId())?.state === 'connected' ? 'Connected' : pcOffline() ? 'Offline' : 'Connecting…');
   const update = () => {
     const s = updateState();
     return s.kind === 'available' || s.kind === 'downloading' || s.kind === 'ready' ? s.release : undefined;
   };
   const pages = () => railItems().filter((item) => item.id.startsWith('x:'));
   const groupTitle = (id: PhoneGroupId | 'desktop') =>
-    id === 'phone' ? 'This phone' : id === 'pc' ? props.pcName ?? 'Your PC' : id === 'pcs' ? 'PCs & connection' : id === 'desktop' ? 'This computer' : 'About';
+    id === 'phone' ? 'This phone' : id === 'pc' ? targetName() : id === 'pcs' ? 'PCs & connection' : id === 'desktop' ? 'This computer' : 'About';
   return (
     <div class="settings-phone-root" data-testid="settings-phone-root">
       <props.search />
+      <label class="settings-host-selector">
+        <span>Configure host</span>
+        <select aria-label="Configure host" data-testid="settings-host-selector" value={settingsHostId()} onChange={(event) => selectSettingsHost(event.currentTarget.value)}>
+          <option value="local">This phone</option>
+          <For each={hosts?.hosts().filter((h) => h.transport !== 'local') ?? []}>{(host) => <option value={host.id}>{host.name}</option>}</For>
+        </select>
+      </label>
       <Show when={update()}>
         {(release) => (
           <ListGroup inset>
@@ -111,10 +121,10 @@ export function PhoneSettingsRoot(props: { pcName?: string; pcId?: string; searc
           </ListGroup>
         )}
       </Show>
-      <Show when={hosts && hosts.hosts().length > 0 && props.pcId}>
+      <Show when={hosts && settingsHostId() !== 'local' && selectedHost()}>
         <ListGroup inset>
           <ListRow
-            title={props.pcName ?? 'Your PC'}
+            title={targetName()}
             subtitle={pcStatus()}
             leading={<RowIcon icon={Server} tint={pcOffline() ? 'red' : 'green'} />}
             href="/settings/hosts"
@@ -136,7 +146,7 @@ export function PhoneSettingsRoot(props: { pcName?: string; pcId?: string; searc
             <ListGroup
               inset
               title={groupTitle(group.id)}
-              footer={group.id === 'pc' ? <span>These settings live on {props.pcName ?? 'your PC'}.</span> : undefined}
+              footer={group.id === 'pc' ? <span>These settings live on {targetName()}.</span> : undefined}
             >
               <For each={group.entries}>
                 {(entry) => (
