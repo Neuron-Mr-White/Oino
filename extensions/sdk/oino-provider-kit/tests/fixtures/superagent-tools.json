@@ -1,0 +1,366 @@
+[
+  {
+    "name": "ask_user",
+    "description": "Ask the user for missing project selection or a consequential decision.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "global_memory_list",
+    "description": "List all memories across all projects with project names.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "global_memory_search",
+    "description": "Alias for memory_search with scope='all'.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "limit": {
+          "type": "number",
+          "default": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "kanboard",
+    "description": "Read or mutate a project board with projectId and CLI argv. For onboarding use argv [\"project\",\"add\",\"/absolute/path\"] (requires user confirmation); project list and show are also available.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "memory_delete",
+    "description": "Delete a memory by title or ID from the current project.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Memory title to delete"
+        },
+        "id": {
+          "type": "string",
+          "description": "Memory ID to delete"
+        },
+        "project": {
+          "type": "string",
+          "description": "Project bucket (default: the current project)"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_list",
+    "description": "List all memories for the current project.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string",
+          "description": "Project bucket to list (default: the current project)"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_search",
+    "description": "IMPORTANT: Call BEFORE starting work to check for existing context. Searches memories by keyword across ALL projects — pi memories plus drawers written by other tools (Devin, zcode, diaries). Results show [project] title, score, and snippet. Use scope='project' for current project only.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max results (default 10)",
+          "default": 10
+        },
+        "scope": {
+          "type": "string",
+          "description": "'all' (default) or 'project'",
+          "enum": [
+            "all",
+            "project"
+          ],
+          "default": "all"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_store",
+    "description": "Store or update a memory for cross-session recall — user preferences, project decisions, code patterns, and conversation summaries. Update existing memories instead of creating duplicates.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "title",
+        "content"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Memory title in <most_important>_<less_important>_<lesser> format (e.g., 'auth_jwt_prefer_refresh_tokens')"
+        },
+        "content": {
+          "type": "string",
+          "description": "Full memory content (markdown supported)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization"
+        },
+        "type": {
+          "type": "string",
+          "description": "Memory type",
+          "enum": [
+            "preference",
+            "decision",
+            "pattern",
+            "summary"
+          ]
+        },
+        "project": {
+          "type": "string",
+          "description": "Project bucket (default: the current project). Set it only to file the memory under another project."
+        },
+        "merge_from": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Titles or ids of overlapping memories in the same project that this one replaces; they are deleted and their usage history carries over"
+        }
+      }
+    }
+  },
+  {
+    "name": "project_resolver",
+    "description": "List registered projects, recent sidebar workspaces and zoxide paths. Ask the user when ambiguous.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Why project discovery is needed."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_relay",
+    "description": "Relay to the project lead. Dependent work: queue; complementary work: steer; urgent work: priority true.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "type": "string"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "queue",
+            "steer"
+          ]
+        },
+        "priority": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "text",
+        "delivery"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_set_mode",
+    "description": "Switch the lead mode; ask the user first when practical, but the switch is not technically gated.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "goal",
+            "ralph",
+            "swarm",
+            "graph"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_start",
+    "description": "Start or queue tickets with the project's lead. Tickets may be backlog, todo or blocked. Optional overrides: model (string, \"provider/id\"), thinking (\"off\"|\"minimal\"|\"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"), autonomy (\"low\"|\"medium\"|\"high\"), mode (\"none\"|\"goal\"|\"ralph\"|\"swarm\"|\"graph\"), maxParallel (integer >= 1), review (\"none\"|\"light\"|\"full\"), profiles (string array), priority (boolean). Manual start works even when Auto is off; unregistered or archived projects require user confirmation. Do not move tickets to todo before calling start; start takes backlog, todo or blocked tickets itself (moving to todo first lets auto-start launch a lead with the default preset).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "presetId": {
+          "type": "string"
+        },
+        "overrides": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "thinking": {
+              "type": "string",
+              "enum": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            "autonomy": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "none",
+                "goal",
+                "ralph",
+                "swarm",
+                "graph"
+              ]
+            },
+            "maxParallel": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "review": {
+              "type": "string",
+              "enum": [
+                "none",
+                "light",
+                "full"
+              ]
+            },
+            "profiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "priority": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "taskIds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_stop",
+    "description": "Stop the worker claiming an explicit ticket.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "taskId"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

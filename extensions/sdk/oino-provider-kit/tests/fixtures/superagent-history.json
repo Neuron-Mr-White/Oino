@@ -1,0 +1,187 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "Superagent",
+      "toolsAdded": [],
+      "timestamp": 0
+    },
+    {
+      "role": "user",
+      "content": "go",
+      "timestamp": 1
+    },
+    {
+      "role": "assistant",
+      "api": "google-generative-ai",
+      "provider": "google",
+      "model": "gemini",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "gemini/call:0",
+          "name": "superagent.start",
+          "arguments": {}
+        }
+      ],
+      "stopReason": "toolUse",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "timestamp": 2
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "gemini/call:0",
+      "toolName": "superagent.start",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "isError": false,
+      "timestamp": 6
+    },
+    {
+      "role": "assistant",
+      "api": "google-generative-ai",
+      "provider": "google",
+      "model": "gemini",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "gemini/call:1",
+          "name": "superagent.stop",
+          "arguments": {}
+        }
+      ],
+      "stopReason": "toolUse",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "timestamp": 3
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "gemini/call:1",
+      "toolName": "superagent.stop",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "isError": false,
+      "timestamp": 7
+    },
+    {
+      "role": "assistant",
+      "api": "google-generative-ai",
+      "provider": "google",
+      "model": "gemini",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "gemini/call:2",
+          "name": "superagent.relay",
+          "arguments": {}
+        }
+      ],
+      "stopReason": "toolUse",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "timestamp": 4
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "gemini/call:2",
+      "toolName": "superagent.relay",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "isError": false,
+      "timestamp": 8
+    },
+    {
+      "role": "assistant",
+      "api": "google-generative-ai",
+      "provider": "google",
+      "model": "gemini",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "gemini/call:3",
+          "name": "superagent.set_mode",
+          "arguments": {}
+        }
+      ],
+      "stopReason": "toolUse",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "timestamp": 5
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "gemini/call:3",
+      "toolName": "superagent.set_mode",
+      "content": [
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "isError": false,
+      "timestamp": 9
+    }
+  ]
+}

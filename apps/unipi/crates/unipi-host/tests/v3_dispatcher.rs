@@ -1,4 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[path = "support/oin31.rs"]
+mod oin31;
+
 use futures_util::future::BoxFuture;
 use std::{
     collections::HashSet,
@@ -723,17 +726,16 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
     assert!(session.active_tool_names().contains(&"memory_search".to_owned()));
     assert!(session.active_tool_names().contains(&"memory_store".to_owned()));
     let tools = session.all_tools();
-    for tool in &tools {
-        assert!(!tool.name.is_empty() && tool.name.len() <= 64 && tool.name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'), "invalid tool name: {}", tool.name);
-        assert_eq!(tool.parameters["type"], "object", "{}", tool.name);
-        let properties = tool.parameters["properties"].as_object().expect("object properties");
-        if let Some(required) = tool.parameters["required"].as_array() {
-            for key in required { assert!(properties.contains_key(key.as_str().unwrap()), "{}: {key}", tool.name); }
-        }
+    oin31::audit_and_wire(&tools);
+    for name in ["superagent.start", "superagent_start", "superagent.set_mode", "superagent_set_mode"] {
+        let args = serde_json::from_value(serde_json::json!({"projectId":"test", "taskIds":["T-1"], "mode":"goal"})).unwrap();
+        assert!(session.check_permission(name, &args).await.is_ok(), "permission denied: {name}");
     }
     let resolver = tools.iter().find(|t| t.name == "project_resolver").unwrap();
     let call: oino_ai::ToolCall = serde_json::from_value(serde_json::json!({"id":"call_1","name":"project_resolver","arguments":{"reason":"find project"}})).unwrap();
     assert!(oino_agent::validate_tool_arguments(&resolver.parameters, &call).is_ok());
+    let empty: oino_ai::ToolCall = serde_json::from_value(serde_json::json!({"id":"call_2","name":"project_resolver","arguments":{}})).unwrap();
+    assert!(oino_agent::validate_tool_arguments(&resolver.parameters, &empty).is_ok());
     let mut names: Vec<String> = tools.into_iter().map(|t| t.name).collect();
     names.sort();
     for required in ["ask_user", "kanboard", "project_resolver", "superagent_start", "superagent_set_mode", "memory_search", "memory_store"] { assert!(names.iter().any(|n| n == required), "missing {required}: {names:?}"); }

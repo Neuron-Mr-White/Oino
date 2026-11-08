@@ -15,6 +15,7 @@ use oino_ai::{
     ProviderEvent, StopReason,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use crate::extensions::api::ExtensionCallError;
@@ -69,6 +70,7 @@ pub fn request_json(request: &StreamRequest) -> JsonValue {
 // Provider components may be prebuilt: normalize names before crossing the
 // native/wasm boundary, without modifying the persisted transcript.
 fn normalize_legacy_transcript(value: &mut JsonValue) {
+    let completions = value["model"]["api"] == "openai-completions";
     if let Some(messages) = value["context"]["messages"].as_array_mut() {
         for message in messages {
             if message["role"] == "assistant" {
@@ -76,14 +78,33 @@ fn normalize_legacy_transcript(value: &mut JsonValue) {
                     for block in blocks {
                         if block["type"] == "toolCall" {
                             normalize_superagent_name(&mut block["name"]);
+                            if completions {
+                                normalize_completions_id(&mut block["id"]);
+                            }
                         }
                     }
                 }
             } else if message["role"] == "toolResult" {
                 normalize_superagent_name(&mut message["toolName"]);
+                if completions {
+                    normalize_completions_id(&mut message["toolCallId"]);
+                }
             }
         }
     }
+}
+
+fn normalize_completions_id(value: &mut JsonValue) {
+    let Some(id) = value.as_str() else { return };
+    if !id.is_empty()
+        && id.len() <= 40
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return;
+    }
+    // Hash rather than replace characters: different source ids must not collide.
+    let digest = format!("{:x}", Sha256::digest(id.as_bytes()));
+    *value = json!(format!("call_{}", &digest[..35]));
 }
 
 fn normalize_superagent_name(value: &mut JsonValue) {
@@ -100,6 +121,23 @@ fn normalize_superagent_name(value: &mut JsonValue) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completions_ids_are_valid_distinct_and_paired() {
+        let mut request = json!({"model":{"api":"openai-completions"},"context":{"messages":[
+            {"role":"assistant","content":[{"type":"toolCall","id":"gemini/call:0","name":"superagent.start"},{"type":"toolCall","id":"gemini_call_0","name":"superagent.stop"}]},
+            {"role":"toolResult","toolCallId":"gemini/call:0","toolName":"superagent.start"},
+            {"role":"toolResult","toolCallId":"gemini_call_0","toolName":"superagent.stop"}
+        ]}});
+        normalize_legacy_transcript(&mut request);
+        let messages = request["context"]["messages"].as_array().unwrap();
+        let first = messages[0]["content"][0]["id"].as_str().unwrap();
+        let second = messages[0]["content"][1]["id"].as_str().unwrap();
+        assert_ne!(first, second);
+        assert!(first.len() <= 40 && first.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'));
+        assert_eq!(first, messages[1]["toolCallId"]);
+        assert_eq!(second, messages[2]["toolCallId"]);
+    }
 
     #[test]
     fn legacy_tool_names_are_normalized_without_changing_pair_ids() {
