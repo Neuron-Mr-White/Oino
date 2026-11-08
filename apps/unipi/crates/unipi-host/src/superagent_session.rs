@@ -111,7 +111,6 @@ pub async fn create_from(
                 ),
                 cwd: Some(cwd),
                 session_dir: Some(hub.sessions_root().to_path_buf()),
-                name: Some("Superagent".into()),
                 tools: ToolSelection::NoBuiltin,
                 custom_tools: tools,
                 ..SessionOptions::default()
@@ -437,6 +436,27 @@ impl AgentTool for WorkerBoard {
     }
 }
 
+/// History title for a Superagent chat (OIN-26): an explicit user rename wins, else the
+/// first user message on one line, else `Superagent · <local date time>` from the creation
+/// time. The old fixed name `Superagent` counts as unnamed, so old chats get real titles at
+/// list time without rewriting their files.
+#[must_use]
+pub fn superagent_title(name: Option<&str>, first_message: &str, created_ms: i64) -> String {
+    if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty() && *name != "Superagent") {
+        return name.to_owned();
+    }
+    let message = first_message.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !message.is_empty() && message != "(no messages)" {
+        let mut chars = message.chars();
+        let head: String = chars.by_ref().take(60).collect();
+        return if chars.next().is_some() { format!("{head}…") } else { head };
+    }
+    let at = chrono::DateTime::from_timestamp_millis(created_ms)
+        .map(|at| at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "unknown".into());
+    format!("Superagent · {at}")
+}
+
 /// A bounded header-prefix check, not a generic session wake (which could expose shell tools).
 pub fn is_superagent_file(path: &std::path::Path) -> bool {
     use std::io::{BufRead, BufReader};
@@ -466,6 +486,49 @@ pub fn is_superagent_file(path: &std::path::Path) -> bool {
         });
     cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(path.to_path_buf(), (modified, meta.len(), result));
     result
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::superagent_title;
+
+    #[test]
+    fn explicit_name_wins() {
+        assert_eq!(superagent_title(Some("Launch checklist"), "hello", 0), "Launch checklist");
+    }
+
+    #[test]
+    fn fixed_superagent_name_falls_back_to_the_first_message() {
+        assert_eq!(superagent_title(Some("Superagent"), "What is running?", 0), "What is running?");
+        assert_eq!(superagent_title(None, "What is running?", 0), "What is running?");
+    }
+
+    #[test]
+    fn first_message_is_collapsed_trimmed_and_truncated() {
+        assert_eq!(superagent_title(None, "  What\n\tis\t running?  ", 0), "What is running?");
+        let long = "word ".repeat(40);
+        let title = superagent_title(None, &long, 0);
+        assert!(title.ends_with('…'), "{title}");
+        assert_eq!(title.chars().count(), 61);
+        // Multi-byte characters truncate on a character boundary.
+        let wide = "é".repeat(100);
+        let title = superagent_title(None, &wide, 0);
+        assert!(title.ends_with('…'));
+        assert_eq!(title.chars().count(), 61);
+    }
+
+    #[test]
+    fn empty_or_no_messages_falls_back_to_the_creation_date() {
+        for message in ["", "   ", "(no messages)"] {
+            let title = superagent_title(None, message, 1_791_000_580_000);
+            let date = &title["Superagent · ".len()..];
+            assert_eq!(date.len(), "YYYY-MM-DD HH:MM".len(), "{title}");
+            assert_eq!(&date[4..5], "-");
+            assert_eq!(&date[7..8], "-");
+            assert_eq!(&date[10..11], " ");
+            assert_eq!(&date[13..14], ":");
+        }
+    }
 }
 
 /// Read the worker marker near the session header, cached until the file changes.

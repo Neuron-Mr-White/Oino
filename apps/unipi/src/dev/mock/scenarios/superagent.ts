@@ -19,7 +19,12 @@ let stopped = false;
 export const superagent: MockScenario = {
   name: 'superagent',
   hosts: [{ id: 'pc-coffee', name: 'coffee', conn: { state: 'connected' }, newSessionFrom: 'superagent-chat', sessions: { 'superagent-chat': chat, 'worker-14': worker }, ops: {
-    'superagent.sessions': () => [{ sessionId: 'superagent-chat', title: 'Superagent conversation', createdAt: '2026-11-07', updatedAt: '2026-11-07', path: '/mock/superagent-chat' }],
+    'superagent.sessions': () => [
+      { sessionId: 'superagent-chat', title: 'Superagent conversation', createdAt: 1794045600000, updatedAt: 1794045600000, path: '/mock/superagent-chat' },
+      { sessionId: 'superagent-triage', title: 'What is running and what needs my attention?', createdAt: 1793978400000, updatedAt: 1793978400000, path: '/mock/superagent-triage' },
+      { sessionId: 'superagent-review', title: 'Start OIN-14 and tell me what needs review', createdAt: 1793869920000, updatedAt: 1793869920000, path: '/mock/superagent-review' },
+      { sessionId: 'superagent-old', title: 'Superagent · 2026-11-08 09:03', createdAt: 1794128580000, updatedAt: 1794128580000, path: '/mock/superagent-old' },
+    ],
     'superagent.status': () => ({ enabled, concurrencyCap, workers: stopped ? [] : [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'medium', step: 'Running focused UI tests', tool: 'bash', startedAt: new Date(Date.now() - 420000).toISOString(), cost: 0.42 }], needsYou: [...(capture === 'approval' ? [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked', workerSessionId: 'worker-14', requestId: 'demo-approval', sessionId: 'worker-14', tool: 'bash', command: 'git push origin feature', summary: 'Push the feature branch', risk: 'high', ceiling: 'medium', reason: 'needs Autonomy High' }] : []), { projectId: 'oino', taskId: 'OIN-12', status: 'in_review', question: null }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Should the staging deployment use the existing domain, or should I create a separate preview domain?' }] }),
     'superagent.configure': (args) => { enabled = args.enabled as boolean; concurrencyCap = args.concurrencyCap as number; return { enabled, concurrencyCap }; },
     'superagent.stop': () => { stopped = true; return { stopped: true }; },

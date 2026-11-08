@@ -138,6 +138,34 @@ async fn superagent_sessions_are_isolated_from_sidebar() {
     assert!(!hits.hits.iter().any(|h| h.card.session_id == legacy));
 }
 
+#[tokio::test]
+async fn superagent_sessions_titles_come_from_the_first_message() {
+    use std::io::Write;
+    let f = fixture();
+    let cwd = f.cwd.to_str().unwrap();
+    let mark = |id: &str| {
+        let dir = oino_session::manager::cwd_session_dir(&f.sessions, &f.cwd);
+        let path = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).find(|p| p.to_string_lossy().contains(id)).unwrap();
+        writeln!(std::fs::OpenOptions::new().append(true).open(path).unwrap(), "{}", serde_json::json!({"type":"custom","customType":"oino:superagent","data":{}})).unwrap();
+    };
+    let running = write_session(&f, 10, cwd, Some("Superagent"), "What is running?");
+    mark(&running);
+    let start = write_session(&f, 11, cwd, Some("Superagent"), "Start   OIN-14 and tell me what needs review");
+    mark(&start);
+    let empty = write_session(&f, 12, cwd, Some("Superagent"), "");
+    mark(&empty);
+    let renamed = write_session(&f, 13, cwd, Some("Launch checklist"), "hi");
+    mark(&renamed);
+    let sessions = f.hub().superagent_sessions().await.unwrap();
+    let sessions = sessions["sessions"].as_array().unwrap();
+    let title = |id: &str| sessions.iter().find(|s| s["sessionId"] == id).unwrap()["title"].as_str().unwrap().to_owned();
+    assert_eq!(title(&running), "What is running?");
+    assert_eq!(title(&start), "Start OIN-14 and tell me what needs review");
+    assert!(title(&empty).starts_with("Superagent · "), "{}", title(&empty));
+    assert_eq!(title(&renamed), "Launch checklist");
+    assert_ne!(title(&running), title(&start));
+}
+
 fn files_in(dir: &std::path::Path) -> usize {
     walk(dir).len()
 }

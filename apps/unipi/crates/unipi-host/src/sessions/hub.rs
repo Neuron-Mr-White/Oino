@@ -711,7 +711,8 @@ impl SessionHub {
         let records = self.inner.core.list().await?;
         let sessions: Vec<_> = records.into_iter().filter(|r| self.inner.is_superagent(&r.info.path)).map(|r| {
             let info = r.info;
-            serde_json::json!({"sessionId": info.id, "title": info.name.unwrap_or_else(|| "Superagent".into()), "createdAt": info.created.to_ms().unwrap_or(0), "updatedAt": epoch_ms(info.modified), "path": info.path})
+            let title = crate::superagent_session::superagent_title(info.name.as_deref(), &info.first_message, info.created.to_ms().unwrap_or(0));
+            serde_json::json!({"sessionId": info.id, "title": title, "createdAt": info.created.to_ms().unwrap_or(0), "updatedAt": epoch_ms(info.modified), "path": info.path})
         }).collect();
         Ok(serde_json::json!({"sessions": sessions}))
     }

@@ -352,6 +352,21 @@ describe('v3 Superagent shared', () => {
     fireEvent.click(screen.getByLabelText('New superagent chat'));
     await waitFor(() => expect(world.log.some((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toBe(true));
   });
+  it('lists distinct titles in the history dropdown', async () => {
+    const world = createMockHost(superagent);
+    setHostClientFactory(world.client);
+    setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    fireEvent.click(await screen.findByLabelText('Superagent history'));
+    const list = await screen.findByLabelText('Superagent history list');
+    await within(list).findByText('Superagent · 2026-11-08 09:03');
+    const titles = [...list.querySelectorAll('button > span')].map((el) => el.textContent ?? '');
+    expect(titles.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(titles).toContain('What is running and what needs my attention?');
+    expect(titles).toContain('Superagent conversation');
+  });
   it('routes superagent attention to the restricted page', async () => {
     const world = createMockHost(superagent); setHostClientFactory(world.client);
     const { openSessionRoute } = await import('../../lib/notifyInit');
