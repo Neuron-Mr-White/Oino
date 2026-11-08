@@ -148,7 +148,7 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
     const picked = () => !!p.selecting?.has(card.session_id);
     const subtitle = () => {
       const pr = view().props;
-      const project = pr.workspace !== false && view().group !== 'project' ? projectName(card.cwd) : undefined;
+      const project = card.worker ? `Lead · ${card.worker.projectName || card.worker.projectId}` : pr.workspace !== false && view().group !== 'project' ? projectName(card.cwd) : undefined;
       const liveModel = sessions().peek(p.hostId, card.session_id)?.state.model?.id;
       const modelId = pr.model ? String(liveModel ?? card.model ?? '') : '';
       const model = modelId ? modelId.split('/').pop() : undefined;
@@ -169,6 +169,7 @@ export function ChatsList(p: { hostId: string; query: string; offline?: boolean;
     return (
       <ListRow
         testId={`chat-row-${card.session_id}`}
+        strip={card.worker ? 'Lead session' : undefined}
         leading={
           selecting() ? (
             <span class="chat-select" data-on={picked() ? '' : undefined}>{picked() ? <CircleCheck size={24} /> : <Circle size={24} />}</span>

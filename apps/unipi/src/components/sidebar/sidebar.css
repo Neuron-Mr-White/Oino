@@ -131,6 +131,20 @@
 .srow[data-archived][aria-current='page']:hover,
 .srow[data-archived][aria-current='page']:active { background: var(--color-surface-3); }
 
+/* OIN-37: a Lead session's themed strip — a 3px bar inset inside the row's left edge, drawn over
+   the selected / working backgrounds (the selection ring is an inset shadow underneath it). */
+.srow[data-lead] { position: relative; }
+.srow-lead-strip {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-lead);
+}
+.srow[data-lead] .srow-chip:first-child { color: color-mix(in srgb, var(--color-lead) 70%, var(--color-text-muted)); }
+
 .srow-glyph {
   /* [ux-sessions] a fixed gutter: empty for a normal chat, the kind / state icon otherwise. */
   flex: none;

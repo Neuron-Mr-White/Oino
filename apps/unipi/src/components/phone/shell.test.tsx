@@ -7,6 +7,7 @@ import { phoneScale } from '../shell/PhoneShell';
 import { phoneSize } from '../shell/AppShell';
 import { matchesQuery, projectName, shortTime } from './ChatsList';
 import { ActionSheet, confirmSheet } from './Sheet';
+import { ListRow } from './lists';
 
 afterEach(() => cleanup());
 
@@ -49,6 +50,24 @@ describe('Chats rows (§3.3)', () => {
     expect(projectName(undefined)).toBeUndefined();
     expect(matchesQuery('Fix tests', 'unipi', 'UNI')).toBe(true);
     expect(matchesQuery('Fix tests', 'unipi', 'docs')).toBe(false);
+  });
+});
+
+describe('Lead rows (OIN-37)', () => {
+  it('a Lead row wears a labelled strip; a regular row has none', () => {
+    render(() => (
+      <>
+        <ListRow testId="lead" title="Lead chat" strip="Lead session" selected onClick={() => {}} />
+        <ListRow testId="plain" title="Plain chat" onClick={() => {}} />
+      </>
+    ));
+    const lead = screen.getByTestId('lead');
+    expect(lead.hasAttribute('data-strip')).toBe(true);
+    expect(lead.hasAttribute('data-selected')).toBe(true);
+    expect(lead.querySelector('.ph-row-strip')?.getAttribute('aria-label')).toBe('Lead session');
+    const plain = screen.getByTestId('plain');
+    expect(plain.hasAttribute('data-strip')).toBe(false);
+    expect(plain.querySelector('.ph-row-strip')).toBeNull();
   });
 });
 

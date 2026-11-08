@@ -300,6 +300,7 @@ export function SessionRow(props: {
       data-unread={props.meta?.unread ? '' : undefined}
       data-cron={cron() ? '' : undefined}
       data-archived={props.archived ? '' : undefined}
+      data-lead={props.card.worker ? '' : undefined}
       aria-current={props.active ? 'page' : undefined}
       data-testid={`srow-${props.card.session_id}`}
       title={titleText()}
@@ -309,6 +310,10 @@ export function SessionRow(props: {
       onPointerCancel={cancelPress}
       onPointerLeave={cancelPress}
     >
+      <Show when={props.card.worker}>
+        {/* OIN-37: a Lead (dispatcher worker) session wears a themed strip on its left edge. */}
+        <span class="srow-lead-strip" role="img" aria-label="Lead session" title="Lead session" data-testid={`srow-lead-strip-${props.card.session_id}`} />
+      </Show>
       <span class="srow-glyph" data-state={status()} data-kind={glyphKind()} aria-hidden={statusTip() || cron() ? undefined : 'true'} title={statusTip() ?? (cron() ? cronTip() : undefined)} aria-label={statusTip() ?? (cron() ? cronTip() : undefined)} role={statusTip() || cron() ? 'img' : undefined}>
         <Switch>
           <Match when={status() === 'working'}>

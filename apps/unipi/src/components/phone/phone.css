@@ -298,6 +298,8 @@ button.ph-row:active:not(:disabled), a.ph-row:active { background: var(--color-s
 .ph-row:disabled, .ph-row[aria-disabled=true] { opacity: .45; }
 .ph-row[data-dim] { opacity: .6; }
 .ph-row[data-tone=danger] .ph-row-title { color: #F6A39D; }
+.ph-row-strip { position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--color-lead); }
+.ph-row[data-selected] .ph-row-strip { left: 3px; }
 .ph-row-lead { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; width: 40px; min-height: 40px; color: var(--color-text-muted); }
 .ph-row-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
 .ph-row-title { font-size: var(--ph-fs-body); line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

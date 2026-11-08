@@ -54,6 +54,8 @@ export function ListRow(p: {
   tone?: 'danger';
   swipeStart?: SwipeAction;
   swipeEnd?: SwipeAction;
+  /** OIN-37: a themed strip on the row's left edge (a Lead session); the text is its accessible label. */
+  strip?: string;
   testId?: string;
 }) {
   const [dx, setDx] = createSignal(0);
@@ -128,6 +130,9 @@ export function ListRow(p: {
 
   const content = () => (
     <>
+      <Show when={p.strip}>
+        {(label) => <span class="ph-row-strip" role="img" aria-label={label()} title={label()} />}
+      </Show>
       <Show when={p.leading}>
         <span class="ph-row-lead">{p.leading}</span>
       </Show>
@@ -156,6 +161,7 @@ export function ListRow(p: {
     'data-dim': p.dim ? '' : undefined,
     'data-wrap': p.wrap ? '' : undefined,
     'data-tone': p.tone,
+    'data-strip': p.strip ? '' : undefined,
     'data-two': p.subtitle ? '' : undefined,
     'data-dragging': dragging() ? '' : undefined,
     'aria-current': p.selected ? ('true' as const) : undefined,

@@ -16,6 +16,8 @@
  --color-shell: #F03018; --color-shell-hi: #F01818; --color-claw: #F07818; --color-amber: #F0A818; --color-gold: #F0C030; --color-cream: #F0F0A8; --color-face: #181818; --color-ink: #000000; --color-deep: #C00018;
  --color-wm-white: #FFFFFF; --color-wm-cyan: #28BEF0; --color-wm-green: #5AD25A; --color-wm-yellow: #FAC828; --color-wm-red: #F03C32;
  --color-bg: #0A0908; --color-surface-1: #141211; --color-surface-2: #1C1917; --color-surface-3: #26211F; --color-line: #2E2825; --color-text: #F5EFE6; --color-text-muted: #A39A90; --color-text-dim: #6E655D;
+ /* Lead-session strip accent. */
+ --color-lead: var(--color-wm-cyan);
  --font-sans: 'Inter Variable', sans-serif; --font-mono: 'JetBrains Mono Variable', monospace;
  --radius-card: 16px; --radius-sheet: 24px; --radius-input: 12px; --radius-pill: 9999px;
  /* Markdown tokens (UNI-156): one `.md` stylesheet shared by chat and board. */

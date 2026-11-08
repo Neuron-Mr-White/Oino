@@ -118,6 +118,18 @@ describe('SessionList', () => {
     await waitFor(() => expect(screen.getByTestId('srow-worker').textContent).toContain('Lead · My project'));
     expect(screen.getByTestId('srow-chat').textContent).not.toContain('Lead ·');
   });
+  it('gives lead rows a labelled themed strip; regular rows have none (OIN-37)', async () => {
+    boot([card('worker', { worker: { taskId: 'task-42', projectId: 'project', projectName: 'My project' } }), card('chat')]);
+    await waitFor(() => expect(screen.getByTestId('srow-worker')).toBeTruthy());
+    const lead = screen.getByTestId('srow-worker');
+    expect(lead.hasAttribute('data-lead')).toBe(true);
+    const strip = lead.querySelector('.srow-lead-strip');
+    expect(strip?.getAttribute('aria-label')).toBe('Lead session');
+    expect(strip?.getAttribute('title')).toBe('Lead session');
+    const chat = screen.getByTestId('srow-chat');
+    expect(chat.hasAttribute('data-lead')).toBe(false);
+    expect(chat.querySelector('.srow-lead-strip')).toBeNull();
+  });
   it('groups by host (This computer first, Z-8) and by project (D-9), ordered pinned → running → needs-you → recent (Z-9)', async () => {
     const cards = [
       card('idle-old', { updated_at: 100 }),
