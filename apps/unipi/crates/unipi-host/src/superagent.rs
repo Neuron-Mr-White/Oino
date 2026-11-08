@@ -146,6 +146,22 @@ mod lead_tests {
         let brief = super::lead_brief(&project, &tasks);
         for text in [&tasks[0].id, &tasks[1].id, "Alpha", "Beta", "Body A", "Body B", "Claim each ticket", "parallelise", "in_review", "blocked"] { assert!(brief.contains(text), "missing {text}"); }
     }
+
+    #[test]
+    fn long_horizon_owner_is_scoped_to_session() {
+        let agent = tempfile::tempdir().unwrap();
+        let cwd = tempfile::tempdir().unwrap();
+        let path = agent.path().join("state/unipi.long-horizon/workspace")
+            .join(oino_wasm_host::workspace_id(&cwd.path().canonicalize().unwrap())).join("state.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for kind in ["graph", "swarm", "goal", "ralph"] {
+            for status in ["active", "parked"] {
+                std::fs::write(&path, serde_json::to_vec(&serde_json::json!({status:{"kind":kind,"session":"lead"}})).unwrap()).unwrap();
+                assert!(super::has_long_horizon_owner(agent.path(), cwd.path(), "lead"));
+                assert!(!super::has_long_horizon_owner(agent.path(), cwd.path(), "other"));
+            }
+        }
+    }
 }
 
 /// Runtime boundary used by production and deterministic crash/concurrency tests.
@@ -203,6 +219,13 @@ pub trait Workers: Send + Sync {
     }
 }
 
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct Continuation {
+    tickets: Vec<String>,
+    sent: bool,
+    total: u8,
+}
+
 pub struct Dispatcher {
     _owner: File,
     layout: Layout,
@@ -213,6 +236,8 @@ pub struct Dispatcher {
     preferences: Mutex<Store>,
     preferences_path: PathBuf,
     launch_presets: std::sync::Mutex<HashMap<String, Preset>>,
+    continuations: std::sync::Mutex<HashMap<String, Continuation>>,
+    continuations_path: PathBuf,
 }
 impl Dispatcher {
     /// Reconcile all local durable reservations before accepting any dispatch.
@@ -250,7 +275,11 @@ impl Dispatcher {
         config.validate()?;
         let preferences_path = layout.home.join("superagent-preferences.json");
         let preferences = Store::load(&preferences_path).map_err(storage)?;
+        let continuations_path = layout.home.join("dispatcher-continuations.json");
+        let continuations = crate::data_dir::read_json(&continuations_path).map_err(storage)?.unwrap_or_default();
         let this = Arc::new(Self {
+            continuations: std::sync::Mutex::new(continuations),
+            continuations_path,
             preferences: Mutex::new(preferences),
             preferences_path,
             launch_presets: std::sync::Mutex::new(HashMap::new()),
@@ -624,12 +653,48 @@ impl Dispatcher {
                 .keys()
                 .cloned()
                 .collect();
-            for (project, task) in self.claims()? {
-                let run = task.run.as_ref().ok_or_else(|| storage("Missing run"))?;
-                if run.host != unipi_kanboard::commands::hostname() {
+            let claims = self.claims()?;
+            for id in active {
+                let held: Vec<_> = claims.iter().filter(|(_, task)| task.run.as_ref().is_some_and(|run|
+                    run.session == id && run.host == unipi_kanboard::commands::hostname())).collect();
+                let mut tickets: Vec<String> = held.iter().filter(|(_, task)| task.status == Status::InProgress).map(|(_, task)| task.id.clone()).collect();
+                tickets.sort();
+                // A transition of a previously held ticket replenishes the budget, even
+                // if another ticket was added in the meantime.
+                let sent = {
+                    let mut states = self.continuations.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let state = states.entry(id.clone()).or_default();
+                    if state.tickets.iter().any(|ticket| !tickets.contains(ticket)) {
+                        state.sent = false;
+                    }
+                    state.tickets.clone_from(&tickets);
+                    crate::data_dir::write_json(&self.continuations_path, &*states).map_err(storage)?;
+                    let state = &states[&id];
+                    state.sent || state.total >= 2
+                };
+                let Some(last) = self.workers.ended(&id).await else { continue; };
+                if !tickets.is_empty() && !sent {
+                    // Persist before delivery so a host crash cannot send an unbounded
+                    // number of continuations for the same run.
+                    {
+                        let mut states = self.continuations.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let state = states.get_mut(&id).expect("continuation state");
+                        state.sent = true;
+                        state.total += 1;
+                        crate::data_dir::write_json(&self.continuations_path, &*states).map_err(storage)?;
+                    }
+                    let text = format!("You still hold in_progress tickets {}: work them and finish each (in_review with a summary) or block it with a question before ending your turn.", tickets.join(", "));
+                    if let Err(error) = self.workers.relay_delivery(&id, &text, Delivery::Queue).await {
+                        let mut states = self.continuations.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let state = states.get_mut(&id).expect("continuation state");
+                        state.sent = false;
+                        state.total -= 1;
+                        crate::data_dir::write_json(&self.continuations_path, &*states).map_err(storage)?;
+                        return Err(fail("E_RELAY_DELIVERY", error));
+                    }
                     continue;
                 }
-                if let Some(last) = self.workers.ended(&run.session).await {
+                for (project, task) in held {
                     let question = if task.status == Status::Blocked {
                         task.activity.iter().rev().find_map(|entry| entry.text.strip_prefix("blocked: ")).unwrap_or("Worker ended while blocked; move to todo to retry")
                     } else if last.trim().is_empty() {
@@ -637,19 +702,14 @@ impl Dispatcher {
                     } else {
                         &last
                     };
-                    dispatcher::block(&self.layout, project, &task.id, &run.session, question)
-                        .map_err(storage)?;
+                    dispatcher::block(&self.layout, project.clone(), &task.id, &id, question).map_err(storage)?;
                 }
-            }
-            for id in active {
-                if self.workers.ended(&id).await.is_some() {
-                    self.active
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .remove(&id);
-                    self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
-                    self.workers.retire(&id).await;
-                }
+                self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
+                self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
+                self.workers.retire(&id).await;
+                let mut states = self.continuations.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                states.remove(&id);
+                crate::data_dir::write_json(&self.continuations_path, &*states).map_err(storage)?;
             }
         }
         if !self.transaction.lock().await.enabled {
@@ -1137,12 +1197,36 @@ impl Workers for HostWorkers {
             };
             let session = runtime.session();
             if session.is_streaming() || session.pending_message_count() > 0 {
+                return None;
+            }
+            // Graph nodes, background subagents and shell tasks report their work via
+            // arbiter wait sources, including quiet tasks that do not wake the session.
+            // Query directly rather than relying on the periodically refreshed UI state.
+            if !session.runner().arbiter_wait_reasons().await.is_empty()
+                || has_long_horizon_owner(session.agent_dir(), &session.work_cwd(), id)
+                || session.is_streaming()
+                || session.pending_message_count() > 0
+            {
                 None
             } else {
                 Some(session.last_assistant_text().unwrap_or_default())
             }
         })
     }
+}
+
+// Long-horizon owners are workspace-scoped and may be parked without an arbiter
+// wait reason. Read the extension's durable owner record, respecting chat ownership.
+fn has_long_horizon_owner(agent_dir: &Path, cwd: &Path, id: &str) -> bool {
+    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let root = cwd.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(&cwd);
+    let path = agent_dir.join("state/unipi.long-horizon/workspace")
+        .join(oino_wasm_host::workspace_id(root)).join("state.json");
+    let Ok(Some(state)) = crate::data_dir::read_json::<Value>(&path) else { return false; };
+    ["active", "parked"].iter().any(|key| {
+        state.get(*key).is_some_and(|owner| owner.is_object()
+            && owner.get("session").and_then(Value::as_str).is_none_or(|session| session == id))
+    })
 }
 
 static DISPATCHER: OnceLock<Arc<Dispatcher>> = OnceLock::new();

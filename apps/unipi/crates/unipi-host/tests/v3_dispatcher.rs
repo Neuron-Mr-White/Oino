@@ -45,6 +45,8 @@ struct Fake {
     launches: AtomicUsize,
     pending: AtomicBool,
     fail_relay: AtomicBool,
+    background: AtomicBool,
+    retirements: AtomicUsize,
     relays: Mutex<Vec<String>>,
     last: Mutex<Option<String>>,
     approvals: Mutex<Vec<oino_core::session::permission::ApprovalRequest>>,
@@ -131,7 +133,10 @@ impl Workers for Fake {
         })
     }
     fn ended<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Option<String>> {
-        Box::pin(async { self.last.lock().unwrap().clone() })
+        Box::pin(async { if self.background.load(Ordering::SeqCst) { None } else { self.last.lock().unwrap().clone() } })
+    }
+    fn retire<'a>(&'a self, _: &'a str) -> BoxFuture<'a, ()> {
+        Box::pin(async { self.retirements.fetch_add(1, Ordering::SeqCst); })
     }
 }
 struct Fixture {
@@ -463,8 +468,67 @@ async fn ended_lead_blocks_every_in_progress_ticket_with_last_message() {
     let f = Fixture::new(); let a = f.add("a", &[]); let b = f.add("b", &[]);
     let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
     d.start_tasks(&f.project.slug, &[a.clone(), b.clone()], None, Default::default()).await.unwrap();
-    *fake.last.lock().unwrap() = Some("Need clarification".into()); d.tick().await.unwrap();
+    *fake.last.lock().unwrap() = Some("Need clarification".into()); d.tick().await.unwrap(); d.tick().await.unwrap();
     for id in [a, b] { let t = f.task(&id); assert_eq!(t.status, Status::Blocked); assert!(t.run.is_none()); assert!(t.activity.last().unwrap().text.contains("Need clarification")); }
+}
+
+#[tokio::test]
+async fn idle_lead_with_background_graph_is_not_retired() {
+    let f = Fixture::new();
+    let task = f.add("graph", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.start(&f.project.slug, &task).await.unwrap();
+    *fake.last.lock().unwrap() = Some(String::new());
+    fake.background.store(true, Ordering::SeqCst);
+    d.tick().await.unwrap();
+    assert_eq!(f.task(&task).status, Status::InProgress);
+    assert_eq!(fake.retirements.load(Ordering::SeqCst), 0);
+    assert!(fake.deliveries.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn idle_lead_gets_one_continuation_then_is_blocked() {
+    let f = Fixture::new();
+    let task = f.add("idle", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.start(&f.project.slug, &task).await.unwrap();
+    *fake.last.lock().unwrap() = Some(String::new());
+    d.tick().await.unwrap();
+    assert_eq!(f.task(&task).status, Status::InProgress);
+    assert_eq!(fake.deliveries.lock().unwrap().len(), 1);
+    assert!(fake.deliveries.lock().unwrap()[0].0.contains(&task));
+    // Reacquisition preserves the consumed budget.
+    drop(d);
+    let d = f.dispatcher(fake.clone()).await;
+    d.tick().await.unwrap();
+    assert_eq!(fake.deliveries.lock().unwrap().len(), 1);
+    assert_eq!(f.task(&task).status, Status::Blocked);
+    assert!(f.task(&task).activity.last().unwrap().text.contains("Worker ended without a transition; move to todo to retry"));
+}
+
+#[tokio::test]
+async fn graph_continuation_names_remaining_tickets_and_progress_replenishes_budget() {
+    let f = Fixture::new();
+    let a = f.add("a", &[]); let b = f.add("b", &[]); let c = f.add("c", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let lead = d.start_tasks(&f.project.slug, &[a.clone(), b.clone(), c.clone()], None, Default::default()).await.unwrap();
+    d.set_mode(&f.project.slug, "graph").await.unwrap();
+    assert_eq!(fake.modes.lock().unwrap().last().unwrap(), "graph");
+    d.tick().await.unwrap(); // record initial claims while working
+    commands::finish(&f.layout, f.project.clone(), ChainGate::InReview, &a, &lead, "done", &[], chrono::Utc::now()).unwrap();
+    *fake.last.lock().unwrap() = Some(String::new());
+    d.tick().await.unwrap();
+    let text = fake.deliveries.lock().unwrap()[0].0.clone();
+    assert!(!text.contains(&a)); assert!(text.contains(&b)); assert!(text.contains(&c));
+    commands::finish(&f.layout, f.project.clone(), ChainGate::InReview, &b, &lead, "done", &[], chrono::Utc::now()).unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.deliveries.lock().unwrap().len(), 2);
+    assert!(fake.deliveries.lock().unwrap()[1].0.contains(&c));
+    d.tick().await.unwrap();
+    assert_eq!(f.task(&c).status, Status::Blocked);
 }
 
 #[tokio::test]
@@ -816,6 +880,7 @@ async fn global_cap_lowering_and_worker_exit_question() {
     );
     assert_eq!(fake.live.lock().unwrap().len(), 2);
     *fake.last.lock().unwrap() = Some("Which API key should I use?".into());
+    d.tick().await.unwrap();
     d.tick().await.unwrap();
     assert_eq!(f.task(&a).status, Status::Blocked);
     assert!(f
