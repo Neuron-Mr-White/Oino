@@ -4,6 +4,7 @@ import { AnchoredMenu } from '../board/AnchoredMenu';
 import { Segmented } from '../phone';
 import { layout } from '../../lib/layout';
 import { CAP_MAX, CAP_MIN } from './api';
+import { countNeeds } from './needs';
 import type { SuperagentState } from './state';
 import { Toggle } from './parts';
 import { NeedsYouSection } from './NeedsYou';
@@ -16,8 +17,7 @@ export type PaneTab = 'needs' | 'leads' | 'projects';
 
 /** Number of things waiting on the owner: drives the phone badge. */
 export function needsCount(sa: SuperagentState): number {
-  const items = sa.status()?.needsYou ?? [];
-  return items.filter((n) => (n.requestId && n.workerSessionId) || (n.status === 'blocked' && n.question?.trim())).length;
+  return countNeeds(sa.status()?.needsYou);
 }
 
 function Settings(props: { sa: SuperagentState; onManage: () => void }) {

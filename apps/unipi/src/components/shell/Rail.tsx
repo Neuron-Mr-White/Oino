@@ -10,10 +10,12 @@
  */
 import { createSignal, For, Show, type Component } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
+import { Dynamic } from 'solid-js/web';
 import { Bot, Clock, Columns3, Settings as SettingsIcon } from 'lucide-solid';
 import { can, type Capability } from '../../lib/platform';
 import type { IconComponent } from '../../lib/panes/kinds';
 import { reservedGate } from '../../ui/slots/reserved';
+import { SuperagentRailIndicator } from '../superagent/RailIndicator';
 
 export type RailItem = {
   id: string;
@@ -23,11 +25,13 @@ export type RailItem = {
   cap?: Capability;
   /** Reserved id this page renders (ui-protocol §8): the owner's gate shows/hides it. */
   reserved?: string;
+  /** Optional live state at the row's right end (e.g. Superagent's needs-you count). */
+  indicator?: Component;
   order: number;
 };
 
 export const BUILTIN_RAIL: RailItem[] = [
-  { id: 'superagent', label: 'Superagent', href: '/superagent', icon: Bot, cap: 'chat', order: 5 },
+  { id: 'superagent', label: 'Superagent', href: '/superagent', icon: Bot, cap: 'chat', indicator: SuperagentRailIndicator, order: 5 },
   { id: 'board', label: 'Board', href: '/board', icon: Columns3, cap: 'board', reserved: 'unipi.kanboard/board', order: 10 },
   { id: 'cron', label: 'Automations', href: '/cron', icon: Clock, reserved: 'unipi.cron/jobs', order: 20 },
 ];
@@ -61,12 +65,16 @@ function RailLink(props: { item: RailItem }) {
   const active = () => location.pathname === props.item.href || location.pathname.startsWith(`${props.item.href}/`);
   const available = () => !props.item.cap || can(props.item.cap);
   const Icon = props.item.icon;
+  const Indicator = props.item.indicator;
   return (
     <A href={props.item.href} class="rail-item" classList={{ unavailable: !available() }} aria-current={active() ? 'page' : undefined} data-testid={`rail-${props.item.id}`}>
       <Icon size={17} strokeWidth={1.7} />
       <span class="rail-label">{props.item.label}</span>
       <Show when={!available()}>
         <span class="rail-badge" title="Needs the Unipi app">app</span>
+      </Show>
+      <Show when={Indicator && available()}>
+        <Dynamic component={Indicator} />
       </Show>
     </A>
   );
