@@ -12,8 +12,8 @@
  *   `background_work`, core `backgroundOn`).
  * - `idle` otherwise.
  *
- * The host card is the truth for every session; an open, live session stream is fresher and
- * refines it (never the other way round). Pure — no store access here.
+ * The host card reports working even between turns; a live stream adds dialogs and run details.
+ * Pure — no store access here.
  */
 import type { SessionCard } from '../host/client';
 import type { SessionState } from './types';
@@ -45,9 +45,8 @@ export function liveBusy(run: SessionState['run']): boolean {
 }
 
 /**
- * The card reconciled with the open session stream: a live stream's run state wins (it is
- * fresher than the polled card — opening an idle chat never flashes "Working"), its open
- * dialogs mean "needs you", and its waiting / background reasons ride along.
+ * Reconcile the host card with the open stream. Either can report working: an idle stream
+ * may be between turns while the host waits on wake-capable work. Dialogs mean "needs you".
  */
 export function liveActivity(card: SessionCard, open: LiveSession | undefined): ActivityFacts {
   if (card.needs_you || (open?.conn === 'live' && open.dialogs.length > 0)) return { activity: 'needs-you' };
@@ -57,10 +56,9 @@ export function liveActivity(card: SessionCard, open: LiveSession | undefined): 
     const detail = run.running ? undefined : joined(run.waitingOn);
     return { activity: 'working', ...(detail ? { detail } : {}) };
   }
-  // The stream says idle. Work the host still reports as pending will wake the session (an
-  // older stream that cannot report `waiting` yet): keep "Working".
+  // An idle stream can be between turns; the host knows about wake-capable work.
   const pending = text(card.pending_work);
-  if (pending) return { activity: 'working', detail: pending };
+  if (card.run_state === 'working' || pending) return { activity: 'working', ...(pending ? { detail: pending } : {}) };
   const background = joined(run.backgroundOn) ?? text(card.background_work);
   if (background) return { activity: 'background', detail: background };
   return { activity: 'idle' };

@@ -48,8 +48,8 @@ export function rowState(card: SessionCard): RowState {
   return withCardFailure(card, cardActivity(card));
 }
 
-/** The card reconciled with a live open session stream (`lib/session/activity.ts`): opening an
- *  idle session never flashes "Working", and a parent waiting on subagents / graph nodes stays "Working". */
+/** The card reconciled with a live open session stream (`lib/session/activity.ts`): a parent
+ *  waiting on subagents / graph nodes stays "Working" even between turns. */
 export function liveRowState(card: SessionCard, open: SessionHandle | undefined): RowState {
   return withCardFailure(card, liveActivity(card, open?.state));
 }

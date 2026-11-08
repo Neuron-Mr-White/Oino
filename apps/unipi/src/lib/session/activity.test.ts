@@ -22,15 +22,14 @@ describe('[status] session activity states', () => {
     expect(cardActivity(card({ run_state: 'working', pending_work: 'x', needs_you: true })).activity).toBe('needs-you');
   });
 
-  it('a live stream refines the card: waiting keeps Working, a stale card never flashes Working, dialogs are needs-you', () => {
+  it('reconciles card and live stream: either can report Working, dialogs are needs-you', () => {
     // The parent's run ended but it waits on subagents (core `waiting`): Working, not idle.
     expect(liveActivity(card({ run_state: 'working' }), live({ phase: 'waiting', waitingOn: ['2 subagents working'] }))).toEqual({
       activity: 'working',
       detail: '2 subagents working',
     });
-    // Opening an idle chat whose card still says working (polled, stale): idle.
-    expect(liveActivity(card({ run_state: 'working' }), live()).activity).toBe('idle');
-    // …unless the host says wake-capable work is pending.
+    // The host can know about wake-capable work while the stream is between turns.
+    expect(liveActivity(card({ run_state: 'working' }), live()).activity).toBe('working');
     expect(liveActivity(card({ run_state: 'working', pending_work: 'bg: tests' }), live()).activity).toBe('working');
     expect(liveActivity(card(), live({ running: true, phase: 'running' })).activity).toBe('working');
     expect(liveActivity(card(), live({ phase: 'compacting' })).activity).toBe('working');

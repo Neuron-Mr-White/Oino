@@ -10,6 +10,7 @@ import { HashRouter, Route } from '@solidjs/router';
 import { HostsProvider } from '../../hosts/context';
 import { SettingsProvider } from '../../settings/context';
 import { createMockHost, type MockScenario } from '../../dev/mock/host';
+import { genSession } from '../../dev/mock/gen';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { resetHubs } from '../../lib/session/hub';
 import { resetHostCollapse } from './HostGroup';
@@ -34,7 +35,7 @@ const card = (id: string, over: Partial<SessionCard> = {}): SessionCard => ({
 const scenario = (cards: SessionCard[]): MockScenario => ({
   name: 't',
   hosts: [
-    { id: 'this-pc', name: 'workstation', transport: 'local', conn: { state: 'connected' }, cards },
+    { id: 'this-pc', name: 'workstation', transport: 'local', conn: { state: 'connected' }, cards, sessions: Object.fromEntries(cards.map((c) => [c.session_id, genSession(c.session_id)])) },
     { id: 'pc-x', name: 'coffee', conn: { state: 'connected' }, cards: [card('x1', { cwd: '/home/me/other' })] },
   ],
 });
@@ -257,6 +258,31 @@ describe('SessionList', () => {
     const ask = screen.getByTestId('srow-ask');
     expect(ask.getAttribute('data-state')).toBe('needs-you');
     expect(within(ask).getByText('Needs you')).toBeTruthy();
+  });
+
+  it.each([false, true])('keeps a working Lead spinning with an idle attached session (selected: %s)', async (selected) => {
+    boot([
+      card('lead', { run_state: 'working', pending_work: 'subagent working' }),
+      card('quiet', { background_work: 'bg: dev server' }),
+      card('working', { run_state: 'working' }),
+    ], selected ? '#/s/this-pc/lead' : '#/');
+    await waitFor(() => expect(screen.getByTestId('srow-lead')).toBeTruthy());
+    sessions().ensure('this-pc', 'lead');
+    sessions().ensure('this-pc', 'quiet');
+    sessions().ensure('this-pc', 'working');
+    await waitFor(() => {
+      for (const id of ['lead', 'quiet', 'working']) {
+        expect(sessions().peek('this-pc', id)?.state.conn).toBe('live');
+        expect(sessions().peek('this-pc', id)?.state.run.phase).toBe('idle');
+      }
+    });
+    const lead = screen.getByTestId('srow-lead');
+    expect(lead.getAttribute('aria-current')).toBe(selected ? 'page' : null);
+    expect(lead.querySelector('.srow-spin')).toBeTruthy();
+    expect(screen.getByTestId('srow-working').querySelector('.srow-spin')).toBeTruthy();
+    expect(screen.getByTestId('srow-quiet').querySelector('.srow-spin')).toBeNull();
+    expect(screen.getByTestId('srow-quiet').getAttribute('data-state')).toBe('background');
+    for (const id of ['lead', 'quiet', 'working']) sessions().close('this-pc', id);
   });
 
   it('links to /s/:host/:session and marks the routed session active', async () => {
