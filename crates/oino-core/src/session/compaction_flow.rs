@@ -63,6 +63,27 @@ fn messages_tokens(messages: &[AgentMessage]) -> u64 {
     messages.iter().map(estimate_tokens).sum()
 }
 
+struct ManualCompactionGuard<'a> {
+    session: &'a AgentSession,
+    active: bool,
+}
+
+impl Drop for ManualCompactionGuard<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            lock(&self.session.inner.cancels).compaction = None;
+            self.session.set_idle_if_idle();
+            self.session.emit(AgentSessionEvent::CompactionEnd {
+                reason: CompactionReason::Manual,
+                result: None,
+                aborted: true,
+                will_retry: false,
+                error_message: None,
+            });
+        }
+    }
+}
+
 impl AgentSession {
     /// Set a positive session-only threshold override; `None` restores layered settings.
     pub fn set_compaction_token_limit(&self, limit: Option<u64>) {
@@ -388,6 +409,11 @@ impl AgentSession {
         self.emit(AgentSessionEvent::CompactionStart {
             reason: CompactionReason::Manual,
         });
+        // The host may drop this future on RPC timeout; cleanup must also run then.
+        let mut guard = ManualCompactionGuard {
+            session: self,
+            active: true,
+        };
         let mut from_extension = false;
         let mut cancelled_by_extension = false;
         let outcome: Result<CompactionResult, String> = async {
@@ -452,6 +478,7 @@ impl AgentSession {
         .await;
         lock(&self.inner.cancels).compaction = None;
         self.set_idle_if_idle();
+        guard.active = false;
         match outcome {
             Ok(result) => {
                 self.emit(AgentSessionEvent::CompactionEnd {

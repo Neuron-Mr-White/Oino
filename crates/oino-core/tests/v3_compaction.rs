@@ -315,6 +315,11 @@ async fn crash_before_commit_persists_no_state() {
     task.abort();
     let _ = task.await;
     assert_eq!(session.entries(), before);
+    assert!(
+        !session.is_compacting(),
+        "dropped compaction must release the session"
+    );
+    turn(&session, "message after cancelled compaction").await;
     let path = session.with_manager(|m| m.session_file().unwrap().to_path_buf());
     let raw = std::fs::read_to_string(path).unwrap();
     assert!(!raw.contains("\"type\":\"compaction_state\""));
