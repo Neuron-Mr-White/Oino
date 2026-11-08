@@ -620,12 +620,14 @@ impl Dispatcher {
                             .unwrap_or_else(std::sync::PoisonError::into_inner)
                             .get(&run.session)
                             .cloned();
+                        if self.workers.live(&run.session).await && self.workers.ended(&run.session).await.is_none() {
                         lead = Some(run.session.clone());
                         if let Some(existing) = leads.iter_mut().find(|entry: &&mut Value| entry["sessionId"] == run.session) {
                             if let Some(ids) = existing["ticketIds"].as_array_mut() { ids.push(json!(task.id)); }
                             existing["progress"]["running"] = json!(existing["ticketIds"].as_array().map_or(0, Vec::len));
                         } else {
                             leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":preset.as_ref().map_or("none", |p| &p.mode),"ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
+                        }
                         }
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
                             "autonomy":dispatcher::autonomy(&task),"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"]}));

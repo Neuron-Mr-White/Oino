@@ -1000,3 +1000,24 @@ async fn process_crash_releases_os_lock_and_blocks_durable_reservation() {
     assert!(d.start(&f.project.slug, &id).await.is_err());
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn status_reports_only_live_leads() {
+    let f = Fixture::new();
+    let task = f.add("lead", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let id = d.start(&f.project.slug, &task).await.unwrap();
+    let status = d.status().await.unwrap();
+    assert_eq!(status["projects"][0]["lead"], id);
+    assert_eq!(status["leads"].as_array().unwrap().len(), 1);
+    fake.live.lock().unwrap().remove(&id);
+    let status = d.status().await.unwrap();
+    assert!(status["projects"][0]["lead"].is_null());
+    assert!(status["leads"].as_array().unwrap().is_empty());
+    fake.live.lock().unwrap().insert(id);
+    *fake.last.lock().unwrap() = Some("ended".into());
+    let status = d.status().await.unwrap();
+    assert!(status["projects"][0]["lead"].is_null());
+    assert!(status["leads"].as_array().unwrap().is_empty());
+}
