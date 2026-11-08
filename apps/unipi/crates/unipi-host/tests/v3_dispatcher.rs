@@ -722,9 +722,21 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
     assert_eq!(session.cwd(), dir.path().join("agent/superagent"));
     assert!(session.active_tool_names().contains(&"memory_search".to_owned()));
     assert!(session.active_tool_names().contains(&"memory_store".to_owned()));
-    let mut names: Vec<String> = session.all_tools().into_iter().map(|t| t.name).collect();
+    let tools = session.all_tools();
+    for tool in &tools {
+        assert!(!tool.name.is_empty() && tool.name.len() <= 64 && tool.name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'), "invalid tool name: {}", tool.name);
+        assert_eq!(tool.parameters["type"], "object", "{}", tool.name);
+        let properties = tool.parameters["properties"].as_object().expect("object properties");
+        if let Some(required) = tool.parameters["required"].as_array() {
+            for key in required { assert!(properties.contains_key(key.as_str().unwrap()), "{}: {key}", tool.name); }
+        }
+    }
+    let resolver = tools.iter().find(|t| t.name == "project_resolver").unwrap();
+    let call: oino_ai::ToolCall = serde_json::from_value(serde_json::json!({"id":"call_1","name":"project_resolver","arguments":{"reason":"find project"}})).unwrap();
+    assert!(oino_agent::validate_tool_arguments(&resolver.parameters, &call).is_ok());
+    let mut names: Vec<String> = tools.into_iter().map(|t| t.name).collect();
     names.sort();
-    for required in ["ask_user", "kanboard", "project_resolver", "superagent.start", "superagent.set_mode", "memory_search", "memory_store"] { assert!(names.iter().any(|n| n == required), "missing {required}: {names:?}"); }
+    for required in ["ask_user", "kanboard", "project_resolver", "superagent_start", "superagent_set_mode", "memory_search", "memory_store"] { assert!(names.iter().any(|n| n == required), "missing {required}: {names:?}"); }
     for forbidden in ["read", "write", "edit", "bash", "grep", "find", "ls"] { assert!(!names.iter().any(|n| n == forbidden), "unexpected {forbidden}"); }
     let shell =
         serde_json::from_value(serde_json::json!({"command":"ls","riskLevel":"low"})).unwrap();
@@ -1228,7 +1240,7 @@ async fn manual_start_refuses_different_preset_while_lead_runs() {
         .unwrap_err();
     assert_eq!(err.code, "E_LEAD_RUNNING");
     assert!(err.message.contains(&id));
-    assert!(err.message.contains("superagent.stop"));
+    assert!(err.message.contains("superagent_stop"));
     assert_eq!(f.task(&b).status, Status::Todo);
     assert!(fake.relays.lock().unwrap().is_empty());
     assert!(fake.deliveries.lock().unwrap().is_empty());

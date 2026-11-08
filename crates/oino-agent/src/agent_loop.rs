@@ -1029,7 +1029,14 @@ async fn prepare_tool_call(
     hooks: &Hooks,
     cancel: &CancellationToken,
 ) -> Preparation {
-    let Some(tool) = tools.iter().find(|tool| tool.meta().name == call.name) else {
+    let name = match call.name.as_str() {
+        "superagent.start" => "superagent_start",
+        "superagent.stop" => "superagent_stop",
+        "superagent.relay" => "superagent_relay",
+        "superagent.set_mode" => "superagent_set_mode",
+        name => name,
+    };
+    let Some(tool) = tools.iter().find(|tool| tool.meta().name == name) else {
         return Preparation::Immediate {
             result: AgentToolResult::error(format!("Tool {} not found", call.name)),
         };

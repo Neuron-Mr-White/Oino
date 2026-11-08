@@ -62,7 +62,61 @@ pub fn request_json(request: &StreamRequest) -> JsonValue {
     if let Some(key) = &request.api_key {
         value["apiKey"] = json!(key);
     }
+    normalize_legacy_transcript(&mut value);
     value
+}
+
+// Provider components may be prebuilt: normalize names before crossing the
+// native/wasm boundary, without modifying the persisted transcript.
+fn normalize_legacy_transcript(value: &mut JsonValue) {
+    if let Some(messages) = value["context"]["messages"].as_array_mut() {
+        for message in messages {
+            if message["role"] == "assistant" {
+                if let Some(blocks) = message["content"].as_array_mut() {
+                    for block in blocks {
+                        if block["type"] == "toolCall" {
+                            normalize_superagent_name(&mut block["name"]);
+                        }
+                    }
+                }
+            } else if message["role"] == "toolResult" {
+                normalize_superagent_name(&mut message["toolName"]);
+            }
+        }
+    }
+}
+
+fn normalize_superagent_name(value: &mut JsonValue) {
+    let replacement = match value.as_str() {
+        Some("superagent.start") => "superagent_start",
+        Some("superagent.stop") => "superagent_stop",
+        Some("superagent.relay") => "superagent_relay",
+        Some("superagent.set_mode") => "superagent_set_mode",
+        _ => return,
+    };
+    *value = json!(replacement);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_tool_names_are_normalized_without_changing_pair_ids() {
+        let mut request = json!({"context":{"messages":[
+            {"role":"assistant","content":[{"type":"toolCall","id":"call_1","name":"superagent.start","arguments":{}}]},
+            {"role":"toolResult","toolCallId":"call_1","toolName":"superagent.start"},
+            {"role":"assistant","content":[{"type":"toolCall","id":"call_2","name":"superagent.set_mode","arguments":{}}]},
+            {"role":"toolResult","toolCallId":"call_2","toolName":"superagent.set_mode"}
+        ]}});
+        normalize_legacy_transcript(&mut request);
+        let messages = request["context"]["messages"].as_array().unwrap();
+        for (call, result, name) in [(0, 1, "superagent_start"), (2, 3, "superagent_set_mode")] {
+            assert_eq!(messages[call]["content"][0]["name"], name);
+            assert_eq!(messages[result]["toolName"], name);
+            assert_eq!(messages[call]["content"][0]["id"], messages[result]["toolCallId"]);
+        }
+    }
 }
 
 fn failure(

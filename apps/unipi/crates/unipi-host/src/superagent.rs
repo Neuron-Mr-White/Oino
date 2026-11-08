@@ -554,7 +554,7 @@ impl Dispatcher {
                         (p.model.as_deref().unwrap_or("default model"), p.thinking.as_deref().unwrap_or("default"))
                     });
                     let wanted = format!("{} ({})", preset.model.as_deref().unwrap_or("default model"), preset.thinking.as_deref().unwrap_or("default"));
-                    return Err(fail("E_LEAD_RUNNING", format!("Project already has a running lead {id} on {model} ({thinking}); stop it with superagent.stop, then start again to use {wanted}")));
+                    return Err(fail("E_LEAD_RUNNING", format!("Project already has a running lead {id} on {model} ({thinking}); stop it with superagent_stop, then start again to use {wanted}")));
                 }
             }
             let board = Board::open(&self.layout, project.clone()).map_err(storage)?;

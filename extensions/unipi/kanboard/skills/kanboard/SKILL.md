@@ -146,8 +146,8 @@ embed is appended. Attaching to a task you started is free.
 
 `/kanboard-do` and `/kanboard-autowork` are retired. Superagent has no workspace
 or shell access. It resolves an explicit registered project, manages boards across
-projects and dispatches through `superagent.start`, `superagent.stop` and
-`superagent.relay`. Watcher and manual starts share one host dispatcher. Legacy
+projects and dispatches through `superagent_start`, `superagent_stop` and
+`superagent_relay`. Watcher and manual starts share one host dispatcher. Legacy
 transcript cards remain readable.
 
 Set ticket ceilings with `add --autonomy low|medium|high` or

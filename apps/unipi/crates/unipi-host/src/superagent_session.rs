@@ -60,29 +60,29 @@ pub async fn create_from(
         (
             "project_resolver",
             "List registered projects, recent sidebar workspaces and zoxide paths. Ask the user when ambiguous.",
-            json!({}),
+            json!({"reason":{"type":"string","description":"Why project discovery is needed."}}),
             vec![],
         ),
         (
-            "superagent.start",
+            "superagent_start",
             "Start or queue tickets with the project's lead. Tickets may be backlog, todo or blocked. Optional overrides: model (string, \"provider/id\"), thinking (\"off\"|\"minimal\"|\"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"), autonomy (\"low\"|\"medium\"|\"high\"), mode (\"none\"|\"goal\"|\"ralph\"|\"swarm\"|\"graph\"), maxParallel (integer >= 1), review (\"none\"|\"light\"|\"full\"), profiles (string array), priority (boolean). Manual start works even when Auto is off; unregistered or archived projects require user confirmation. Do not move tickets to todo before calling start; start takes backlog, todo or blocked tickets itself (moving to todo first lets auto-start launch a lead with the default preset).",
             json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"presetId":{"type":"string"},"overrides":{"type":"object","properties":{"model":{"type":"string"},"thinking":{"type":"string","enum":["off","minimal","low","medium","high","xhigh","max"]},"autonomy":{"type":"string","enum":["low","medium","high"]},"mode":{"type":"string","enum":["none","goal","ralph","swarm","graph"]},"maxParallel":{"type":"integer","minimum":1},"review":{"type":"string","enum":["none","light","full"]},"profiles":{"type":"array","items":{"type":"string"}},"priority":{"type":"boolean"}},"additionalProperties":false}}),
             vec!["projectId", "taskIds"],
         ),
         (
-            "superagent.stop",
+            "superagent_stop",
             "Stop the worker claiming an explicit ticket.",
             json!({"projectId":{"type":"string"},"taskId":{"type":"string"}}),
             vec!["projectId", "taskId"],
         ),
         (
-            "superagent.relay",
+            "superagent_relay",
             "Relay to the project lead. Dependent work: queue; complementary work: steer; urgent work: priority true.",
             json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"delivery":{"type":"string","enum":["queue","steer"]},"priority":{"type":"boolean"}}),
             vec!["projectId", "text", "delivery"],
         ),
         (
-            "superagent.set_mode",
+            "superagent_set_mode",
             "Switch the lead mode; ask the user first when practical, but the switch is not technically gated.",
             json!({"projectId":{"type":"string"},"mode":{"type":"string","enum":["none","goal","ralph","swarm","graph"]}}),
             vec!["projectId", "mode"],
@@ -274,7 +274,7 @@ impl AgentTool for ChatTool {
                         )
                     {
                         return Err(ToolError::new(
-                            "Superagent manages boards; use superagent.start/stop for workers",
+                            "Superagent manages boards; use superagent_start or superagent_stop for workers",
                         ));
                     }
                     if command == "move"
@@ -320,7 +320,7 @@ impl AgentTool for ChatTool {
                         let blockers = dispatcher.blockers(&project_id).await.map_err(|e| ToolError::new(e.to_string()))?;
                         if !blockers.is_empty() {
                             let reasons = blockers.iter().map(|b| b.message.as_str()).collect::<Vec<_>>().join(" ");
-                            let notice = format!("Note: {project_id} will not auto-start these tickets ({reasons}). Call superagent.start to dispatch them now, or ask the user to enable Auto / Auto-start.");
+                            let notice = format!("Note: {project_id} will not auto-start these tickets ({reasons}). Call superagent_start to dispatch them now, or ask the user to enable Auto / Auto-start.");
                             if let Some(object) = result.as_object_mut() { object.insert("notice".into(), json!(notice)); }
                         }
                     }
@@ -347,7 +347,7 @@ impl AgentTool for ChatTool {
                     let dispatcher =
                         crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
                     match name.as_str() {
-                        "superagent.start" => {
+                        "superagent_start" => {
                             let overrides: crate::superagent_presets::Overrides = args
                                 .get("overrides")
                                 .cloned()
@@ -384,11 +384,11 @@ impl AgentTool for ChatTool {
                             };
                             json!({"sessionId":id})
                         }
-                        "superagent.set_mode" => dispatcher.set_mode(&project, &field("mode")?).await.map_err(|e| ToolError::new(e.to_string()))?,
-                        "superagent.stop" => {
+                        "superagent_set_mode" => dispatcher.set_mode(&project, &field("mode")?).await.map_err(|e| ToolError::new(e.to_string()))?,
+                        "superagent_stop" => {
                             json!({"stopped":dispatcher.stop(&project, &field("taskId")?).await.map_err(|e| ToolError::new(e.to_string()))?})
                         }
-                        "superagent.relay" => {
+                        "superagent_relay" => {
                             let tasks: Vec<String> = args.get("taskIds").cloned().map(serde_json::from_value).transpose().map_err(|e| ToolError::new(format!("Invalid taskIds: {e}")))?.unwrap_or_default();
                             let delivery = crate::superagent::Delivery::parse(&field("delivery")?).map_err(|e| ToolError::new(e.to_string()))?;
                             dispatcher.relay_to_lead(&project, &field("text")?, &tasks, delivery, args["priority"].as_bool().unwrap_or(false)).await.map_err(|e| ToolError::new(e.to_string()))?
