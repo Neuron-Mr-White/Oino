@@ -391,7 +391,7 @@ impl HostLoader {
         Self::build_filtered(agent_dir, cwd, no_extensions, excluded, false)
     }
 
-    /// Restricted router: load only the normal memory extension, never project extensions.
+    /// Restricted router: load providers and the memory extension, never project extensions.
     pub fn memory_only(agent_dir: &Path) -> Self {
         Self::build_filtered(agent_dir, agent_dir, false, &[], true)
     }
@@ -418,7 +418,7 @@ impl HostLoader {
         let packages: Vec<SourcedPackage> = resolved
             .packages
             .into_iter()
-            .filter(|source| !memory_only || (!source.project && source.package.manifest.id.as_str() == "unipi.memory"))
+            .filter(|source| !memory_only || restricted_package_allowed(source.project, &source.package.manifest))
             .map(|source| SourcedPackage {
                 package: source.package,
                 project: source.project,
@@ -456,6 +456,11 @@ impl HostLoader {
             .as_ref()
             .and_then(|wasm| wasm.runtime().local_services())
     }
+}
+
+fn restricted_package_allowed(project: bool, manifest: &oino_extension_api::manifest::Manifest) -> bool {
+    !project && (manifest.kind == oino_extension_api::manifest::ExtensionKind::Provider
+        || manifest.id.as_str() == "unipi.memory")
 }
 
 impl ExtensionLoader for HostLoader {
@@ -676,6 +681,23 @@ mod tests {
         let reply = run_kanboard(Some(&text), "status", &json!({})).await;
         assert_eq!(reply["kind"], json!("io"));
         assert_eq!(reply["error"], json!("boom"));
+    }
+
+    #[test]
+    fn restricted_loader_keeps_global_providers_and_memory_only() {
+        use oino_extension_api::manifest::{ExtensionKind, Manifest};
+        let manifest = |id: &str, kind: &str| -> Manifest {
+            serde_json::from_value(json!({"apiVersion":"oino.extension/2", "id":id, "name":"test", "version":"1.0.0", "kind":kind, "component":"component.wasm"})).unwrap()
+        };
+        let provider = manifest("ors.bridge", "provider");
+        let memory = manifest("unipi.memory", "extension");
+        let other = manifest("unipi.core", "extension");
+        assert_eq!(provider.kind, ExtensionKind::Provider);
+        assert!(restricted_package_allowed(false, &provider));
+        assert!(restricted_package_allowed(false, &memory));
+        assert!(!restricted_package_allowed(false, &other));
+        assert!(!restricted_package_allowed(true, &provider));
+        assert!(!restricted_package_allowed(true, &memory));
     }
 
     #[test]
