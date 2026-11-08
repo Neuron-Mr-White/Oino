@@ -34,25 +34,35 @@ published on oino.dev by the site deploy.
   On a tag it is strict: every desktop platform must be present and its
   signature must verify against the pubkey in `tauri.conf.json`.
 
-## Site deploy step (after each release)
+## Version bump and site deploy step (each release)
 
-Copy three files from the GitHub release to the oino.dev docroot:
+Before tagging `vX.Y.Z`, bump every UniPi Oino manifest and lockfile in lockstep
+(the `version` job in `.github/workflows/release.yml` fails the tag build if any
+manifest disagrees with the tag):
 
 ```sh
-tag=v1.2.3; v=${tag#v}
-gh release download "$tag" -R Neuron-Mr-White/Oino \
-  -p app-desktop-latest.json -p app-android-latest.json -p "UniPi_${v}_universal.apk"
-# -> /app/desktop/latest.json
-# -> /app/android/latest.json
-# -> /download/UniPi_${v}_universal.apk   (the Android feed's url)
+scripts/release/version.sh 1.2.3
 ```
 
-To rebuild the feeds from any published release:
-`scripts/release/make-feeds.sh --tag "$tag" --out <dir>`.
+After `.github/workflows/release.yml` publishes the GitHub release, update the
+website's single release data file (`src/data/release.json`), which drives
+`/download/`, `/unipi/` and both app update feeds, and deploy with the mirrored
+APK and installers:
 
-Then check that all four URLs return 200: both `latest.json` files, the APK
-URL inside the Android feed, and `https://oino.dev/download/`. Serve the JSON
-with `Cache-Control: no-cache` so clients see a new release quickly.
+```sh
+# inside the oino-landing-page checkout (full steps in its scripts/DEPLOY.md):
+node scripts/fill-release.mjs        # bumps release.json to the latest GitHub release and verifies feeds
+npm run build && npm run check:links
+node scripts/check-release.mjs --files .release
+OINO_RELEASE_FILES=.release scripts/deploy.sh
+```
+
+To rebuild the feeds locally from any published release without the site repo:
+`scripts/release/make-feeds.sh --tag v1.2.3 --out <dir>`.
+
+Then check that `/download/`, `/unipi/`, both `latest.json` files, and the APK
+URL inside the Android feed return 200. Serve the JSON and download pages with
+`Cache-Control: no-cache` so clients see a new release quickly.
 
 ## Keys
 

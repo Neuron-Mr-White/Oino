@@ -81,12 +81,13 @@ jobs:
       - uses: actions/checkout@v4
       - id: v
         run: |
-          # Tags drive the version; a dispatch rehearsal falls back to the app
-          # conf until `cargo xtask dist version` (dist.md §1) lands.
+          # Verify all UniPi Oino manifests/lockfiles agree (and match the git
+          # tag on tag pushes) so unipi-oino and unipi-oino-host never ship a
+          # stale Cargo/Tauri version under a newer release tag.
           if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
-            v="${GITHUB_REF_NAME#v}"
+            v=$(sh scripts/release/version.sh --check --tag "$GITHUB_REF_NAME")
           else
-            v=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' apps/unipi/src-tauri/tauri.conf.json | head -1)
+            v=$(sh scripts/release/version.sh --check)
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "release version: $v"

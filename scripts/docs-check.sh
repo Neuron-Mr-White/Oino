@@ -61,6 +61,9 @@ PY
 sh -n scripts/install.sh
 sh -n scripts/install-smoke.sh
 sh -n scripts/docs-check.sh
+sh -n scripts/release/version.sh
+sh -n scripts/release/version-test.sh
+sh scripts/release/version-test.sh >/dev/null
 if command -v pwsh >/dev/null 2>&1; then
   pwsh -NoProfile -Command '$errors = $null; $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/install.ps1), [ref]$errors); if ($errors) { $errors | Format-List; exit 1 }'
 elif command -v powershell >/dev/null 2>&1; then

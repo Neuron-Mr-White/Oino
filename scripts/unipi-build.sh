@@ -40,7 +40,7 @@ if ! dist_ok; then
 fi
 sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
 
-version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' apps/unipi/src-tauri/tauri.conf.json | head -1)
+version=$(sh scripts/release/version.sh --check)
 stage="$root/apps/unipi/target/dist-stage/extensions"
 # The dev identity merge (tauri.dev.conf.json) plus the bundled extensions —
 # one --config, same shape as the release workflow's merge. UNIPI_RELEASE_IDENTITY=1

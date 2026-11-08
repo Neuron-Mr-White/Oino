@@ -127,6 +127,10 @@ run = "scripts/unipi-dev.sh"
 description = "Local release bundle of the Unipi app for this OS (dev identifier dev.unipi.app.dev; apps/unipi/BUILDING.md)"
 run = "scripts/unipi-build.sh"
 
+[tasks."release:version"]
+description = "Check or bump the UniPi Oino distribution version across all manifests and lockfiles (e.g. `mise run release:version -- 1.0.2`)"
+run = "scripts/release/version.sh"
+
 [tasks.doc]
 description = "Build workspace docs without dependencies"
 run = "cargo doc --workspace --no-deps"
