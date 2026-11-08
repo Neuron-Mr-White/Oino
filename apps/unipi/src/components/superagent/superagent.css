@@ -167,7 +167,11 @@
 .sa-tabs .ph-segmented { width:100%; }
 .sa-tabs .ph-seg { min-height:44px; flex:1; min-width:0; padding:0 4px; font-size:calc(13px * var(--ui-font-scale)); white-space:nowrap; }
 [data-shell=phone] .sa-page, .ph-shell .sa-page { height:100%; }
-.ph-shell .sa-header { padding:0 12px; gap:8px; }
+.ph-shell .sa-header { padding:0 12px; gap:2px; }
+.ph-shell .sa-header h1 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ph-shell .sa-header > .hs-chip { flex:0 0 40px; justify-content:center; padding:0; }
+.ph-shell .sa-header > .hs-chip .truncate, .ph-shell .sa-header > .hs-chip svg { display:none; }
+.ph-shell .sa-header > .shell-icon-btn, .ph-shell .sa-header > .ph-icon-btn { flex-shrink:0; }
 .ph-shell .sa-center > .conv-tl { min-height:0; }
 .sa-header .shell-icon-btn { min-width:40px; min-height:40px; }
 html[data-shell=phone] .sa-pane { padding:0 0 24px; }

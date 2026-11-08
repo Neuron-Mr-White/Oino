@@ -21,6 +21,9 @@ describe('Superagent on the phone', () => {
     location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
     render(() => <Root />);
     const button = await screen.findByTestId('sa-sheet-open');
+    const header = button.closest('.sa-header');
+    expect(header?.querySelector('h1')?.textContent).toBe('Superagent');
+    expect(header?.querySelectorAll(':scope > button')).toHaveLength(6);
     // The pane is closed: the badge comes from the page-level status poll.
     await waitFor(() => expect(button.getAttribute('aria-label')).toBe('Needs you · 5'));
     expect(button.textContent).toContain('5');
