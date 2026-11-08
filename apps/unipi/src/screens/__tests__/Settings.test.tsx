@@ -91,7 +91,7 @@ describe('Settings screen', () => {
   it('phone: the root is a grouped list of section pages (§3.9, PH-09/PH-20)', async () => {
     const r = renderSettings();
     await waitFor(() => expect(r.getByTestId('settings-phone-root')).toBeTruthy());
-    expect(r.getByText('This phone')).toBeTruthy();
+    expect(r.getAllByRole('heading', { name: 'This phone' }).length).toBeGreaterThan(0);
     expect(r.getByText('PCs & connection')).toBeTruthy();
     expect(r.getByTestId('settings-row-appearance')).toBeTruthy();
     expect(r.getByTestId('settings-row-extensions')).toBeTruthy();
