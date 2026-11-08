@@ -5,7 +5,7 @@ import { laneLabel, type Rules } from './api';
 
 const RULES: Rules = {
   statuses: [],
-  allowedMoves: { todo: ['backlog', 'cancelled'], in_review: ['done', 'todo'], in_progress: ['todo', 'backlog'], backlog: ['todo'] },
+  allowedMoves: { todo: ['backlog', 'cancelled'], in_review: ['done', 'todo'], in_progress: ['todo', 'backlog'], blocked: ['todo', 'backlog', 'done', 'cancelled'], backlog: ['todo'] },
   commentRequired: { in_progress: { todo: 'why the stale run is being released' } },
   final: ['done', 'cancelled', 'archived'],
 };
@@ -57,5 +57,17 @@ describe('dnd', () => {
     expect(dropAllowed(RULES, t, 'in_review')).toBe(true);
     expect(dropAllowed(RULES, t, 'done')).toBe(true);
     expect(dropAllowed(RULES, t, 'blocked')).toBe(false);
+  });
+
+  it('allows a blocked card to be dropped back in the backlog', () => {
+    const blocked = task({ id: 'B-1', status: 'blocked' });
+    expect(dropAllowed(RULES, blocked, 'backlog')).toBe(true);
+    expect(dropAllowed(RULES, blocked, 'todo')).toBe(true);
+    expect(planDrop(RULES, blocked, 'backlog', null, [], laneLabel)).toEqual({
+      kind: 'move',
+      to: 'backlog',
+      note: null,
+      order: { bottom: true },
+    });
   });
 });

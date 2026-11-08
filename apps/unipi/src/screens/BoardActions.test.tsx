@@ -261,6 +261,19 @@ describe('moves', () => {
     expect(rows).toEqual(['Move to Backlog', 'Move to Cancelled']);
   });
 
+  it('a blocked task offers Backlog and Todo in its move menu', async () => {
+    const { sent } = setup();
+    await ready();
+    const detail = await openDetail('S-5', 'blocked');
+    fireEvent.click(within(detail).getByLabelText('Status: Blocked'));
+    const menu = await screen.findByRole('menu', { name: 'Move to' });
+    const rows = within(menu).getAllByRole('menuitem').map((row) => row.textContent);
+    expect(rows).toEqual(['Move to Backlog', 'Move to Todo', 'Move to Done', 'Move to Cancelled']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Move to Backlog' }));
+    await waitFor(() => expect(sent('move S-5')).toHaveLength(1));
+    expect(sent('move S-5')[0]!.args).toEqual(['move', 'S-5', 'backlog']);
+  });
+
   it('a stale run is released through the comment sheet (note required)', async () => {
     const { sent } = setup();
     await ready();
@@ -383,6 +396,9 @@ describe('edits', () => {
     await waitFor(() => expect(sent('note S-5')).toHaveLength(1));
     expect(sent('note S-5')[0]!.args).toEqual(['note', 'S-5', '--', 'pin it, see S-3']);
     await waitFor(() => expect(field.value).toBe(''));
+    // The posted note lands in the activity timeline (markdown, like the body).
+    const timeline = detail.querySelector<HTMLElement>('.timeline')!;
+    await waitFor(() => expect(within(timeline).getByText('pin it, see S-3')).toBeInTheDocument());
   });
 
   it('notes: sending with the caret still on an @ mention closes the mention strip', async () => {

@@ -227,7 +227,7 @@ export const USER_RULES: Rules = {
     backlog: ['todo', 'cancelled'],
     todo: ['backlog', 'cancelled'],
     in_progress: ['todo', 'backlog'],
-    blocked: ['todo', 'done', 'cancelled'],
+    blocked: ['todo', 'backlog', 'done', 'cancelled'],
     in_review: ['done', 'todo', 'backlog', 'archived'],
     done: ['archived'],
     cancelled: ['archived'],

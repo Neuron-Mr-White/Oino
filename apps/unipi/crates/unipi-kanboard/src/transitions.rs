@@ -128,6 +128,14 @@ pub const RULES: &[Rule] = &[
         actors: USER_AGENT,
         comment: Comment::NotNeeded,
     },
+    // blocked → backlog | user, agent (OIN-28: park a blocked task back in the
+    // backlog instead of unblocking it to todo)
+    Rule {
+        from: Status::Blocked,
+        to: Status::Backlog,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
     // blocked → done | user (UNI-63: a blocked task the user closes directly)
     Rule {
         from: Status::Blocked,
@@ -300,10 +308,6 @@ fn not_allowed(from: Status, to: Status, actor: Actor, staleness: Staleness) -> 
     }
     if from == Status::InReview && to == Status::Cancelled {
         return "cancelling from in_review is not allowed — move it back to todo (with a rework note) first, or mark it done".to_string();
-    }
-    if from == Status::Blocked && to == Status::Backlog {
-        return "blocked → backlog is not allowed — unblock to todo with the answer as --comment"
-            .to_string();
     }
     if from == Status::Todo && to == Status::Blocked {
         return "only a task in progress can be blocked — claim it first".to_string();

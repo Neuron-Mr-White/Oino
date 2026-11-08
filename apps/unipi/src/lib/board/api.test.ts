@@ -175,6 +175,7 @@ describe('USER_RULES mirror', () => {
   it('matches the user rows of the transition table', async () => {
     expect(USER_RULES.allowedMoves.todo).toEqual(['backlog', 'cancelled']);
     expect(USER_RULES.allowedMoves.in_review).toEqual(['done', 'todo', 'backlog', 'archived']);
+    expect(USER_RULES.allowedMoves.blocked).toEqual(['todo', 'backlog', 'done', 'cancelled']);
     expect(USER_RULES.allowedMoves.archived).toEqual([]);
     expect(USER_RULES.commentRequired.in_progress?.todo).toContain('stale run');
     await expect(api.rules('h')).resolves.toMatchObject({ statuses: USER_RULES.statuses });

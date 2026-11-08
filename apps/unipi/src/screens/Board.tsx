@@ -52,6 +52,7 @@ import { queueMention } from '../lib/chat/mention';
 import { composerChips } from '../lib/composer/drafts';
 import type { ChatTarget } from '../lib/session/list';
 import { ChatPickSheet } from '../components/board/ChatPickSheet';
+import { setTabBarHidden } from '../components/phone';
 import { boardActions, registerHighlighter } from '../lib/board/actions';
 import { availabilityText, boardPcs, pcAvailability } from '../lib/board/pcs';
 import { filterCount, hue, matches, visibleLanes } from '../lib/board/view';
@@ -300,6 +301,13 @@ export default function Board() {
     if (ui.openedTask()) ui.closeTask();
     openNewChat(id, cwd);
   };
+  // The task detail is a full workspace page (phone spec §1): hide the tab bar
+  // while it is open, so its composer sits at the bottom of the screen instead
+  // of under the nav.
+  createEffect(() => {
+    setTabBarHidden('board-task-detail', ui.openedTask() !== undefined);
+    onCleanup(() => setTabBarHidden('board-task-detail', false));
+  });
   createEffect(() => {
     if (!hasMarkedReturnToChat() || ui.openedTask() || ui.newTask() || ui.sheet() || pendingChatPick()) return;
     const off = pushBack(backToChat);

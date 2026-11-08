@@ -629,6 +629,62 @@ fn rule_for_unknown_pairs_is_none() {
     assert!(!comment_required(Status::Backlog, Status::Todo));
 }
 
+/// OIN-28: parking a blocked task in the backlog is recorded like unblocking
+/// to todo (`unblocked: …`) and leaves no claim behind.
+#[test]
+fn blocked_to_backlog_lands_in_backlog_with_activity_and_no_claim() {
+    let fixture = Fixture::new();
+    let task = fixture.add_with("blocked task", Status::Todo, Priority::None, &[]);
+    fixture.start(&task.id, "sess-1", std::process::id());
+    let mut agent_common = fixture.common.clone();
+    agent_common.actor = Actor::Agent;
+    agent_common.session = Some("sess-1".to_string());
+    commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &agent_common,
+        &task.id,
+        Status::Blocked,
+        Some("need the log format"),
+    )
+    .expect("block");
+
+    let value = commands::move_task(
+        &fixture.layout,
+        fixture.project.clone(),
+        &fixture.common,
+        &task.id,
+        Status::Backlog,
+        Some("park until Q1"),
+    )
+    .expect("user parks blocked → backlog");
+    assert_eq!(value["status"], "backlog");
+    assert!(
+        value["allowedMoves"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|move_| move_.as_str() == Some("todo"))
+    );
+
+    let stored = fixture
+        .tasks()
+        .into_iter()
+        .find(|candidate| candidate.id == task.id)
+        .unwrap();
+    assert_eq!(stored.status, Status::Backlog);
+    assert!(
+        stored.run.is_none(),
+        "parking in the backlog clears the claim"
+    );
+    assert!(
+        stored
+            .activity
+            .iter()
+            .any(|entry| entry.text == "unblocked: park until Q1")
+    );
+}
+
 /// UNI-63: a user may close a blocked task directly; agents still cannot mark
 /// anything done.
 #[test]
@@ -655,8 +711,52 @@ fn blocked_to_done_is_user_only() {
     );
     assert_eq!(
         transitions::allowed_targets(Status::Blocked, Actor::User),
-        vec![Status::Todo, Status::Done, Status::Cancelled]
+        vec![
+            Status::Todo,
+            Status::Backlog,
+            Status::Done,
+            Status::Cancelled
+        ]
     );
+}
+
+/// OIN-28: a blocked task may be parked back in the backlog — same actors as
+/// blocked → todo (user, agent), never system.
+#[test]
+fn blocked_to_backlog_is_user_and_agent_only() {
+    transitions::check(
+        Status::Blocked,
+        Status::Backlog,
+        Actor::User,
+        None,
+        Staleness::Running,
+    )
+    .expect("user blocked → backlog needs no comment");
+    transitions::check(
+        Status::Blocked,
+        Status::Backlog,
+        Actor::Agent,
+        None,
+        Staleness::Running,
+    )
+    .expect("agent blocked → backlog needs no comment");
+    let err = transitions::check(
+        Status::Blocked,
+        Status::Backlog,
+        Actor::System,
+        None,
+        Staleness::Running,
+    )
+    .unwrap_err();
+    assert!(matches!(err, Error::Rule(_)));
+    assert!(
+        err.to_string().contains("not allowed for actor system"),
+        "{err}"
+    );
+
+    let targets = transitions::allowed_targets(Status::Blocked, Actor::User);
+    assert!(targets.contains(&Status::Todo), "{targets:?}");
+    assert!(targets.contains(&Status::Backlog), "{targets:?}");
 }
 
 /// UNI-57: which completed moves carry an undo offer — terminal lanes whose
