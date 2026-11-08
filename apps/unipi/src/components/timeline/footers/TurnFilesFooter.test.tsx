@@ -168,6 +168,16 @@ async function open(): Promise<SessionHandle> {
 const footer = () => render(() => <TurnFilesFooter entry={entry} target={{ scope: 'session', hostId: HOST, sessionId: SID, turnEntryId: TURN }} />);
 
 describe('turn file summary footer (A27)', () => {
+  it('waits for the session connection before requesting the summary', async () => {
+    session = sessions().ensure(HOST, SID);
+    expect(session.state.conn).not.toBe('live');
+    footer();
+    expect(calls('turn')).toHaveLength(0);
+    await waitFor(() => expect(screen.getByTestId('turn-files')).toBeTruthy());
+    expect(calls('turn')).toHaveLength(1);
+    expect(toasts().list().some((toast) => toast.message.includes("Couldn't read the file summary"))).toBe(false);
+  });
+
   it('collapsed: "N files +add −del"; expanding lists path, counts and status (skipped included)', async () => {
     await open();
     footer();

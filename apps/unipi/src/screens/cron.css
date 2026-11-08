@@ -1,6 +1,8 @@
 /* UNI-317: Cron screen — job list, detail sheet, add/edit form. */
 .cron-screen { display: flex; flex-direction: column; }
 .cron-body { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 24px; }
+/* Match the desktop settings reading column. */
+html[data-shell=desktop] .cron-body { width: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box; padding-inline: var(--page-gutter); }
 .cron-pause-row { border-radius: 14px; background: var(--color-surface-2); margin: 0 12px 4px; padding: 10px 12px; }
 
 /* [ui-chat-bits] Job rows: state icon · name + schedule in words · last-run icon chip · toggle on the right. */
@@ -91,7 +93,7 @@
 .cron-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cron-field-head label { flex-direction: row; margin: 0; }
 .cron-form-footer { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.cron-form input, .cron-form textarea { font-size: calc(15px * var(--ui-font-scale)); color: var(--color-text); background: var(--color-surface-2); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--color-line); font-family: inherit; }
+.cron-form input:not([type=checkbox]), .cron-form textarea { box-sizing: border-box; min-width: 0; min-height: 44px; font-size: calc(15px * var(--ui-font-scale)); color: var(--color-text); background: var(--color-surface-2); border-radius: var(--radius-input); padding: 10px 14px; border: 1px solid var(--color-line); font-family: inherit; }
 .cron-preview { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-muted); margin: -6px 0 0; }
 .cron-preview-error { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-wm-red); margin: -6px 0 0; }
 .cron-form-error { font-size: calc(13px * var(--ui-font-scale)); color: var(--color-wm-red); }
@@ -146,7 +148,8 @@ html[data-shell=phone] .cron-detail-page { padding: var(--ph-3, 12px) var(--ph-g
 html[data-shell=phone] .cron-detail-page .cron-detail-fields dt { padding-left: 0; }
 
 /* Owner 2026-11-05: search + pagination for big job lists. */
-.cron-search-row { padding: 4px 0 8px; }
+.cron-search-row { padding: 4px 12px 8px; }
+html[data-shell=phone] .cron-search-row { padding-inline: 0; }
 .cron-search { width: 100%; box-sizing: border-box; height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text); font-size: calc(13.5px * var(--ui-font-scale)); }
 .cron-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
 html[data-shell=phone] .cron-search { height: 44px; font-size: calc(16px * var(--ui-font-scale)); }

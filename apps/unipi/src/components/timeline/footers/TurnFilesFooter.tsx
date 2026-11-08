@@ -139,8 +139,13 @@ export function TurnFilesFooter(props: ReservedBodyProps) {
     const s = session();
     const id = turnId();
     footerRev(props.entry.id);
-    if (!s || !id) return;
-    void refreshTurnSummary(s, id).catch((error: unknown) => showActionNotice(`Couldn't read the file summary: ${describe(error)}`));
+    if (!s || !id || s.state.conn !== 'live') return;
+    void refreshTurnSummary(s, id).catch((error: unknown) => {
+      // A switch or disconnect can close the stream after the live check.
+      // The effect retries when the connection becomes live again.
+      if (s.state.conn !== 'live' && describe(error) === 'The session is not connected') return;
+      showActionNotice(`Couldn't read the file summary: ${describe(error)}`);
+    });
   });
 
   // ── a running turn: ≤ every 500 ms (§3.13) ──────────────────────────
