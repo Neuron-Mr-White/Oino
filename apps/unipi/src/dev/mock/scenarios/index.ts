@@ -23,7 +23,7 @@ import { modalRunning } from './modal-running';
 import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { lhGoal, lhGoalErrored, lhGraphBig, lhHistory, lhRalph, lhSwarm } from './lh';
-import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
+import { capsuleScenario, statusLhGraph, statusRunning, statusTodos, statusTodosPane, todoCapsule } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRepeat, errorRow, takenOver } from './dock';
 import { slots, slotsDialogs, slotsOverlay, slotsTray } from './slots';
 import { composerPaste, composerSlash, composerStates } from './composer';
@@ -98,6 +98,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'lh-goal-errored': lhGoalErrored,
   'lh-ralph': lhRalph,
   'status-todos': statusTodos,
+  'status-todos-pane': statusTodosPane,
+  'todo-capsule': todoCapsule,
   'status-running': statusRunning,
   capsule: capsuleScenario,
   'files-tree': filesTree,

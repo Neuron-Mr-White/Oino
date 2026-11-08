@@ -43,6 +43,7 @@ import { ChatItemMenu } from '../chat/ChatItemMenu';
 import { EmptyChat } from '../EmptyChat';
 import { ConversationBoundary } from '../ErrorBoundaries';
 import { BottomDock } from '../dock/BottomDock';
+import { TodoCapsule } from '../status/TodoParts';
 import { Composer } from '../composer/Composer';
 import { ReadOnlyBanner, isTakenOverReadOnly } from './ReadOnlyBanner';
 import { hostStatus } from '../shell/HostSwitcher';
@@ -376,6 +377,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                               widgets={<WidgetStack entries={widgets()} target={target()} phone={!layout().desktop()} />}
                               trayLabel={trayFallback() ?? trayLabelOf([...(registry()?.entriesFor('widget')() ?? []), ...(registry()?.entriesFor('widgetBelow')() ?? [])])}
                               widgetBelow={<WidgetStack entries={widgetBelow()} target={target()} />}
+                              todos={layout().desktop() && props.sessionId ? <TodoCapsule hostId={props.hostId} sessionId={props.sessionId} /> : undefined}
                               composerTray={trayStack().length ? <ComposerTray stack={trayStack()} target={target()} /> : undefined}
                               composer={
                                 <Composer

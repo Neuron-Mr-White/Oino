@@ -15,6 +15,7 @@ import { setDesktopOverride, resetLayout } from '../../lib/layout';
 import { createMockHost, type MockScenario } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
 import { StatusSections } from './StatusPane';
+import { TodoCapsule } from './TodoParts';
 import { Capsule, capsuleVisible } from './Capsule';
 import { fetchRunning } from '../session/RunningTab';
 import { openSessionModal, sessionModal } from '../session/modalTarget';
@@ -102,10 +103,66 @@ describe('Plan & todos section', () => {
     expect(screen.getByTestId('plan-mode').textContent).toContain('Plan mode');
     expect(screen.getByTestId('plan-mode').textContent).toContain('2026-02-14-a16status.md');
     const items = screen.getAllByTestId('todo-item');
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
     expect(items[0]!.dataset.status).toBe('completed');
     expect(items[1]!.dataset.status).toBe('in_progress');
     expect(screen.getByTestId('todo-count').textContent).toBe('1/5');
+  });
+});
+
+describe('Todo section (Graph tab) + capsule', () => {
+  it('the Graph tab leads with "Todo · done/total" (cancelled excluded) and the checklist', async () => {
+    await boot('status-todos');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('todo-section')).toBeTruthy());
+    expect(screen.getByTestId('todo-section-title').textContent).toContain('Todo · 1/5');
+    const items = screen.getAllByTestId('todo-item');
+    expect(items).toHaveLength(6);
+    expect(items[5]!.dataset.status).toBe('cancelled');
+  });
+
+  it('a chat without todos has no Todo section', async () => {
+    await boot('capsule');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await tick();
+    expect(screen.queryByTestId('todo-section')).toBeNull();
+  });
+
+  it('the capsule shows progress + the current item; click opens the checklist, Esc / outside click close it', async () => {
+    await boot('todo-capsule');
+    render(() => (
+      <div>
+        <button data-testid="outside">outside</button>
+        <TodoCapsule hostId="this-pc" sessionId="s001" />
+      </div>
+    ));
+    await waitFor(() => expect(screen.getByTestId('todo-capsule')).toBeTruthy());
+    expect(screen.getByTestId('todo-capsule-label').textContent).toBe('1/5 \u00b7 Feed it from the sticky topics');
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.getByTestId('todo-drawer')).toBeTruthy();
+    expect(screen.getByTestId('todo-capsule-btn').getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByTestId('todo-item')).toHaveLength(6);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.getByTestId('todo-drawer')).toBeTruthy();
+    fireEvent.pointerDown(screen.getByTestId('outside'));
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+  });
+
+  it('no todos → no capsule', async () => {
+    await boot('capsule');
+    render(() => <TodoCapsule hostId="this-pc" sessionId="s001" />);
+    await tick();
+    expect(screen.queryByTestId('todo-capsule')).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@
  * the latest todowrite checklist from the session's entries.
  */
 import { describe, expect, it } from 'vitest';
-import { latestPlanEntry, latestTodos, parseTodos, parseWorkflowStatus, planFileLabel, todoProgress } from './plan';
+import { latestPlanEntry, latestTodos, parseTodos, parseWorkflowStatus, planFileLabel, todoCapsuleLabel, todoProgress, todoSummary, type TodoItem } from './plan';
 
 const entry = (id: string, extra: Record<string, unknown>) => ({ type: 'message', id, ...extra });
 
@@ -70,5 +70,39 @@ describe('latestPlanEntry / planFileLabel', () => {
     expect(latestPlanEntry([])).toBeUndefined();
     expect(planFileLabel('/p/2026-02-14-plan.md')).toBe('2026-02-14-plan.md');
     expect(planFileLabel(undefined)).toBeUndefined();
+  });
+});
+
+describe('todoSummary / todoCapsuleLabel', () => {
+  const t = (content: string, status: TodoItem['status']): TodoItem => ({ content, status });
+
+  it('no todos → null (also when only cancelled ones remain)', () => {
+    expect(todoSummary([])).toBeNull();
+    expect(todoSummary([t('x', 'cancelled')])).toBeNull();
+    expect(todoSummary(latestTodos([ENTRIES[0]!], {}))).toBeNull();
+  });
+
+  it('cancelled items are excluded from the total', () => {
+    const s = todoSummary([t('a', 'completed'), t('b', 'cancelled'), t('c', 'pending')])!;
+    expect([s.done, s.total]).toEqual([1, 2]);
+  });
+
+  it('the in-progress item is current, even after earlier pending ones', () => {
+    const s = todoSummary([t('a', 'completed'), t('b', 'pending'), t('c', 'in_progress'), t('d', 'in_progress')])!;
+    expect(s.current?.content).toBe('c');
+    expect(todoCapsuleLabel(s)).toBe('1/4 \u00b7 c');
+  });
+
+  it('falls back to the first pending item', () => {
+    const s = todoSummary([t('a', 'completed'), t('b', 'cancelled'), t('c', 'pending'), t('d', 'pending')])!;
+    expect(s.current?.content).toBe('c');
+    expect(s.allDone).toBe(false);
+  });
+
+  it('all done → no current, "All N done"', () => {
+    const s = todoSummary([t('a', 'completed'), t('b', 'completed'), t('c', 'cancelled')])!;
+    expect(s.allDone).toBe(true);
+    expect(s.current).toBeUndefined();
+    expect(todoCapsuleLabel(s)).toBe('All 2 done');
   });
 });

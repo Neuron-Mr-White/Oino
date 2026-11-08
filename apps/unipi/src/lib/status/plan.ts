@@ -131,6 +131,28 @@ export function todoProgress(todos: readonly TodoItem[]): { done: number; total:
   return { done: live.filter((t) => t.status === 'completed').length, total: live.length, inProgress: live.filter((t) => t.status === 'in_progress').length };
 }
 
+export type TodoSummary = {
+  done: number;
+  total: number;
+  /** The in-progress item, else the first pending one; none once everything is done. */
+  current?: TodoItem;
+  allDone: boolean;
+};
+
+/** The latest-snapshot summary the Todo section header and the composer capsule read. `null` without countable todos. */
+export function todoSummary(todos: readonly TodoItem[]): TodoSummary | null {
+  const { done, total } = todoProgress(todos);
+  if (total === 0) return null;
+  const current = todos.find((t) => t.status === 'in_progress') ?? todos.find((t) => t.status === 'pending');
+  return { done, total, ...(current ? { current } : {}), allDone: done === total };
+}
+
+/** The capsule's one-line label: `2/6 · item`, or `All 6 done`. */
+export function todoCapsuleLabel(s: TodoSummary): string {
+  if (s.allDone) return `All ${s.total} done`;
+  return s.current ? `${s.done}/${s.total} · ${s.current.content}` : `${s.done}/${s.total}`;
+}
+
 /** The plan file's basename for the section's title row. */
 export function planFileLabel(path: string | undefined): string | undefined {
   if (!path) return undefined;

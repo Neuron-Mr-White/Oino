@@ -5,6 +5,9 @@
  *                    task, counts bar, Stop/History) + the capsule's LH chip
  *   status-todos     the Plan & todos section: plan mode on, a plan file and
  *                    a todowrite checklist mid-run
+ *   status-todos-pane  the Graph tab open in the side pane: the Todo section
+ *                    over the Long-horizon section (no capsule: the pane shows it)
+ *   todo-capsule     pane closed: the pill above the composer + its drawer
  *   status-running   the compact Running summary (bash + agents + sidekick +
  *                    work-tray rows) over the same data as the Session modal
  *   capsule          the collapsed capsule alone (pane closed): branch ±,
@@ -41,6 +44,7 @@ const TODOS = [
   { content: 'Capsule: branch ±, LH progress, running count', status: 'pending' },
   { content: 'Delete the Progress sheet', status: 'pending', priority: 'high' },
   { content: 'Phone layer: sections under Git', status: 'pending' },
+  { content: 'Inline todo cards in the timeline', status: 'cancelled' },
 ];
 
 /** A session whose assistant called `todowrite` (the Plan section's source). */
@@ -206,6 +210,28 @@ export const statusTodos: MockScenario = {
     },
   ],
   setup: seedSessionRoute,
+};
+
+/** The side pane on the Graph (`status` / lh) tab, where the Todo section sits on top. */
+function seedTodoPane(): void {
+  seedSessionRoute();
+  if (!desktopShell()) return;
+  localStorage.setItem(`unipi.panes:${HOST}|${CWD}`, JSON.stringify({
+    side: { tabs: [{ id: 'tl', kind: 'status', params: { section: 'lh', hostId: HOST, path: CWD } }], active: { s001: 'tl' }, closed: [] },
+    bottom: { tabs: [], active: {}, closed: [] },
+  }));
+}
+
+export const statusTodosPane: MockScenario = { ...statusTodos, name: 'status-todos-pane', setup: seedTodoPane };
+
+/** The pane closed (desktop): only the floating todo capsule above the composer. */
+export const todoCapsule: MockScenario = {
+  ...statusTodos,
+  name: 'todo-capsule',
+  setup() {
+    localStorage.setItem('unipi.shell.layout', JSON.stringify({ sidebarOpen: true, sidebarW: 264, sideOpen: false, sideW: 480, bottomOpen: false, bottomH: 220 }));
+    localStorage.setItem('unipi.shell.last', JSON.stringify({ hostId: HOST, sessionId: 's001' }));
+  },
 };
 
 export const statusRunning: MockScenario = {

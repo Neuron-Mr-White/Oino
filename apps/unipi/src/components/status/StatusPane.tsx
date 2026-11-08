@@ -25,6 +25,7 @@ import '../git/git.css';
 import { GitSection } from './GitSection';
 import { LhSection } from './LhSection';
 import { PlanSection } from './PlanSection';
+import { TodoSection } from './TodoParts';
 import { openGraphView } from './GraphView';
 import { RunningSummary } from './RunningSummary';
 import './status.css';
@@ -152,6 +153,7 @@ export function StatusSections(props: { section?: StatusSectionId; hostId: strin
         <div class="status-sections" data-testid="status-sections">
           <Switch>
             <Match when={(props.section ?? 'lh') === 'lh'}>
+              <TodoSection hostId={props.hostId} sessionId={id()} />
               <LhSection hostId={props.hostId} sessionId={id()} onToast={props.onToast} />
             </Match>
             <Match when={props.section === 'plan'}>

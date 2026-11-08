@@ -6,8 +6,8 @@
  * dialog (the dock's dialog panel); no inline todo cards (§3.10). Hidden
  * while there is neither plan mode nor todos — no empty filler.
  */
-import { createEffect, createMemo, on, onCleanup, For, Show } from 'solid-js';
-import { Check, Circle, CircleSlash, Play } from 'lucide-solid';
+import { createEffect, createMemo, on, onCleanup, Show } from 'solid-js';
+import { Check } from 'lucide-solid';
 import { sessions } from '../../lib/session/store';
 import {
   latestPlanEntry,
@@ -16,16 +16,9 @@ import {
   readSessionWorkflowStatus,
   sessionWorkflowTopic,
   todoProgress,
-  type TodoItem,
 } from '../../lib/status/plan';
+import { TodoList } from './TodoParts';
 import './status.css';
-
-const TODO_GLYPH: Record<TodoItem['status'], typeof Check> = {
-  pending: Circle,
-  in_progress: Play,
-  completed: Check,
-  cancelled: CircleSlash,
-};
 
 export function PlanSection(props: { hostId: string; sessionId: string }) {
   const s = createMemo(() => sessions().ensure(props.hostId, props.sessionId));
@@ -65,26 +58,7 @@ export function PlanSection(props: { hostId: string; sessionId: string }) {
             </p>
           </Show>
           <Show when={todos().length > 0}>
-            <ul class="todo-list" data-testid="todo-list">
-              <For each={todos()}>
-                {(todo) => {
-                  const Glyph = TODO_GLYPH[todo.status];
-                  return (
-                    <li class="todo-item" data-status={todo.status} data-testid="todo-item">
-                      <span class="todo-glyph" aria-hidden="true">
-                        <Show when={todo.status === 'in_progress'} fallback={<Glyph size={13} />}>
-                          <span class="todo-pulse" />
-                        </Show>
-                      </span>
-                      <span class="todo-text">{todo.content}</span>
-                      <Show when={todo.priority === 'high'}>
-                        <span class="todo-priority">high</span>
-                      </Show>
-                    </li>
-                  );
-                }}
-              </For>
-            </ul>
+            <TodoList todos={todos()} />
             <Show when={progress().total > 0}>
               <div class="status-bar" role="progressbar" aria-label="Todos" aria-valuemin={0} aria-valuemax={progress().total} aria-valuenow={progress().done} data-testid="todo-bar">
                 <span style={{ width: `${Math.min(100, (progress().done / progress().total) * 100)}%` }} data-mode="todo" />

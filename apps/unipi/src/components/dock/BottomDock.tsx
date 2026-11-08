@@ -10,6 +10,7 @@
  *   queue        steering / follow-up queue               (A11)
  *   tray         `editorReplace` entries                  (U10)
  *   working line one line: working / waiting / needs you (ask) / background
+ *   todos        the todo capsule (desktop)
  *   composer     the send box                             (A12 replaces it)
  *   widgetBelow  `widgetBelow` slot entries               (U10)
  *
@@ -47,6 +48,8 @@ export function BottomDock(props: {
   queue?: JSX.Element;
   /** U10's `editorReplace` tray (replaces only the composer). */
   composerTray?: JSX.Element;
+  /** The todo capsule (desktop): a pill just above the composer. */
+  todos?: JSX.Element;
   /** A12's composer; the built-in one keeps the surface usable until then. */
   composer?: JSX.Element;
   widgetBelow?: JSX.Element;
@@ -120,6 +123,11 @@ export function BottomDock(props: {
       <div class="dock-region dock-region-working" data-region="working">
         <WorkingLine session={props.session} askCalls={askCalls()} tray={props.trayLabel} dialog={dockedWaiting()} />
       </div>
+      <Show when={props.todos}>
+        <div class="dock-region dock-region-todos" data-region="todos">
+          {props.todos}
+        </div>
+      </Show>
       <div class="dock-region dock-region-composer" data-region="composer">
         {/* §3.11 / §6.2: an `editorReplace` entry takes the composer's place
             (U10's tray); dialogs above it still win. */}
