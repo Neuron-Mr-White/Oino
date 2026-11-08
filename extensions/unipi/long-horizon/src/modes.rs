@@ -253,6 +253,9 @@ pub struct Owner {
     pub kind: OwnerKind,
     /// Label.
     pub label: String,
+    /// Chat that owns this owner (`None` = legacy, applies to the whole workspace).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     /// Status.
     pub status: OwnerStatus,
     /// Park reason.
@@ -310,6 +313,12 @@ fn renew(o: &Owner) -> Lease {
     }
 }
 
+/// An owner started by `session` (or a legacy per-workspace owner) applies to it.
+#[must_use]
+pub fn owner_applies(owner_session: Option<&str>, current: &str) -> bool {
+    owner_session.is_none_or(|s| s == current)
+}
+
 /// Stop classification for the footer (`complete | paused | budget | other`).
 #[must_use]
 pub fn stop_kind(reason: &str) -> &'static str {
@@ -331,6 +340,7 @@ impl Owners {
         id: String,
         kind: OwnerKind,
         label: &str,
+        session: Option<String>,
         now: &str,
     ) -> Option<Owner> {
         if self.active.is_some() {
@@ -344,6 +354,7 @@ impl Owners {
             owner_id: id,
             kind,
             label: label.to_owned(),
+            session,
             status: OwnerStatus::Active,
             reason: None,
             revision: 0,
@@ -699,13 +710,19 @@ mod tests {
     fn owners_lifecycle() {
         let mut o = Owners::default();
         assert!(
-            o.activate("a".into(), OwnerKind::Goal, "obj", "t")
+            o.activate("a".into(), OwnerKind::Goal, "obj", None, "t")
                 .is_some()
         );
-        assert!(o.activate("b".into(), OwnerKind::Graph, "x", "t").is_none());
+        assert!(
+            o.activate("b".into(), OwnerKind::Graph, "x", None, "t")
+                .is_none()
+        );
         let p = o.suspend("paused(user_requested)", "t").unwrap();
         assert_eq!((p.status, p.lease.generation), (OwnerStatus::Parked, 1));
-        assert!(o.activate("c".into(), OwnerKind::Graph, "g", "t").is_some());
+        assert!(
+            o.activate("c".into(), OwnerKind::Graph, "g", None, "t")
+                .is_some()
+        );
         assert!(o.suspend("x", "t").is_none(), "park slot busy");
         o.finish("complete(finish)", "t", 5);
         assert_eq!(o.last_stop, Some(("complete".into(), 5)));
@@ -715,6 +732,13 @@ mod tests {
             "Active owner: goal \"obj\" (rev 2, lease gen 2)\nRecent: graph→complete(finish)"
         ));
         assert_eq!(stop_kind("budget_limited(token)"), "budget");
+    }
+
+    #[test]
+    fn owner_applies_to_its_own_chat_only() {
+        assert!(owner_applies(None, "s-1"), "legacy owner applies anywhere");
+        assert!(owner_applies(Some("s-1"), "s-1"));
+        assert!(!owner_applies(Some("s-2"), "s-1"));
     }
 
     #[test]
@@ -736,6 +760,7 @@ mod tests {
             owner_id: "i".into(),
             kind: OwnerKind::Graph,
             label: "l".into(),
+            session: None,
             status: OwnerStatus::Active,
             reason: None,
             revision: 0,

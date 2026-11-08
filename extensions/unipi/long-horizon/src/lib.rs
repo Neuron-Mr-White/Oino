@@ -80,6 +80,8 @@ const WORK_FAILED_TOPIC: &str = "unipi:long-horizon:work-failed";
 const WORK_ERRORED_TOPIC: &str = "unipi:long-horizon:work-errored";
 /// The app's graph data + Retry service (`_oino/service_call`).
 pub const GRAPH_SERVICE: &str = "long-horizon.graph";
+/// Session entry that remembers a chat's explicit mode across restarts.
+const MODE_ENTRY: &str = "long-horizon-mode";
 
 /// [owner-fix-8] The per-chat mode topic (`unipi:long-horizon:state:<session id>`).
 /// The global `unipi:long-horizon:state` is one shared sticky value (chats
@@ -123,6 +125,15 @@ fn resume_unrecoverable(error: &str) -> bool {
     const NEEDLES: &[&str] = &["can't resume", "session file", "corrupt", "unreadable"];
     let lower = error.to_lowercase();
     NEEDLES.iter().any(|n| lower.contains(n))
+}
+
+/// The chat's persisted explicit mode: the last `long-horizon-mode` entry in the branch.
+fn restored_mode(entries: &[Value]) -> Option<Mode> {
+    entries
+        .iter()
+        .rfind(|e| e.get("customType").and_then(Value::as_str) == Some(MODE_ENTRY))
+        .and_then(|e| e.get("data")?.get("mode")?.as_str())
+        .and_then(Mode::parse)
 }
 
 /// The stashed continuation (one slot).
@@ -327,6 +338,13 @@ impl Lh {
         self.publish();
     }
 
+    /// Writes the current chat's explicit mode to its session file so a reopen restores it.
+    fn persist_mode(sid: &str, mode: Mode) {
+        if sid == session::session_id() {
+            let _ = session::append_entry(MODE_ENTRY, Some(&json!({"mode": mode.as_str()})));
+        }
+    }
+
     fn publish(&self) {
         let st = self.state.borrow();
         let mode = st
@@ -502,13 +520,9 @@ impl Lh {
             };
             let mut explicit = fresh.or(sticky);
             if let Some(m) = explicit {
-                let switch = self
-                    .state
-                    .borrow()
-                    .owners
-                    .active
-                    .as_ref()
-                    .is_some_and(|o| o.kind.mode() != m);
+                let switch = self.state.borrow().owners.active.as_ref().is_some_and(|o| {
+                    modes::owner_applies(o.session.as_deref(), &session) && o.kind.mode() != m
+                });
                 if switch {
                     let ok = self
                         .state
@@ -527,6 +541,7 @@ impl Lh {
                 .owners
                 .active
                 .as_ref()
+                .filter(|o| modes::owner_applies(o.session.as_deref(), &session))
                 .map(|o| o.kind.mode());
             let r = if let Some(m) = explicit {
                 (m, "explicit", None)
@@ -1011,6 +1026,7 @@ impl Lh {
                 &s("objective").unwrap_or_default(),
                 args.get("token_budget").and_then(Value::as_u64),
                 cx.cx.is_child(),
+                cx.cx.session_id(),
             ),
             "get_goal" => {
                 let st = self.state.borrow();
@@ -1189,7 +1205,13 @@ impl Lh {
         Ok(r)
     }
 
-    fn create_goal(&self, objective: &str, budget: Option<u64>, child: bool) -> ToolResult {
+    fn create_goal(
+        &self,
+        objective: &str,
+        budget: Option<u64>,
+        child: bool,
+        session: &str,
+    ) -> ToolResult {
         if child {
             return err(modes::CHILD_OWNER_REFUSAL);
         }
@@ -1222,9 +1244,13 @@ impl Lh {
         };
         match st.owners.active.as_ref().map(|o| o.kind) {
             None => {
-                let o = st
-                    .owners
-                    .activate(uuid(), OwnerKind::Goal, &g.objective, &now_iso());
+                let o = st.owners.activate(
+                    uuid(),
+                    OwnerKind::Goal,
+                    &g.objective,
+                    Some(session.to_owned()),
+                    &now_iso(),
+                );
                 drop(st);
                 Self::owner_event("activated", o.as_ref(), None);
                 st = self.state.borrow_mut();
@@ -1368,14 +1394,19 @@ impl Lh {
             started_at: now_iso(),
         };
         let prompt = ralph::iteration_prompt(&state, content, &task_path(name), false);
-        let o = st
-            .owners
-            .activate(uuid(), OwnerKind::RalphLoop, name, &now_iso());
+        let o = st.owners.activate(
+            uuid(),
+            OwnerKind::RalphLoop,
+            name,
+            Some(session.to_owned()),
+            &now_iso(),
+        );
         st.machine.mark_kickoff(&now_iso());
         st.machine.record_pending(&prompt, 0);
         st.ralph = Some(state.clone());
         st.session_override.insert(session.to_owned(), Mode::Ralph);
         drop(st);
+        Self::persist_mode(session, Mode::Ralph);
         Self::owner_event("activated", o.as_ref(), None);
         unipi_kit::bus::emit_raw(
             topics::RALPH_ITERATION_DONE,
@@ -1457,6 +1488,7 @@ impl Lh {
                     st.owners
                         .finish("complete(verifier_met)", &now_iso(), timers::now_ms())
                 };
+                Self::persist_mode(session, Mode::None);
                 Self::owner_event("finished", o.as_ref(), Some("complete(verifier_met)"));
                 unipi_kit::bus::emit(&topics::RalphLoopEnd {
                     name: state.name.clone(),
@@ -1824,12 +1856,16 @@ impl Lh {
             };
             let o = {
                 let mut st = self.state.borrow_mut();
-                if st.owners.active.as_ref().is_some_and(|a| a.kind != kind) {
+                let session = cx.cx.session_id();
+                if st.owners.active.as_ref().is_some_and(|a| {
+                    modes::owner_applies(a.session.as_deref(), session) && a.kind != kind
+                }) {
                     let reason = format!("paused(superseded_by:{})", kind.mode().as_str());
                     st.owners.suspend(&reason, &now_iso());
                 }
                 if st.owners.active.is_none() {
-                    st.owners.activate(uuid(), kind, &task, &now_iso())
+                    st.owners
+                        .activate(uuid(), kind, &task, Some(session.to_owned()), &now_iso())
                 } else {
                     None
                 }
@@ -2406,6 +2442,7 @@ impl Lh {
         st.session_override.remove(session);
         st.owners.finish(reason, &now_iso(), timers::now_ms());
         drop(st);
+        Self::persist_mode(session, Mode::None);
         Self::owner_event("finished", Some(&active), Some(reason));
         if active.kind == OwnerKind::RalphLoop {
             let it = self
@@ -2699,13 +2736,9 @@ impl Lh {
             }
             return;
         }
-        let need_park = self
-            .state
-            .borrow()
-            .owners
-            .active
-            .as_ref()
-            .is_some_and(|a| a.kind.mode() != mode);
+        let need_park = self.state.borrow().owners.active.as_ref().is_some_and(|a| {
+            modes::owner_applies(a.session.as_deref(), cx.session_id()) && a.kind.mode() != mode
+        });
         if need_park {
             let reason = format!("paused(superseded_by:{})", mode.as_str());
             let parked = {
@@ -2747,6 +2780,7 @@ impl Lh {
             st.display = Some(mode);
             apply_mode_tools(mode);
         }
+        Self::persist_mode(cx.session_id(), mode);
         self.save();
         self.publish();
         let busy = !control::is_idle();
@@ -3135,7 +3169,7 @@ impl Lh {
                 {
                     json!({"ok": false, "reason": format!("a parked goal exists (\"{}\") — resume or clear it first", g.objective)})
                 } else {
-                    let r = self.create_goal(&obj, None, false);
+                    let r = self.create_goal(&obj, None, false, session);
                     let g = self.state.borrow().machine.goal.clone();
                     let t = r
                         .content
@@ -3233,6 +3267,7 @@ impl Lh {
                             st.session_display.insert(session.to_owned(), mode);
                             st.display = Some(mode);
                             drop(st);
+                            Self::persist_mode(session, mode);
                             if control::is_idle() { apply_mode_tools(mode); }
                             self.save();
                             self.publish();
@@ -3321,14 +3356,17 @@ impl Lh {
             // are parent duties. A child reload here wipes unsaved state mid-spawn.
             return;
         }
+        let reason = ev.get("reason").and_then(Value::as_str);
+        let restored = if matches!(reason, Some("new" | "fork")) {
+            None
+        } else {
+            restored_mode(&session::branch(None).unwrap_or_default())
+        };
         {
             let mut st = self.state.borrow_mut();
             st.loaded = false;
             st.graph_session = Some(cx.session_id().to_owned());
-            if matches!(
-                ev.get("reason").and_then(Value::as_str),
-                Some("new" | "resume" | "fork")
-            ) {
+            if matches!(reason, Some("new" | "fork")) {
                 // This session's own mode keys restart; other sessions keep theirs
                 // (F-06: mode state is per chat, never a shared slot).
                 st.session_override.remove(cx.session_id());
@@ -3339,6 +3377,10 @@ impl Lh {
                 // the mode the last chat of this workspace used.
                 st.session_display
                     .insert(cx.session_id().to_owned(), self.settings().default_mode);
+            } else if let Some(mode) = restored {
+                // Reopen: the chat's explicit mode came back from its own session file.
+                st.session_override.insert(cx.session_id().to_owned(), mode);
+                st.session_display.insert(cx.session_id().to_owned(), mode);
             } else {
                 // A chat that is already running keeps the mode it resolved.
                 let known = st
@@ -3566,6 +3608,7 @@ impl Extension for Lh {
                     // the `Goal`/`Ralph` status chip alive after the stop.
                     st.display = Some(Mode::None);
                 }
+                Self::persist_mode(cx.session_id(), Mode::None);
                 apply_mode_tools(Mode::None);
                 ext.save();
                 // [graph-mode] the chip leaves now, not at the next turn's start.
@@ -3798,6 +3841,22 @@ mod tests {
     fn owner_fix_8_mode_is_per_chat() {
         // [owner-fix-8] every chat reads its own mode from its own topic.
         assert_eq!(session_state_topic("s-1"), "unipi:long-horizon:state:s-1");
+    }
+
+    #[test]
+    fn restored_mode_reads_the_last_entry() {
+        let e = |mode: &str| json!({"type": "custom", "customType": MODE_ENTRY, "data": {"mode": mode}});
+        assert_eq!(restored_mode(&[]), None);
+        assert_eq!(restored_mode(&[e("graph")]), Some(Mode::Graph));
+        assert_eq!(restored_mode(&[e("graph"), e("swarm")]), Some(Mode::Swarm));
+        assert_eq!(restored_mode(&[e("swarm"), e("none")]), Some(Mode::None));
+        assert_eq!(
+            restored_mode(&[
+                json!({"customType": "long-horizon-decision", "data": {"mode": "graph"}})
+            ]),
+            None,
+            "other custom entries are ignored"
+        );
     }
 
     #[test]
