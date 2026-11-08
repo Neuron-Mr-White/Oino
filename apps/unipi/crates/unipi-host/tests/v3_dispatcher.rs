@@ -1021,3 +1021,15 @@ async fn status_reports_only_live_leads() {
     assert!(status["projects"][0]["lead"].is_null());
     assert!(status["leads"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn status_counts_ready_tickets_using_dispatch_rule() {
+    let f = Fixture::new();
+    let first = f.add("ready", &[]);
+    f.add("blocked dependency", &[first.clone()]);
+    f.add("also ready", &[]);
+    let d = f.dispatcher(Arc::new(Fake::default())).await;
+    assert_eq!(d.status().await.unwrap()["projects"][0]["ready"], 2);
+    d.start(&f.project.slug, &first).await.unwrap();
+    assert_eq!(d.status().await.unwrap()["projects"][0]["ready"], 1);
+}

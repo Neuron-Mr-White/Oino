@@ -54,7 +54,7 @@ export function ProjectsSection(props: { hostId: string; sa: SuperagentState; on
         <ul class="sa-projects">
           <Limited items={list()} limit={4}>{(p) => <li class="sa-project-row">
             <div class="sa-project-main"><strong title={props.sa.projectName(p.projectId)}>{props.sa.projectName(p.projectId)}</strong>
-              <span class="sa-sub">{p.lead ? <><span class="sa-live-dot" aria-hidden="true" /> Lead running</> : paused(p) ? 'Auto-start paused' : 'No lead'}</span></div>
+              <span class="sa-sub">{p.lead ? <><span class="sa-live-dot" aria-hidden="true" /> Lead running</> : <>{paused(p) ? 'Auto-start paused' : 'No lead'}{p.ready > 0 ? ` · ${p.ready} ready` : ''}</>}</span></div>
             <span class="sa-auto"><span aria-hidden="true">Auto</span><Toggle label={`Auto-start ${props.sa.projectName(p.projectId)}`} checked={p.autoStart} disabled={props.sa.isBusy(`auto:${p.projectId}`)} onChange={(v) => void props.sa.setAutoStart(p.projectId, v)} /></span>
             <button type="button" class="sa-btn" aria-label={`Start ${props.sa.projectName(p.projectId)}`} onClick={() => setStarting(p)}><Play size={14} /> Start</button>
           </li>}</Limited>

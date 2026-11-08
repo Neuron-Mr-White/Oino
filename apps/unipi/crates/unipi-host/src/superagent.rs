@@ -603,11 +603,10 @@ impl Dispatcher {
                 continue;
             }
             let mut lead = None;
-            for task in Board::open(&self.layout, project.clone())
-                .map_err(storage)?
-                .tasks()
-                .map_err(storage)?
-            {
+            let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
+            let tasks = board.tasks().map_err(storage)?;
+            let ready = tasks.iter().filter(|task| unipi_kanboard::deps::is_ready(task, &board.dep_lookup(&tasks), unipi_kanboard::model::ChainGate::InReview)).count();
+            for task in tasks {
                 if task.status == Status::Archived {
                     continue;
                 }
@@ -658,7 +657,7 @@ impl Dispatcher {
                     }
                 }
             }
-            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead}));
+            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead,"ready":ready}));
         }
         Ok(
             json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),

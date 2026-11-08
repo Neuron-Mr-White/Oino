@@ -30,7 +30,7 @@ const NeedsSchema = z.object({
   command: z.string().nullish(), summary: z.string().nullish(), risk: AutonomySchema.nullish(), ceiling: AutonomySchema.optional(), reason: z.string().optional(),
 });
 const ReviewSchema = z.object({ projectId: z.string(), taskId: z.string(), status: z.string().optional() });
-const ProjectSchema = z.object({ projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish() });
+const ProjectSchema = z.object({ projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0) });
 
 const RawStatusSchema = z.object({
   enabled: z.boolean(), concurrencyCap: z.number().int().min(1),

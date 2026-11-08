@@ -122,6 +122,12 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       apply(autoStart);
       const ok = await run(`auto:${projectId}`, () => superagentApi.configureProject(hostId(), projectId, autoStart), (v) => { apply(v.autoStart); });
       if (!ok && before !== undefined) apply(before);
+      if (ok && autoStart) {
+        const current = status();
+        const project = current?.projects?.find((p) => p.projectId === projectId);
+        if (current?.enabled === false) flash('Auto-start is off globally — turn it on in Superagent settings to start leads');
+        else if (current?.enabled && project && project.ready > 0) flash(`Starting a lead for ${project.ready} ready tickets`);
+      }
       return ok;
     },
     setMode: (projectId: string, mode: LeadMode) => run(`mode:${projectId}`, () => superagentApi.setMode(hostId(), projectId, mode), async () => { flash(`Mode will switch at the next step.`); await refresh(); }),

@@ -177,6 +177,20 @@ describe('v3 Superagent leads', () => {
     await screen.findByText('Host refused');
     await waitFor(() => expect((screen.getByRole('switch', { name: 'Auto-start Billing' }) as HTMLInputElement).checked).toBe(false));
   });
+  it('shows ready counts and explains starting a lead when Auto is enabled', async () => {
+    vi.spyOn(superagentApi, 'configureProject').mockResolvedValue(ok({ projectId: 'billing', autoStart: true }));
+    const value = raw();
+    mount({ ...value, projects: value.projects.map((p) => p.projectId === 'billing' ? { ...p, ready: 3 } : p) });
+    await screen.findByText('No lead · 3 ready');
+    fireEvent.click(screen.getByRole('switch', { name: 'Auto-start Billing' }));
+    await screen.findByText('Starting a lead for 3 ready tickets');
+  });
+  it('explains when global auto-start is disabled', async () => {
+    vi.spyOn(superagentApi, 'configureProject').mockResolvedValue(ok({ projectId: 'billing', autoStart: true }));
+    mount(raw({ enabled: false }));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Auto-start Billing' }));
+    await screen.findByText('Auto-start is off globally — turn it on in Superagent settings to start leads');
+  });
   it('watcher_and_relay: master switch and cap live in the settings popover', async () => {
     const configure = vi.spyOn(superagentApi, 'configure').mockImplementation(async (_h, c) => ok(c));
     mount();

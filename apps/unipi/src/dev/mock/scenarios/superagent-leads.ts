@@ -19,11 +19,11 @@ chat.snapshot.leaf_id = 'sa-answer';
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const projects = [
-  { projectId: 'heartpick', name: 'Heartpick', autoStart: true, lead: 'lead-hp' },
-  { projectId: 'oino', name: 'Oino', autoStart: false, lead: 'lead-oino' },
-  { projectId: 'website', name: 'Website', autoStart: true, lead: null },
-  { projectId: 'billing', name: 'Billing', autoStart: false, lead: null },
-  { projectId: 'notes', name: 'Field notes', autoStart: false, lead: null },
+  { projectId: 'heartpick', name: 'Heartpick', autoStart: true, ready: 0, lead: 'lead-hp' },
+  { projectId: 'oino', name: 'Oino', autoStart: false, ready: 0, lead: 'lead-oino' },
+  { projectId: 'website', name: 'Website', autoStart: true, ready: 3, lead: null },
+  { projectId: 'billing', name: 'Billing', autoStart: false, ready: 0, lead: null },
+  { projectId: 'notes', name: 'Field notes', autoStart: false, ready: 0, lead: null },
 ];
 const leads = [
   { projectId: 'heartpick', sessionId: 'lead-hp', presetId: 'bug-batch', model: 'anthropic/claude-sonnet-4-5', thinking: 'high', autonomy: 'high', mode: 'swarm', ticketIds: ['HP-1', 'HP-4', 'HP-7'], step: 'Fixing the sync race', tool: 'edit', startedAt: ago(18), cost: 0.84, progress: { running: 2, queued: 1, done: 3 } },
@@ -59,6 +59,7 @@ export const superagentLeads: MockScenario = {
   name: 'superagent-leads',
   hosts: [{
     ...base,
+    cards: [{ session_id: 'lead-hp', name: 'Lead · Heartpick', cwd: '/home/you/projects/heartpick', run_state: 'working', updated_at: Date.now(), message_count: 4, worker: { projectId: 'heartpick', projectName: 'Heartpick', taskId: 'HP-1' } }],
     sessions: { 'superagent-chat': chat, 'lead-hp': genSession('lead-hp', { seed: 5, turns: 1, toolsPerTurn: 1, cwd: '/home/you/projects/heartpick' }), 'lead-oino': genSession('lead-oino', { seed: 6, turns: 1, toolsPerTurn: 1, cwd: '/home/you/projects/oino' }) },
     ops: {
       ...base.ops,
