@@ -314,7 +314,7 @@ impl AgentSession {
     pub async fn check_permission(&self, tool: &str, args: &JsonObject) -> Result<(), String> {
         if (self.cwd().as_os_str().is_empty() || self.with_manager(|m| m.branch(None).iter().any(|e|
             matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent"))))
-            && !matches!(tool, "kanboard" | "project_resolver" | "superagent.start" | "superagent.stop" | "superagent.relay" | "ask_user") {
+            && !matches!(tool, "kanboard" | "project_resolver" | "superagent.start" | "superagent.stop" | "superagent.relay" | "ask_user" | "memory_search" | "global_memory_search" | "memory_list") {
             return Err("Superagent has no workspace, filesystem or shell access; start a ticket worker instead".into());
         }
         let args = oino_tools::canonical_args(tool, args).map_err(|e| e.to_string())?;

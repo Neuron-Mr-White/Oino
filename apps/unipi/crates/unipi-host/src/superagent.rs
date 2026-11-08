@@ -378,6 +378,7 @@ impl Dispatcher {
         {
             return Err(fail("E_WATCHER_OFF", "Project autoStart is disabled"));
         }
+        let requested = preset_id.is_some() || !overrides.is_empty();
         let preset = preferences
             .resolve(preset_id, overrides)
             .map_err(|e| fail("E_SCHEMA", e))?;
@@ -412,10 +413,28 @@ impl Dispatcher {
         }
         if let Some((id, _)) = occupied.iter().find(|(_, p)| p.as_str() == project_id) {
             if !self.workers.live(id).await || self.workers.ended(id).await.is_some() { return Err(fail("E_WORKER_NOT_LIVE", "Lead has ended; retry after it is retired")); }
+            if requested {
+                let running = self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).cloned();
+                let differs = running.as_ref().map_or(preset.model.is_some(), |p| {
+                    p.model != preset.model || p.thinking != preset.thinking || p.mode != preset.mode
+                });
+                if differs {
+                    let (model, thinking) = running.as_ref().map_or(("default model", "default"), |p| {
+                        (p.model.as_deref().unwrap_or("default model"), p.thinking.as_deref().unwrap_or("default"))
+                    });
+                    let wanted = format!("{} ({})", preset.model.as_deref().unwrap_or("default model"), preset.thinking.as_deref().unwrap_or("default"));
+                    return Err(fail("E_LEAD_RUNNING", format!("Project already has a running lead {id} on {model} ({thinking}); stop it with superagent.stop, then start again to use {wanted}")));
+                }
+            }
             let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
             let ids: Vec<String> = task_ids.iter().filter(|task_id| !board.get(task_id).ok().is_some_and(|task| dispatcher::matches_claim(&task, id))).cloned().collect();
             if ids.is_empty() { return Ok(id.clone()); }
-            let tasks = dispatcher::reserve_many(&self.layout, project.clone(), &ids, id).map_err(|e| fail("E_WORKER_REFUSED", e))?;
+            let tasks = if watcher {
+                dispatcher::reserve_many(&self.layout, project.clone(), &ids, id)
+            } else {
+                dispatcher::reserve_many_manual(&self.layout, project.clone(), &ids, id)
+            }
+            .map_err(|e| fail("E_WORKER_REFUSED", e))?;
             let text = lead_brief(&project, &tasks);
             for task in &tasks {
                 dispatcher::relay(&self.layout, project.clone(), &task.id, id, &text, &uuid::Uuid::now_v7().to_string()).map_err(storage)?;
@@ -433,8 +452,12 @@ impl Dispatcher {
             ));
         }
         let id = uuid::Uuid::now_v7().to_string();
-        let tasks = dispatcher::reserve_many(&self.layout, project.clone(), task_ids, &id)
-            .map_err(|e| fail("E_WORKER_REFUSED", e))?;
+        let tasks = if watcher {
+            dispatcher::reserve_many(&self.layout, project.clone(), task_ids, &id)
+        } else {
+            dispatcher::reserve_many_manual(&self.layout, project.clone(), task_ids, &id)
+        }
+        .map_err(|e| fail("E_WORKER_REFUSED", e))?;
         self.active
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

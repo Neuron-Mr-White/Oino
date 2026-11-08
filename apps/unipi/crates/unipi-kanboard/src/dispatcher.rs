@@ -17,6 +17,27 @@ pub fn reserve(layout: &Layout, project: Project, id: &str, session: &str) -> Re
 
 /// Reserve a batch under one board lock after validating every requested ticket.
 pub fn reserve_many(layout: &Layout, project: Project, ids: &[String], session: &str) -> Result<Vec<Task>> {
+    reserve_many_impl(layout, project, ids, session, false)
+}
+
+/// Reserve for an explicit manual start: backlog, todo and blocked tickets may be
+/// taken directly. The watcher path keeps requiring a ready todo ticket.
+pub fn reserve_many_manual(
+    layout: &Layout,
+    project: Project,
+    ids: &[String],
+    session: &str,
+) -> Result<Vec<Task>> {
+    reserve_many_impl(layout, project, ids, session, true)
+}
+
+fn reserve_many_impl(
+    layout: &Layout,
+    project: Project,
+    ids: &[String],
+    session: &str,
+    manual: bool,
+) -> Result<Vec<Task>> {
     let _lock = layout.lock_board(&project.slug)?;
     let board = Board::open(layout, project)?;
     let tasks = board.tasks()?;
@@ -27,7 +48,9 @@ pub fn reserve_many(layout: &Layout, project: Project, ids: &[String], session: 
         let task = board.get(id)?;
         if !matches_claim(&task, session) {
             if tasks.iter().filter_map(|t| t.run.as_ref()).any(|run| run.owner != RunOwner::Dispatcher || run.session != session) { return Err(Error::rule("Project already has a worker; finish or stop it first")); }
-            if task.status != Status::Todo { return Err(Error::rule("Move the task to todo before starting a worker")); }
+            if manual {
+                if !matches!(task.status, Status::Backlog | Status::Todo | Status::Blocked) { return Err(Error::rule(format!("Cannot start a {} ticket; use backlog, todo or blocked", task.status))); }
+            } else if task.status != Status::Todo { return Err(Error::rule("Move the task to todo before starting a worker")); }
             if deps::pending_deps_regardless_of_status(&task, &board.dep_lookup(&tasks), ChainGate::InReview).is_some() { return Err(Error::rule("Finish the ticket dependencies before starting a worker")); }
         }
         selected.push(task);

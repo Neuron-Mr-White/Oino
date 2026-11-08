@@ -70,6 +70,17 @@ pub struct Overrides {
     pub priority: Option<bool>,
 }
 impl Overrides {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.model.is_none()
+            && self.thinking.is_none()
+            && self.autonomy.is_none()
+            && self.mode.is_none()
+            && self.max_parallel.is_none()
+            && self.review.is_none()
+            && self.profiles.is_none()
+            && self.priority.is_none()
+    }
     pub fn apply(self, preset: &mut Preset) {
         if let Some(v) = self.model {
             preset.model = Some(v);

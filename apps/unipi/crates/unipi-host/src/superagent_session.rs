@@ -65,8 +65,8 @@ pub async fn create_from(
         ),
         (
             "superagent.start",
-            "Start or queue ready tickets with the project's lead.",
-            json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"presetId":{"type":"string"},"overrides":{"type":"object"}}),
+            "Start or queue tickets with the project's lead. Tickets may be backlog, todo or blocked. Optional overrides: model (string, \"provider/id\"), thinking (\"off\"|\"minimal\"|\"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"), autonomy (\"low\"|\"medium\"|\"high\"), mode (\"none\"|\"goal\"|\"ralph\"|\"swarm\"|\"graph\"), maxParallel (integer >= 1), review (\"none\"|\"light\"|\"full\"), profiles (string array), priority (boolean). Do not move tickets to todo before calling start; start takes backlog, todo or blocked tickets itself (moving to todo first lets auto-start launch a lead with the default preset).",
+            json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"presetId":{"type":"string"},"overrides":{"type":"object","properties":{"model":{"type":"string"},"thinking":{"type":"string","enum":["off","minimal","low","medium","high","xhigh","max"]},"autonomy":{"type":"string","enum":["low","medium","high"]},"mode":{"type":"string","enum":["none","goal","ralph","swarm","graph"]},"maxParallel":{"type":"integer","minimum":1},"review":{"type":"string","enum":["none","light","full"]},"profiles":{"type":"array","items":{"type":"string"}},"priority":{"type":"boolean"}},"additionalProperties":false}}),
             vec!["projectId", "taskIds"],
         ),
         (
@@ -230,22 +230,28 @@ impl AgentTool for ChatTool {
                     let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
                         .map_err(|e| ToolError::new(e.to_string()))?;
                     let command = argv.first().map(String::as_str).unwrap_or("");
-                    if !matches!(
-                        command,
-                        "add"
-                            | "edit"
-                            | "link"
-                            | "unlink"
-                            | "order"
-                            | "move"
-                            | "note"
-                            | "list"
-                            | "show"
-                            | "search"
-                            | "next"
-                            | "chain"
-                            | "status"
-                    ) {
+                    let help = (argv.len() == 1
+                        && matches!(command, "help" | "--help" | "-h"))
+                        || (argv.len() >= 2
+                            && matches!(argv[1].as_str(), "help" | "--help" | "-h"));
+                    if !help
+                        && !matches!(
+                            command,
+                            "add"
+                                | "edit"
+                                | "link"
+                                | "unlink"
+                                | "order"
+                                | "move"
+                                | "note"
+                                | "list"
+                                | "show"
+                                | "search"
+                                | "next"
+                                | "chain"
+                                | "status"
+                        )
+                    {
                         return Err(ToolError::new(
                             "Superagent manages boards; use superagent.start/stop for workers",
                         ));
@@ -258,9 +264,13 @@ impl AgentTool for ChatTool {
                         ));
                     }
                     // Global flags cannot override the explicitly validated target/actor.
+                    if argv.iter().any(|s| s.starts_with("--project")) {
+                        return Err(ToolError::new(
+                            "Don't pass --project; set the projectId argument instead.",
+                        ));
+                    }
                     if argv.iter().any(|s| {
-                        s.starts_with("--project")
-                            || s.starts_with("--actor")
+                        s.starts_with("--actor")
                             || s.starts_with("--home")
                             || s.starts_with("--session")
                             || s.starts_with("--gate")

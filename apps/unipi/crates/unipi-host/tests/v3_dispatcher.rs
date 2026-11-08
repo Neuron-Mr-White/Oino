@@ -524,7 +524,7 @@ async fn two_todos_one_project_worker() {
     assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
 }
 #[tokio::test]
-async fn crash_mid_launch_blocks_without_second_session() {
+async fn crash_mid_launch_blocks_then_manual_restart_starts_fresh() {
     let f = Fixture::new();
     let id = f.add("crash", &[]);
     let fake = Arc::new(Fake::default());
@@ -555,8 +555,11 @@ async fn crash_mid_launch_blocks_without_second_session() {
         .unwrap()
         .text
         .contains(INTERRUPTED));
-    assert!(restarted.start(&f.project.slug, &id).await.is_err());
-    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+    // Manual start takes blocked tickets, so the interrupted reservation is replaced.
+    fake.pending.store(false, Ordering::SeqCst);
+    let retried = restarted.start(&f.project.slug, &id).await.unwrap();
+    assert_ne!(retried, reserved);
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 2);
 }
 #[tokio::test]
 async fn advisory_owner_cap_dependencies_and_relay() {
@@ -1011,8 +1014,9 @@ async fn process_crash_releases_os_lock_and_blocks_durable_reservation() {
         .unwrap()
         .text
         .contains(INTERRUPTED));
-    assert!(d.start(&f.project.slug, &id).await.is_err());
-    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    // Manual start takes blocked tickets; the interrupted reservation is replaced.
+    assert!(!d.start(&f.project.slug, &id).await.unwrap().is_empty());
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -1046,4 +1050,137 @@ async fn status_counts_ready_tickets_using_dispatch_rule() {
     assert_eq!(d.status().await.unwrap()["projects"][0]["ready"], 2);
     d.start(&f.project.slug, &first).await.unwrap();
     assert_eq!(d.status().await.unwrap()["projects"][0]["ready"], 1);
+}
+
+#[tokio::test]
+async fn manual_start_takes_backlog_and_blocked_with_requested_preset() {
+    use unipi_host::superagent_presets::Overrides;
+    let f = Fixture::new();
+    let backlog = f.add("backlog", &[]);
+    let blocked = f.add("blocked", &[]);
+    let board = Board::open(&f.layout, f.project.clone()).unwrap();
+    let mut task = board.get(&backlog).unwrap();
+    task.status = Status::Backlog;
+    board.save(&task).unwrap();
+    let mut task = board.get(&blocked).unwrap();
+    task.status = Status::Blocked;
+    board.save(&task).unwrap();
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let first = d
+        .start_with_preset(
+            &f.project.slug,
+            &backlog,
+            None,
+            Overrides {
+                model: Some("faux/backlog".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        fake.presets.lock().unwrap()[0].model.as_deref(),
+        Some("faux/backlog")
+    );
+    assert_eq!(f.task(&backlog).status, Status::InProgress);
+    assert_eq!(f.task(&backlog).run.unwrap().session, first);
+    assert!(d.stop(&f.project.slug, &backlog).await.unwrap());
+    let second = d
+        .start_with_preset(
+            &f.project.slug,
+            &blocked,
+            None,
+            Overrides {
+                model: Some("faux/blocked".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_ne!(first, second);
+    assert_eq!(
+        fake.presets.lock().unwrap()[1].model.as_deref(),
+        Some("faux/blocked")
+    );
+    assert_eq!(f.task(&blocked).status, Status::InProgress);
+}
+
+#[tokio::test]
+async fn watcher_tick_does_not_start_backlog() {
+    let f = Fixture::new();
+    let backlog = f.add("backlog", &[]);
+    let board = Board::open(&f.layout, f.project.clone()).unwrap();
+    let mut task = board.get(&backlog).unwrap();
+    task.status = Status::Backlog;
+    board.save(&task).unwrap();
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.configure(Config {
+        enabled: true,
+        concurrency_cap: 1,
+    })
+    .await
+    .unwrap();
+    d.configure_project(&f.project.slug, true).await.unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    assert_eq!(f.task(&backlog).status, Status::Backlog);
+}
+
+#[tokio::test]
+async fn manual_start_refuses_different_preset_while_lead_runs() {
+    use unipi_host::superagent_presets::Overrides;
+    let f = Fixture::new();
+    let a = f.add("a", &[]);
+    let b = f.add("b", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let id = d
+        .start_with_preset(
+            &f.project.slug,
+            &a,
+            None,
+            Overrides {
+                model: Some("faux/first".into()),
+                thinking: Some("low".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let err = d
+        .start_with_preset(
+            &f.project.slug,
+            &b,
+            None,
+            Overrides {
+                model: Some("faux/second".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, "E_LEAD_RUNNING");
+    assert!(err.message.contains(&id));
+    assert!(err.message.contains("superagent.stop"));
+    assert_eq!(f.task(&b).status, Status::Todo);
+    assert!(fake.relays.lock().unwrap().is_empty());
+    assert!(fake.deliveries.lock().unwrap().is_empty());
+    assert_eq!(
+        d.start_with_preset(
+            &f.project.slug,
+            &b,
+            None,
+            Overrides {
+                model: Some("faux/first".into()),
+                thinking: Some("low".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap(),
+        id
+    );
+    assert_eq!(*fake.relays.lock().unwrap(), vec![id]);
 }
