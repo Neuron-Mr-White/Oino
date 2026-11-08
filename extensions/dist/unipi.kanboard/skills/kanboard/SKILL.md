@@ -61,6 +61,7 @@ and `rotate-token` are user-only — the agent is refused.
 | in progress → blocked | agent, system — **comment required** (what you need) |
 | in progress → todo | user or system `release` — comment required (the session died or gave the task up) |
 | blocked → todo | **user or agent** — comment optional (the answer, when there is one) |
+| blocked → backlog | **user or agent** — comment optional (park it back in the backlog instead of unblocking to todo) |
 | in review → done | user only |
 | in review → todo/backlog | user only — comment optional (a rework note, when there is one) |
 | anything → cancelled | user only |
@@ -145,8 +146,8 @@ embed is appended. Attaching to a task you started is free.
 
 `/kanboard-do` and `/kanboard-autowork` are retired. Superagent has no workspace
 or shell access. It resolves an explicit registered project, manages boards across
-projects and dispatches through `superagent.start`, `superagent.stop` and
-`superagent.relay`. Watcher and manual starts share one host dispatcher. Legacy
+projects and dispatches through `superagent_start`, `superagent_stop` and
+`superagent_relay`. Watcher and manual starts share one host dispatcher. Legacy
 transcript cards remain readable.
 
 Set ticket ceilings with `add --autonomy low|medium|high` or
