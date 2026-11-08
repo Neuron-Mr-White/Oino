@@ -25,6 +25,27 @@ export type AskSettled = { tone: 'ok' | 'muted' | 'warning'; label: string; text
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const MAX_QUESTIONS = 4;
 
+/** Superagent's own `ask_user` tool (`superagent_session.rs`): one `question` string, answered in a plain `input` dialog of the `superagent` extension. */
+export const SUPERAGENT_EXTENSION = 'superagent';
+const textQuestion = (question: string): AskQ => ({ id: 'q0', question, header: '', options: [], multi: false, other: true });
+
+/** The questions of a call's arguments: `questions[]` (unipi.ask-user), else Superagent's single `question` string. */
+export function askCallQuestions(args: Record<string, unknown>): AskQ[] {
+  const list = askQuestions(args.questions);
+  if (list.length) return list;
+  const single = str(args.question)?.trim();
+  return single ? [textQuestion(single)] : [];
+}
+
+/** The questions an open ask dialog carries: a form's list, or a Superagent input dialog's title. */
+export function askDialogQuestions(d: UiRequest): AskQ[] {
+  if (d.method === 'input') {
+    const title = str(d.title)?.trim();
+    return title ? [textQuestion(title)] : [];
+  }
+  return askQuestions(d.questions);
+}
+
 /** Questions from any of the three shapes (form request, result details, call args). */
 export function askQuestions(raw: unknown): AskQ[] {
   if (!Array.isArray(raw)) return [];
@@ -58,9 +79,9 @@ export function askQuestions(raw: unknown): AskQ[] {
   return out;
 }
 
-/** An `unipi.ask-user` question form (rendered inline, never docked). */
+/** An `unipi.ask-user` question form, or Superagent's `ask_user` input (rendered inline, never docked). */
 export function isAskDialog(d: UiRequest): boolean {
-  return d.extensionId === ASK_EXTENSION && d.method === 'form';
+  return (d.extensionId === ASK_EXTENSION && d.method === 'form') || (d.extensionId === SUPERAGENT_EXTENSION && d.method === 'input');
 }
 
 const sameQuestions = (a: readonly AskQ[], b: readonly AskQ[]) => a.length === b.length && a.every((q, i) => q.question === b[i]!.question);
@@ -69,8 +90,8 @@ const sameQuestions = (a: readonly AskQ[], b: readonly AskQ[]) => a.length === b
 export function askDialogFor(dialogs: readonly UiRequest[], call: { id: string; args: Record<string, unknown> }): UiRequest | undefined {
   const exact = dialogs.find((d) => d.toolCallId === call.id);
   if (exact) return exact;
-  const mine = askQuestions(call.args.questions);
-  return dialogs.find((d) => isAskDialog(d) && typeof d.toolCallId !== 'string' && sameQuestions(askQuestions(d.questions), mine));
+  const mine = askCallQuestions(call.args);
+  return dialogs.find((d) => isAskDialog(d) && typeof d.toolCallId !== 'string' && sameQuestions(askDialogQuestions(d), mine));
 }
 
 /** The form answer: every question by id; unanswered ones skipped. */
@@ -102,6 +123,15 @@ export function answerWords(q: AskQ | undefined, a: AskAnswer | undefined): stri
   return parts.join(', ');
 }
 
+/** Superagent's result text: `{"answer": "…"}`, `{"cancelled": true}` — no per-question keys, no `skipped` flag. */
+function superagentAnswer(body: Record<string, unknown>, questions: readonly AskQ[]): AskAnswer[] | undefined {
+  if (typeof body.answer === 'string') {
+    const text = body.answer.trim();
+    return questions.map((_, i) => (i === 0 && text ? { selected: [], custom_text: text, skipped: false } : { selected: [], skipped: true }));
+  }
+  return undefined; // `cancelled` stays unread: askSettled words it "dismissed".
+}
+
 /** Answers from the result text (`User answered your questions:\n{json}`) when there are no details. */
 function answersFromOutput(output: string | undefined, questions: readonly AskQ[]): AskAnswer[] | undefined {
   if (!output) return undefined;
@@ -109,7 +139,12 @@ function answersFromOutput(output: string | undefined, questions: readonly AskQ[
   const end = output.lastIndexOf('}');
   if (at < 0 || end <= at) return undefined;
   try {
-    const body = JSON.parse(output.slice(at, end + 1)) as Record<string, { selected?: unknown; custom_text?: unknown; skipped?: unknown }>;
+    const parsed = JSON.parse(output.slice(at, end + 1)) as Record<string, unknown>;
+    const own = superagentAnswer(parsed, questions);
+    if (own) return own;
+    const body = parsed as Record<string, { selected?: unknown; custom_text?: unknown; skipped?: unknown }>;
+    // Nothing keyed by these questions (a shape this reader does not know): no answers, never "skipped".
+    if (!questions.some((q) => q.question in body)) return undefined;
     return questions.map((q) => {
       const a = body[q.question];
       const selected = Array.isArray(a?.selected) ? a.selected.filter((s): s is string => typeof s === 'string') : [];
@@ -153,7 +188,7 @@ export function askSettled(tool: { state: string; output?: string; details?: unk
       break;
   }
   if (answers?.length && answers.every((a) => !isAnswered(a))) return { tone: 'muted', label: 'You skipped the questions', text: '' };
-  if (answers) return { tone: 'ok', label: 'You answered', text: words() };
+  if (answers?.length) return { tone: 'ok', label: 'You answered', text: words() };
   if (/cancel/i.test(tool.output ?? '')) return { tone: 'muted', label: 'You dismissed the questions', text: '' };
   return { tone: 'ok', label: 'You answered', text: firstLine(tool.output) };
 }

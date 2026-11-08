@@ -339,6 +339,41 @@ describe('v3 Superagent shared', () => {
     await screen.findByText('What needs doing?');
     expect(screen.getByTestId('tl').hasAttribute('data-centered-empty')).toBe(true);
     expect(screen.getByTestId('tl-dock').textContent).toContain('What needs doing?');
+    const field = screen.getByRole('textbox', { name: /message/i });
+    fireEvent.input(field, { target: { textContent: 'keep this draft' } });
+    const before = world.log.filter((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent').length;
+    fireEvent.click(screen.getByLabelText('New superagent chat'));
+    fireEvent.click(screen.getByLabelText('New superagent chat'));
+    expect(world.log.filter((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toHaveLength(before);
+    expect(field.textContent).toContain('keep this draft');
+  });
+  it('shows streaming activity beside the white count and in history', async () => {
+    const host = superagent.hosts[0]!;
+    const chat = structuredClone(host.sessions!['superagent-chat']!);
+    chat.snapshot.state = { ...chat.snapshot.state as object, isStreaming: true };
+    const world = createMockHost({ ...superagent, hosts: [{ ...host, sessions: { ...host.sessions, 'superagent-chat': chat } }] });
+    setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    const spinner = await screen.findByTestId('rail-superagent-working');
+    const badge = await screen.findByTestId('rail-superagent-needs');
+    expect(spinner.parentElement).toBe(badge.parentElement);
+    expect(badge.classList.contains('rail-count')).toBe(true);
+    fireEvent.click(screen.getByLabelText('Superagent history'));
+    expect(await screen.findByTestId('sa-history-working')).toBeTruthy();
+  });
+  it('reuses an empty history session after switching away', async () => {
+    const empty = structuredClone(superagent.hosts[0]!.sessions!['superagent-chat']!);
+    empty.snapshot.session_id = 'empty-chat'; empty.snapshot.entries = []; empty.snapshot.leaf_id = null;
+    const host = superagent.hosts[0]!;
+    const world = createMockHost({ ...superagent, hosts: [{ ...host, sessions: { ...host.sessions, 'empty-chat': empty }, ops: { ...host.ops, 'superagent.sessions': () => [{ sessionId: 'empty-chat', title: 'Empty', createdAt: 0, updatedAt: 0, path: '/empty' }] } }] });
+    setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    await screen.findByText(/Oino is working on/);
+    fireEvent.click(screen.getByLabelText('New superagent chat'));
+    await waitFor(() => expect(location.hash).toContain('session=empty-chat'));
+    expect(world.log.some((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toBe(false);
   });
   it('opens history and starts another restricted session', async () => {
     const world = createMockHost(superagent);

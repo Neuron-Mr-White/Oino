@@ -17,7 +17,7 @@ import { Check, ChevronRight, Maximize2, MessageCircleQuestion } from 'lucide-so
 import { layout } from '../../../lib/layout';
 import { expansionOpen, toggleExpansion } from '../../../lib/timeline/expansion';
 import { renderChatMarkdown } from '../../../lib/chat/markdown';
-import { answerWords, askAnswers, askDialogFor, askQuestions, askResponse, askSettled, isAnswered, skipResponse, type AskAnswer, type AskQ, type AskSettled } from '../../../lib/chat/askUser';
+import { answerWords, askAnswers, askCallQuestions, askDialogFor, askDialogQuestions, askResponse, askSettled, isAnswered, skipResponse, type AskAnswer, type AskQ, type AskSettled } from '../../../lib/chat/askUser';
 import type { ToolRun } from '../../../lib/session/turns';
 import { sessionUi } from '../../../ui/registries';
 import { dialogResponse } from '../../../ui/dialogs/adapter';
@@ -28,9 +28,9 @@ import './askUser.css';
 
 const EMPTY: AskAnswer = { selected: [], skipped: true };
 
-/** Question text as markdown (agents write `code` and **bold** in questions). */
+/** Question text as chat prose: the same markdown renderer and typography as an assistant reply (lists, `code`, **bold**, line breaks). */
 function QuestionText(props: { text: string }) {
-  return <p class="ask-q md" innerHTML={renderChatMarkdown(props.text)} />;
+  return <div class="ask-q chat-prose md" data-testid="ask-q" innerHTML={renderChatMarkdown(props.text)} />;
 }
 
 export function AskUserCard(props: { tool: ToolRun; ctx: TimelineCtx }) {
@@ -43,11 +43,11 @@ export function AskUserCard(props: { tool: ToolRun; ctx: TimelineCtx }) {
   const questions = createMemo<AskQ[]>(() => {
     const d = dialog();
     if (d) {
-      const qs = askQuestions(d.questions);
+      const qs = askDialogQuestions(d);
       if (qs.length) return qs;
     }
-    const det = askQuestions((props.tool.details as { questions?: unknown } | undefined)?.questions);
-    return det.length ? det : askQuestions(props.tool.args.questions);
+    const det = askCallQuestions((props.tool.details ?? {}) as Record<string, unknown>);
+    return det.length ? det : askCallQuestions(props.tool.args);
   });
   const [answers, setAnswers] = createSignal<AskAnswer[]>([]);
   /** Sent from here: the card settles at once (the result follows on the stream). */
@@ -99,15 +99,35 @@ export function AskUserCard(props: { tool: ToolRun; ctx: TimelineCtx }) {
     const qs = questions();
     const list = qs.map((_, i) => at(i));
     const text = qs.length <= 1 ? answerWords(qs[0], list[0]) : qs.map((q, i) => `${q.header || `#${i + 1}`}: ${answerWords(q, list[i])}`).join(' · ');
-    send(askResponse(qs, list), { tone: 'ok', label: 'You answered', text });
+    // Superagent's ask_user is a plain `input` dialog: the answer is the typed text itself.
+    send(dialog()?.method === 'input' ? (list[0]?.custom_text?.trim() ?? '') : askResponse(qs, list), { tone: 'ok', label: 'You answered', text });
   };
-  const skip = () => send(skipResponse(questions()), { tone: 'muted', label: 'You skipped the questions', text: '' });
+  const skip = () => send(dialog()?.method === 'input' ? undefined : skipResponse(questions()), { tone: 'muted', label: 'You skipped the questions', text: '' });
+  /** The first question that takes a typed answer: where a composer note goes when nothing was picked. */
+  const noteTarget = () => questions().findIndex((q) => q.other);
   // [owner-fix-9] While this card waits, a composer send submits it first (the typed text
   // follows as a normal message): picks as they are, nothing picked = skipped.
   createEffect(() => {
     if (!waiting() || !dialog()) return;
     const key = props.ctx.session.key;
-    onCleanup(registerPendingAsk(key, { id: props.tool.id, submit: () => (any() ? submit() : skip()) }));
+    onCleanup(
+      registerPendingAsk(key, {
+        id: props.tool.id,
+        submit: (note) => {
+          if (any()) return void submit();
+          // Nothing picked and the user typed in the composer: that text IS the answer
+          // (the "Other" answer of the first question), not a skip followed by a message.
+          const target = noteTarget();
+          const text = note?.trim();
+          if (text && target >= 0) {
+            type(target, questions()[target]!, text);
+            submit();
+            return true;
+          }
+          skip();
+        },
+      }),
+    );
   });
 
   const expandKey = () => `ask:${props.tool.id}`;
@@ -161,7 +181,7 @@ export function AskUserCard(props: { tool: ToolRun; ctx: TimelineCtx }) {
                         <span class="ask-opt-text">
                           <span class="ask-opt-label">{o.label}</span>
                           <Show when={o.description}>
-                            <span class="ask-opt-desc">{o.description}</span>
+                            <span class="ask-opt-desc md" innerHTML={renderChatMarkdown(o.description!)} />
                           </Show>
                         </span>
                       </button>

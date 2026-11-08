@@ -8,7 +8,8 @@
  */
 import { createSignal } from 'solid-js';
 
-export type PendingAsk = { id: string; submit: () => void };
+/** `submit(note)` answers the card; it returns `true` when it took the composer's `note` as the answer itself. */
+export type PendingAsk = { id: string; submit: (note?: string) => boolean | void };
 
 const [pending, setPending] = createSignal<ReadonlyMap<string, readonly PendingAsk[]>>(new Map());
 
@@ -40,4 +41,16 @@ export function answerPendingAsk(sessionKey: string): boolean {
   if (!ask) return false;
   ask.submit();
   return true;
+}
+
+/**
+ * A composer send while a card waits: with nothing picked, the typed `note` becomes the card's
+ * answer and is NOT sent again (the card would otherwise read "skipped" while the text went
+ * out as a plain message). Returns `true` when the note was taken as the answer; otherwise the
+ * card was submitted with its picks (or skipped) and the note still goes out as a message.
+ */
+export function answerPendingAskWithNote(sessionKey: string, note: string): boolean {
+  const ask = pending().get(sessionKey)?.[0];
+  if (!ask) return false;
+  return ask.submit(note) === true;
 }

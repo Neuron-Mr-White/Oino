@@ -73,7 +73,10 @@ html[data-shell=desktop] .app-content:has(.settings-group) > div { margin: 0; }
 .rail-item.unavailable { color: var(--color-text-dim); }
 .rail-label { flex: 1; min-width: 0; }
 .rail-badge { padding: 0 6px; border-radius: 9999px; font-size: calc(10.5px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 600; color: var(--color-wm-cyan); background: rgb(40 190 240 / 10%); }
-.rail-count { flex: 0 0 auto; min-width: 18px; padding: 0 6px; border-radius: 9999px; text-align: center; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-face); background: var(--color-claw); }
+/* Superagent row end: spinner and count sit side by side (flex group), never overlapping. */
+.rail-end { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rail-working { flex: 0 0 auto; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--color-claw); }
+.rail-count { flex: 0 0 auto; box-sizing: border-box; min-width: 16px; padding: 0 5px; border-radius: 9999px; text-align: center; font-size: calc(9.5px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 700; font-variant-numeric: tabular-nums; color: #fff; background: var(--color-claw); }
 .rail-live { flex: 0 0 auto; width: 6px; height: 6px; margin: 0 4px; border-radius: 50%; background: var(--color-wm-green); animation: rail-live-pulse 1.4s ease-in-out infinite; }
 @keyframes rail-live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .rail-live { animation: none; } }

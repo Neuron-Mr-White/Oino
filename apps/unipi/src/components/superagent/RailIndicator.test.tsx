@@ -5,6 +5,7 @@ import { superagentApi, StatusSchema, type NeedsItem } from './api';
 import { countNeeds } from './needs';
 import { SuperagentRailIndicator } from './RailIndicator';
 import { setPlatformOverride } from '../../lib/platform';
+import { readFileSync } from 'node:fs';
 
 vi.mock('../shell/HostSwitcher', () => ({ useSelectedHost: () => () => ({ id: 'pc' }) }));
 
@@ -25,6 +26,12 @@ describe('SuperagentRailIndicator', () => {
   beforeEach(() => setPlatformOverride('tauri-desktop'));
   afterEach(() => { cleanup(); vi.restoreAllMocks(); setPlatformOverride(undefined); });
   const mockStatus = (value: ReturnType<typeof status>) => vi.spyOn(superagentApi, 'status').mockResolvedValue({ ok: true, value });
+
+  it('styles the count as a small white number beside the spinner', () => {
+    const css = readFileSync('src/components/shell/shell.css', 'utf8');
+    expect(css).toMatch(/\.rail-count\s*\{[^}]*font-size:\s*calc\(9\.5px[^}]*color:\s*#fff/s);
+    expect(css).toMatch(/\.rail-end\s*\{[^}]*display:\s*inline-flex/);
+  });
 
   it('shows a count pill when something waits on the owner, even with leads running', async () => {
     mockStatus(status([lead(1)], [approval(1), approval(2)]));

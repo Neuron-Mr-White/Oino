@@ -6,7 +6,7 @@
  */
 import { Show } from 'solid-js';
 import { MessageCircleQuestion } from 'lucide-solid';
-import { askDialogFor, askQuestions, isAskDialog } from '../../lib/chat/askUser';
+import { askDialogFor, askDialogQuestions, isAskDialog } from '../../lib/chat/askUser';
 import { jumpTimelineToTurn } from '../../lib/find';
 import type { Turn } from '../../lib/session/turns';
 import type { UiRequest } from '../../ui/types';
@@ -56,9 +56,9 @@ export function revealAskCard(call: Pick<AskCall, 'turnId' | 'toolId'>): void {
 
 export function AskPendingChip(props: { calls: readonly AskCall[] }) {
   const first = () => props.calls[0];
-  const count = () => props.calls.reduce((n, c) => n + Math.max(1, askQuestions(c.dialog.questions).length), 0);
+  const count = () => props.calls.reduce((n, c) => n + Math.max(1, askDialogQuestions(c.dialog).length), 0);
   const text = () => {
-    const qs = askQuestions(first()?.dialog.questions);
+    const qs = (first() ? askDialogQuestions(first()!.dialog) : []);
     if (props.calls.length === 1 && qs.length === 1) return qs[0]!.question;
     return `${count()} questions waiting`;
   };

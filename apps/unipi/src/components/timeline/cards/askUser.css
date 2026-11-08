@@ -18,6 +18,11 @@
 .ask-item + .ask-item { padding-top: 12px; border-top: 1px solid rgb(46 40 37 / 80%); }
 .ask-chip { align-self: flex-start; padding: 1px 8px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(11.5px * var(--ui-font-scale)); font-weight: 600; }
 .ask-q { margin: 0 1px 2px; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-weight: 550; color: var(--color-text); overflow-wrap: anywhere; }
+/* The question reads as chat prose (.chat-prose .md): paragraphs, lists, `code`, line breaks keep the reply's rhythm. */
+.ask-q.chat-prose { font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+.ask-q.chat-prose p { margin: 0 0 8px; }
+.ask-q.chat-prose :is(ul, ol) { margin: 0 0 8px; }
+.ask-q.chat-prose :is(strong, b) { font-weight: 700; }
 .ask-q > :first-child { margin-top: 0; }
 .ask-q > :last-child { margin-bottom: 0; }
 .ask-options { display: flex; flex-direction: column; gap: 4px; }
@@ -36,6 +41,10 @@
 .ask-opt-text { min-width: 0; flex: 1 1 auto; }
 .ask-opt-label { display: block; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 500; overflow-wrap: anywhere; }
 .ask-opt-desc { display: block; margin-top: 1px; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.ask-opt .ask-opt-desc.md { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.ask-opt .ask-opt-desc.md :is(p, ul, ol) { margin: 0 0 4px; }
+.ask-opt .ask-opt-desc.md > :last-child { margin-bottom: 0; }
+.ask-opt .ask-opt-desc.md :is(strong, em, code) { color: var(--color-text-muted); }
 .ask-other {
   display: block; width: 100%; box-sizing: border-box; resize: none; min-height: 36px; max-height: 160px; padding: 7px 10px;
   border: 0; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line);

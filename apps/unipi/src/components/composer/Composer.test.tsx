@@ -197,7 +197,7 @@ describe('owner-fix-9: the note goes with the answer', () => {
       order.push(`send:${text}`);
       return { ref: 'r1', text, mode: 'prompt', at: 0, status: 'sending' };
     }) as never);
-    const off = registerPendingAsk(s.key, { id: 'a1', submit: () => order.push('answer') });
+    const off = registerPendingAsk(s.key, { id: 'a1', submit: () => { order.push('answer'); } });
     const c = mountComposer(s);
     expect(c.field().getAttribute('data-placeholder')).toBe('Add a note to your answer…');
     c.type('use the cheaper one');
@@ -210,6 +210,20 @@ describe('owner-fix-9: the note goes with the answer', () => {
     c.type('plain');
     c.key({ key: 'Enter' });
     expect(order).toEqual(['send:plain']);
+  });
+
+  it('OIN-29: when the card takes the typed text as its answer, it is not also sent as a message', async () => {
+    const s = await openSession(1);
+    const send = vi.spyOn(s, 'send');
+    const notes: Array<string | undefined> = [];
+    const off = registerPendingAsk(s.key, { id: 'a2', submit: (note) => { notes.push(note); return true; } });
+    const c = mountComposer(s);
+    c.type('my own answer');
+    c.key({ key: 'Enter' });
+    expect(notes).toEqual(['my own answer']);
+    expect(send).not.toHaveBeenCalled();
+    await waitFor(() => expect(composerDraft(s.key).text).toBe(''));
+    off();
   });
 });
 

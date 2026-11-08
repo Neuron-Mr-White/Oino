@@ -2,11 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@solidjs/testing-library';
 import { AskUserCard } from './AskUserCard';
-import { askDialogFor, askQuestions, askResponse, askSettled, isAskDialog, skipResponse } from '../../../lib/chat/askUser';
+import { askCallQuestions, askDialogFor, askQuestions, askResponse, askSettled, isAskDialog, skipResponse } from '../../../lib/chat/askUser';
 import { inlineAskCalls } from '../../dock/AskPendingChip';
 import { sessionUi } from '../../../ui/registries';
 import { fakeCtx } from '../tools/testutil';
-import { answerPendingAsk, hasPendingAsk } from '../../../lib/chat/askPending';
+import { answerPendingAsk, answerPendingAskWithNote, hasPendingAsk } from '../../../lib/chat/askPending';
 import type { ToolRun, Turn } from '../../../lib/session/turns';
 
 afterEach(cleanup);
@@ -157,6 +157,96 @@ describe('AskUserCard', () => {
     fireEvent.click(row);
     expect(screen.getByTestId('ask-recap').textContent).toContain('Which DB?');
     expect(screen.getByTestId('ask-recap').textContent).toContain('Postgres');
+  });
+});
+
+/** OIN-29: the real result shapes of typed ("Other") answers are answered, never Skipped. */
+describe('ask_user: typed answers read as answered', () => {
+  const SA_ARGS = { question: 'Which project should I use?\n\n- `oino`\n- `website`' };
+  const SA_DIALOG = { id: 'sa-1', method: 'input', extensionId: 'superagent', title: SA_ARGS.question };
+  const saTool = (over: Partial<ToolRun> = {}): ToolRun => ({ id: 'sa1', name: 'ask_user', args: SA_ARGS, state: 'running', ...over });
+
+  it("Superagent's result `{\"answer\": text}` (no details) is answered with the typed text", () => {
+    const qs = askCallQuestions(SA_ARGS);
+    expect(qs).toHaveLength(1);
+    expect(askSettled({ state: 'ok', output: '{"answer":"the oino project"}' }, qs)).toEqual({ tone: 'ok', label: 'You answered', text: 'the oino project' });
+    expect(askSettled({ state: 'ok', output: '{"answer":""}' }, qs).label).toBe('You skipped the questions');
+    expect(askSettled({ state: 'ok', output: '{"cancelled":true}' }, qs).label).toBe('You dismissed the questions');
+    // Even without the call's question (an old row): never "answered: skipped".
+    expect(askSettled({ state: 'ok', output: '{"answer":"x"}' }, [])).toMatchObject({ label: 'You answered', text: '{"answer":"x"}' });
+  });
+
+  it('unipi.ask-user: a typed Other answer in details.answers is answered with the typed text', () => {
+    const qs = askQuestions(ARGS.questions).slice(0, 1);
+    const details = { outcome: 'answered', questions: ARGS.questions.slice(0, 1), answers: [{ selected: [], custom_text: 'MySQL', skipped: false }] };
+    expect(askSettled({ state: 'ok', output: 'User answered your questions:', details }, qs)).toEqual({ tone: 'ok', label: 'You answered', text: 'MySQL' });
+    const fromText = askSettled({ state: 'ok', output: 'User answered your questions:\n{\n  "Which DB?": {\n    "selected": [],\n    "custom_text": "MySQL",\n    "skipped": false\n  }\n}' }, qs);
+    expect(fromText).toEqual({ tone: 'ok', label: 'You answered', text: 'MySQL' });
+  });
+
+  it("a settled Superagent card shows the answer, not Skipped", () => {
+    render(() => <AskUserCard tool={saTool({ state: 'ok', output: '{"answer":"the oino project"}' })} ctx={fakeCtx([])} />);
+    const row = screen.getByTestId('ask-answered');
+    expect(row.textContent).toContain('You answered:the oino project');
+    expect(row.textContent).not.toMatch(/skipped/i);
+    fireEvent.click(row);
+    expect(screen.getByTestId('ask-recap').textContent).toContain('the oino project');
+  });
+
+  it("Superagent's input dialog is answered in the card with the typed text", () => {
+    const ctx = fakeCtx([]);
+    const cmd = vi.spyOn(ctx.session, 'cmd');
+    sessionUi('h1', 's1').applyRequest({ type: 'extension_ui_request', ...SA_DIALOG });
+    render(() => <AskUserCard tool={saTool()} ctx={ctx} />);
+    expect(screen.queryByTestId('ask-wait')).toBeNull();
+    fireEvent.input(screen.getByTestId('ask-other'), { target: { value: 'the oino project' } });
+    fireEvent.click(screen.getByTestId('ask-submit'));
+    expect(cmd).toHaveBeenCalledWith({ type: 'extension_ui_response', id: 'sa-1', value: 'the oino project' });
+    expect(screen.getByTestId('ask-answered').textContent).toContain('You answered:the oino project');
+  });
+
+  it('a composer send with nothing picked IS the answer (Other of the first question), and is not sent twice', () => {
+    const ctx = fakeCtx([]);
+    const cmd = vi.spyOn(ctx.session, 'cmd');
+    sessionUi('h1', 's1').applyRequest({ type: 'extension_ui_request', ...FORM });
+    render(() => <AskUserCard tool={tool()} ctx={ctx} />);
+    expect(answerPendingAskWithNote(ctx.session.key, 'Something else entirely')).toBe(true);
+    expect(cmd).toHaveBeenCalledWith({ type: 'extension_ui_response', id: 'dlg-1', value: { answers: [{ id: 'q0', selected: [], other: 'Something else entirely' }, { id: 'q1', selected: [] }] } });
+    const row = screen.getByTestId('ask-answered');
+    expect(row.textContent).toContain('You answered:');
+    expect(row.textContent).toContain('Something else entirely');
+    expect(row.textContent).not.toContain('You skipped');
+  });
+
+  it('a composer send with a pick keeps the pick and the note still goes out as a message', () => {
+    const ctx = fakeCtx([]);
+    sessionUi('h1', 's1').applyRequest({ type: 'extension_ui_request', ...FORM });
+    render(() => <AskUserCard tool={tool()} ctx={ctx} />);
+    fireEvent.click(screen.getByText('SQLite'));
+    expect(answerPendingAskWithNote(ctx.session.key, 'and fast please')).toBe(false);
+    expect(screen.getByTestId('ask-answered').textContent).toContain('SQLite');
+  });
+});
+
+describe('ask_user: question and option text render as chat markdown', () => {
+  it('lists, inline code and line breaks in the question; inline code in an option description', () => {
+    const ctx = fakeCtx([]);
+    sessionUi('h1', 's1').applyRequest({
+      type: 'extension_ui_request',
+      id: 'dlg-md',
+      method: 'form',
+      extensionId: 'unipi.ask-user',
+      toolCallId: 'md1',
+      questions: [{ id: 'q0', question: 'Pick **one** for `build.rs`:\nsecond line\n\n- first\n- second', header: 'DB', options: [{ label: 'A', value: 'A', description: 'uses `cargo` here' }], other: true }],
+    });
+    render(() => <AskUserCard tool={{ id: 'md1', name: 'ask_user', args: {}, state: 'running' }} ctx={ctx} />);
+    const q = screen.getByTestId('ask-q');
+    expect(q.classList.contains('chat-prose')).toBe(true);
+    expect(q.querySelector('strong')?.textContent).toBe('one');
+    expect(q.querySelector('code')?.textContent).toBe('build.rs');
+    expect(q.querySelector('br')).toBeTruthy();
+    expect([...q.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['first', 'second']);
+    expect(document.querySelector('.ask-opt-desc code')?.textContent).toBe('cargo');
   });
 });
 

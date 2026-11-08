@@ -139,6 +139,32 @@ export const superagentApi = {
   },
 };
 
+/** Inspect a history session without treating metadata-only entries as messages. */
+export function isEmptySuperagentSession(hostId: string, id: string, client: HostClient = hostClient(hostId)): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    let stream: ReturnType<HostClient['openSession']> | undefined;
+    const finish = (empty: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      stream?.close();
+      resolve(empty);
+    };
+    const timer = setTimeout(() => finish(false), 3000);
+    stream = client.openSession({ kind: 'open', session: id }, {
+      snapshot(snapshot) {
+        const state = snapshot.state as { isStreaming?: boolean } | undefined;
+        const empty = snapshot.reset && !snapshot.page?.has_more && !snapshot.waking && !state?.isStreaming && !!snapshot.entries && !snapshot.entries.some((entry) => (entry as { type?: string }).type === 'message');
+        finish(empty);
+      },
+      events() {},
+      closed() { finish(false); },
+    });
+    if (done) stream.close();
+  });
+}
+
 /** Creation is a session stream, never an ordinary session_new or a shell command. */
 export function openSuperagentSession(hostId: string, client: HostClient = hostClient(hostId)): Promise<string> {
   return new Promise((resolve, reject) => {

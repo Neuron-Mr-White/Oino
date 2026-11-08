@@ -157,7 +157,7 @@
 .sa-center .tl[data-centered-empty] { display:flex; flex-direction:column; justify-content:center; }
 .sa-center .tl[data-centered-empty] .tl-content { display:none; }
 .sa-center .tl[data-centered-empty] .tl-dock { position:relative; box-sizing:border-box; width:min(720px, 100%); margin:auto; }
-.sa-center .tl[data-centered-empty] .empty-chat { gap:8px; padding:0 8px 22px; }
+.sa-center .tl[data-centered-empty] .empty-chat { gap:8px; margin-inline:auto; padding:0 8px 22px; }
 .sa-center .tl[data-centered-empty] .empty-chat-greeting { font-size:calc(28px * var(--ui-font-scale)); line-height:calc(36px * var(--ui-font-scale)); font-weight:600; margin:0; }
 
 @media (max-width:1100px) { .sa-side { width:320px; } .sa-pane { padding:12px; } .sa-pane-top { margin:-12px -12px 0; padding:12px 12px 8px; } }
