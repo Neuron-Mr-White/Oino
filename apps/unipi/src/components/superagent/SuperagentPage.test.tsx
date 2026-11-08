@@ -309,6 +309,7 @@ describe('v3 Superagent shared', () => {
     render(() => <Root />);
     await screen.findByTestId('superagent-page');
     await screen.findByText(/Oino is working on/);
+    expect(screen.getByTestId('tl').hasAttribute('data-centered-empty')).toBe(false);
     expect(screen.getByTestId('rail-superagent').getAttribute('aria-current')).toBe('page');
     expect(screen.queryByTestId('permission-chip')).toBeNull();
     expect(screen.queryByTestId('workspace-picker')).toBeNull();
