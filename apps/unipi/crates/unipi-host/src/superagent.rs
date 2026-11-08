@@ -232,6 +232,9 @@ impl Dispatcher {
     fn claims(&self) -> Result<Vec<(Project, Task)>> {
         let mut out = Vec::new();
         for project in self.layout.list_projects().map_err(storage)? {
+            if project.archived {
+                continue;
+            }
             for task in Board::open(&self.layout, project.clone())
                 .map_err(storage)?
                 .tasks()
@@ -365,17 +368,16 @@ impl Dispatcher {
             .map_err(|e| fail("E_SCHEMA", e))?;
         drop(preferences);
         let claims = self.claims()?;
-        let mut occupied: HashMap<String, String> = self
-            .active
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+        let mut occupied: HashMap<String, String> = HashMap::new();
         for (project, task) in claims {
             if let Some(run) = task.run {
                 occupied.insert(run.session, project.slug);
             }
         }
         let project = Project::load(&self.layout, project_id).map_err(storage)?;
+        if project.archived {
+            return Err(fail("E_WORKER_REFUSED", "Project is archived"));
+        }
         if let Some((id, _)) = occupied.iter().find(|(_, p)| p.as_str() == project_id) {
             if !self.workers.live(id).await || self.workers.ended(id).await.is_some() { return Err(fail("E_WORKER_NOT_LIVE", "Lead has ended; retry after it is retired")); }
             let board = Board::open(&self.layout, project.clone()).map_err(storage)?;
@@ -580,12 +582,18 @@ impl Dispatcher {
         let prefs = self.preferences.lock().await;
         let mut needs_you = Vec::new();
         for project in self.layout.list_projects().map_err(storage)? {
+            if project.archived {
+                continue;
+            }
             let mut lead = None;
             for task in Board::open(&self.layout, project.clone())
                 .map_err(storage)?
                 .tasks()
                 .map_err(storage)?
             {
+                if task.status == Status::Archived {
+                    continue;
+                }
                 if let Some(run) = &task.run {
                     if run.owner == RunOwner::Dispatcher {
                         let progress = self.workers.progress(&run.session).await;

@@ -2,7 +2,8 @@
    icon left, label, one item per row. Lived in screens/board.css, which
    only loads with the Board, so Files' row menu rendered unstyled (owner5
    #24: icons stacked above labels, labels running together). */
-.board-menu { padding: 6px 0; max-height: 70vh; overflow-y: auto; }
+.board-menu { padding: 6px 0; max-height: 70vh; overflow-y: auto; pointer-events: auto; }
+.recent-popover-backdrop { pointer-events: auto; }
 .board-menu-row { min-height: 46px; gap: 12px; text-align: left; }
 .board-menu-row:disabled { opacity: .4; }
 .board-menu-row:focus-visible { outline: none; background: var(--color-surface-3); }

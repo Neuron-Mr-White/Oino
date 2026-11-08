@@ -284,6 +284,38 @@ async fn watcher_requires_project_toggle_and_status_separates_review() {
 }
 
 #[tokio::test]
+async fn archived_projects_and_tasks_are_absent_from_status_and_dispatch() {
+    let f = Fixture::new();
+    let archived_task = f.add("archived review", &[]);
+    let review = f.add("visible review", &[]);
+    let ready = f.add("ready", &[]);
+    let board = Board::open(&f.layout, f.project.clone()).unwrap();
+    for (id, status) in [(&archived_task, Status::Archived), (&review, Status::InReview)] {
+        let mut task = board.get(id).unwrap();
+        task.status = status;
+        board.save(&task).unwrap();
+    }
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let status = d.status().await.unwrap();
+    assert_eq!(status["review"].as_array().unwrap().len(), 1);
+    assert_eq!(status["review"][0]["taskId"], review);
+    assert!(d.start(&f.project.slug, &archived_task).await.is_err());
+    let mut project = f.project.clone();
+    project.archived = true;
+    project.save(&f.layout).unwrap();
+    let status = d.status().await.unwrap();
+    for key in ["projects", "review", "workers", "leads", "needsYou"] {
+        assert!(status[key].as_array().unwrap().is_empty(), "{key}");
+    }
+    assert!(d.start(&project.slug, &ready).await.is_err());
+    d.configure_project(&project.slug, true).await.unwrap();
+    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn multiple_tasks_feed_one_lead_and_route_delivery() {
     use unipi_host::superagent::Delivery;
     let f = Fixture::new();

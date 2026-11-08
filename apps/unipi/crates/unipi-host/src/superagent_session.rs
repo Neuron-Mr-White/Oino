@@ -192,7 +192,8 @@ impl AgentTool for ChatTool {
                 "project_resolver" => {
                     let registered = unipi_kanboard::Layout::from_env()
                         .and_then(|l| l.list_projects())
-                        .map_err(|e| ToolError::new(e.to_string()))?;
+                        .map_err(|e| ToolError::new(e.to_string()))?
+                        .into_iter().filter(|project| !project.archived).collect::<Vec<_>>();
                     let recent = hub
                         .projects()
                         .await
@@ -223,6 +224,9 @@ impl AgentTool for ChatTool {
                         .map_err(|e| ToolError::new(e.to_string()))?;
                     let project = unipi_kanboard::Project::load(&layout, &project_id)
                         .map_err(|e| ToolError::new(e.to_string()))?;
+                    if project.archived {
+                        return Err(ToolError::new("Project is archived"));
+                    }
                     let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
                         .map_err(|e| ToolError::new(e.to_string()))?;
                     let command = argv.first().map(String::as_str).unwrap_or("");

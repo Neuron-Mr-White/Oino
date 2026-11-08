@@ -55,7 +55,7 @@ function phoneShell(): boolean {
 
 function MenuSheet(props: AnchoredMenuProps) {
   return (
-    <SheetFrame open onClose={() => props.onDismiss()} label={props.label} title={props.title ?? false} class="ph-menu-sheet" testId="anchored-menu-sheet">
+    <SheetFrame open level={2} onClose={() => props.onDismiss()} label={props.label} title={props.title ?? false} class="ph-menu-sheet" testId="anchored-menu-sheet">
       <div role="menu" aria-label={props.label} class={`recent-popover board-menu${props.class ? ` ${props.class}` : ''}`} onClick={(event) => event.stopPropagation()}>
         {props.children}
       </div>
@@ -208,7 +208,7 @@ export function MenuRow(props: {
       class={`recent-popover-row board-menu-row${props.tone === 'danger' ? ' text-wm-red' : ''}`}
       data-testid={props.testId}
       disabled={props.disabled}
-      onClick={() => props.onSelect()}
+      onClick={(event) => { event.stopPropagation(); props.onSelect(); }}
     >
       <Show when={props.icon}>
         <span class="board-menu-icon">{props.icon}</span>
@@ -238,7 +238,7 @@ export function MenuCheckRow(props: { label: string; checked: boolean; testId?: 
       class="recent-popover-row board-menu-row board-menu-check"
       data-testid={props.testId}
       data-checked={props.checked ? '' : undefined}
-      onClick={() => props.onSelect()}
+      onClick={(event) => { event.stopPropagation(); props.onSelect(); }}
     >
       <span class="board-menu-icon">
         <Check size={16} />

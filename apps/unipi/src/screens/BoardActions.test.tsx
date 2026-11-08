@@ -573,8 +573,10 @@ describe('lane + project actions', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     await waitFor(() => expect(sent('project archive')).toHaveLength(1));
     expect(sent('project archive')[0]!.args).toEqual(['project', 'archive', 'other']);
-    // The open project (scratch-1) wasn't touched.
+    // The open project (scratch-1) wasn't touched or replaced by the clicked row.
     expect(sent('project archive scratch-1')).toHaveLength(0);
+    expect(screen.getByLabelText('Project: scratch')).toBeInTheDocument();
+    expect(screen.getByTestId('project-sheet')).toBeInTheDocument();
   });
 });
 
