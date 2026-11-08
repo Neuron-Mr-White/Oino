@@ -33,7 +33,7 @@ fn fixtures() -> Vec<Fixture> {
         .map(|e| e.unwrap().path())
         .collect();
     dirs.sort();
-    for dir in dirs {
+    for dir in dirs.into_iter().filter(|path| path.is_dir()) {
         let mut files: Vec<_> = fs::read_dir(&dir)
             .unwrap()
             .map(|e| e.unwrap().path())
