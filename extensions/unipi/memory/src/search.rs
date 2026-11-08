@@ -186,6 +186,20 @@ pub fn group_hits(
     out
 }
 
+/// Fall back to durable markdown when the reader cannot return hits.
+pub fn fallback_if_empty(hits: Vec<Hit>, root: &Path, query: &str, limit: usize, project: Option<&str>) -> Vec<Hit> {
+    if hits.is_empty() { local_search(root, query, limit, project) } else { hits }
+}
+
+/// Include small local memories in search results without exposing arbitrary paths.
+pub fn readable_content(hit: &Hit, guest_of: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    if !hit.is_pi_memory { return None; }
+    let path = hit.source_file.as_deref()?;
+    let guest = guest_of(path).or_else(|| path.starts_with("/ext-global/memory/").then(|| path.to_owned()))?;
+    let content = parse_memory_file(Path::new(&guest))?.content;
+    (content.chars().count() <= 4000).then_some(content)
+}
+
 /// Term-overlap search over local md files (markdown-only mode).
 #[must_use]
 pub fn local_search(
@@ -300,5 +314,9 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert!((hits[0].score - 1.0).abs() < f64::EPSILON);
         assert!(local_search(&root, "redis", 10, Some("other")).is_empty());
+        // A workspace-free reader may fail to spawn and return no semantic hits.
+        let hits = fallback_if_empty(Vec::new(), &root, "redis ttl", 10, None);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(readable_content(&hits[0], &|p| Some(p.to_owned())).as_deref(), Some("use ttl 60"));
     }
 }

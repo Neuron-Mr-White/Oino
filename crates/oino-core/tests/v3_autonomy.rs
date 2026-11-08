@@ -489,6 +489,16 @@ async fn canonical_destinations_and_patch_policy() {
 }
 
 #[tokio::test]
+async fn workspace_free_memory_access_is_read_only() {
+    let s = TestSession { cwd: std::path::PathBuf::new(), ..Default::default() }
+        .build(FauxProvider::new(vec![])).await;
+    for tool in ["memory_search", "global_memory_search", "memory_list", "global_memory_list"] {
+        assert!(s.check_permission(tool, &args(json!({}))).await.is_ok(), "{tool}");
+    }
+    assert!(s.check_permission("read", &args(json!({}))).await.is_err());
+}
+
+#[tokio::test]
 async fn rpc_tui_unattended_fail_closed() {
     for _surface in [
         "rpc-without-approval-capability",

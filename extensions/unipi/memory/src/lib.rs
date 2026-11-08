@@ -484,7 +484,8 @@ impl Memory {
         };
         let raw = r.search(query, (limit * 3).max(10), project).await;
         let roots: Vec<String> = places().memory_root.into_iter().collect();
-        search::group_hits(&raw, limit, &roots, &|h| guest_of_host(h))
+        let hits = search::group_hits(&raw, limit, &roots, &|h| guest_of_host(h));
+        search::fallback_if_empty(hits, &root(), query, limit, project)
     }
 
     fn list(project: &str) -> Vec<Record> {
@@ -793,7 +794,7 @@ impl Memory {
                     h.title,
                     h.room,
                     search::source_label(&h.source_label),
-                    h.snippet
+                    search::readable_content(h, &|p| guest_of_host(p)).unwrap_or_else(|| h.snippet.clone())
                 )
             })
             .collect::<Vec<_>>()

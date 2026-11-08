@@ -56,6 +56,7 @@ struct Live {
 pub struct Reader {
     /// `mempalace-mcp` arguments (palace, `--read-only`).
     args: Vec<String>,
+    cwd: Option<String>,
     /// `mempalace-mcp` candidates in order (the configured folder first, then `PATH`).
     mcp: Vec<String>,
     env: Vec<(String, String)>,
@@ -81,6 +82,7 @@ impl Reader {
         }
         Self {
             args,
+            cwd: palace.and_then(|p| std::path::Path::new(p).parent()).map(|p| p.to_string_lossy().into_owned()),
             mcp,
             env: vec![("MALLOC_ARENA_MAX".into(), "2".into())],
             live: Mutex::new(None),
@@ -103,7 +105,7 @@ impl Reader {
             let spec = wp::SpawnSpec {
                 command: command.clone(),
                 args: self.args.clone(),
-                cwd: None,
+                cwd: self.cwd.clone(),
                 env: self.env.clone(),
                 clear_env: false,
                 stdin: wp::StdioMode::Pipe,
