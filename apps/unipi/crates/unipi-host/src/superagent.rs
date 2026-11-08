@@ -368,7 +368,24 @@ impl Dispatcher {
             .map_err(|e| fail("E_SCHEMA", e))?;
         drop(preferences);
         let claims = self.claims()?;
-        let mut occupied: HashMap<String, String> = HashMap::new();
+        // Live leads hold their project even after their tickets finished (one lead per project);
+        // a lead of an archived project no longer counts (OIN-21).
+        let archived: std::collections::HashSet<String> = self
+            .layout
+            .list_projects()
+            .map_err(storage)?
+            .into_iter()
+            .filter(|p| p.archived)
+            .map(|p| p.slug)
+            .collect();
+        let mut occupied: HashMap<String, String> = self
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(_, slug)| !archived.contains(slug.as_str()))
+            .map(|(id, slug)| (id.clone(), slug.clone()))
+            .collect();
         for (project, task) in claims {
             if let Some(run) = task.run {
                 occupied.insert(run.session, project.slug);
