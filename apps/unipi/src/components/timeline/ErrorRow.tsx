@@ -8,9 +8,11 @@
  * Retry is not here: Z-49 moved it to the turn tail (WP-A7), so there is one
  * retry surface per turn, not two.
  */
-import { createSignal, Show } from 'solid-js';
+import { createMemo, createSignal, Show } from 'solid-js';
 import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
 import { Check, ChevronRight, CircleAlert, Copy } from 'lucide-solid';
+import type { TimelineCtx } from './context';
+import { newestErrorKey } from '../../lib/session/turns';
 import { copyText } from '../../lib/board/share';
 
 /** The row's line: the first non-empty line of the raw error. */
@@ -43,6 +45,10 @@ export function ErrorRow(props: {
   model?: string;
   /** Open state by item (session + key) in the expansion store — survives virtualizer slot reuse. */
   foldKey?: { sessionId: string; key: string };
+  /** Consecutive identical errors folded into this one (shown as a muted "×N"). */
+  count?: number;
+  /** Set on an expanded older error: clicking the message folds it back to its one-line row. */
+  onCollapse?: () => void;
 }) {
   const [localOpen, setLocalOpen] = createSignal(false);
   const open = () => (props.foldKey ? expansionOpen(props.foldKey.sessionId, props.foldKey.key, false) : localOpen());
@@ -59,7 +65,13 @@ export function ErrorRow(props: {
     <div class="chat-error tl-error" role="alert" data-testid={props.testId ?? 'tl-error'}>
       <CircleAlert size={16} class="shrink-0" />
       <div class="tl-error-main">
-        <span class="tl-error-text">{errorHeadline(props.text)}</span>
+        <span class="tl-error-text" data-collapsible={props.onCollapse ? '' : undefined} title={props.onCollapse ? 'Collapse' : undefined} onClick={props.onCollapse}>
+          {errorHeadline(props.text)}
+          <Show when={(props.count ?? 1) > 1}>
+            {' '}
+            <span class="tl-error-count" data-testid="tl-error-count">×{props.count}</span>
+          </Show>
+        </span>
         <button
           type="button"
           class="tl-error-details"
@@ -94,5 +106,45 @@ export function ErrorRow(props: {
         </Show>
       </div>
     </div>
+  );
+}
+
+/**
+ * A failed turn's error in the timeline: only the newest error of the whole chat is a full card;
+ * older ones (or folded runs) are one muted line that opens in place to the card and folds back.
+ */
+export function TimelineError(props: { text: string; ctx: TimelineCtx; itemKey: string; count?: number; model?: string }) {
+  const newest = createMemo(() => {
+    const key = newestErrorKey(props.ctx.session.turns());
+    return key === undefined || key === props.itemKey;
+  });
+  const [expanded, setExpanded] = createSignal(false);
+  const card = () => (
+    <ErrorRow
+      text={props.text}
+      count={props.count}
+      model={props.model}
+      foldKey={{ sessionId: props.ctx.sessionId(), key: `error:${props.itemKey}` }}
+      onCollapse={newest() ? undefined : () => setExpanded(false)}
+    />
+  );
+  return (
+    <Show when={newest() || expanded()} fallback={<ErrorLine text={props.text} count={props.count} onOpen={() => setExpanded(true)} />}>
+      {card()}
+    </Show>
+  );
+}
+
+function ErrorLine(props: { text: string; count?: number; onOpen: () => void }) {
+  const headline = () => errorHeadline(props.text);
+  return (
+    <button type="button" class="tl-error-line" aria-expanded="false" onClick={props.onOpen} title={headline()} data-testid="tl-error-line">
+      <CircleAlert size={15} class="shrink-0" />
+      <span class="tl-error-line-text">{headline()}</span>
+      <Show when={(props.count ?? 1) > 1}>
+        <span class="tl-error-count">×{props.count}</span>
+      </Show>
+      <ChevronRight size={15} class="tl-error-line-chev" />
+    </button>
   );
 }

@@ -10,7 +10,7 @@ import type { TimelineCtx } from '../context';
 import type { WorkItem, WorkNode } from '../../../lib/session/turns';
 import { Prose } from '../Prose';
 import { Compaction } from '../Compaction';
-import { ErrorRow } from '../ErrorRow';
+import { TimelineError } from '../ErrorRow';
 import { sessions } from '../../../lib/session/store';
 import { modelOrigin } from '../../../lib/model/displayName';
 import { ToolRow } from './ToolRow';
@@ -47,7 +47,7 @@ export function WorkItemView(props: { item: WorkItem; ctx: TimelineCtx }) {
         {(i) => (
           // Phone (§3.4, PH-14/PH-28): one actionable card per failed turn.
           <Show when={layout().desktop()} fallback={<PhoneErrorCard item={i()} ctx={props.ctx} />}>
-            <ErrorRow text={i().text} model={failedModel(props.ctx)} foldKey={{ sessionId: props.ctx.sessionId(), key: `error:${i().key}` }} />
+            <TimelineError text={i().text} ctx={props.ctx} itemKey={i().key} count={i().count} model={failedModel(props.ctx)} />
           </Show>
         )}
       </Match>

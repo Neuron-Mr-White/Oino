@@ -68,7 +68,8 @@ export type WorkItem =
   | { kind: 'agent'; key: string; run: AgentRun; tool?: ToolRun }
   | { kind: 'card'; key: string; entry: SessionEntry }
   | { kind: 'compaction'; key: string; entry: SessionEntry }
-  | { kind: 'error'; key: string; text: string };
+  /** `count` > 1: that many consecutive identical errors folded into this one (`foldErrors`); `key` is the newest's. */
+  | { kind: 'error'; key: string; text: string; count?: number };
 
 /** Z-38 tool group classes. */
 export type ToolGroupKind = 'execute' | 'explore' | 'changes';
@@ -214,8 +215,37 @@ export function foldDetail(tools: readonly ToolRun[], steps = 0): string {
   return words.join(', ') + (order.length > 3 ? ', …' : '') + (failed ? ` · ${failed} failed` : '');
 }
 
-/** Merges consecutive same-class tools (≥ 2) into groups; thinking between two of them joins the group. */
-export function groupWork(work: readonly WorkItem[]): WorkNode[] {
+/**
+ * Folds runs of directly consecutive errors with the same text (trimmed) into one item carrying
+ * `count`. The folded item takes the newest error's key and text; any other item between two
+ * errors keeps them apart.
+ */
+export function foldErrors(work: readonly WorkItem[]): WorkItem[] {
+  const out: WorkItem[] = [];
+  for (const item of work) {
+    const prev = out.at(-1);
+    if (item.kind === 'error' && prev?.kind === 'error' && prev.text.trim() === item.text.trim()) {
+      out[out.length - 1] = { kind: 'error', key: item.key, text: item.text, count: (prev.count ?? 1) + 1 };
+    } else out.push(item);
+  }
+  return out;
+}
+
+/** The key of the newest error in the whole timeline (the only one that renders as a full card), if any. */
+export function newestErrorKey(turns: readonly Turn[]): string | undefined {
+  for (let t = turns.length - 1; t >= 0; t--) {
+    const segments = turns[t]!.segments;
+    for (let s = segments.length - 1; s >= 0; s--) {
+      const work = segments[s]!.work;
+      for (let w = work.length - 1; w >= 0; w--) if (work[w]!.kind === 'error') return work[w]!.key;
+    }
+  }
+  return undefined;
+}
+
+/** Merges consecutive same-class tools (≥ 2) into groups; thinking between two of them joins the group. Identical consecutive errors fold (`foldErrors`). */
+export function groupWork(unfolded: readonly WorkItem[]): WorkNode[] {
+  const work = foldErrors(unfolded);
   const out: WorkNode[] = [];
   let i = 0;
   while (i < work.length) {

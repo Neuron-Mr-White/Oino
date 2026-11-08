@@ -24,7 +24,7 @@ import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { lhGoal, lhGoalErrored, lhGraphBig, lhHistory, lhRalph, lhSwarm } from './lh';
 import { capsuleScenario, statusLhGraph, statusRunning, statusTodos } from './status';
-import { crashBoundary, dialogApproval, dialogDock, errorRow, takenOver } from './dock';
+import { crashBoundary, dialogApproval, dialogDock, errorRepeat, errorRow, takenOver } from './dock';
 import { slots, slotsDialogs, slotsOverlay, slotsTray } from './slots';
 import { composerPaste, composerSlash, composerStates } from './composer';
 import { composerAttachments, composerNarrow, imageEditorEllipse } from './composer-attachments';
@@ -126,6 +126,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'dialog-dock': dialogDock,
   'dialog-approval': dialogApproval,
   'error-row': errorRow,
+  'error-repeat': errorRepeat,
   'taken-over': takenOver,
   'crash-boundary': crashBoundary,
   slots,

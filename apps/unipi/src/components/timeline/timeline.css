@@ -459,6 +459,20 @@ html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; po
   font-size: calc(12px * var(--ui-font-scale)); font-weight: 500;
 }
 .tl-error-copy:hover { background: var(--color-surface-2); }
+.tl-error-count { color: var(--color-text-dim); font-weight: 500; white-space: nowrap; }
+.tl-error-text[data-collapsible] { cursor: pointer; }
+/* an older error (or folded run): one muted line, same height as a tool row; opens in place to the card */
+.tl-error-line {
+  display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 3px 4px; border-radius: 10px;
+  background: transparent; text-align: left; color: #f6a39d;
+  font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale));
+}
+.tl-error-line:hover { background: var(--color-surface-1); }
+.tl-error-line > svg:first-child { color: var(--color-wm-red); }
+.tl-error-line-text { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-error-line-chev { flex: 0 0 auto; margin-left: auto; color: var(--color-text-dim); opacity: 0; transition: opacity 140ms ease-out; }
+.tl-error-line:hover .tl-error-line-chev, .tl-error-line:focus-visible .tl-error-line-chev { opacity: 1; }
+html[data-shell=phone] .tl-error-line-chev { opacity: .8; }
 
 /* ── WP-A8: tool rows, thinking, bodies, renderer cards ───────────── */
 

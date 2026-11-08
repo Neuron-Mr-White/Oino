@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTurns, createTurnsIndex, foldDetail, groupWork, toolGroupOf, type ToolRun, type TurnsInput, type WorkItem } from './turns';
+import { buildTurns, createTurnsIndex, foldDetail, foldErrors, groupWork, newestErrorKey, toolGroupOf, type ToolRun, type TurnsInput, type WorkItem } from './turns';
 import type { AgentMessage, SessionEntry } from './types';
 
 const T0 = Date.UTC(2026, 9, 30, 9, 0, 0);
@@ -300,5 +300,56 @@ describe('turns index: incremental tail recompute', () => {
     expect(turn!.segments[0]!.fold?.durationMs).toBeLessThan(60_000);
     const tool = turn!.segments[0]!.work.find((w) => w.kind === 'tool');
     expect(tool && tool.kind === 'tool' ? tool.tool.durationMs : undefined).toBeGreaterThan(0);
+  });
+});
+
+describe('turns: repeated errors', () => {
+  const err = (key: string, text: string): WorkItem => ({ kind: 'error', key, text });
+  const RATE = 'Omniroute rate-limited the request (429). Try again shortly.';
+
+  it('identical consecutive errors fold into one with a count, keyed by the newest', () => {
+    const out = foldErrors([err('a', RATE), err('b', `  ${RATE}\n`), err('c', RATE), err('d', RATE)]);
+    expect(out).toEqual([{ kind: 'error', key: 'd', text: RATE, count: 4 }]);
+  });
+
+  it('a lone error keeps no count; different messages do not fold', () => {
+    expect(foldErrors([err('a', RATE)])).toEqual([err('a', RATE)]);
+    expect(foldErrors([err('a', RATE), err('b', 'overloaded'), err('c', RATE)]).map((w) => (w.kind === 'error' ? w.count : 'x'))).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('errors separated by a non-error item do not fold', () => {
+    const think: WorkItem = { kind: 'thinking', key: 't', text: 'hm', live: false };
+    const out = foldErrors([err('a', RATE), think, err('b', RATE)]);
+    expect(out.map((w) => w.key)).toEqual(['a', 't', 'b']);
+    expect(out.every((w) => w.kind !== 'error' || w.count === undefined)).toBe(true);
+  });
+
+  it('groupWork folds them into the segment nodes while work keeps every attempt', () => {
+    const s = session();
+    s.user('go');
+    for (let i = 0; i < 4; i++) s.answer('', 'error', { errorMessage: '429: rate limited' });
+    const [turn] = buildTurns(input(s.entries));
+    const seg = turn!.segments[0]!;
+    expect(seg.work.filter((w) => w.kind === 'error')).toHaveLength(4);
+    const nodes = seg.nodes.filter((n) => n.kind === 'error');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({ count: 4, key: seg.work.at(-1)!.key });
+  });
+
+  it('only the last error of the whole timeline is the newest', () => {
+    const s = session();
+    s.user('one');
+    s.answer('', 'error', { errorMessage: 'first failure' });
+    s.user('two');
+    s.answer('', 'error', { errorMessage: 'second failure' });
+    s.answer('', 'error', { errorMessage: 'third failure' });
+    s.user('three');
+    s.answer('fine');
+    const turns = buildTurns(input(s.entries));
+    const errs = turns.flatMap((t) => t.segments.flatMap((g) => g.work.filter((w) => w.kind === 'error')));
+    expect(errs).toHaveLength(3);
+    expect(newestErrorKey(turns)).toBe(errs[2]!.key);
+    expect(newestErrorKey(turns.slice(0, 1))).toBe(errs[0]!.key);
+    expect(newestErrorKey([])).toBeUndefined();
   });
 });

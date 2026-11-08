@@ -6,6 +6,8 @@
  *   dialog-approval  an `approval` card from `unipi.workflow` with a code
  *                    detail (40 vh), allow once / always / deny / deny+note
  *   error-row        a turn that failed with a raw provider error (Details)
+ *   error-repeat     a 529 then four identical 429 failures in a row: the 429s fold to
+ *                    "×4" (full card), the older 529 is a one-line row
  *   taken-over      another runner took the session over: read-only banner,
  *                    Take back; the composer is disabled
  *   crash-boundary   a side-pane tab that throws (boundary card) next to a
@@ -59,6 +61,22 @@ function failedSession(id: string): MockSession {
     last.message.stopReason = 'error';
     last.message.errorMessage = RAW_ERROR;
   }
+  return s;
+}
+
+/** The last turn fails once with the raw 529, then four identical 429 attempts in a row. */
+function repeatedErrorSession(id: string): MockSession {
+  const s = failedSession(id);
+  const entries = s.snapshot.entries as Array<Record<string, unknown> & { id: string; message?: Record<string, unknown> }>;
+  const last = entries.at(-1)!;
+  const retry = (n: number) => ({
+    ...last,
+    id: `${last.id}-429-${n}`,
+    parentId: n === 0 ? last.id : `${last.id}-429-${n - 1}`,
+    message: { ...last.message, errorMessage: '429: Omniroute rate-limited the request. Try again shortly.' },
+  });
+  entries.push(retry(0), retry(1), retry(2), retry(3));
+  (s.snapshot as { leaf_id?: string | null }).leaf_id = entries.at(-1)!.id;
   return s;
 }
 
@@ -139,6 +157,20 @@ export const errorRow: MockScenario = {
       cards,
       fs: genFsTree(CWD),
       sessions: { s001: failedSession('s001') },
+    },
+  ],
+};
+
+export const errorRepeat: MockScenario = {
+  name: 'error-repeat',
+  hosts: [
+    {
+      id: HOST,
+      name: 'coffee',
+      conn: { state: 'connected' },
+      cards,
+      fs: genFsTree(CWD),
+      sessions: { s001: repeatedErrorSession('s001') },
     },
   ],
 };
