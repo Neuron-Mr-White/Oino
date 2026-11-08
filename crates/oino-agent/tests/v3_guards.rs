@@ -52,6 +52,7 @@ impl StreamFn for Faux {
 struct Tool {
     meta: ToolDefinitionMeta,
     count: Arc<AtomicUsize>,
+    changing: bool,
 }
 impl AgentTool for Tool {
     fn meta(&self) -> &ToolDefinitionMeta {
@@ -63,8 +64,13 @@ impl AgentTool for Tool {
         _: UpdateSink,
         _: CancellationToken,
     ) -> BoxFuture<'static, Result<AgentToolResult, ToolError>> {
-        self.count.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(AgentToolResult::text("ok")) })
+        let n = self.count.fetch_add(1, Ordering::SeqCst);
+        let result = if self.changing {
+            n.to_string()
+        } else {
+            "ok".into()
+        };
+        Box::pin(async move { Ok(AgentToolResult::text(result)) })
     }
 }
 fn response(content: Vec<AssistantContent>, stop_reason: StopReason) -> AssistantMessage {
@@ -98,18 +104,23 @@ fn todo(id: usize, status: &str) -> AssistantMessage {
 fn setup(responses: Vec<AssistantMessage>) -> (Agent, Arc<Faux>, Arc<AtomicUsize>) {
     setup_tools(responses, &["work", "todowrite"])
 }
-fn setup_tools(responses: Vec<AssistantMessage>, names: &[&str]) -> (Agent, Arc<Faux>, Arc<AtomicUsize>) {
+fn setup_tools(
+    responses: Vec<AssistantMessage>,
+    names: &[&str],
+) -> (Agent, Arc<Faux>, Arc<AtomicUsize>) {
     let faux = Arc::new(Faux {
         responses: Mutex::new(responses.into()),
         requests: Mutex::new(Vec::new()),
     });
     let count = Arc::new(AtomicUsize::new(0));
     let mut options = AgentOptions::new(faux.clone());
-    options.tools = names.iter()
+    options.tools = names
+        .iter()
         .map(|&name| {
             Arc::new(Tool {
                 meta: ToolDefinitionMeta::new(name, name, name, json!({"type":"object"})),
                 count: count.clone(),
+                changing: name == "changing",
             }) as Arc<dyn AgentTool>
         })
         .collect();
@@ -158,7 +169,9 @@ fn has_notice(agent: &Agent, part: &str) -> bool {
 
 #[tokio::test]
 async fn no_todo_reminder_without_tool() {
-    let mut script = (0..6).map(|i| call(i, "work", json!({"n":i}))).collect::<Vec<_>>();
+    let mut script = (0..6)
+        .map(|i| call(i, "work", json!({"n":i})))
+        .collect::<Vec<_>>();
     script.push(text("done"));
     let (agent, _, _) = setup_tools(script, &["work"]);
     agent.prompt_text("go", vec![]).await.unwrap();
@@ -241,9 +254,10 @@ async fn empty_and_identical_calls() {
         call(1, "work", json!({"a":{"x":1,"y":2},"b":[1,2]})),
         call(2, "work", json!({"b":[1,2],"a":{"y":2,"x":1}})),
         call(3, "work", json!({"a":{"x":1,"y":2},"b":[1,2]})),
+        call(4, "work", json!({"a":{"x":1,"y":2},"b":[1,2]})),
     ]);
     agent.prompt_text("go", vec![]).await.unwrap();
-    assert_eq!(faux.requests.lock().unwrap().len(), 3);
+    assert_eq!(faux.requests.lock().unwrap().len(), 4);
     assert_eq!(count.load(Ordering::SeqCst), 2);
     assert!(has_notice(&agent, "identical tool calls"));
     assert_eq!(
@@ -252,7 +266,11 @@ async fn empty_and_identical_calls() {
             .iter()
             .filter(|m| matches!(m, AgentMessage::ToolResult(_)))
             .count(),
-        3
+        4
+    );
+    assert!(
+        format!("{:?}", faux.requests.lock().unwrap()[3].context.messages)
+            .contains("Skipped: this exact call")
     );
 
     let (agent, _, count) = setup(vec![
@@ -264,6 +282,39 @@ async fn empty_and_identical_calls() {
     agent.prompt_text("go", vec![]).await.unwrap();
     assert_eq!(count.load(Ordering::SeqCst), 3);
     assert!(!has_notice(&agent, "identical"));
+}
+
+#[tokio::test]
+async fn changing_results_and_soft_warning_continue() {
+    let (agent, _, count) = setup_tools(
+        vec![
+            call(1, "changing", json!({})),
+            call(2, "changing", json!({})),
+            call(3, "changing", json!({})),
+            text("done"),
+        ],
+        &["changing"],
+    );
+    agent.prompt_text("go", vec![]).await.unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 3);
+    assert!(!has_notice(&agent, "identical"));
+
+    let (agent, faux, count) = setup_tools(
+        vec![
+            call(1, "work", json!({})),
+            call(2, "work", json!({})),
+            call(3, "work", json!({})),
+            text("I will wait."),
+        ],
+        &["work"],
+    );
+    agent.prompt_text("go", vec![]).await.unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    assert!(!has_notice(&agent, "identical"));
+    assert!(
+        format!("{:?}", faux.requests.lock().unwrap()[3].context.messages)
+            .contains("Skipped: this exact call")
+    );
 }
 
 #[tokio::test]

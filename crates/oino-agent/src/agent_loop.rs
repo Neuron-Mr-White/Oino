@@ -233,11 +233,8 @@ async fn run_loop(
                     .any(|b| matches!(b, AssistantContent::Text(t) if !t.text.trim().is_empty()));
             guards.empty = if empty { guards.empty + 1 } else { 0 };
             let degenerate = degenerate_output(&message);
-            let repeated = !degenerate && guards.repeated_calls(&tool_calls);
             let stop_notice = if guards.empty >= 3 {
                 Some("Oino stopped after three consecutive empty responses.")
-            } else if repeated {
-                Some("Oino stopped before executing three consecutive identical tool calls.")
             } else if degenerate && guards.resamples >= 3 {
                 Some("Oino stopped after three resamples of degenerate output.")
             } else {
@@ -300,10 +297,19 @@ async fn run_loop(
             }
             has_more_tool_calls = false;
             if !recover && !tool_calls.is_empty() {
-                let batch = if message.stop_reason == StopReason::Length {
-                    fail_truncated_tool_calls(&tool_calls, sink).await
+                let (batch, stopped) = if message.stop_reason == StopReason::Length {
+                    (fail_truncated_tool_calls(&tool_calls, sink).await, false)
                 } else {
-                    execute_tool_calls(&current, &message, tool_calls, config, sink, cancel).await
+                    execute_guarded_calls(
+                        &current,
+                        &message,
+                        &tool_calls,
+                        config,
+                        sink,
+                        cancel,
+                        &mut guards,
+                    )
+                    .await
                 };
                 has_more_tool_calls = !batch.terminate;
                 tool_results = batch.messages;
@@ -313,11 +319,35 @@ async fn run_loop(
                         .push(AgentMessage::ToolResult(result.clone()));
                     new_messages.push(AgentMessage::ToolResult(result.clone()));
                 }
+                if stopped {
+                    sink.emit(AgentEvent::TurnEnd {
+                        message: AgentMessage::Assistant(message),
+                        tool_results,
+                    })
+                    .await;
+                    append_guard_message(
+                        &mut current,
+                        new_messages,
+                        sink,
+                        "stop",
+                        REPEAT_STOP,
+                        true,
+                    )
+                    .await;
+                    sink.emit(AgentEvent::AgentEnd {
+                        messages: new_messages.clone(),
+                    })
+                    .await;
+                    return Ok(());
+                }
             }
 
             let mut guard_continue = recover;
             if !recover
-                && current.tools.iter().any(|tool| tool.meta().name.eq_ignore_ascii_case("todowrite"))
+                && current
+                    .tools
+                    .iter()
+                    .any(|tool| tool.meta().name.eq_ignore_ascii_case("todowrite"))
             {
                 if let Some((key, text)) = guards.completed(&message, &tool_results) {
                     append_guard_message(&mut current, new_messages, sink, key, text, false).await;
@@ -390,6 +420,9 @@ async fn run_loop(
     Ok(())
 }
 
+const REPEAT_STOP: &str = "Oino stopped before executing three consecutive identical tool calls.";
+const REPEAT_SKIP: &str = "Skipped: this exact call already returned the same result twice in a row. Wait/act differently (e.g. use a wait tool, change arguments, or explain the blocker) instead of repeating it.";
+
 const TODO_MISSING: &str = "TodoWrite has not been called. If the task requires 3 or more distinct actions or tool calls, create a list and keep it current; otherwise ignore this reminder. Performance tip: call the TodoWrite tool in parallel to the main flow related tool calls to save user's time and tokens.";
 const TODO_STALE: &str = "IMPORTANT: Your todo list has pending items but hasn't been updated in a while. Update it with todowrite to reflect your current progress: mark finished items completed and keep exactly one item in_progress.";
 const TODO_SETTLE: &str = "IMPORTANT: You may be ending the turn, but the TodoWrite plan still has open items. Continue working on every actionable pending or in-progress item before ending the turn. Do not stop merely because the plan is accurate. Call TodoWrite as work finishes. Once no actionable work remains, end the turn by replying with no text and no tool calls.\nDo not reference this reminder to the user.";
@@ -410,6 +443,8 @@ struct LoopGuards {
     resamples: usize,
     previous_call: Option<(String, serde_json::Value)>,
     repeats: usize,
+    previous_result: Option<([u8; 32], bool)>,
+    warned: bool,
 }
 
 impl LoopGuards {
@@ -436,6 +471,8 @@ impl LoopGuards {
         self.resamples = 0;
         self.previous_call = None;
         self.repeats = 0;
+        self.previous_result = None;
+        self.warned = false;
         self.settled = false;
     }
 
@@ -483,24 +520,127 @@ impl LoopGuards {
         None
     }
 
-    fn repeated_calls(&mut self, calls: &[ToolCall]) -> bool {
-        for call in calls {
-            let key = (
-                call.name.clone(),
-                canonical_json(serde_json::Value::Object(call.arguments.clone())),
-            );
-            if self.previous_call.as_ref() == Some(&key) {
-                self.repeats += 1;
-            } else {
-                self.previous_call = Some(key);
-                self.repeats = 1;
-            }
-            if self.repeats >= 3 {
-                return true;
+    fn record_result(&mut self, call: &ToolCall, result: &ToolResultMessage) {
+        use sha2::{Digest, Sha256};
+        let key = call_key(call);
+        let mut digest = Sha256::new();
+        for block in &result.content {
+            if let oino_ai::UserContent::Text(text) = block {
+                digest.update((text.text.len() as u64).to_le_bytes());
+                digest.update(text.text.as_bytes());
             }
         }
-        false
+        let result_key = (digest.finalize().into(), result.is_error);
+        self.repeats = if self.previous_call.as_ref() == Some(&key)
+            && self.previous_result.as_ref() == Some(&result_key)
+        {
+            self.repeats + 1
+        } else {
+            1
+        };
+        self.previous_call = Some(key);
+        self.previous_result = Some(result_key);
+        self.warned = false;
     }
+}
+
+fn call_key(call: &ToolCall) -> (String, serde_json::Value) {
+    (
+        call.name.clone(),
+        canonical_json(serde_json::Value::Object(call.arguments.clone())),
+    )
+}
+
+// Split batches before a possible third consecutive identical call, so prior
+// results are known before deciding whether it should run.
+#[allow(clippy::too_many_arguments)]
+async fn execute_guarded_calls(
+    current: &AgentContext,
+    assistant: &AssistantMessage,
+    calls: &[ToolCall],
+    config: &AgentLoopConfig,
+    sink: &dyn EventSink,
+    cancel: &CancellationToken,
+    guards: &mut LoopGuards,
+) -> (ToolBatch, bool) {
+    let mut messages = Vec::new();
+    let mut index = 0;
+    let mut warned_before_response = guards.warned;
+    while index < calls.len() {
+        let call = &calls[index];
+        if guards.repeats >= 2 && guards.previous_call.as_ref() == Some(&call_key(call)) {
+            if guards.warned && warned_before_response {
+                messages.extend(
+                    fail_guarded_tool_calls(&calls[index..], REPEAT_STOP, sink)
+                        .await
+                        .messages,
+                );
+                return (
+                    ToolBatch {
+                        messages,
+                        terminate: true,
+                    },
+                    true,
+                );
+            }
+            messages.extend(
+                fail_guarded_tool_calls(&calls[index..=index], REPEAT_SKIP, sink)
+                    .await
+                    .messages,
+            );
+            guards.warned = true;
+            index += 1;
+            continue;
+        }
+        let mut end = index + 1;
+        let mut potential = if guards.previous_call.as_ref() == Some(&call_key(call)) {
+            guards.repeats + 1
+        } else {
+            1
+        };
+        while end < calls.len() {
+            if call_key(&calls[end - 1]) == call_key(&calls[end]) {
+                if potential >= 2 {
+                    break;
+                }
+                potential += 1;
+            } else {
+                potential = 1;
+            }
+            end += 1;
+        }
+        warned_before_response = false;
+        let batch = execute_tool_calls(
+            current,
+            assistant,
+            calls[index..end].to_vec(),
+            config,
+            sink,
+            cancel,
+        )
+        .await;
+        for (call, result) in calls[index..end].iter().zip(&batch.messages) {
+            guards.record_result(call, result);
+        }
+        messages.extend(batch.messages);
+        if batch.terminate || cancel.is_cancelled() {
+            return (
+                ToolBatch {
+                    messages,
+                    terminate: batch.terminate,
+                },
+                false,
+            );
+        }
+        index = end;
+    }
+    (
+        ToolBatch {
+            messages,
+            terminate: false,
+        },
+        false,
+    )
 }
 
 fn canonical_json(value: serde_json::Value) -> serde_json::Value {
