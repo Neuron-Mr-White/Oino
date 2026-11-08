@@ -98,6 +98,7 @@ pub async fn create_from(
     let tools = specs.into_iter().map(|(name, description, properties, required)| ToolEntry::builtin(Arc::new(ChatTool {
         meta: ToolDefinitionMeta::new(name, name, description, json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})),
         hub: Arc::clone(&hub), session: Arc::clone(&session),
+        #[cfg(test)] dispatcher: None,
     }), Some(description.into()), Vec::new())).collect();
     let cwd = hub.agent_dir().join("superagent");
     std::fs::create_dir_all(&cwd).map_err(|e| e.to_string())?;
@@ -187,6 +188,101 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn onboarding_confirmed_then_ticket_started_and_denials_fail_closed() {
+        use super::*;
+        use futures_util::future::BoxFuture;
+        use oino_core::ui::{UiAnswer, UiBridge, UiOutput, UiResponse, UiSink};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use unipi_kanboard::{Layout, Project, model::Task};
+
+        #[derive(Default)]
+        struct Fake(AtomicUsize);
+        impl crate::superagent::Workers for Fake {
+            fn live<'a>(&'a self, _: &'a str) -> BoxFuture<'a, bool> { Box::pin(async { true }) }
+            fn launch<'a>(&'a self, _: &'a Project, _: &'a Task, _: &'a str) -> BoxFuture<'a, Result<(), String>> {
+                Box::pin(async { self.0.fetch_add(1, Ordering::SeqCst); Ok(()) })
+            }
+            fn stop<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<(), String>> { Box::pin(async { Ok(()) }) }
+            fn relay<'a>(&'a self, _: &'a str, _: &'a str) -> BoxFuture<'a, Result<(), String>> { Box::pin(async { Ok(()) }) }
+            fn ended<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Option<String>> { Box::pin(async { None }) }
+        }
+        struct Sink;
+        impl UiSink for Sink { fn publish(&self, _: UiOutput) {} }
+        async fn call(tool: &ChatTool, value: serde_json::Value) -> Result<serde_json::Value, ToolError> {
+            let result = tool.execute(ToolInvocation { tool_call_id: "test".into(), args: value.as_object().unwrap().clone(), parent_tool_call_id: None }, UpdateSink::discard(), CancellationToken::new()).await?;
+            let text = match &result.content[0] { oino_ai::UserContent::Text(t) => &t.text, _ => panic!("expected text") };
+            Ok(serde_json::from_str(text).unwrap())
+        }
+        if std::env::var_os("OIN35_ONBOARDING_CHILD").is_none() {
+            let dir = tempfile::tempdir().unwrap();
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "superagent_session::tests::onboarding_confirmed_then_ticket_started_and_denials_fail_closed", "--nocapture"])
+                .env("OIN35_ONBOARDING_CHILD", "1")
+                .env("UNIPI_KANBOARD_HOME", dir.path().join("board"))
+                .status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let layout = Layout::with_home(std::env::var_os("UNIPI_KANBOARD_HOME").unwrap());
+        let fake = Arc::new(Fake::default());
+        let dispatcher = crate::superagent::Dispatcher::acquire(layout.clone(), dir.path().join("config.json"), fake.clone()).await.unwrap();
+        let hub = crate::sessions::SessionHub::create(crate::sessions::HostHubOptions {
+            cwd: dir.path().into(), agent_dir: dir.path().join("agent"), docs_root: None,
+            session_dir: Some(dir.path().join("sessions")), mode: oino_core::extensions::api::ExtensionMode::Desktop,
+            has_ui: true, approve: Some(false), flags: ResourceFlags { no_context_files: true, ..Default::default() },
+            loader: Arc::new(oino_core::services::StaticLoader(Vec::new())),
+            models: Some(oino_models::ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()))),
+            tools: ToolSelection::Default, exclude_tools: Vec::new(), services_cap: None, host_data_dir: None,
+        }).unwrap();
+        let service = crate::sessions::SessionService::install(hub.clone());
+        let ui = UiBridge::new(true, "oin35-onboarding", Arc::new(Sink));
+        let feed = service.feed(ui.session_id());
+        let subscription = feed.subscribe();
+        let session = Arc::new(OnceLock::new());
+        session.set(ui.clone()).unwrap();
+        let tool = |name: &str, session: Arc<OnceLock<UiBridge>>| ChatTool {
+            meta: ToolDefinitionMeta::new(name, name, name, json!({"type":"object"})),
+            hub: hub.clone(), session, dispatcher: Some(dispatcher.clone()),
+        };
+        let board = tool("kanboard", session.clone());
+        let start = tool("superagent_start", session.clone());
+        let accepted = dir.path().join("accepted");
+        let refused = dir.path().join("refused");
+        let absent = dir.path().join("absent");
+        for p in [&accepted, &refused, &absent] { std::fs::create_dir_all(p).unwrap(); }
+        for (path, approve) in [(&refused, false), (&accepted, true)] {
+            let answer_ui = ui.clone();
+            let answer = async move {
+                tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        if let Some(request) = answer_ui.snapshot().into_iter().find(|r| r.method == "confirm") {
+                            answer_ui.respond(UiResponse { id: request.id, answer: UiAnswer::Confirmed(approve) });
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                }).await.unwrap();
+            };
+            let (result, ()) = tokio::join!(call(&board, json!({"argv":["project","add",path]})), answer);
+            if approve { assert!(result.unwrap()["projectId"].is_string()); } else { assert!(result.unwrap_err().to_string().contains("declined")); }
+        }
+        let no_ui = Arc::new(OnceLock::new());
+        no_ui.set(UiBridge::new(false, "no-ui", Arc::new(Sink))).unwrap();
+        assert!(call(&tool("kanboard", no_ui), json!({"argv":["project","add",absent]})).await.unwrap_err().to_string().contains("confirmation"));
+        let projects = layout.list_projects().unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].root, std::fs::canonicalize(&accepted).unwrap());
+        let project = &projects[0].slug;
+        let ticket = call(&board, json!({"projectId":project,"argv":["add","Onboarded task"]})).await.unwrap();
+        let ticket = ticket["id"].as_str().expect("ticket id");
+        let result = call(&start, json!({"projectId":project,"taskIds":[ticket]})).await.unwrap();
+        assert!(result["sessionId"].is_string(), "{result}");
+        assert_eq!(fake.0.load(Ordering::SeqCst), 1);
+        drop(subscription);
+    }
+
     #[test]
     fn comment_is_an_alias_for_note() {
         let mut argv = vec!["comment", "T-1", "looks good"]
@@ -202,6 +298,8 @@ struct ChatTool {
     meta: ToolDefinitionMeta,
     hub: Arc<crate::sessions::SessionHub>,
     session: Arc<OnceLock<oino_core::ui::UiBridge>>,
+    #[cfg(test)]
+    dispatcher: Option<Arc<crate::superagent::Dispatcher>>,
 }
 impl AgentTool for ChatTool {
     fn meta(&self) -> &ToolDefinitionMeta {
@@ -216,7 +314,14 @@ impl AgentTool for ChatTool {
         let name = self.meta.name.clone();
         let hub = Arc::clone(&self.hub);
         let session = Arc::clone(&self.session);
+        #[cfg(test)]
+        let test_dispatcher = self.dispatcher.clone();
         Box::pin(async move {
+            let dispatcher = || -> Result<Arc<crate::superagent::Dispatcher>, ToolError> {
+                #[cfg(test)]
+                if let Some(dispatcher) = &test_dispatcher { return Ok(Arc::clone(dispatcher)); }
+                crate::superagent::current().cloned().map_err(|e| ToolError::new(e.to_string()))
+            };
             let args =
                 serde_json::to_value(call.args).map_err(|e| ToolError::new(e.to_string()))?;
             let field = |key: &str| {
@@ -270,7 +375,7 @@ impl AgentTool for ChatTool {
                                 let params = serde_json::from_value(json!({"title":"Set up Kanboard project?","message":format!("Register workspace {}?", path.display())})).map_err(|e| ToolError::new(e.to_string()))?;
                                 let answer = tokio::time::timeout(std::time::Duration::from_secs(120), ui.dialog(Some("superagent"), "confirm", params, Some(cancel.clone()))).await.map_err(|_| ToolError::new("Project registration confirmation timed out"))?;
                                 if answer != oino_core::ui::UiAnswer::Confirmed(true) { return Err(ToolError::new("Project registration declined")); }
-                                let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                                let dispatcher = dispatcher()?;
                                 let result = dispatcher.enable("register", None, Some(&argv[2])).await.map_err(|e| ToolError::new(e.to_string()))?;
                                 return Ok(AgentToolResult::text(result.to_string()));
                             }
@@ -295,7 +400,7 @@ impl AgentTool for ChatTool {
                     let project = match unipi_kanboard::Project::load(&layout, &project_id) {
                         Ok(project) => project,
                         Err(_) => {
-                            let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                            let dispatcher = dispatcher()?;
                             let blockers = dispatcher.blockers(&project_id).await.map_err(|e| ToolError::new(e.to_string()))?;
                             return Err(ToolError::new(blockers.first().map_or_else(|| "Project is unavailable".into(), |b| b.message.clone())));
                         }
@@ -370,7 +475,7 @@ impl AgentTool for ChatTool {
                         ..Default::default()
                     });
                     if schedules_todo && result["ok"] != false {
-                        let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                        let dispatcher = dispatcher()?;
                         let blockers = dispatcher.blockers(&project_id).await.map_err(|e| ToolError::new(e.to_string()))?;
                         if !blockers.is_empty() {
                             let reasons = blockers.iter().map(|b| b.message.as_str()).collect::<Vec<_>>().join(" ");
@@ -399,7 +504,7 @@ impl AgentTool for ChatTool {
                 _ => {
                     let project = field("projectId")?;
                     let dispatcher =
-                        crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                        dispatcher()?;
                     match name.as_str() {
                         "superagent_start" => {
                             let overrides: crate::superagent_presets::Overrides = args
