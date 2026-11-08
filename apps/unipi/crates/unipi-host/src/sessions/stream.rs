@@ -139,6 +139,7 @@ pub struct Feed {
     subscribers: Mutex<Vec<(u64, mpsc::Sender<Arc<SessionEventDto>>)>>,
     next_subscriber: AtomicU64,
     tap: Mutex<Option<JoinHandle<()>>>,
+    tap_gate: tokio::sync::Mutex<()>,
     /// The backend the running tap listens to (a repaired/reopened runtime is a new one).
     tap_backend: Mutex<Option<Arc<dyn SessionBackend>>>,
     /// The runtime this feed was numbering is gone (evicted, taken over, closed): a reopen is
@@ -172,6 +173,7 @@ impl Feed {
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicU64::new(1),
             tap: Mutex::new(None),
+            tap_gate: tokio::sync::Mutex::new(()),
             tap_backend: Mutex::new(None),
             disposed: AtomicBool::new(false),
             dropped: AtomicU64::new(0),
@@ -357,22 +359,40 @@ impl Feed {
         service: Weak<SessionService>,
     ) {
         let mut tap = lock(&self.tap);
-        if tap.as_ref().is_some_and(|task| !task.is_finished()) {
+        let mut tapped = lock(&self.tap_backend);
+        if tap.as_ref().is_some_and(|task| !task.is_finished())
+            && tapped.as_ref().is_some_and(|old| {
+                match (old.runtime_identity(), backend.runtime_identity()) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => Arc::ptr_eq(old, &backend),
+                }
+            })
+        {
             return;
         }
-        // Subscribe synchronously: commands sent immediately after ensure_tap must
-        // not race the spawned task and lose non-replayed events such as renames.
+        // Subscribe before returning, but wait for the aborted tap to finish before
+        // publishing from the new one: two runtimes must never number concurrently.
         let events = backend.events();
+        let previous = tap.take();
+        if let Some(task) = &previous {
+            task.abort();
+        }
+        *tapped = Some(Arc::clone(&backend));
         let feed = Arc::clone(self);
         *tap = Some(tokio::spawn(async move {
-            feed.run_tap(backend, service, events).await
+            if let Some(task) = previous {
+                let _ = task.await;
+            }
+            let _guard = feed.tap_gate.lock().await;
+            Arc::clone(&feed).run_tap(backend, service, events).await;
         }));
     }
 
     /// Stops the tap (the runtime is gone; a later open restarts it).
     pub fn stop_tap(&self) {
+        let mut tap = lock(&self.tap);
         *lock(&self.tap_backend) = None;
-        if let Some(task) = lock(&self.tap).take() {
+        if let Some(task) = tap.take() {
             task.abort();
         }
     }

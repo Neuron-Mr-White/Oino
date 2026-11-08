@@ -1186,6 +1186,10 @@ impl SessionBackend for LazyBackend {
         self.backend.send_with_id(request_id, command)
     }
 
+    fn runtime_identity(&self) -> Option<usize> {
+        self.backend.runtime_identity()
+    }
+
     fn events(&self) -> BoxStream<'static, ClientEvent> {
         self.touch();
         self.backend.events()

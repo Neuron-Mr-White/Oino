@@ -217,6 +217,25 @@ describe('session store over the mock host', () => {
 });
 
 describe('outbox lifecycle (Z-50)', () => {
+  it('resyncs and retries a stale idle prompt once as steer', async () => {
+    let calls = 0;
+    const w = world(sessionSpec({ events: [], cmd: { prompt: () => {
+      if (++calls === 1) throw new Error('Agent is already processing. Specify streamingBehavior');
+      return {};
+    } } }));
+    const c = clock();
+    const { s, dispose } = open(w, c);
+    disposers.push(() => (s.close(), dispose()));
+    await tick();
+    s.send('hello');
+    await tick();
+    expect(w.log.filter((l) => l.op === 'prompt').map((l) => l.args)).toEqual([
+      { type: 'prompt', message: 'hello' },
+      { type: 'prompt', message: 'hello', streamingBehavior: 'steer' },
+    ]);
+    expect(s.state.outbox[0]).toMatchObject({ status: 'acked', mode: 'steer' });
+    expect(opens(w)).toEqual([0, 0]);
+  });
   it('pending → acked → settled by the host echo; lost on a failed command; Retry resends', async () => {
     let fail = false;
     const w = world(

@@ -41,6 +41,11 @@ pub trait SessionBackend: Send + Sync {
         self.send(command)
     }
 
+    /// Identity of the runtime behind this backend, stable across wrappers while it is alive.
+    fn runtime_identity(&self) -> Option<usize> {
+        None
+    }
+
     /// Ordered event stream for this session (a new subscription each call).
     fn events(&self) -> BoxStream<'static, ClientEvent>;
 

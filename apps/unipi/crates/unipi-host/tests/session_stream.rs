@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio::task::JoinHandle;
 use unipi_host::sessions::hub::{HostHubOptions, SessionHub};
-use unipi_host::sessions::stream::SessionService;
+use unipi_host::sessions::stream::{Feed, SessionService};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
     Control, HubEvent, Request, SessionCard, SessionEventDto, SessionSnapshot, PROTO_VERSION,
@@ -101,6 +101,32 @@ async fn fixture() -> Fixture {
         service,
         session_id: id,
     }
+}
+
+#[tokio::test]
+async fn feed_retaps_after_runtime_rekeys_and_old_id_wakes() {
+    let f = fixture().await;
+    let old = f.hub.open(&f.session_id).await.unwrap();
+    let feed = Feed::new(&f.session_id);
+    let mut subscriber = feed.subscribe();
+    feed.ensure_tap(Arc::clone(old.backend()), std::sync::Weak::new());
+    old.send(RpcCommand::Agent(AgentCommand::NewSession { parent_session: None })).await.unwrap();
+    tokio::time::timeout(READ_TIMEOUT, async {
+        while feed.session_id() == f.session_id {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.expect("runtime did not rekey");
+    let new = f.hub.open(&f.session_id).await.unwrap();
+    assert_ne!(old.backend().runtime_identity(), new.backend().runtime_identity());
+    let before = feed.seq();
+    feed.ensure_tap(Arc::clone(new.backend()), std::sync::Weak::new());
+    new.send(RpcCommand::Agent(AgentCommand::SetSessionName { name: "retapped".into() })).await.unwrap();
+    tokio::time::timeout(READ_TIMEOUT, async {
+        loop {
+            let event = subscriber.recv().await.expect("subscriber ended");
+            if event.seq > before && event.event["type"] == "session_info_changed" { break; }
+        }
+    }).await.expect("new runtime event was not numbered");
 }
 
 async fn wait_idle(hub: &Arc<SessionHub>, session_id: &str) {

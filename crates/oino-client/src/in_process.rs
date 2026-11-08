@@ -1007,6 +1007,10 @@ impl SessionBackend for InProcessBackend {
         )
     }
 
+    fn runtime_identity(&self) -> Option<usize> {
+        Some(Arc::as_ptr(&self.shared.runtime) as usize)
+    }
+
     /// Events of the current session; streams follow session replacements made through
     /// this backend and end after [`SessionBackend::shutdown`].
     fn events(&self) -> BoxStream<'static, ClientEvent> {

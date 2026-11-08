@@ -214,7 +214,21 @@ export function createSession(hostId: string, sessionId: string, opts: CreateSes
       if (!state.outbox.some((o) => o.ref === ref)) return undefined;
       preparing.delete(ref);
       mutate((s) => markSending(s, ref));
-      return stream.cmd<{ disposition?: string } | undefined>(command);
+      try {
+        return await stream.cmd<{ disposition?: string } | undefined>(command);
+      } catch (error) {
+        if (item.mode !== 'prompt' || !toAppError(error).message.includes('Agent is already processing')) throw error;
+        mutate((s) => {
+          s.run.running = true;
+          const o = s.outbox.find((x) => x.ref === ref);
+          if (o) o.mode = 'steer';
+        });
+        try {
+          return await stream.cmd<{ disposition?: string } | undefined>({ ...command, streamingBehavior: 'steer' });
+        } finally {
+          stream.reopen(false);
+        }
+      }
     });
     sendTail = send.then(() => undefined, () => undefined);
     void send.then(
