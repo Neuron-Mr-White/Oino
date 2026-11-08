@@ -316,7 +316,9 @@ async fn run_loop(
             }
 
             let mut guard_continue = recover;
-            if !recover {
+            if !recover
+                && current.tools.iter().any(|tool| tool.meta().name.eq_ignore_ascii_case("todowrite"))
+            {
                 if let Some((key, text)) = guards.completed(&message, &tool_results) {
                     append_guard_message(&mut current, new_messages, sink, key, text, false).await;
                 }

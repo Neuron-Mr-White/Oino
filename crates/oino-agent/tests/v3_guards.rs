@@ -96,20 +96,23 @@ fn todo(id: usize, status: &str) -> AssistantMessage {
     )
 }
 fn setup(responses: Vec<AssistantMessage>) -> (Agent, Arc<Faux>, Arc<AtomicUsize>) {
+    setup_tools(responses, &["work", "todowrite"])
+}
+fn setup_tools(responses: Vec<AssistantMessage>, names: &[&str]) -> (Agent, Arc<Faux>, Arc<AtomicUsize>) {
     let faux = Arc::new(Faux {
         responses: Mutex::new(responses.into()),
         requests: Mutex::new(Vec::new()),
     });
     let count = Arc::new(AtomicUsize::new(0));
     let mut options = AgentOptions::new(faux.clone());
-    options.tools = ["work", "todowrite"]
-        .map(|name| {
+    options.tools = names.iter()
+        .map(|&name| {
             Arc::new(Tool {
                 meta: ToolDefinitionMeta::new(name, name, name, json!({"type":"object"})),
                 count: count.clone(),
             }) as Arc<dyn AgentTool>
         })
-        .to_vec();
+        .collect();
     // The host's custom-message projection is represented explicitly here.
     options.convert_to_llm = Arc::new(|messages| {
         messages
@@ -151,6 +154,15 @@ fn has_notice(agent: &Agent, part: &str) -> bool {
     agent.messages().iter().any(
         |m| matches!(m, AgentMessage::Custom(c) if c.display && c.content.text("").contains(part)),
     )
+}
+
+#[tokio::test]
+async fn no_todo_reminder_without_tool() {
+    let mut script = (0..6).map(|i| call(i, "work", json!({"n":i}))).collect::<Vec<_>>();
+    script.push(text("done"));
+    let (agent, _, _) = setup_tools(script, &["work"]);
+    agent.prompt_text("go", vec![]).await.unwrap();
+    assert!(reminders(&agent).is_empty());
 }
 
 #[tokio::test]
