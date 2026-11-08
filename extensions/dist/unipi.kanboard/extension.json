@@ -44,6 +44,6 @@
   "component": "component.wasm",
   "checksums": {
     "component.wasm": "sha256:61ece04736bb6d6f208b1243b07de80d9f8bbb1d08f3d109462b6e6915720ee0",
-    "bin/unipi-kanboard": "sha256:01198141d50ed4eea89fbc3d3770468fbae7a4833d0a0dca00b64711a6319c72"
+    "bin/unipi-kanboard": "sha256:567113909115916b6ca8f665d6cfa86e098e0c1dab91b636045365e5d65d8608"
   }
 }

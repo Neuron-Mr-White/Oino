@@ -69,6 +69,35 @@ fn kb(fixture: &Fixture, args: &[&str]) -> Run {
 }
 
 #[test]
+fn show_blocked_task_lists_backlog_as_an_allowed_move() {
+    use unipi_kanboard::model::{Priority, Status};
+
+    let fixture = Fixture::new();
+    let task = fixture.add_with("blocked task", Status::Todo, Priority::None, &[]);
+    fixture.start(&task.id, "session", std::process::id());
+    unipi_kanboard::commands::release(
+        &fixture.layout,
+        fixture.project.clone(),
+        &task.id,
+        Status::Blocked,
+        "waiting",
+        unipi_kanboard::model::ChainGate::InReview,
+        fixture.common.now,
+    )
+    .unwrap();
+    let run = kb(&fixture, &["show", &task.id, "--json"]);
+    assert_eq!(run.code, 0, "stderr: {}", run.stderr);
+    assert_eq!(run.json["status"], "blocked");
+    assert!(
+        run.json["allowedMoves"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m == "backlog")
+    );
+}
+
+#[test]
 fn add_emits_a_task_and_json_matches_the_file() {
     let fixture = Fixture::new();
     let run = kb(
