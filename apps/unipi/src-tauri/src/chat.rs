@@ -738,6 +738,7 @@ superagent_command!(superagent_configure, "superagent.configure");
 superagent_command!(superagent_start, "superagent.start");
 superagent_command!(superagent_set_mode, "superagent.set_mode");
 superagent_command!(superagent_configure_project, "superagent.configure_project");
+superagent_command!(superagent_configure_project_lead, "superagent.configure_project_lead");
 superagent_command!(superagent_presets_list, "superagent.presets.list");
 superagent_command!(superagent_presets_save, "superagent.presets.save");
 superagent_command!(superagent_presets_delete, "superagent.presets.delete");
@@ -1267,7 +1268,7 @@ mod tests {
             assert_eq!(hello["req"]["op"], op);
         }
         let registration = include_str!("lib.rs");
-        for name in ["status", "sessions", "session", "configure", "start", "stop", "relay", "approval_response", "set_mode", "configure_project", "presets_list", "presets_save", "presets_delete", "presets_set_default"] {
+        for name in ["status", "sessions", "session", "configure", "start", "stop", "relay", "approval_response", "set_mode", "configure_project", "configure_project_lead", "presets_list", "presets_save", "presets_delete", "presets_set_default"] {
             assert!(registration.contains(&format!("chat::superagent_{name},")));
         }
     }
@@ -1288,6 +1289,7 @@ mod tests {
     }
     framing_test!(set_mode_framing, "superagent.set_mode", serde_json::json!({"projectId":"p","mode":"graph"}));
     framing_test!(configure_project_framing, "superagent.configure_project", serde_json::json!({"projectId":"p","autoStart":true}));
+    framing_test!(configure_project_lead_framing, "superagent.configure_project_lead", serde_json::json!({"projectId":"p","model":"faux/example","thinking":"high"}));
     framing_test!(presets_list_framing, "superagent.presets.list", serde_json::json!({}));
     framing_test!(presets_save_framing, "superagent.presets.save", serde_json::json!({"preset":{"id":"p","future":42}}));
     framing_test!(presets_delete_framing, "superagent.presets.delete", serde_json::json!({"presetId":"p"}));

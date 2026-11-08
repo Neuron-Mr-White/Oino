@@ -143,6 +143,11 @@ fn default_ticket_autonomy(argv: &mut Vec<String>) {
         argv.push("high".into());
     }
 }
+fn alias_comment(argv: &mut [String]) {
+    if argv.first().is_some_and(|s| s == "comment") {
+        argv[0] = "note".into();
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -156,6 +161,16 @@ mod tests {
             super::default_ticket_autonomy(&mut argv);
             assert_eq!(argv, expected);
         }
+    }
+
+    #[test]
+    fn comment_is_an_alias_for_note() {
+        let mut argv = vec!["comment", "T-1", "looks good"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        super::alias_comment(&mut argv);
+        assert_eq!(argv, ["note", "T-1", "looks good"]);
     }
 }
 
@@ -228,6 +243,7 @@ impl AgentTool for ChatTool {
                     }
                     let mut argv: Vec<String> = serde_json::from_value(args["argv"].clone())
                         .map_err(|e| ToolError::new(e.to_string()))?;
+                    alias_comment(&mut argv);
                     let command = argv.first().map(String::as_str).unwrap_or("");
                     let help = (argv.len() == 1
                         && matches!(command, "help" | "--help" | "-h"))

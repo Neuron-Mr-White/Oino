@@ -7,8 +7,8 @@
  * windowed (the acceptance's virtualization), so a huge project cannot
  * flood the DOM.
  */
-import { createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
-import { Archive, Folder, MoonStar, Plus, ScanSearch, Settings2, Ellipsis, Sparkles } from 'lucide-solid';
+import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
+import { Archive, Bot, Folder, MoonStar, Plus, ScanSearch, Settings2, Ellipsis, Sparkles } from 'lucide-solid';
 import { openSkillsManager } from '../../screens/settings/SkillsPage';
 import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
 import { menuAnchor, desktopShell } from '../../lib/layout';
@@ -18,6 +18,8 @@ import { buildSearchIndex, searchIndexed } from '../../lib/settings/searchIndex'
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
 import { NO_WORKSPACE_LABEL, shortCwd } from '../../lib/session/selectors';
+import { superagentApi, type ProjectRow } from '../superagent/api';
+import { LeadModelDialog, leadProjectFor } from './LeadModelDialog';
 import { SessionRow, type ModeBadge, type RowProps, type RowVariant } from './SessionRow';
 
 /** Rows shown before "Show more" (Z-11). */
@@ -82,6 +84,20 @@ export function ProjectGroup(props: {
   const hasMenu = () => realProject() || !!props.onArchiveAll;
   const iconSize = () => (desktopShell() ? 15 : 17);
   const groupName = () => props.label || NO_WORKSPACE_LABEL;
+  // "Lead model…" only for a folder that is a Superagent board project; looked up (fresh) each time the menu opens.
+  const [leadProjects] = createResource(
+    () => (menuAt() && realProject() ? props.hostId : undefined),
+    async (host): Promise<readonly ProjectRow[] | null> => {
+      try {
+        const result = await superagentApi.status(host);
+        return result.ok ? result.value.projects : null;
+      } catch {
+        return null;
+      }
+    },
+  );
+  const leadProject = () => leadProjectFor(leadProjects.latest, props.cwd);
+  const [leadDialog, setLeadDialog] = createSignal<ProjectRow | undefined>();
 
   // >50 sessions: a positioned window over one shared scroll parent. Rows with an open
   // subagent tree are taller, so the window walks prefix offsets, not i × height.
@@ -213,6 +229,16 @@ export function ProjectGroup(props: {
                 testId="sb-project-skills"
                 onSelect={() => (setMenuAt(undefined), openSkillsManager({ hostId: props.hostId, cwd: props.cwd!, name: groupName() }))}
               />
+              <Show when={leadProject()}>
+                {(project) => (
+                  <MenuRow
+                    icon={<Bot size={iconSize()} />}
+                    label="Lead model…"
+                    testId="sb-project-lead-model"
+                    onSelect={() => (setMenuAt(undefined), setLeadDialog(project()))}
+                  />
+                )}
+              </Show>
               <MenuRow
                 icon={<ScanSearch size={iconSize()} />}
                 label={searchIndexed(props.hostId, props.cwd!) ? 'Rebuild search index…' : 'Build search index…'}
@@ -241,6 +267,11 @@ export function ProjectGroup(props: {
               />
             </Show>
           </AnchoredMenu>
+        )}
+      </Show>
+      <Show when={leadDialog()} keyed>
+        {(project) => (
+          <LeadModelDialog hostId={props.hostId} project={project} name={groupName()} onClose={() => setLeadDialog(undefined)} />
         )}
       </Show>
       <div

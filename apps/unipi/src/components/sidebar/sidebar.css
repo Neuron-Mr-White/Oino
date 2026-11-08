@@ -1007,3 +1007,12 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 .srow:not([data-compact]) .srow-meta .srow-time { align-self: flex-start; }
 .srow[data-compact] .srow-chip[data-icon-only] { padding: 0 3px; gap: 0; }
 .srow[data-compact] .srow-chips { flex: none; display: inline-flex; align-items: center; gap: 3px; }
+
+/* "Lead model…" dialog (sidebar project menu) */
+.leadm { display: flex; flex-direction: column; gap: 14px; }
+.leadm-help { margin: 0; font-size: calc(12.5px * var(--ui-font-scale)); line-height: 1.45; color: var(--color-text-dim); }
+.leadm-field { display: flex; flex-direction: column; gap: 6px; }
+.leadm-label { font-size: calc(12.5px * var(--ui-font-scale)); font-weight: 500; color: var(--color-text-muted); }
+.leadm-select { width: 100%; min-width: 0; }
+.leadm-error { margin: 0; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-danger, #f0503c); }
+.leadm-foot { display: flex; align-items: center; gap: 8px; width: 100%; }

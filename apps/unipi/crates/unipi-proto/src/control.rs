@@ -608,6 +608,14 @@ pub enum Request {
     SuperagentSetMode { project_id: String, mode: String },
     #[serde(rename = "superagent.configure_project", rename_all = "camelCase")]
     SuperagentConfigureProject { project_id: String, auto_start: bool },
+    #[serde(rename = "superagent.configure_project_lead", rename_all = "camelCase")]
+    SuperagentConfigureProjectLead {
+        project_id: String,
+        #[serde(default)]
+        model: Option<String>,
+        #[serde(default)]
+        thinking: Option<String>,
+    },
     #[serde(rename = "superagent.presets.list")]
     SuperagentPresetsList,
     #[serde(rename = "superagent.presets.save")]
@@ -1096,6 +1104,7 @@ mod tests {
             serde_json::json!({"op":"superagent.start","projectId":"p","taskIds":["T-1"],"presetId":"feature","overrides":{"autonomy":"low"}}),
             serde_json::json!({"op":"superagent.start","projectId":"p","taskId":"T-1"}),
             serde_json::json!({"op":"superagent.configure_project","projectId":"p","autoStart":true}),
+            serde_json::json!({"op":"superagent.configure_project_lead","projectId":"p","model":"faux/example","thinking":"high"}),
             serde_json::json!({"op":"superagent.relay","projectId":"p","taskIds":["T-1"],"text":"urgent","delivery":"steer","priority":true}),
             serde_json::json!({"op":"superagent.presets.list"}),
             serde_json::json!({"op":"superagent.presets.save","preset":{"id":"x"}}),

@@ -139,6 +139,7 @@ pub fn run() {
             chat::superagent_configure,
             chat::superagent_set_mode,
             chat::superagent_configure_project,
+            chat::superagent_configure_project_lead,
             chat::superagent_presets_list,
             chat::superagent_presets_save,
             chat::superagent_presets_delete,

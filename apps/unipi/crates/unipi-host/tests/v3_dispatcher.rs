@@ -1184,3 +1184,134 @@ async fn manual_start_refuses_different_preset_while_lead_runs() {
     );
     assert_eq!(*fake.relays.lock().unwrap(), vec![id]);
 }
+
+#[tokio::test]
+async fn project_lead_applies_to_watcher_launch_and_status() {
+    let f = Fixture::new();
+    let _task = f.add("lead", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.configure(Config {
+        enabled: true,
+        concurrency_cap: 1,
+    })
+    .await
+    .unwrap();
+    let saved = d
+        .configure_project_lead(
+            &f.project.slug,
+            Some("faux/lead".into()),
+            Some("max".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        saved,
+        serde_json::json!({"projectId": f.project.slug.as_str(), "model": "faux/lead", "thinking": "max"})
+    );
+    let status = d.status().await.unwrap();
+    assert_eq!(status["projects"][0]["leadModel"], "faux/lead");
+    assert_eq!(status["projects"][0]["leadThinking"], "max");
+    assert_eq!(
+        status["projects"][0]["root"],
+        f.project.root.to_string_lossy().as_ref()
+    );
+    d.configure_project(&f.project.slug, true).await.unwrap();
+    d.tick().await.unwrap();
+    let preset = fake.presets.lock().unwrap()[0].clone();
+    assert_eq!(preset.model.as_deref(), Some("faux/lead"));
+    assert_eq!(preset.thinking.as_deref(), Some("max"));
+}
+
+#[tokio::test]
+async fn explicit_override_wins_over_project_lead() {
+    use unipi_host::superagent_presets::Overrides;
+    let f = Fixture::new();
+    let task = f.add("lead override", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.configure_project_lead(
+        &f.project.slug,
+        Some("faux/lead".into()),
+        Some("low".into()),
+    )
+    .await
+    .unwrap();
+    d.start_with_preset(
+        &f.project.slug,
+        &task,
+        None,
+        Overrides {
+            model: Some("faux/explicit".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let preset = fake.presets.lock().unwrap()[0].clone();
+    assert_eq!(preset.model.as_deref(), Some("faux/explicit"));
+    assert_eq!(preset.thinking.as_deref(), Some("low"));
+}
+
+#[tokio::test]
+async fn project_lead_validation_and_clearing() {
+    let f = Fixture::new();
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake).await;
+    assert_eq!(
+        d.configure_project_lead(
+            &f.project.slug,
+            Some("faux/lead".into()),
+            Some("extreme".into())
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "E_SCHEMA"
+    );
+    assert_eq!(
+        d.configure_project_lead(&f.project.slug, Some("not-a-model".into()), None)
+            .await
+            .unwrap_err()
+            .code,
+        "E_SCHEMA"
+    );
+    assert!(d
+        .configure_project_lead("missing", Some("faux/lead".into()), None)
+        .await
+        .is_err());
+    d.configure_project_lead(
+        &f.project.slug,
+        Some("faux/lead".into()),
+        Some("high".into()),
+    )
+    .await
+    .unwrap();
+    let cleared = d
+        .configure_project_lead(&f.project.slug, Some("  ".into()), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        cleared,
+        serde_json::json!({"projectId": f.project.slug.as_str(), "model": null, "thinking": null})
+    );
+    let status = d.status().await.unwrap();
+    assert_eq!(status["projects"][0]["leadModel"], serde_json::Value::Null);
+    assert_eq!(
+        status["projects"][0]["leadThinking"],
+        serde_json::Value::Null
+    );
+}
+
+#[test]
+fn preferences_without_project_leads_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("superagent-preferences.json");
+    std::fs::write(
+        &path,
+        r#"{"defaultPresetId":"quick-fix","presets":[],"projects":{}}"#,
+    )
+    .unwrap();
+    let store = unipi_host::superagent_presets::Store::load(&path).unwrap();
+    assert!(store.project_leads.is_empty());
+}

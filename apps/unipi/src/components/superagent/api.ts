@@ -30,7 +30,10 @@ const NeedsSchema = z.object({
   command: z.string().nullish(), summary: z.string().nullish(), risk: AutonomySchema.nullish(), ceiling: AutonomySchema.optional(), reason: z.string().optional(),
 });
 const ReviewSchema = z.object({ projectId: z.string(), taskId: z.string(), status: z.string().optional() });
-const ProjectSchema = z.object({ projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0) });
+const ProjectSchema = z.object({
+  projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0),
+  root: z.string().nullish(), leadModel: z.string().nullish(), leadThinking: z.string().nullish(),
+});
 
 const RawStatusSchema = z.object({
   enabled: z.boolean(), concurrencyCap: z.number().int().min(1),
@@ -94,6 +97,8 @@ export const superagentApi = {
   status: (host: string) => hostCall(host, 'superagent.status', {}, StatusSchema),
   configure: (host: string, config: z.infer<typeof ConfigSchema>) => hostCall(host, 'superagent.configure', ConfigSchema.parse(config), ConfigReplySchema),
   configureProject: (host: string, projectId: string, autoStart: boolean) => hostCall(host, 'superagent.configure_project', { projectId, autoStart }, z.object({ projectId: z.string(), autoStart: z.boolean() })),
+  /** The project's lead model + thinking (both null clears; a running lead keeps its model until restarted). */
+  configureProjectLead: (host: string, projectId: string, model: string | null, thinking: string | null) => hostCall(host, 'superagent.configure_project_lead', { projectId, model, thinking }, z.object({ projectId: z.string(), model: z.string().nullish(), thinking: z.string().nullish() })),
   setMode: (host: string, projectId: string, mode: LeadMode) => hostCall(host, 'superagent.set_mode', { projectId, mode }, z.object({ sessionId: z.string().nullish(), mode: z.string() })),
   start: (host: string, projectId: string, taskIds: string[], presetId?: string | null) => hostCall(host, 'superagent.start', { projectId, taskIds, ...(presetId ? { presetId } : {}) }, z.object({ sessionId: z.string() })),
   stop: (host: string, projectId: string, taskId: string) => hostCall(host, 'superagent.stop', { projectId, taskId }, z.object({ stopped: z.boolean() })),

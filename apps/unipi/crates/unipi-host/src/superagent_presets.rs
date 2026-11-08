@@ -108,6 +108,14 @@ impl Overrides {
         }
     }
 }
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectLead {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Store {
@@ -115,6 +123,8 @@ pub struct Store {
     pub presets: Vec<Preset>,
     #[serde(default)]
     pub projects: HashMap<String, bool>,
+    #[serde(default, rename = "projectLeads")]
+    pub project_leads: HashMap<String, ProjectLead>,
 }
 impl Default for Store {
     fn default() -> Self {
@@ -173,6 +183,7 @@ impl Default for Store {
         Self {
             default_preset_id: "quick-fix".into(),
             projects: HashMap::new(),
+            project_leads: HashMap::new(),
             presets: entries
                 .into_iter()
                 .map(

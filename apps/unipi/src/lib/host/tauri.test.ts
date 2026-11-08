@@ -25,7 +25,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 describe('tauri Superagent requests', () => {
   it('maps JSON commands without dropping protocol or future fields', async () => {
     const client = createTauriHost('h1');
-    const ops = ['configure', 'start', 'relay', 'set_mode', 'configure_project', 'presets.list', 'presets.save', 'presets.delete', 'presets.set_default'];
+    const ops = ['configure', 'start', 'relay', 'set_mode', 'configure_project', 'configure_project_lead', 'presets.list', 'presets.save', 'presets.delete', 'presets.set_default'];
     const args = { projectId: 'p', taskIds: ['a', 'b'], presetId: 'x', overrides: { future: 1 }, delivery: 'steer', priority: true, concurrencyCap: 3 };
     for (const name of ops) {
       await client.request(`superagent.${name}`, args);

@@ -1,6 +1,6 @@
 //! Machine-wide Superagent dispatcher. The kernel lock covers the entire owner lifetime;
 //! the async transaction lock covers watcher/manual reservation through session launch.
-use crate::superagent_presets::{Overrides, Preset, Store};
+use crate::superagent_presets::{Overrides, Preset, ProjectLead, Store};
 use futures_util::future::BoxFuture;
 use oino_core::{
     runtime::{AgentSessionRuntime, SessionOptions, SessionSource},
@@ -289,6 +289,49 @@ impl Dispatcher {
         *prefs = next;
         Ok(json!({"projectId":project_id,"autoStart":auto_start}))
     }
+    pub async fn configure_project_lead(
+        &self,
+        project_id: &str,
+        model: Option<String>,
+        thinking: Option<String>,
+    ) -> Result<Value> {
+        Project::load(&self.layout, project_id).map_err(storage)?;
+        let normalize = |value: Option<String>| {
+            value
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+        let model = normalize(model);
+        let thinking = normalize(thinking);
+        if model.as_ref().is_some_and(|model| {
+            !model
+                .split_once('/')
+                .is_some_and(|(p, id)| !p.is_empty() && !id.is_empty())
+        }) {
+            return Err(fail("E_SCHEMA", "model must be provider/id"));
+        }
+        if let Some(thinking) = &thinking {
+            thinking
+                .parse::<oino_ai::ThinkingLevel>()
+                .map_err(|_| fail("E_SCHEMA", "invalid thinking level"))?;
+        }
+        let mut prefs = self.preferences.lock().await;
+        let mut next = prefs.clone();
+        if model.is_none() && thinking.is_none() {
+            next.project_leads.remove(project_id);
+        } else {
+            next.project_leads.insert(
+                project_id.into(),
+                ProjectLead {
+                    model: model.clone(),
+                    thinking: thinking.clone(),
+                },
+            );
+        }
+        next.save(&self.preferences_path).map_err(storage)?;
+        *prefs = next;
+        Ok(json!({"projectId":project_id,"model":model,"thinking":thinking}))
+    }
     pub async fn presets_list(&self) -> Value {
         let prefs = self.preferences.lock().await;
         json!({"defaultPresetId":prefs.default_preset_id,"presets":prefs.presets})
@@ -379,6 +422,15 @@ impl Dispatcher {
             return Err(fail("E_WATCHER_OFF", "Project autoStart is disabled"));
         }
         let requested = preset_id.is_some() || !overrides.is_empty();
+        let mut overrides = overrides;
+        if let Some(lead) = preferences.project_leads.get(project_id) {
+            if overrides.model.is_none() {
+                overrides.model.clone_from(&lead.model);
+            }
+            if overrides.thinking.is_none() {
+                overrides.thinking.clone_from(&lead.thinking);
+            }
+        }
         let preset = preferences
             .resolve(preset_id, overrides)
             .map_err(|e| fail("E_SCHEMA", e))?;
@@ -695,7 +747,8 @@ impl Dispatcher {
                     }
                 }
             }
-            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead,"ready":ready}));
+            let project_lead = prefs.project_leads.get(&project.slug);
+            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead,"ready":ready,"leadModel":project_lead.and_then(|lead| lead.model.clone()),"leadThinking":project_lead.and_then(|lead| lead.thinking.clone()),"root":project.root}));
         }
         Ok(
             json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
@@ -1048,6 +1101,15 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             project_id,
             auto_start,
         } => dispatcher.configure_project(&project_id, auto_start).await,
+        Request::SuperagentConfigureProjectLead {
+            project_id,
+            model,
+            thinking,
+        } => {
+            dispatcher
+                .configure_project_lead(&project_id, model, thinking)
+                .await
+        }
         Request::SuperagentSetMode { project_id, mode } => dispatcher.set_mode(&project_id, &mode).await,
         Request::SuperagentPresetsList => Ok(dispatcher.presets_list().await),
         Request::SuperagentPresetsSave { preset } => {
