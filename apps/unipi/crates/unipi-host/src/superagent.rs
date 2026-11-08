@@ -57,6 +57,39 @@ fn storage(e: impl ToString) -> DispatchError {
     fail("E_SUPERAGENT_STORAGE", e)
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct BlockerAction {
+    pub kind: &'static str,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Blocker {
+    pub code: &'static str,
+    pub message: String,
+    pub action: BlockerAction,
+}
+
+fn project_blockers(project_id: &str, project: Option<&Project>, enabled: bool, auto_start: bool) -> Vec<Blocker> {
+    let blocker = |code, message: String, kind, label: String| Blocker {
+        code, message, action: BlockerAction { kind, label },
+    };
+    let Some(project) = project else {
+        return vec![blocker("not_registered", format!("Project {project_id} has no Kanboard board. Set it up with kanboard project add <path> and retry; use project_resolver to find the workspace."), "register", format!("Set up a Kanboard board for {project_id}"))];
+    };
+    if project.archived {
+        return vec![blocker("archived", format!("Project {project_id} is archived. Unarchive it on the Kanboard dashboard and retry."), "unarchive", "Unarchive project".into())];
+    }
+    let mut blockers = Vec::new();
+    if !auto_start {
+        blockers.push(blocker("project_auto_off", format!("Project {project_id} Auto is off, so ready tickets will not start automatically."), "enable_project_auto", "Enable project Auto".into()));
+    }
+    if !enabled {
+        blockers.push(blocker("global_auto_off", "Global Auto-start is off, so ready tickets will not start automatically.".into(), "enable_auto_start", "Enable Auto-start".into()));
+    }
+    blockers
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
@@ -289,6 +322,45 @@ impl Dispatcher {
         *prefs = next;
         Ok(json!({"projectId":project_id,"autoStart":auto_start}))
     }
+    /// Perform an action explicitly confirmed by the client.
+    pub async fn enable(&self, action: &str, project_id: Option<&str>, path: Option<&str>) -> Result<Value> {
+        let id = || project_id.filter(|id| !id.trim().is_empty()).ok_or_else(|| fail("E_SCHEMA", "projectId is required"));
+        let result = match action {
+            "register" => {
+                let path = path.filter(|p| !p.trim().is_empty()).ok_or_else(|| fail("E_SCHEMA", "path is required"))?;
+                let path = Path::new(path);
+                if !path.is_absolute() || !path.is_dir() { return Err(fail("E_SCHEMA", "path must be an absolute directory")); }
+                let project = unipi_kanboard::commands::project_add(&self.layout, None, None, None, path).map_err(storage)?;
+                project["slug"].as_str().map(str::to_owned)
+            }
+            "unarchive" => {
+                let id = id()?;
+                unipi_kanboard::commands::project_set_archived(&self.layout, id, false).map_err(storage)?;
+                Some(id.to_owned())
+            }
+            "enable_project_auto" => {
+                let id = id()?;
+                self.configure_project(id, true).await?;
+                Some(id.to_owned())
+            }
+            "enable_auto_start" => {
+                let cap = self.transaction.lock().await.concurrency_cap;
+                self.configure(Config { enabled: true, concurrency_cap: cap }).await?;
+                None
+            }
+            _ => return Err(fail("E_SCHEMA", "Unknown enable action")),
+        };
+        Ok(json!({"ok":true,"projectId":result}))
+    }
+
+    pub async fn blockers(&self, project_id: &str) -> Result<Vec<Blocker>> {
+        let config = self.transaction.lock().await;
+        let prefs = self.preferences.lock().await;
+        let projects = self.layout.list_projects().map_err(storage)?;
+        let project = projects.iter().find(|p| p.slug == project_id);
+        Ok(project_blockers(project_id, project, config.enabled, prefs.projects.get(project_id).copied().unwrap_or(false)))
+    }
+
     pub async fn configure_project_lead(
         &self,
         project_id: &str,
@@ -459,10 +531,17 @@ impl Dispatcher {
                 occupied.insert(run.session, project.slug);
             }
         }
-        let project = Project::load(&self.layout, project_id).map_err(storage)?;
-        if project.archived {
-            return Err(fail("E_WORKER_REFUSED", "Project is archived"));
+        let project = self.layout.list_projects().map_err(storage)?.into_iter().find(|p| p.slug == project_id);
+        let blockers = project_blockers(project_id, project.as_ref(), config.enabled, true);
+        if let Some(blocker) = blockers.first() {
+            let code = match blocker.code {
+                "not_registered" => Some("E_PROJECT_NOT_REGISTERED"),
+                "archived" => Some("E_PROJECT_ARCHIVED"),
+                _ => None,
+            };
+            if let Some(code) = code { return Err(fail(code, &blocker.message)); }
         }
+        let project = project.expect("hard blockers reject missing projects");
         if let Some((id, _)) = occupied.iter().find(|(_, p)| p.as_str() == project_id) {
             if !self.workers.live(id).await || self.workers.ended(id).await.is_some() { return Err(fail("E_WORKER_NOT_LIVE", "Lead has ended; retry after it is retired")); }
             if requested {
@@ -680,6 +759,24 @@ impl Dispatcher {
             .await
             .map_err(|e| fail("E_APPROVAL", e))
     }
+    pub fn append_recent_workspaces(&self, status: &mut Value, recent: &[crate::sessions::card::ProjectGroup]) -> Result<()> {
+        let registered = self.layout.list_projects().map_err(storage)?;
+        let Some(rows) = status["projects"].as_array_mut() else { return Ok(()); };
+        let mut added = 0;
+        for workspace in recent {
+            let path = Path::new(&workspace.cwd);
+            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            if !path.is_absolute() || registered.iter().any(|project| project.root == canonical || std::fs::canonicalize(&project.root).is_ok_and(|root| root == canonical)) { continue; }
+            let slug = unipi_kanboard::store::slug_for(&canonical);
+            if rows.iter().any(|row| row["projectId"] == slug) { continue; }
+            let blockers = project_blockers(&workspace.cwd, None, false, false);
+            rows.push(json!({"projectId":slug,"name":workspace.name,"path":workspace.cwd,"registered":false,"autoStart":false,"lead":null,"ready":0,"blockers":blockers}));
+            added += 1;
+            if added == 5 { break; }
+        }
+        Ok(())
+    }
+
     pub async fn status(&self) -> Result<Value> {
         let config = self.transaction.lock().await;
         let mut workers = Vec::new();
@@ -747,8 +844,10 @@ impl Dispatcher {
                     }
                 }
             }
+            let auto_start = prefs.projects.get(&project.slug).copied().unwrap_or(false);
             let project_lead = prefs.project_leads.get(&project.slug);
-            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":prefs.projects.get(&project.slug).copied().unwrap_or(false),"lead":lead,"ready":ready,"leadModel":project_lead.and_then(|lead| lead.model.clone()),"leadThinking":project_lead.and_then(|lead| lead.thinking.clone()),"root":project.root}));
+            let blockers = project_blockers(&project.slug, Some(&project), config.enabled, auto_start);
+            projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":auto_start,"lead":lead,"ready":ready,"blockers":blockers,"registered":true,"leadModel":project_lead.and_then(|lead| lead.model.clone()),"leadThinking":project_lead.and_then(|lead| lead.thinking.clone()),"root":project.root}));
         }
         Ok(
             json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
@@ -1101,6 +1200,7 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             project_id,
             auto_start,
         } => dispatcher.configure_project(&project_id, auto_start).await,
+        Request::SuperagentEnable { action, project_id, path } => dispatcher.enable(&action, project_id.as_deref(), path.as_deref()).await,
         Request::SuperagentConfigureProjectLead {
             project_id,
             model,

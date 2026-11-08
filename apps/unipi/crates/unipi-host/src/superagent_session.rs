@@ -65,7 +65,7 @@ pub async fn create_from(
         ),
         (
             "superagent.start",
-            "Start or queue tickets with the project's lead. Tickets may be backlog, todo or blocked. Optional overrides: model (string, \"provider/id\"), thinking (\"off\"|\"minimal\"|\"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"), autonomy (\"low\"|\"medium\"|\"high\"), mode (\"none\"|\"goal\"|\"ralph\"|\"swarm\"|\"graph\"), maxParallel (integer >= 1), review (\"none\"|\"light\"|\"full\"), profiles (string array), priority (boolean). Do not move tickets to todo before calling start; start takes backlog, todo or blocked tickets itself (moving to todo first lets auto-start launch a lead with the default preset).",
+            "Start or queue tickets with the project's lead. Tickets may be backlog, todo or blocked. Optional overrides: model (string, \"provider/id\"), thinking (\"off\"|\"minimal\"|\"low\"|\"medium\"|\"high\"|\"xhigh\"|\"max\"), autonomy (\"low\"|\"medium\"|\"high\"), mode (\"none\"|\"goal\"|\"ralph\"|\"swarm\"|\"graph\"), maxParallel (integer >= 1), review (\"none\"|\"light\"|\"full\"), profiles (string array), priority (boolean). Manual start works even when Auto is off; unregistered or archived projects require user confirmation. Do not move tickets to todo before calling start; start takes backlog, todo or blocked tickets itself (moving to todo first lets auto-start launch a lead with the default preset).",
             json!({"projectId":{"type":"string"},"taskIds":{"type":"array","items":{"type":"string"}},"presetId":{"type":"string"},"overrides":{"type":"object","properties":{"model":{"type":"string"},"thinking":{"type":"string","enum":["off","minimal","low","medium","high","xhigh","max"]},"autonomy":{"type":"string","enum":["low","medium","high"]},"mode":{"type":"string","enum":["none","goal","ralph","swarm","graph"]},"maxParallel":{"type":"integer","minimum":1},"review":{"type":"string","enum":["none","light","full"]},"profiles":{"type":"array","items":{"type":"string"}},"priority":{"type":"boolean"}},"additionalProperties":false}}),
             vec!["projectId", "taskIds"],
         ),
@@ -124,7 +124,7 @@ pub async fn create_from(
         .with_manager(|m| {
             if !m.branch(None).iter().any(|e| matches!(&e.kind, oino_session::EntryKind::Custom { custom_type, .. } if custom_type == "oino:superagent")) {
                 m.append_custom_entry("oino:superagent", Some(json!({"workspace":null})))?;
-                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch leads; ask the user if project selection is ambiguous. Relay dependent work with queue, complementary work with steer, and urgent work with priority. Ask the user before switching a lead's mode when practical; switching is not technically gated.".into()), false, Some(json!({"author":"host"})))?;
+                m.append_custom_message_entry("oino:superagent-context", oino_ai::UserContentField::Text("Superagent session has no workspace. Manage explicit project boards and dispatch leads; ask the user if project selection is ambiguous. Manual start ignores Auto settings; registering or unarchiving requires user confirmation. Relay dependent work with queue, complementary work with steer, and urgent work with priority. Ask the user before switching a lead's mode when practical; switching is not technically gated.".into()), false, Some(json!({"author":"host"})))?;
             }
             m.materialize()
         })
@@ -236,8 +236,14 @@ impl AgentTool for ChatTool {
                     let project_id = field("projectId")?;
                     let layout = unipi_kanboard::Layout::from_env()
                         .map_err(|e| ToolError::new(e.to_string()))?;
-                    let project = unipi_kanboard::Project::load(&layout, &project_id)
-                        .map_err(|e| ToolError::new(e.to_string()))?;
+                    let project = match unipi_kanboard::Project::load(&layout, &project_id) {
+                        Ok(project) => project,
+                        Err(_) => {
+                            let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                            let blockers = dispatcher.blockers(&project_id).await.map_err(|e| ToolError::new(e.to_string()))?;
+                            return Err(ToolError::new(blockers.first().map_or_else(|| "Project is unavailable".into(), |b| b.message.clone())));
+                        }
+                    };
                     if project.archived {
                         return Err(ToolError::new("Project is archived"));
                     }
@@ -292,12 +298,14 @@ impl AgentTool for ChatTool {
                     }) {
                         return Err(ToolError::new("Global board overrides are not allowed"));
                     }
+                    let schedules_todo = (command == "move" && argv.get(2).is_some_and(|s| s == "todo"))
+                        || (command == "add" && argv.iter().enumerate().any(|(i, arg)| arg == "--status=todo" || (arg == "--status" && argv.get(i + 1).is_some_and(|s| s == "todo"))));
                     default_ticket_autonomy(&mut argv);
-                    unipi_kanboard::service::exec(&unipi_kanboard::service::ExecRequest {
+                    let mut result = unipi_kanboard::service::exec(&unipi_kanboard::service::ExecRequest {
                         argv: [
                             vec![
                                 "--project".into(),
-                                project_id,
+                                project_id.clone(),
                                 "--actor".into(),
                                 "user".into(),
                             ],
@@ -306,7 +314,17 @@ impl AgentTool for ChatTool {
                         .concat(),
                         cwd: Some(project.root),
                         ..Default::default()
-                    })
+                    });
+                    if schedules_todo && result["ok"] != false {
+                        let dispatcher = crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
+                        let blockers = dispatcher.blockers(&project_id).await.map_err(|e| ToolError::new(e.to_string()))?;
+                        if !blockers.is_empty() {
+                            let reasons = blockers.iter().map(|b| b.message.as_str()).collect::<Vec<_>>().join(" ");
+                            let notice = format!("Note: {project_id} will not auto-start these tickets ({reasons}). Call superagent.start to dispatch them now, or ask the user to enable Auto / Auto-start.");
+                            if let Some(object) = result.as_object_mut() { object.insert("notice".into(), json!(notice)); }
+                        }
+                    }
+                    result
                 }
                 "ask_user" => {
                     let question = field("question")?;
@@ -330,7 +348,7 @@ impl AgentTool for ChatTool {
                         crate::superagent::current().map_err(|e| ToolError::new(e.to_string()))?;
                     match name.as_str() {
                         "superagent.start" => {
-                            let overrides = args
+                            let overrides: crate::superagent_presets::Overrides = args
                                 .get("overrides")
                                 .cloned()
                                 .map(serde_json::from_value)
@@ -338,7 +356,33 @@ impl AgentTool for ChatTool {
                                 .map_err(|e| ToolError::new(format!("Invalid overrides: {e}")))?
                                 .unwrap_or_default();
                             let tasks: Vec<String> = serde_json::from_value(args["taskIds"].clone()).map_err(|e| ToolError::new(e.to_string()))?;
-                            json!({"sessionId":dispatcher.start_tasks(&project, &tasks, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?})
+                            let first = dispatcher.start_tasks(&project, &tasks, args["presetId"].as_str(), overrides.clone()).await;
+                            let id = match first {
+                                Ok(id) => id,
+                                Err(error) if matches!(error.code, "E_PROJECT_NOT_REGISTERED" | "E_PROJECT_ARCHIVED") => {
+                                    let path = if error.code == "E_PROJECT_NOT_REGISTERED" {
+                                        let recent = hub.projects().await.unwrap_or_default();
+                                        recent.into_iter().find(|workspace| {
+                                            let path = std::path::Path::new(&workspace.cwd);
+                                            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+                                            unipi_kanboard::store::slug_for(&canonical) == project
+                                        }).map(|workspace| workspace.cwd)
+                                    } else { None };
+                                    if error.code == "E_PROJECT_NOT_REGISTERED" && path.is_none() { return Err(ToolError::new(error.to_string())); }
+                                    let Some(ui) = session.get().filter(|ui| ui.has_ui()) else { return Err(ToolError::new(error.to_string())); };
+                                    if !crate::sessions::SessionService::shared().is_some_and(|service| service.feed(ui.session_id()).subscriber_count() > 0) { return Err(ToolError::new(error.to_string())); }
+                                    let title = if path.is_some() { format!("Set up Kanboard for {project}?") } else { format!("Unarchive {project}?") };
+                                    let params = serde_json::from_value(json!({"title":title,"message":format!("{} Superagent will then start {}.", error.message, tasks.join(", "))})).map_err(|e| ToolError::new(e.to_string()))?;
+                                    let answer = tokio::time::timeout(std::time::Duration::from_secs(120), ui.dialog(Some("superagent"), "confirm", params, Some(cancel.clone()))).await.map_err(|_| ToolError::new(error.to_string()))?;
+                                    if answer != oino_core::ui::UiAnswer::Confirmed(true) { return Err(ToolError::new(format!("User declined: {}", error.message))); }
+                                    let action = if path.is_some() { "register" } else { "unarchive" };
+                                    let enabled = dispatcher.enable(action, Some(&project), path.as_deref()).await.map_err(|e| ToolError::new(e.to_string()))?;
+                                    let id = enabled["projectId"].as_str().unwrap_or(&project);
+                                    dispatcher.start_tasks(id, &tasks, args["presetId"].as_str(), overrides).await.map_err(|e| ToolError::new(e.to_string()))?
+                                }
+                                Err(error) => return Err(ToolError::new(error.to_string())),
+                            };
+                            json!({"sessionId":id})
                         }
                         "superagent.set_mode" => dispatcher.set_mode(&project, &field("mode")?).await.map_err(|e| ToolError::new(e.to_string()))?,
                         "superagent.stop" => {

@@ -186,6 +186,70 @@ impl Fixture {
     }
 }
 #[tokio::test]
+async fn dispatch_blockers_explain_manual_and_automatic_behavior() {
+    let f = Fixture::new();
+    let task = f.add("ready", &[]);
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    let status = d.status().await.unwrap();
+    assert_eq!(status["projects"][0]["registered"], true);
+    let blockers = status["projects"][0]["blockers"].as_array().unwrap();
+    assert_eq!(blockers[0]["code"], "project_auto_off");
+    assert_eq!(blockers[1]["code"], "global_auto_off");
+    assert_eq!(d.start("missing", &task).await.unwrap_err().code, "E_PROJECT_NOT_REGISTERED");
+    d.tick().await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
+    d.start(&f.project.slug, &task).await.unwrap();
+    assert_eq!(fake.launches.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn recent_workspaces_exclude_registered_and_archived_and_are_capped() {
+    use unipi_host::sessions::card::ProjectGroup;
+    let f = Fixture::new();
+    let archived_root = tempfile::tempdir().unwrap();
+    let mut archived = Project::create(&f.layout, archived_root.path(), Some("archived"), None).unwrap();
+    archived.archived = true;
+    archived.save(&f.layout).unwrap();
+    let roots: Vec<_> = (0..7).map(|_| tempfile::tempdir().unwrap()).collect();
+    let group = |path: &std::path::Path| ProjectGroup { cwd: path.to_string_lossy().into(), name: "workspace".into(), cards: vec![] };
+    let mut recent = vec![group(&f.project.root), group(archived_root.path())];
+    recent.extend(roots.iter().map(|root| group(root.path())));
+    let d = f.dispatcher(Arc::new(Fake::default())).await;
+    let mut status = d.status().await.unwrap();
+    d.append_recent_workspaces(&mut status, &recent).unwrap();
+    let rows = status["projects"].as_array().unwrap();
+    assert_eq!(rows.len(), 6);
+    for row in &rows[1..] {
+        assert_eq!(row["registered"], false);
+        assert_eq!(row["blockers"][0]["code"], "not_registered");
+        assert_eq!(row["blockers"][0]["action"]["kind"], "register");
+    }
+}
+
+#[tokio::test]
+async fn enable_actions_register_unarchive_and_enable_auto() {
+    let f = Fixture::new();
+    let d = f.dispatcher(Arc::new(Fake::default())).await;
+    assert_eq!(d.blockers("missing").await.unwrap()[0].code, "not_registered");
+    assert_eq!(d.enable("enable_project_auto", Some(&f.project.slug), None).await.unwrap()["ok"], true);
+    assert_eq!(d.status().await.unwrap()["projects"][0]["autoStart"], true);
+    assert_eq!(d.enable("enable_auto_start", None, None).await.unwrap()["projectId"], serde_json::Value::Null);
+    assert_eq!(d.status().await.unwrap()["enabled"], true);
+    let mut archived = f.project.clone();
+    archived.archived = true;
+    archived.save(&f.layout).unwrap();
+    d.enable("unarchive", Some(&archived.slug), None).await.unwrap();
+    assert!(!Project::load(&f.layout, &archived.slug).unwrap().archived);
+    let root = tempfile::tempdir().unwrap();
+    let result = d.enable("register", None, Some(root.path().to_str().unwrap())).await.unwrap();
+    let created = Project::load(&f.layout, result["projectId"].as_str().unwrap()).unwrap();
+    assert_eq!(created.root, root.path().canonicalize().unwrap());
+    assert_eq!(d.enable("register", None, Some("relative")).await.unwrap_err().code, "E_SCHEMA");
+    assert_eq!(d.enable("unknown", None, None).await.unwrap_err().code, "E_SCHEMA");
+}
+
+#[tokio::test]
 async fn presets_persist_and_apply_overrides_to_launch() {
     use unipi_host::superagent_presets::Overrides;
     let f = Fixture::new();
@@ -308,7 +372,8 @@ async fn archived_projects_and_tasks_are_absent_from_status_and_dispatch() {
     for key in ["projects", "review", "workers", "leads", "needsYou"] {
         assert!(status[key].as_array().unwrap().is_empty(), "{key}");
     }
-    assert!(d.start(&project.slug, &ready).await.is_err());
+    assert_eq!(d.blockers(&project.slug).await.unwrap()[0].code, "archived");
+    assert_eq!(d.start(&project.slug, &ready).await.unwrap_err().code, "E_PROJECT_ARCHIVED");
     d.configure_project(&project.slug, true).await.unwrap();
     d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap();
     d.tick().await.unwrap();

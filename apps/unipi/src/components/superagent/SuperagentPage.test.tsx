@@ -389,3 +389,149 @@ describe('v3 Superagent shared', () => {
     expect(openArgs('h', { kind: 'superagent' })).toEqual({ command: 'superagent_session', args: { hostId: 'h' } });
   });
 });
+
+const blk = {
+  register: { code: 'not_registered', message: 'side-quest has no Kanboard board.', action: { kind: 'register', label: 'Set up Kanboard' } },
+  archived: { code: 'archived', message: 'Attic is archived, so Superagent will not start work in it.', action: { kind: 'unarchive', label: 'Unarchive' } },
+  auto: { code: 'project_auto_off', message: 'Auto is off for Orchard.', action: { kind: 'enable_project_auto', label: 'Turn on Auto' } },
+  global: { code: 'global_auto_off', message: 'Auto-start is off for every project.', action: { kind: 'enable_auto_start', label: 'Turn on Auto-start' } },
+};
+const blockedProjects = () => [
+  { projectId: 'orchard', name: 'Orchard', autoStart: false, lead: null, ready: 2, blockers: [blk.auto], registered: true },
+  { projectId: 'website', name: 'Website', autoStart: true, lead: null, ready: 3, blockers: [blk.global], registered: true },
+  { projectId: 'attic', name: 'Attic', autoStart: false, lead: null, ready: 0, blockers: [blk.archived], registered: true },
+  { projectId: 'side-quest', name: 'side-quest', autoStart: false, lead: null, ready: 0, blockers: [blk.register], registered: false, path: '/home/you/Projects/side-quest' },
+];
+const enableOk = (projectId: string | null) => vi.spyOn(superagentApi, 'enable').mockResolvedValue(ok({ ok: true as const, projectId }));
+
+describe('OIN-27 dispatch blockers', () => {
+  it('parses an older host row without blockers and renders it as before', async () => {
+    const parsed = StatusSchema.parse(raw());
+    expect(parsed.projects?.[0]).toMatchObject({ blockers: [], registered: true });
+    expect(parsed.projects?.[0]?.path).toBeUndefined();
+    mount();
+    expect((await screen.findAllByText('No lead')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/ waiting/)).toBeNull();
+    expect(screen.queryByText('Set up')).toBeNull();
+    expect(screen.getByLabelText('Start Website')).toBeTruthy();
+  });
+  it('says why each project cannot take work, in the row', async () => {
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    expect(await screen.findByText('Auto off · 2 waiting')).toBeTruthy();
+    expect(screen.getByText('Auto-start paused · 3 waiting')).toBeTruthy();
+    expect(screen.getByText('Archived')).toBeTruthy();
+    expect(screen.getByText('No Kanboard board')).toBeTruthy();
+    // The full reason is the tooltip and the accessible text.
+    expect(screen.getByText('Auto is off for Orchard.').closest('[title]')?.getAttribute('title')).toBe('Auto is off for Orchard.');
+    // Only ready tickets on an auto blocker get the Enable link.
+    expect(screen.getByLabelText('Turn on Auto for Orchard')).toBeTruthy();
+    expect(screen.getByLabelText('Turn on Auto-start for Website')).toBeTruthy();
+    expect(screen.queryByLabelText('Unarchive for Attic')).toBeNull();
+    // An unregistered workspace is set up, not toggled or started.
+    expect(screen.getByLabelText('Set up side-quest').textContent).toBe('Set up');
+    expect(screen.queryByRole('switch', { name: 'Auto-start side-quest' })).toBeNull();
+    expect(screen.queryByLabelText('Start side-quest')).toBeNull();
+    expect(screen.getByLabelText('Start Orchard')).toBeTruthy();
+  });
+  it('a lead that runs wins over a blocker in the hint', async () => {
+    mount(raw({ projects: [{ projectId: 'oino', name: 'Oino', autoStart: false, lead: 'lead-oino', ready: 0, blockers: [blk.auto], registered: true }] }));
+    await screen.findByText(/Lead running/);
+    expect(screen.queryByText(/Auto off/)).toBeNull();
+  });
+  it('asks before starting a hard-blocked project; Cancel does nothing, Confirm enables then retries the same start', async () => {
+    const start = vi.spyOn(superagentApi, 'start').mockResolvedValue(ok({ sessionId: 'lead-new' }));
+    const enable = enableOk('attic');
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    fireEvent.click(await screen.findByLabelText('Start Attic'));
+    await screen.findByText('Pricing table copy');
+    expect(screen.getAllByText(blk.archived.message).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByLabelText(/WEB-12/));
+    fireEvent.change(screen.getByLabelText('Preset'), { target: { value: 'bug-batch' } });
+    fireEvent.click(screen.getByText('Start 2 tickets'));
+    // Nothing is sent until the owner confirms.
+    await screen.findByText('Then Superagent starts 2 tickets.');
+    expect(screen.getByTestId('sa-blocked-body').textContent).toContain(blk.archived.message);
+    expect(start).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(screen.queryByTestId('sa-blocked-body')).toBeNull());
+    expect(enable).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    // Again, and confirm.
+    fireEvent.click(screen.getByText('Start 2 tickets'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Unarchive' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith('pc-coffee', 'attic', ['WEB-9', 'WEB-11'], 'bug-batch'));
+    expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'unarchive', projectId: 'attic' });
+    expect(enable.mock.invocationCallOrder[0]!).toBeLessThan(start.mock.invocationCallOrder[0]!);
+    await waitFor(() => expect(screen.queryByTestId('sa-start')).toBeNull());
+    expect(screen.queryByTestId('sa-blocked-body')).toBeNull();
+  });
+  it('a start refused with E_PROJECT_ARCHIVED opens the unarchive modal', async () => {
+    const start = vi.spyOn(superagentApi, 'start')
+      .mockResolvedValueOnce(fail('Website is archived. Unarchive it first.', { code: 'E_PROJECT_ARCHIVED' }))
+      .mockResolvedValue(ok({ sessionId: 'lead-new' }));
+    const enable = enableOk('website');
+    mount();
+    fireEvent.click(await screen.findByLabelText('Start Website'));
+    await screen.findByText('Pricing table copy');
+    fireEvent.click(screen.getByText('Start 3 tickets'));
+    await screen.findByText('Website is archived. Unarchive it first.');
+    // The pane's own error line stays quiet: the modal is the answer.
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(2));
+    expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'unarchive', projectId: 'website' });
+    expect(start).toHaveBeenLastCalledWith('pc-coffee', 'website', ['WEB-9', 'WEB-11', 'WEB-12'], 'quick-fix');
+  });
+  it('a start refused with the plain E_PROJECT_NOT_REGISTERED code offers setup and retries with the new id', async () => {
+    const start = vi.spyOn(superagentApi, 'start')
+      .mockResolvedValueOnce({ ok: false, error: { code: 'E_PROJECT_NOT_REGISTERED' as never, message: 'Website has no board.', retryable: false } })
+      .mockResolvedValue(ok({ sessionId: 'lead-new' }));
+    const enable = enableOk('website-2');
+    mount();
+    fireEvent.click(await screen.findByLabelText('Start Website'));
+    await screen.findByText('Pricing table copy');
+    fireEvent.click(screen.getByText('Start 3 tickets'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Set up Kanboard' }));
+    await waitFor(() => expect(start).toHaveBeenLastCalledWith('pc-coffee', 'website-2', ['WEB-9', 'WEB-11', 'WEB-12'], 'quick-fix'));
+    expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'register' });
+  });
+  it('Set up on an unregistered row registers its path and only refreshes', async () => {
+    const start = vi.spyOn(superagentApi, 'start');
+    const enable = enableOk('side-quest');
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    fireEvent.click(await screen.findByLabelText('Set up side-quest'));
+    await screen.findByText('/home/you/Projects/side-quest');
+    const polls = vi.mocked(superagentApi.status).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Kanboard' }));
+    await waitFor(() => expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'register', path: '/home/you/Projects/side-quest' }));
+    await waitFor(() => expect(vi.mocked(superagentApi.status).mock.calls.length).toBeGreaterThan(polls));
+    await waitFor(() => expect(screen.queryByTestId('sa-blocked-body')).toBeNull());
+    expect(start).not.toHaveBeenCalled();
+  });
+  it('Enable on an auto hint turns Auto on and refreshes the status', async () => {
+    const enable = enableOk('orchard');
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    fireEvent.click(await screen.findByLabelText('Turn on Auto for Orchard'));
+    await screen.findByText('Ready tickets will start automatically.');
+    const polls = vi.mocked(superagentApi.status).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on Auto' }));
+    await waitFor(() => expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'enable_project_auto', projectId: 'orchard' }));
+    await waitFor(() => expect(vi.mocked(superagentApi.status).mock.calls.length).toBeGreaterThan(polls));
+  });
+  it('the master switch is enabled without a project id', async () => {
+    const enable = enableOk(null);
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    fireEvent.click(await screen.findByLabelText('Turn on Auto-start for Website'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on Auto-start' }));
+    await waitFor(() => expect(enable).toHaveBeenCalledWith('pc-coffee', { action: 'enable_auto_start' }));
+  });
+  it('shows a failed enable inline and keeps the modal open', async () => {
+    vi.spyOn(superagentApi, 'enable').mockResolvedValue({ ok: false, error: { code: 'E_BOARD_REJECTED', message: 'Host refused to enable.', retryable: false } });
+    mount(raw({ leads: [], projects: blockedProjects() }));
+    fireEvent.click(await screen.findByLabelText('Turn on Auto for Orchard'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on Auto' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Host refused to enable.');
+    expect(screen.getByTestId('sa-blocked-body')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Turn on Auto' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

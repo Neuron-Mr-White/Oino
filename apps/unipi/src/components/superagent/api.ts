@@ -30,9 +30,22 @@ const NeedsSchema = z.object({
   command: z.string().nullish(), summary: z.string().nullish(), risk: AutonomySchema.nullish(), ceiling: AutonomySchema.optional(), reason: z.string().optional(),
 });
 const ReviewSchema = z.object({ projectId: z.string(), taskId: z.string(), status: z.string().optional() });
+export const BLOCKER_CODES = ['not_registered', 'archived', 'project_auto_off', 'global_auto_off'] as const;
+export const ENABLE_ACTIONS = ['register', 'unarchive', 'enable_project_auto', 'enable_auto_start'] as const;
+export type EnableAction = (typeof ENABLE_ACTIONS)[number];
+/** Why a project cannot take work, and the one action that clears it. */
+const BlockerSchema = z.object({
+  code: z.enum(BLOCKER_CODES), message: z.string(),
+  action: z.object({ kind: z.enum(ENABLE_ACTIONS), label: z.string() }),
+});
+export type Blocker = z.infer<typeof BlockerSchema>;
+/** `not_registered` and `archived` refuse any start; the auto blockers only stop automatic starts. */
+export const isHardBlocker = (b: Blocker | undefined) => b?.code === 'not_registered' || b?.code === 'archived';
 const ProjectSchema = z.object({
   projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0),
   root: z.string().nullish(), leadModel: z.string().nullish(), leadThinking: z.string().nullish(),
+  /** Older hosts omit these: no blockers, always registered. */
+  blockers: z.array(BlockerSchema).default([]), registered: z.boolean().default(true), path: z.string().nullish(),
 });
 
 const RawStatusSchema = z.object({
@@ -45,7 +58,8 @@ export type Lead = z.infer<typeof LeadSchema> & { legacy?: boolean };
 export type NeedsItem = z.infer<typeof NeedsSchema>;
 export type ApprovalItem = NeedsItem & { workerSessionId: string; requestId: string; sessionId: string; tool: string; ceiling: z.infer<typeof AutonomySchema>; reason: string };
 export type ReviewItem = z.infer<typeof ReviewSchema>;
-export type ProjectRow = z.infer<typeof ProjectSchema>;
+/** `blockers` / `registered` are always set on parsed rows; optional here so a row built by hand (an older host's shape) still type-checks. */
+export type ProjectRow = Omit<z.infer<typeof ProjectSchema>, 'blockers' | 'registered'> & { blockers?: Blocker[]; registered?: boolean };
 export type SuperagentStatus = {
   enabled: boolean; concurrencyCap: number; leads: Lead[]; needsYou: NeedsItem[]; review: ReviewItem[];
   /** null: the host predates per-project controls. */
@@ -91,6 +105,15 @@ export const PresetSchema = z.object({
 export type Preset = z.infer<typeof PresetSchema>;
 const PresetListSchema = z.object({ defaultPresetId: z.string().nullish(), presets: z.array(PresetSchema) });
 
+/** `start` refused because the project is not registered / is archived (the host's own code, or the one it carries in `detail`). */
+export function startRefusal(error: { code?: unknown; detail?: unknown }): 'not_registered' | 'archived' | null {
+  const detail = error.detail && typeof error.detail === 'object' ? (error.detail as { code?: unknown }).code : undefined;
+  const codes = [String(error.code), String(detail)];
+  if (codes.includes('E_PROJECT_NOT_REGISTERED')) return 'not_registered';
+  if (codes.includes('E_PROJECT_ARCHIVED')) return 'archived';
+  return null;
+}
+
 export type RelayDelivery = 'queue' | 'steer';
 export const superagentApi = {
   sessions: (host: string) => hostCall(host, 'superagent.sessions', {}, SessionsSchema),
@@ -101,6 +124,10 @@ export const superagentApi = {
   configureProjectLead: (host: string, projectId: string, model: string | null, thinking: string | null) => hostCall(host, 'superagent.configure_project_lead', { projectId, model, thinking }, z.object({ projectId: z.string(), model: z.string().nullish(), thinking: z.string().nullish() })),
   setMode: (host: string, projectId: string, mode: LeadMode) => hostCall(host, 'superagent.set_mode', { projectId, mode }, z.object({ sessionId: z.string().nullish(), mode: z.string() })),
   start: (host: string, projectId: string, taskIds: string[], presetId?: string | null) => hostCall(host, 'superagent.start', { projectId, taskIds, ...(presetId ? { presetId } : {}) }, z.object({ sessionId: z.string() })),
+  /** Clears one blocker: register a workspace, unarchive, or switch Auto on. `register` needs `path` and returns the new slug. */
+  enable: (host: string, input: { action: EnableAction; projectId?: string; path?: string }) => hostCall(host, 'superagent.enable', {
+    action: input.action, ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.path ? { path: input.path } : {}),
+  }, z.object({ ok: z.literal(true), projectId: z.string().nullish() })),
   stop: (host: string, projectId: string, taskId: string) => hostCall(host, 'superagent.stop', { projectId, taskId }, z.object({ stopped: z.boolean() })),
   approvalResponse: (host: string, projectId: string, taskId: string, workerSessionId: string, requestId: string, decision: 'allow_once' | 'always' | 'deny') => hostCall(host, 'superagent.approval_response', { projectId, taskId, workerSessionId, requestId, decision }, z.object({ accepted: z.literal(true) })),
   relay: (host: string, input: { projectId: string; text: string; delivery: RelayDelivery; taskIds?: string[]; priority?: boolean }) => hostCall(host, 'superagent.relay', { projectId: input.projectId, text: RelayTextSchema.parse(input.text), delivery: input.delivery, ...(input.taskIds ? { taskIds: input.taskIds } : {}), priority: input.priority ?? false }, z.object({ commentId: z.string().nullish(), sessionId: z.string().nullish(), delivered: z.boolean(), error: z.unknown().optional() })),

@@ -100,7 +100,22 @@
 .sa-project-main { display:flex; flex-direction:column; flex:1; min-width:0; }
 .sa-project-main strong { overflow:hidden; text-overflow:ellipsis; font-weight:550; }
 .sa-project-main .sa-sub { display:inline-flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; }
+.sa-hint { display:inline-flex; align-items:center; gap:6px; min-width:0; }
+.sa-hint-text { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.sa-hint-btn { position:relative; flex:0 0 auto; padding:0; font:inherit; color:var(--color-text); background:none; border:0; text-decoration:underline; text-underline-offset:3px; }
+.sa-hint-btn::after { content:''; position:absolute; inset:-12px -8px; }
+.sa-hint-btn:hover { color:var(--color-shell); }
 .sa-auto { display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; font-size:calc(12px * var(--ui-font-scale)); color:var(--color-text-muted); }
+
+/* Dispatch blocked modal */
+.sa-blocked { display:flex; flex-direction:column; gap:10px; padding:4px 0 8px; font-size:calc(13px * var(--ui-font-scale)); line-height:1.5; }
+.sa-blocked p { margin:0; white-space:normal; overflow-wrap:anywhere; }
+.sa-blocked-next { color:var(--color-text-muted); }
+.sa-blocked-path { display:block; padding:6px 10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono, monospace); font-size:calc(12px * var(--ui-font-scale)); color:var(--color-text-muted); background:var(--color-surface-2); border-radius:8px; }
+.sa-blocked .sa-message { margin:0; }
+.sa-blocked-foot { display:flex; gap:8px; }
+.sa-blocked-foot > .sa-btn { flex:1 1 0; min-width:0; width:auto; justify-content:center; }
+.sa-start-blocked { margin:0; }
 
 /* Review */
 .sa-review { padding-top:12px; }

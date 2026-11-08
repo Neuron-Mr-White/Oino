@@ -738,6 +738,7 @@ superagent_command!(superagent_configure, "superagent.configure");
 superagent_command!(superagent_start, "superagent.start");
 superagent_command!(superagent_set_mode, "superagent.set_mode");
 superagent_command!(superagent_configure_project, "superagent.configure_project");
+superagent_command!(superagent_enable, "superagent.enable");
 superagent_command!(superagent_configure_project_lead, "superagent.configure_project_lead");
 superagent_command!(superagent_presets_list, "superagent.presets.list");
 superagent_command!(superagent_presets_save, "superagent.presets.save");

@@ -2,8 +2,12 @@ import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
 import { toAppError } from '@unipi/protocol';
 import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
-import { ConfigSchema, RelayTextSchema, superagentApi, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentStatus } from './api';
+import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentStatus } from './api';
 
+/** A mutation's failure, as far as the pane cares. */
+export type RunError = { message: string; code?: unknown; detail?: unknown };
+export type EnableInput = { action: EnableAction; projectId?: string; path?: string };
+export type EnableResult = { ok: true; projectId: string | null } | { ok: false; message: string };
 export type TicketMeta = { title: string; autonomy?: string };
 export const ticketKey = (project: string, task: string) => `${project}/${task}`;
 const POLL_MS = 5000;
@@ -33,14 +37,14 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     noticeTimer = setTimeout(() => setNotice(''), 6000);
   };
   /** Runs one mutation: busy key, host-generation guard, one error surface. */
-  async function run<T>(key: string, job: () => Promise<{ ok: true; value: T } | { ok: false; error: { message: string } }>, done: (value: T) => void | Promise<void>): Promise<boolean> {
+  async function run<T>(key: string, job: () => Promise<{ ok: true; value: T } | { ok: false; error: RunError }>, done: (value: T) => void | Promise<void>, handled?: (error: RunError) => boolean): Promise<boolean> {
     if (isBusy(key)) return false;
     const gen = generation;
     setBusy((old) => [...old, key]); setError('');
     try {
       const result = await job();
       if (gen !== generation) return false;
-      if (!result.ok) { setError(result.error.message); return false; }
+      if (!result.ok) { if (!handled?.(result.error)) setError(result.error.message); return false; }
       await done(result.value);
       return true;
     } catch (e) { if (gen === generation) setError(toAppError(e).message); return false; }
@@ -122,6 +126,8 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       apply(autoStart);
       const ok = await run(`auto:${projectId}`, () => superagentApi.configureProject(hostId(), projectId, autoStart), (v) => { apply(v.autoStart); });
       if (!ok && before !== undefined) apply(before);
+      // The hint under the name comes from the host's blockers: re-read them.
+      if (ok && status()?.projects?.find((p) => p.projectId === projectId)?.blockers?.length) void refresh();
       if (ok && autoStart) {
         const current = status();
         const project = current?.projects?.find((p) => p.projectId === projectId);
@@ -132,7 +138,28 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     },
     setMode: (projectId: string, mode: LeadMode) => run(`mode:${projectId}`, () => superagentApi.setMode(hostId(), projectId, mode), async () => { flash(`Mode will switch at the next step.`); await refresh(); }),
     stopLead: (lead: Lead) => run(`stop:${lead.projectId}`, () => superagentApi.stop(hostId(), lead.projectId, lead.ticketIds[0] ?? ''), async (v) => { flash(v.stopped ? 'Lead stopped.' : 'That lead is no longer running.'); await refresh(); }),
-    start: (projectId: string, taskIds: string[], presetId: string | null) => run(`start:${projectId}`, () => superagentApi.start(hostId(), projectId, taskIds, presetId), async () => { flash(taskIds.length === 1 ? 'Started 1 ticket.' : `Started ${taskIds.length} tickets.`); await refresh(); }),
+    /** `handled` sees a refusal first: return true to keep it out of the pane's error line (the caller shows it). */
+    start: (projectId: string, taskIds: string[], presetId: string | null, handled?: (error: RunError) => boolean) => run(`start:${projectId}`, () => superagentApi.start(hostId(), projectId, taskIds, presetId), async () => { flash(taskIds.length === 1 ? 'Started 1 ticket.' : `Started ${taskIds.length} tickets.`); await refresh(); }, handled),
+    /** Clears one blocker (register, unarchive, Auto on) and refreshes. The caller shows a failure inline; nothing goes to the pane's error line. */
+    async enable(input: EnableInput): Promise<EnableResult> {
+      const key = `enable:${input.projectId ?? input.path ?? input.action}`;
+      if (isBusy(key)) return { ok: false, message: 'Already working on it.' };
+      const gen = generation;
+      setBusy((old) => [...old, key]);
+      try {
+        const result = await superagentApi.enable(hostId(), input);
+        if (gen !== generation) return { ok: false, message: 'The host changed.' };
+        if (!result.ok) return { ok: false, message: result.error.message };
+        // Drop the cleared blocker now; the refresh below confirms it (a poll already in flight may be stale).
+        if (input.action !== 'register') patchStatus((st) => ({
+          ...st, enabled: input.action === 'enable_auto_start' ? true : st.enabled,
+          projects: st.projects?.map((p) => (input.action === 'enable_auto_start' || p.projectId === input.projectId ? { ...p, autoStart: input.action === 'enable_project_auto' ? true : p.autoStart, blockers: (p.blockers ?? []).filter((b) => b.action.kind !== input.action) } : p)) ?? null,
+        }));
+        await refresh();
+        return { ok: true, projectId: result.value.projectId ?? input.projectId ?? null };
+      } catch (e) { return { ok: false, message: toAppError(e).message }; }
+      finally { if (gen === generation) setBusy((old) => old.filter((k) => k !== key)); }
+    },
     /** Answers go to the project's lead; the ticket id is in the text because a blocked ticket is not claimed. */
     answer(projectId: string, taskId: string, text: string, delivery: RelayDelivery = 'steer') {
       const parsed = RelayTextSchema.safeParse(text);

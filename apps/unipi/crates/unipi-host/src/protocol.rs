@@ -1103,6 +1103,7 @@ impl Handler {
             Request::SuperagentStatus
             | Request::SuperagentConfigure { .. }
             | Request::SuperagentConfigureProject { .. }
+            | Request::SuperagentEnable { .. }
             | Request::SuperagentConfigureProjectLead { .. }
             | Request::SuperagentSetMode { .. }
             | Request::SuperagentPresetsList
@@ -1113,9 +1114,17 @@ impl Handler {
             | Request::SuperagentStop { .. }
             | Request::SuperagentRelay { .. }
             | Request::SuperagentApprovalResponse { .. } => {
-                let result = crate::superagent::request(req).await.map_err(|e| {
+                let is_status = matches!(req, Request::SuperagentStatus);
+                let mut result = crate::superagent::request(req).await.map_err(|e| {
                     error(AppErrorCode::E_BOARD_REJECTED, e.message).with_detail(serde_json::json!({"code":e.code}))
                 })?;
+                if is_status {
+                    if let (Some(service), Ok(dispatcher)) = (crate::sessions::SessionService::shared(), crate::superagent::current()) {
+                        if let Ok(recent) = service.hub().projects().await {
+                            let _ = dispatcher.append_recent_workspaces(&mut result, &recent);
+                        }
+                    }
+                }
                 write_control(write, &Control::Ok { data: Some(result) }).await.map_err(internal)?;
             }
             Request::CronList

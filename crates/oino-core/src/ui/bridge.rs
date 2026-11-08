@@ -285,6 +285,12 @@ impl UiBridge {
         self.has_ui
     }
 
+    /// Session whose UI requests this bridge publishes.
+    #[must_use]
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
     fn request(&self, extension: Option<&str>, method: &str, params: JsonObject) -> UiRequest {
         UiRequest {
             id: uuid::Uuid::new_v4().to_string(),
