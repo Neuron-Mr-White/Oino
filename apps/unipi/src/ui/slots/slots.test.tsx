@@ -33,6 +33,7 @@ import { ExtensionPage, feedExtensionPages, installExtensionPageFeed } from './p
 import { feedPaletteEntries } from './paletteFeed';
 import { feedStatusStrip } from './statusFeed';
 import { TurnFooters } from './TurnFooters';
+import { registerReservedBody } from './reserved';
 import { installUiEffects, resetUiEffects } from './effects';
 import { readyImages } from '../../lib/composer/attachments';
 import { subscribeEditorTokens, resetEditorTokens } from '../../lib/composer/tokens';
@@ -582,6 +583,28 @@ describe('U10 turn footers', () => {
     // §6.7 invalidate: the rev bumps the cache key → one more render
     pushOps([{ op: 'invalidate', id: 'unipi.file-summary/turnFooter:files' }]);
     await waitFor(() => expect(renderCmds().length).toBe(2));
+  });
+
+  it('OIN-19: the native file summary of a turn without file changes leaves no empty gray pill', async () => {
+    setDesktopOverride(true);
+    const s = await openTracking();
+    // The real TurnFilesFooter renders nothing for a turn that touched no file.
+    const [files, setFiles] = createSignal(0);
+    const off = registerReservedBody('turnFiles', () => <Show when={files() > 0}><div class="tl-files" data-testid="turn-files">{files()} files</div></Show>);
+    try {
+      put({ id: 'unipi.file-summary/turnFooter:files', extensionId: 'unipi.file-summary', slot: 'turnFooter', view: { kind: 'renderer', key: 'files' } });
+      const { container } = render(() => <TurnFooters ctx={ctxOf(s)} turn={turnOf('e-user-1')} />);
+      await waitFor(() => expect(screen.getByTestId('ui-turnfooters')).toBeTruthy());
+      // `.ui-turnfooter` is the padded surface-2 pill: never around the native footer.
+      expect(container.querySelector('.ui-turnfooter')).toBeNull();
+      expect(container.querySelector('.ui-turnfooter-native')?.childElementCount).toBe(0);
+      expect(screen.queryByTestId('turn-files')).toBeNull();
+      setFiles(2);
+      await waitFor(() => expect(screen.getByTestId('turn-files').textContent).toBe('2 files'));
+      expect(renderCmds().length).toBe(0); // the native row never asks for the text tree
+    } finally {
+      off();
+    }
   });
 
   it('renders nothing while no renderer entry exists, and nothing for a null answer', async () => {

@@ -23,7 +23,7 @@
  * tree navigation (an `entriesRev` change), reusing unchanged turn objects.
  */
 import { STEP_TYPES, formatDuration, isHiddenCommandText, textOf, toolCategory, type Part as ModelPart, type ToolCategory } from '../chat/model';
-import { eventVisible } from '../timeline/eventKinds';
+import { eventVisible, isSummaryRequest } from '../timeline/eventKinds';
 import { humanProviderError } from '../model/humanError';
 import type { AgentMessage, LiveTool, RunInfo, SessionEntry, Streaming } from './types';
 import { branchOf } from './reducer';
@@ -465,6 +465,8 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
     cur().work.push({ kind: 'tool', key, tool });
   };
   let cost = 0;
+  /** The long-horizon mode in force at this point of the branch (resolved lazily). */
+  let lhMode: string | undefined;
   let model: string | undefined;
   let lastAssistant: AgentMessage | undefined;
   let endedAt: number | undefined;
@@ -533,6 +535,11 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       const text = textOf(m.content as string | ModelPart[] | undefined);
       turn.command = echoCommand(branch[start.at - 1]) ?? commandOf(text, e.id);
       if (turn.command && isHiddenCommandText(text)) turn.command.hidden = true;
+      if (isSummaryRequest(m)) {
+        // OIN-19: the summarizer prompt sent as a chat message is a compaction card, not a bubble.
+        turn.command = { name: 'compact', args: '', entryId: e.id, hidden: true };
+        cur().work.push({ kind: 'card', key: e.id, entry: e });
+      }
       const hasProvenance = !!(m.unipiHarness || (m.details as { oinoProvenance?: unknown; unipiHarness?: unknown } | undefined)?.oinoProvenance || (m.details as { unipiHarness?: unknown } | undefined)?.unipiHarness);
       turn.source = m.source === 'cron' || m.unipiCron ? 'cron' : hasProvenance || messageAuthor(m) ? 'harness' : 'user';
       continue;
@@ -545,9 +552,11 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
       const m = e.message;
       if (m.role === 'user') {
         afterAsk = undefined;
-        seg = { id: e.id, index: segments.length, steer: e, work: [], nodes: [], live: false };
+        const request = isSummaryRequest(m);
+        seg = { id: e.id, index: segments.length, ...(request ? {} : { steer: e }), work: [], nodes: [], live: false };
         segments.push(seg);
         segMeta.push({ startedAt: at, endedAt: at, stopped: false, error: false, steps: 0 });
+        if (request) seg.work.push({ kind: 'card', key: e.id, entry: e });
       } else if (m.role === 'assistant') {
         lastAssistant = m;
         cost += m.usage?.cost?.total ?? 0;
@@ -570,6 +579,14 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
         const cmd = echoCommand(e);
         // An echo right before the user message it opened belongs to that turn (its `command`).
         if (cmd?.hidden || (start.at + i + 1 === end && isUser(branch[end]))) continue;
+      }
+      if (ct === LH_DECISION) {
+        // OIN-19: a decision repeating the branch's current mode (every prompt of a sticky
+        // `/graph`, each retry's re-run gate) is not a switch: one "Mode · Graph" per change.
+        const mode = lhModeOf(e);
+        const prev = lhMode ?? lhModeBefore(branch, start.at);
+        lhMode = mode;
+        if (mode === prev) continue;
       }
       if (INTERNAL_CUSTOM_TYPES.has(ct) && !eventVisible(e)) continue;
       if (STEP_TYPES.has(ct)) {
@@ -634,6 +651,18 @@ function buildTurn(branch: readonly SessionEntry[], start: Start, end: number, l
   // [ask-user] a segment whose question is waiting is not "Working": the card is what's live.
   for (const s of segments) finishSegment(s, segMeta[s.index]!, running && s === seg && !askWaiting(s));
   return turn;
+}
+
+const LH_DECISION = 'long-horizon-decision';
+const lhModeOf = (e: SessionEntry): string => String((e.data as { mode?: unknown } | undefined)?.mode ?? 'none');
+
+/** The mode of the last long-horizon decision before `branch[at]` (`none` = the plain default). */
+function lhModeBefore(branch: readonly SessionEntry[], at: number): string {
+  for (let i = at - 1; i >= 0; i--) {
+    const e = branch[i]!;
+    if (e.type === 'custom' && e.customType === LH_DECISION) return lhModeOf(e);
+  }
+  return 'none';
 }
 
 /** The `unipi.ask-user` tool: its calls render as inline question cards (never folded). */

@@ -200,6 +200,16 @@ function harnessOf(e: SessionEntry): { source?: string; title?: string; synopsis
 const hiddenByDisplay = (e: SessionEntry): boolean =>
   (e as { display?: unknown }).display === false || (e.message as { display?: unknown } | undefined)?.display === false;
 
+/** The context summarizer's system prompt (`oino-core` compaction prompts, pi's `compact.md`). */
+const SUMMARIZER_PROMPT = /^you are a context summarization assistant\b/i;
+
+/** A user message that is the summarizer request itself (a `compact` prompt template sent as a
+ *  chat message) — compaction-internal text, rendered as a card instead of a bubble (OIN-19). */
+export function isSummaryRequest(m: { role?: unknown; content?: unknown } | undefined): boolean {
+  if (!m || m.role !== 'user') return false;
+  return SUMMARIZER_PROMPT.test(textOf(m.content as string | Part[] | undefined).trimStart());
+}
+
 /** Determines whether an entry is visible to the user only, sent to the agent only, or shared with both. */
 export function eventAudience(e: SessionEntry): EventAudience {
   if (e.type === 'compaction' || e.type === 'branch_summary') return 'both';
@@ -571,6 +581,12 @@ export function describeEvent(e: SessionEntry): EventView | null | undefined {
       audience: m.excludeFromContext === true ? 'user' : 'both',
       body: plain(output) ?? { format: 'text', text: '(no output)' },
     };
+  }
+  if (e.type === 'message' && isSummaryRequest(e.message)) {
+    // OIN-19: a summarizer prompt that went out as a chat message (`/compact` shadowed by a
+    // prompt template): a compaction card, never a user bubble with the prompt verbatim.
+    const text = textOf(e.message!.content as string | Part[] | undefined);
+    return { kind: 'summary-request', icon: 'compactor', source: 'Compaction', title: 'summary requested · /compact', audience: 'both', body: plain(text) };
   }
   if (e.type === 'message' && e.message?.role === 'system') {
     const m = e.message as Record<string, unknown>;

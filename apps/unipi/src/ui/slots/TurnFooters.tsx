@@ -66,9 +66,11 @@ export function TurnFooters(props: { ctx: TimelineCtx; turn: Turn }) {
               );
             if (isFileSummary(entry)) {
               const Native = reservedBodyOf('turnFiles');
+              // OIN-19: unstyled wrapper — the native footer draws its own row and renders nothing
+              // for a turn without file changes; the `.ui-turnfooter` pill left an empty gray bar there.
               if (Native)
                 return (
-                  <div class="ui-turnfooter" data-entry={entry.id}>
+                  <div class="ui-turnfooter-native" data-entry={entry.id}>
                     <Native entry={entry} target={{ scope: 'session', hostId: props.ctx.hostId, sessionId: props.ctx.sessionId(), turnEntryId: props.turn.turnId }} />
                   </div>
                 );

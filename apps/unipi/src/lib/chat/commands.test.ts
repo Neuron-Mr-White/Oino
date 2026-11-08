@@ -109,6 +109,17 @@ describe('[gui-cleanup] commands meant for the terminal only', () => {
   });
 });
 
+describe('OIN-19: a prompt template never shadows a built-in', () => {
+  it('/compact stays the app built-in next to a project prompts/compact.md; an extension command still takes it over', async () => {
+    const { isAppBuiltin } = await import('./commands');
+    expect(isAppBuiltin('compact', [{ name: 'compact', description: 'You are a context summarization assistant…', source: 'prompt' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'skill' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'builtin' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'extension' }])).toBe(false);
+    expect(isAppBuiltin('compact', [{ name: 'compact' }])).toBe(false);
+  });
+});
+
 describe('UNI-308 / WP-A25: every PI_BUILTINS entry has an app surface', () => {
   it('APP_HANDLED_BUILTINS \u222a BUILTIN_ROUTES covers exactly PI_BUILTINS \u2014 none falls through to a prompt', async () => {
     const { APP_HANDLED_BUILTINS, PI_BUILTINS } = await import('./commands');

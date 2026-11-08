@@ -111,9 +111,12 @@ export function isKnownCommand(name: string, session: readonly CommandInfo[]): b
 }
 
 /** A typed `/name` that the session does not run itself (an engine built-in the app handles).
- *  A session row with `source: 'builtin'` is the engine naming its own built-in, not an extension. */
+ *  A session row with `source: 'builtin'` is the engine naming its own built-in, not an extension.
+ *  Only an extension command of the same name takes it over: a prompt template or skill never
+ *  shadows a built-in (pi parity — OIN-19: a project `prompts/compact.md` turned `/compact` into
+ *  a chat message carrying the summarizer prompt instead of compacting). */
 export function isAppBuiltin(name: string, session: readonly CommandInfo[]): boolean {
-  return PI_ONLY.has(name) && !session.some((c) => c.name === name && c.source !== 'builtin');
+  return PI_ONLY.has(name) && !session.some((c) => c.name === name && sourceOf(c) === 'extension');
 }
 
 /** The `/query` being typed at the caret, or null. Only at the start of the draft or after whitespace. */
