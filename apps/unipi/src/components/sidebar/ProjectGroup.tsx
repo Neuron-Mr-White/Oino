@@ -8,12 +8,13 @@
  * flood the DOM.
  */
 import { createMemo, createSignal, For, onCleanup, onMount, Show, untrack, type JSX } from 'solid-js';
-import { Archive, Folder, MoonStar, Plus, Settings2, Ellipsis, Sparkles } from 'lucide-solid';
+import { Archive, Folder, MoonStar, Plus, ScanSearch, Settings2, Ellipsis, Sparkles } from 'lucide-solid';
 import { openSkillsManager } from '../../screens/settings/SkillsPage';
 import { AnchoredMenu, MenuRow } from '../board/AnchoredMenu';
 import { menuAnchor, desktopShell } from '../../lib/layout';
 import { openProjectSettings } from '../../lib/settings/open';
 import { runDream } from '../../lib/settings/dream';
+import { buildSearchIndex, searchIndexed } from '../../lib/settings/searchIndex';
 import type { SessionCard } from '../../lib/host/client';
 import type { SessionMeta } from '../../lib/session/hub';
 import { NO_WORKSPACE_LABEL, shortCwd } from '../../lib/session/selectors';
@@ -150,7 +151,11 @@ export function ProjectGroup(props: {
         >
           {/* [ux-sessions] Task list: a project is a folder icon + its name (the count is the tooltip). */}
           <Show when={isProject()}>
-            <Folder size={14} class="sb-project-folder" aria-hidden="true" />
+            <Folder
+              size={14}
+              class={`sb-project-folder${realProject() && searchIndexed(props.hostId, props.cwd!) ? ' sb-project-indexed' : ''}`}
+              aria-hidden="true"
+            />
           </Show>
           <span class="sb-project-label">{props.label || NO_WORKSPACE_LABEL}</span>
           <Show when={!isProject() && !props.section && props.cards.length > 1}>
@@ -207,6 +212,12 @@ export function ProjectGroup(props: {
                 label="Manage skills"
                 testId="sb-project-skills"
                 onSelect={() => (setMenuAt(undefined), openSkillsManager({ hostId: props.hostId, cwd: props.cwd!, name: groupName() }))}
+              />
+              <MenuRow
+                icon={<ScanSearch size={iconSize()} />}
+                label={searchIndexed(props.hostId, props.cwd!) ? 'Rebuild search index…' : 'Build search index…'}
+                testId="sb-project-search-index"
+                onSelect={() => (setMenuAt(undefined), void buildSearchIndex(props.hostId, props.cwd!, groupName()))}
               />
             </Show>
             <Show when={props.onArchiveAll}>

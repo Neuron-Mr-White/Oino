@@ -9,6 +9,7 @@
  */
 import { createEffect, createSignal } from 'solid-js';
 import { LOCAL_HOST } from '../lib/host/client';
+import { resolveHostId } from '../lib/host/localId';
 import type { HostsApi } from '../hosts/context';
 
 const [target, setTarget] = createSignal<string>(LOCAL_HOST);
@@ -50,5 +51,6 @@ export { projectScope, setProjectScope };
 /** The project cwd extension-settings calls address (`undefined` = the host's primary cwd). */
 export function settingsProjectCwd(hostId = target()): string | undefined {
   const scope = projectScope();
-  return scope && scope.hostId === hostId ? scope.cwd : undefined;
+  // The sidebar passes This computer's real id, Settings says `local`: compare resolved ids.
+  return scope && resolveHostId(scope.hostId) === resolveHostId(hostId) ? scope.cwd : undefined;
 }

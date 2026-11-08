@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSettingsHost } from '../target';
+import { projectScope, resolveSettingsHost, setProjectScope, setSettingsHostForTest, settingsProjectCwd } from '../target';
+import { resetLocalHostId, setLocalHostId } from '../../lib/host/localId';
 
 describe('resolveSettingsHost (PH-04)', () => {
   it('keeps this computer when the app has a local host (desktop unchanged)', () => {
@@ -13,5 +14,18 @@ describe('resolveSettingsHost (PH-04)', () => {
   });
   it('no PCs: local (nothing to manage yet)', () => {
     expect(resolveSettingsHost([], undefined)).toBe('local');
+  });
+});
+
+describe('settingsProjectCwd', () => {
+  it('matches a project opened from the sidebar (real id) while Settings says local', () => {
+    setLocalHostId('real-id');
+    setSettingsHostForTest('local');
+    setProjectScope({ hostId: 'real-id', cwd: '/p' });
+    expect(settingsProjectCwd()).toBe('/p');
+    expect(settingsProjectCwd('other-pc')).toBeUndefined();
+    setProjectScope(undefined);
+    resetLocalHostId();
+    expect(projectScope()).toBeUndefined();
   });
 });

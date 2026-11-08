@@ -102,7 +102,7 @@ export default function SearchSettings() {
         <div class="search-settings-details">
           <Show when={indexStatus()}>{(index) => <p class="text-sm text-text-muted">Index: {index().state}{index().files != null ? ` · ${index().files} files` : ''}{index().updated ? ` · updated ${new Date(index().updated!).toLocaleString()}` : ''}</p>}</Show>
           <p class="text-sm text-text-dim whitespace-normal">Open Project settings for the folder to index. Building downloads the local CPU model (local/potion-code-16m-v2, about 31 MB) and creates .zvec-grep/ in that project.</p>
-          <Show when={settingsProjectCwd()} fallback={<p class="text-sm text-text-muted">Choose a project using its Project settings first.</p>}>
+          <Show when={settingsProjectCwd()} fallback={<p class="text-sm text-text-muted whitespace-normal">To index a project, right-click it in the sidebar (or use its … menu) and choose <strong>Build search index…</strong>. Indexed projects show an orange folder.</p>}>
             <label class="search-settings-consent">
               <input type="checkbox" checked={consent()} disabled={saving()} onChange={(e) => setConsent(e.currentTarget.checked)} />
               <span>I consent to download the model and index this project locally.</span>

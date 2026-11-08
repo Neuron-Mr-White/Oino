@@ -976,6 +976,8 @@ button.sa-row:active:not(:disabled) { background: var(--color-surface-3); transf
 }
 .sb-project-head[data-folder] { min-height: 28px; padding: 4px 6px 2px 9px; font-weight: 500; color: var(--color-text-muted); }
 .sb-project-folder { flex: none; color: var(--color-text-dim); }
+/* [zvec] A project with a semantic search index. */
+.sb-project-folder.sb-project-indexed { color: var(--color-warn, #d9a13b); fill: color-mix(in srgb, var(--color-warn, #d9a13b) 30%, transparent); }
 .sb-project-head[data-folder] .sb-project-label { font-size: calc(13px * var(--ui-font-scale)); }
 .srow .srow-time { margin-left: 0; line-height: calc(18px * var(--ui-font-scale)); }
 .srow .srow-meta .srow-time { margin-left: auto; line-height: calc(14px * var(--ui-font-scale)); }
