@@ -629,8 +629,8 @@ fn rule_for_unknown_pairs_is_none() {
     assert!(!comment_required(Status::Backlog, Status::Todo));
 }
 
-/// OIN-28: parking a blocked task in the backlog is recorded like unblocking
-/// to todo (`unblocked: …`) and leaves no claim behind.
+/// OIN-28: parking a blocked task in the backlog logs
+/// `moved blocked → backlog: …` and leaves no claim behind.
 #[test]
 fn blocked_to_backlog_lands_in_backlog_with_activity_and_no_claim() {
     let fixture = Fixture::new();
@@ -681,7 +681,7 @@ fn blocked_to_backlog_lands_in_backlog_with_activity_and_no_claim() {
         stored
             .activity
             .iter()
-            .any(|entry| entry.text == "unblocked: park until Q1")
+            .any(|entry| entry.text == "moved blocked → backlog: park until Q1")
     );
 }
 

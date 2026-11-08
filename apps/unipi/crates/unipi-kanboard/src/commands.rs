@@ -1369,11 +1369,11 @@ pub fn move_task_undoable(
     let note = note.as_str();
     let text = match (from, to) {
         (_, Status::Blocked) => format!("blocked: {note}"),
-        (Status::Blocked, Status::Todo | Status::Backlog) => {
+        (Status::Blocked, Status::Todo) => {
             // UNI-106: the answer is optional — an empty note reads as a bare
             // "unblocked", not "unblocked: " with nothing after the colon.
-            // OIN-28: parking a blocked task in the backlog keeps the same
-            // activity text as unblocking it to todo.
+            // OIN-28: blocked → backlog falls through to "moved blocked → backlog"
+            // (the app reads "unblocked" as a move to todo).
             if note.is_empty() {
                 "unblocked".to_string()
             } else {
