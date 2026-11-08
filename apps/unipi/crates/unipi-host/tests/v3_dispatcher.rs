@@ -905,7 +905,21 @@ async fn real_worker_uses_reserved_id_unattended_ceiling_and_author_relay() {
         tokio::task::yield_now().await;
     }
     assert_eq!(f.task(&id).status, Status::Blocked);
+    // An open chat follows the worker through a backend over its runtime (host open path):
+    // stopping must end that stream, or the chat's feed keeps tapping a dead runtime.
+    let chat = oino_client::in_process::InProcessBackend::new(Arc::clone(&runtime));
+    let mut chat_events = oino_client::SessionBackend::events(&chat);
     workers.stop(&session_id).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while let Some(event) = futures_util::StreamExt::next(&mut chat_events).await {
+            if matches!(event, oino_core::events::ClientEvent::Oino(oino_core::events::OinoEvent::SessionEvicted { .. })) {
+                return;
+            }
+        }
+        panic!("chat stream ended without SessionEvicted");
+    })
+    .await
+    .expect("stopping a worker did not end an open chat's stream");
     assert!(path.exists(), "worker transcript remains after stop");
     assert!(cancelled.await.unwrap().is_err());
     assert!(!marker.exists());

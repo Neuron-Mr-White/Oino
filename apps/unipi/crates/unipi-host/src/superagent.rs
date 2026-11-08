@@ -24,6 +24,21 @@ use unipi_kanboard::{
 
 pub const INTERRUPTED: &str = "Worker was interrupted; move to todo to retry";
 
+/// Disposes a retired/stopped worker runtime, announcing it on the session stream first.
+/// A bare `dispose` never ends the streams of backends over this runtime (an open chat's
+/// host feed), so they would keep following a dead runtime: no live events, sends rejected
+/// as "already processing". `SessionEvicted` ends those taps; the app reopens the chat on
+/// a fresh runtime.
+async fn dispose_worker(runtime: &AgentSessionRuntime) {
+    let session = runtime.session();
+    session
+        .hub()
+        .publish(oino_core::events::OinoEvent::SessionEvicted {
+            session_id: session.session_id(),
+        });
+    runtime.dispose().await;
+}
+
 /// Stable machine-readable refusal and actionable explanation.
 #[derive(Debug, thiserror::Error)]
 #[error("{code}: {message}")]
@@ -842,7 +857,7 @@ impl Workers for HostWorkers {
             runtime.session().abort().await;
             self.runtimes.lock().await.remove(id);
             crate::superagent_session::unregister(id);
-            runtime.dispose().await;
+            dispose_worker(&runtime).await;
             Ok(())
         })
     }
@@ -883,7 +898,7 @@ impl Workers for HostWorkers {
             let runtime = self.runtimes.lock().await.remove(id);
             crate::superagent_session::unregister(id);
             if let Some(runtime) = runtime {
-                runtime.dispose().await;
+                dispose_worker(&runtime).await;
             }
         })
     }
