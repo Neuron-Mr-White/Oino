@@ -19,9 +19,9 @@ pub struct CutPointResult {
     pub is_split_turn: bool,
 }
 
-/// Only real user input can anchor a new retained turn.
+/// User or custom turn-boundary messages can anchor a retained range.
 const fn is_cut_point_message(message: &AgentMessage) -> bool {
-    matches!(message, AgentMessage::User(_))
+    matches!(message, AgentMessage::User(_) | AgentMessage::Custom(_))
 }
 
 /// Roles that start a turn (user-like input).

@@ -268,24 +268,20 @@ pub fn build_context_entries(entries: &EntryIndex, leaf: Option<&EntryId>) -> Ve
         .collect()
 }
 
-/// Validate an inclusive anchor against the branch *before* the state record.
-/// User turns are the only safe boundary: an assistant call and all its results stay together.
-///
-/// # Errors
-/// Missing/off-branch anchors, stale indexes, and mid-turn anchors.
-pub fn validate_compaction_anchor(
-    path: &[&SessionEntry],
-    anchor: &crate::entry::CompactionAnchor,
-) -> Result<(), &'static str> {
-    let Some(entry) = path.get(anchor.index).filter(|entry| entry.id == anchor.id) else {
-        return Err("compaction anchor is missing, off branch, or has an invalid index");
-    };
-    if !matches!(entry.message(), Some(AgentMessage::User(_))) {
-        return Err("compaction anchor must start a user turn, never split tool calls and results");
-    }
-    // A malformed transcript may place a user message before pending results.
+/// Returns whether `entry` is a safe inclusive turn-boundary anchor (`User` or a
+/// model-visible `CustomMessage` such as a relay, completion notification, or reminder).
+#[must_use]
+pub fn is_compaction_anchor_entry(entry: &SessionEntry) -> bool {
+    matches!(entry.message(), Some(AgentMessage::User(_)))
+        || (matches!(entry.kind, EntryKind::CustomMessage { .. })
+            && !entry_to_context_messages(entry, None).is_empty())
+}
+
+/// Returns whether `path` has any assistant `ToolCall` without a matching `ToolResult`.
+#[must_use]
+pub fn has_pending_tool_calls(path: &[&SessionEntry]) -> bool {
     let mut pending = HashSet::new();
-    for earlier in &path[..anchor.index] {
+    for earlier in path {
         match earlier.message() {
             Some(AgentMessage::Assistant(assistant)) => {
                 for block in &assistant.content {
@@ -300,7 +296,26 @@ pub fn validate_compaction_anchor(
             _ => {}
         }
     }
-    if !pending.is_empty() {
+    !pending.is_empty()
+}
+
+/// Validate an inclusive anchor against the branch *before* the state record.
+/// User/custom turn boundaries are the only safe boundary: an assistant call and all its results stay together.
+///
+/// # Errors
+/// Missing/off-branch anchors, stale indexes, and mid-turn anchors.
+pub fn validate_compaction_anchor(
+    path: &[&SessionEntry],
+    anchor: &crate::entry::CompactionAnchor,
+) -> Result<(), &'static str> {
+    let Some(entry) = path.get(anchor.index).filter(|entry| entry.id == anchor.id) else {
+        return Err("compaction anchor is missing, off branch, or has an invalid index");
+    };
+    if !is_compaction_anchor_entry(entry) {
+        return Err("compaction anchor must start a user turn, never split tool calls and results");
+    }
+    // A malformed transcript may place a turn message before pending results.
+    if has_pending_tool_calls(&path[..anchor.index]) {
         return Err("compaction anchor splits pending tool calls and results");
     }
     Ok(())

@@ -1,7 +1,7 @@
 //! Compaction preparation and result types (`CompactionPreparation`, `prepareCompaction`,
 //! `CompactionResult`, `CompactionDetails`).
 
-use oino_ai::{AgentMessage, JsonValue, Usage};
+use oino_ai::{AgentMessage, JsonValue, StopReason, Usage};
 use oino_session::{
     EntryId, EntryIndex, EntryKind, ProjectedEntry, SessionEntry, build_session_projection,
 };
@@ -120,31 +120,40 @@ pub fn prepare_compaction(
         settings.keep_recent_tokens,
     );
     // Metadata adjacent to a cut must not become an anchor. Snap backwards to
-    // a real user turn and validate against the raw branch before any summary call.
-    let kept_index = (boundary_start
-        ..=cut
-            .first_kept_entry_index
-            .min(projected.len().saturating_sub(1)))
+    // a safe turn boundary first; if that lands on `boundary_start` (empty summary
+    // because a huge turn exceeds `keep_recent_tokens`), snap forward to the
+    // earliest valid anchor after `boundary_start`.
+    let valid_anchor_at = |i: usize| -> Option<&SessionEntry> {
+        let candidate = &projected.get(i)?.source_entry;
+        if candidate.id.as_str().is_empty()
+            || !oino_session::context::is_compaction_anchor_entry(candidate)
+        {
+            return None;
+        }
+        if summary_messages(projected.get(boundary_start..i).unwrap_or_default()).is_empty() {
+            return None;
+        }
+        let raw_index = path.iter().position(|entry| entry.id == candidate.id)?;
+        oino_session::context::validate_compaction_anchor(
+            path,
+            &oino_session::CompactionAnchor {
+                id: candidate.id.clone(),
+                index: raw_index,
+            },
+        )
+        .ok()?;
+        Some(candidate)
+    };
+    let last_in_cut = cut
+        .first_kept_entry_index
+        .min(projected.len().saturating_sub(1));
+    let (kept_index, first_kept) = (boundary_start..=last_in_cut)
         .rev()
-        .find(|&i| {
-            matches!(
-                projected[i].source_entry.message(),
-                Some(AgentMessage::User(_))
-            )
+        .find_map(|i| valid_anchor_at(i).map(|entry| (i, entry)))
+        .or_else(|| {
+            ((last_in_cut + 1)..projected.len())
+                .find_map(|i| valid_anchor_at(i).map(|entry| (i, entry)))
         })?;
-    let first_kept = &projected.get(kept_index)?.source_entry;
-    let raw_index = path.iter().position(|entry| entry.id == first_kept.id)?;
-    oino_session::context::validate_compaction_anchor(
-        path,
-        &oino_session::CompactionAnchor {
-            id: first_kept.id.clone(),
-            index: raw_index,
-        },
-    )
-    .ok()?;
-    if first_kept.id.as_str().is_empty() {
-        return None;
-    }
     let messages_to_summarize = summary_messages(
         projected
             .get(boundary_start..kept_index)
@@ -169,6 +178,86 @@ pub fn prepare_compaction(
         first_kept_entry_id: first_kept.id.clone(),
         messages_to_summarize,
         turn_prefix_messages,
+        is_split_turn: false,
+        tokens_before,
+        previous_summary,
+        file_ops,
+        settings: *settings,
+    })
+}
+
+/// Fallback preparation for a single oversized or multi-tool turn that has no later
+/// turn-boundary entry yet. Returns `first_kept_entry_id = ""` so `commit_compaction`
+/// materializes a non-displayed boundary entry only after summarization succeeds.
+#[must_use]
+pub fn prepare_single_turn_compaction(
+    path: &[&SessionEntry],
+    settings: &CompactionSettings,
+) -> Option<CompactionPreparation> {
+    if path.last().is_some_and(|entry| {
+        matches!(
+            entry.kind,
+            EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+        )
+    }) || oino_session::context::has_pending_tool_calls(path)
+    {
+        return None;
+    }
+    let index: EntryIndex = path.iter().map(|entry| (*entry).clone()).collect();
+    let projection = build_session_projection(&index, index.last_id());
+    let projected = &projection.entries;
+    if projected.is_empty() {
+        return None;
+    }
+    let previous_compaction = projected.iter().position(|entry| {
+        matches!(
+            entry.source_entry.kind,
+            EntryKind::Compaction(_) | EntryKind::CompactionState(_)
+        ) && !entry.messages.is_empty()
+    });
+    let (previous_summary, boundary_start) = match previous_compaction {
+        Some(position) => match &projected[position].source_entry.kind {
+            EntryKind::Compaction(compaction) => (Some(compaction.summary.clone()), position + 1),
+            EntryKind::CompactionState(state) => (Some(state.summary_text.clone()), position + 1),
+            _ => (None, 0),
+        },
+        None => (None, 0),
+    };
+    let mut end = projected.len();
+    if end > boundary_start
+        && let Some(AgentMessage::Assistant(assistant)) =
+            projected[end - 1].source_entry.message()
+        && matches!(assistant.stop_reason, StopReason::Error | StopReason::Aborted)
+    {
+        end -= 1;
+    }
+    let messages_to_summarize =
+        summary_messages(projected.get(boundary_start..end).unwrap_or_default());
+    if messages_to_summarize.len() < 2 {
+        return None;
+    }
+    let tokens_before = estimate_projected_context_tokens(&projection, path).tokens;
+    let has_tool_round = messages_to_summarize
+        .iter()
+        .any(|m| matches!(m, AgentMessage::ToolResult(_)));
+    if !has_tool_round && tokens_before <= 4_096 {
+        return None;
+    }
+    let mut file_ops = FileOperations::new();
+    if let Some(EntryKind::Compaction(previous)) =
+        previous_compaction.map(|position| &projected[position].source_entry.kind)
+        && previous.from_hook != Some(true)
+        && let Some(details) = &previous.details
+    {
+        file_ops.seed_from_details(details);
+    }
+    for message in &messages_to_summarize {
+        file_ops.extract_from_message(message);
+    }
+    Some(CompactionPreparation {
+        first_kept_entry_id: EntryId::new(""),
+        messages_to_summarize,
+        turn_prefix_messages: Vec::new(),
         is_split_turn: false,
         tokens_before,
         previous_summary,

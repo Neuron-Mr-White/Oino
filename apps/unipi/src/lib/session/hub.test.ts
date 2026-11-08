@@ -280,4 +280,59 @@ describe('hub helpers', () => {
     hub.close();
     dispose();
   });
+
+  it('archive removes the row optimistically, ignores raced sessions_list snapshots, and treats E_NOT_FOUND as already gone without setting error', async () => {
+    const resolvers: Array<{ op: string; resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+    const client = {
+      hostId: 'h1',
+      conn: () => ({ state: 'connected' as const }),
+      retry: async () => {},
+      request: (op: string) =>
+        new Promise((resolve, reject) => {
+          resolvers.push({ op, resolve, reject });
+        }),
+      openEvents: () => ({ close() {} }),
+    };
+    const { hub, dispose } = createRoot((dispose) => ({ hub: createHub('h1', { client: client as unknown as HostClient }), dispose }));
+    await tick();
+    // Initial sessions_list returns [a, fileless]
+    resolvers.shift()!.resolve([card('a'), card('fileless', { file: '' })]);
+    await tick();
+    expect(Object.keys(hub.state.cards)).toEqual(['a', 'fileless']);
+
+    // Start a racing reload BEFORE archiving 'a'
+    const racingReload = hub.reload();
+    const reloadReq = resolvers.shift()!;
+    expect(reloadReq.op).toBe('sessions_list');
+
+    const archivingA = hub.archive('a');
+    // Optimistic: 'a' is gone immediately before session_archive resolves
+    expect(hub.state.cards.a).toBeUndefined();
+    const archiveReqA = resolvers.shift()!;
+    expect(archiveReqA.op).toBe('session_archive');
+
+    // Raced sessions_list snapshot still contains 'a', then archive resolves
+    reloadReq.resolve([card('a'), card('fileless', { file: '' })]);
+    await racingReload;
+    expect(hub.state.cards.a).toBeUndefined();
+    archiveReqA.resolve(card('a'));
+    await archivingA;
+    expect(hub.state.cards.a).toBeUndefined();
+    expect(hub.state.error).toBeUndefined();
+
+    // Archiving 'fileless' when host answers E_NOT_FOUND removes it cleanly with no error
+    const archivingFileless = hub.archive('fileless');
+    expect(hub.state.cards.fileless).toBeUndefined();
+    const archiveReqF = resolvers.shift()!;
+    archiveReqF.reject({ code: 'E_NOT_FOUND', message: "No session found matching 'fileless'", retryable: false });
+    // Resolve trailing background reload
+    await tick();
+    if (resolvers[0]?.op === 'sessions_list') resolvers.shift()!.resolve([]);
+    await archivingFileless;
+    expect(hub.state.cards.fileless).toBeUndefined();
+    expect(hub.state.error).toBeUndefined();
+
+    hub.close();
+    dispose();
+  });
 });

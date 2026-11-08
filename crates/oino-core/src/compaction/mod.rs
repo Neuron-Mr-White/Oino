@@ -51,7 +51,10 @@ pub use errors::{is_context_overflow, is_recoverable_length, is_retryable_assist
 pub use hook_payload::{
     BoundedBranch, HOOK_PAYLOAD_LIMITS, HookPayloadLimits, bound_branch_entries, bound_preparation,
 };
-pub use prepare::{CompactionDetails, CompactionPreparation, CompactionResult, prepare_compaction};
+pub use prepare::{
+    CompactionDetails, CompactionPreparation, CompactionResult, prepare_compaction,
+    prepare_single_turn_compaction,
+};
 pub use prompts::SUMMARIZATION_SYSTEM_PROMPT;
 pub use retry::{
     DEFAULT_MAX_AGENT_RETRY_DELAY_MS, RetryPolicy, SummarizationRetryObserver,

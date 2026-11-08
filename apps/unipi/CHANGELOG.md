@@ -4,6 +4,11 @@ What changed in each Unipi app release (desktop and phone), newest first.
 
 ## Unreleased
 
+## 1.0.2 — 2026-11-08
+
+- Superagent workspace onboarding, working-lead preservation, wire-call normalization, paired remote settings routing, and wake-aware Lead row activity/spinners.
+- Auto-compaction fixes for single-turn context bursts (bounded `session_recall` snippets, forward/custom-message compaction anchors, single-turn boundary materialization, reset threshold suppression, and 60 s `session_before_*` Wasm hook deadline).
+- Archiving a chat leaves the shown session immediately, removes the row optimistically without racing `sessions_list`, and cleanly closes file-less empty chats instead of raising `No session found matching`.
 - `/reload` in the app, like the terminal has: the chat re-reads its settings, the installed
   extension packages, skills, prompt templates, context files, `models.json` and your API keys
   from disk and the `/` list follows — no app restart. Settings › General has a Reload button for

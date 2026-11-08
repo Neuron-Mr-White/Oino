@@ -696,3 +696,145 @@ async fn precompact_blocks_manual_only_and_invalid_extension_anchor_writes_nothi
     assert!(session.compact(None).await.is_err());
     assert_eq!(session.entries(), before);
 }
+
+#[tokio::test]
+async fn single_turn_overflow_compacts_and_recovers_without_second_user_turn() {
+    use oino_core::extensions::api::Registration;
+    use oino_core::testing::FakeExtension;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    let extension = Arc::new(
+        FakeExtension::new(
+            "probe",
+            Registration {
+                tools: vec![serde_json::from_value(json!({
+                    "name": "big_tool",
+                    "label": "BigTool",
+                    "description": "single turn tool",
+                    "parameters": {"type": "object", "properties": {}},
+                    "annotations": {"readOnly": true}
+                }))
+                .unwrap()],
+                ..Default::default()
+            },
+        )
+        .on_tool(move |_, _| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(oino_agent::AgentToolResult::text("x".repeat(4096)))
+        }),
+    );
+    let provider = FauxProvider::new(vec![
+        FauxResponse::ToolCalls(vec![("call-1".into(), "big_tool".into(), Default::default())]),
+        FauxResponse::Error("prompt is too long: 1013743 tokens > 1000000 maximum".into()),
+        FauxResponse::Text("<summary>Single turn work preserved.</summary>".into()),
+        FauxResponse::Text("recovered single turn".into()),
+    ]);
+    let session = TestSession {
+        extensions: vec![extension],
+        settings: serde_json::from_value(json!({"compaction":{"keepRecentTokens":20000}})).unwrap(),
+        ..Default::default()
+    }
+    .build(provider.clone())
+    .await;
+    turn(&session, "run autonomous task").await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(
+        session
+            .entries()
+            .iter()
+            .any(|e| matches!(e.kind, EntryKind::CompactionState(_)))
+    );
+    let final_messages = session.messages();
+    assert!(
+        final_messages.iter().any(|m| match m {
+            AgentMessage::Assistant(a) => a
+                .content
+                .iter()
+                .any(|c| matches!(c, oino_ai::AssistantContent::Text(t) if t.text == "recovered single turn")),
+            _ => false,
+        }),
+        "{final_messages:#?}"
+    );
+}
+
+#[test]
+fn forward_snap_and_custom_message_anchor_when_first_turn_exceeds_keep_budget() {
+    let big_result = "payload ".repeat(20_000);
+    let entries: Vec<SessionEntry> = serde_json::from_value(json!([
+        {"type":"message","id":"u1","parentId":null,"message":{"role":"user","content":"start lead","timestamp":1}},
+        {"type":"message","id":"a1","parentId":"u1","message":{"role":"assistant","api":"faux","provider":"faux","model":"faux-1","content":[{"type":"toolCall","id":"c1","name":"recall","arguments":{}}],"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":2}},
+        {"type":"message","id":"r1","parentId":"a1","message":{"role":"toolResult","toolCallId":"c1","toolName":"recall","content":[{"type":"text","text":big_result}],"isError":false,"timestamp":3}},
+        {"type":"custom_message","id":"cm1","parentId":"r1","customType":"subagent-completion","content":"Subagent finished OIN-36","display":true}
+    ]))
+    .unwrap();
+    let refs: Vec<&SessionEntry> = entries.iter().collect();
+    let settings = oino_core::compaction::CompactionSettings {
+        enabled: true,
+        reserve_tokens: 0,
+        keep_recent_tokens: 20_000,
+    };
+    let prepared = oino_core::compaction::prepare_compaction(&refs, &settings)
+        .expect("should snap forward onto custom_message boundary");
+    assert_eq!(prepared.first_kept_entry_id, EntryId::new("cm1"));
+    assert_eq!(prepared.messages_to_summarize.len(), 3);
+}
+
+#[tokio::test]
+async fn threshold_suppression_resets_after_commit_and_rearms_on_further_growth() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let summaries = Arc::new(AtomicUsize::new(0));
+    let counted = summaries.clone();
+    let usage_step = Arc::new(AtomicUsize::new(0));
+    let step = usage_step.clone();
+    let provider = FauxProvider::new(vec![]);
+    provider.route(move |request| {
+        if request["context"]["messages"][0]
+            .to_string()
+            .contains("Summarize this conversation or agent trajectory")
+        {
+            counted.fetch_add(1, Ordering::SeqCst);
+            return Some(FauxResponse::Text("<summary>Epoch summary</summary>".into()));
+        }
+        let n = step.fetch_add(1, Ordering::SeqCst);
+        let input = match n {
+            0 => 10,
+            1 => 80, // crosses limit=50 -> triggers compaction #1
+            2 => 70, // still > 50 in new epoch -> triggers compaction #2 because commit cleared latch
+            _ => 10,
+        };
+        Some(FauxResponse::Message {
+            content: vec![oino_ai::AssistantContent::text("ok")],
+            stop_reason: oino_ai::StopReason::Stop,
+            usage: oino_ai::Usage {
+                input,
+                ..Default::default()
+            },
+            error_message: None,
+        })
+    });
+    let session = TestSession {
+        settings: serde_json::from_value(
+            json!({"compaction":{"tokenLimit":50,"keepRecentTokens":1},"retry":{"enabled":false}}),
+        )
+        .unwrap(),
+        ..Default::default()
+    }
+    .build(provider)
+    .await;
+    turn(&session, "t1").await;
+    turn(&session, "t2").await;
+    assert_eq!(summaries.load(Ordering::SeqCst), 1);
+    turn(&session, "t3").await;
+    assert_eq!(
+        summaries.load(Ordering::SeqCst),
+        2,
+        "post-compaction usage remaining above limit must not leave threshold compaction permanently latched"
+    );
+}

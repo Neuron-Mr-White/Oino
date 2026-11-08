@@ -194,7 +194,7 @@ pub(crate) struct RunBook {
     pub(crate) abort_requested: bool,
     pub(crate) overflow_recovery_attempted: bool,
     pub(crate) compaction_token_limit: Option<u64>,
-    pub(crate) threshold_suppression: Option<(String, u64)>,
+    pub(crate) threshold_suppression: Option<(String, u64, u64)>,
     pub(crate) retry_attempt: u32,
     pub(crate) failed_response: Option<AssistantMessage>,
     pub(crate) last_assistant: Option<AssistantMessage>,

@@ -12,7 +12,7 @@ use super::{AgentSession, Inner, SessionOpError, lock};
 use crate::compaction::{
     self, CompactionPreparation, CompactionResult, CompactionSettings, RetryPolicy,
     SummarizationRetryObserver, Summarizer, estimate_tokens, is_context_overflow,
-    is_recoverable_length, prepare_compaction,
+    is_recoverable_length, prepare_compaction, prepare_single_turn_compaction,
 };
 use crate::events::{AgentSessionEvent, CompactionReason, SummarizationSource};
 
@@ -103,16 +103,20 @@ impl AgentSession {
 
     fn threshold_due(&self, model: &Model, input: u64) -> bool {
         let limit = self.compaction_limit(model);
-        let key = (format!("{}/{}", model.provider, model.id), limit);
+        let model_key = format!("{}/{}", model.provider, model.id);
         let mut book = lock(&self.inner.book);
         if input <= limit {
             book.threshold_suppression = None;
             return false;
         }
-        if book.threshold_suppression.as_ref() == Some(&key) {
+        if let Some((ref prev_model, prev_limit, suppressed_at)) = book.threshold_suppression
+            && prev_model == &model_key
+            && prev_limit == limit
+            && input < suppressed_at.saturating_add(limit)
+        {
             return false;
         }
-        book.threshold_suppression = Some(key);
+        book.threshold_suppression = Some((model_key, limit, input));
         true
     }
 
@@ -306,11 +310,14 @@ impl AgentSession {
     /// Appends the compaction and emits `session_compact`; returns the result.
     async fn commit_compaction(
         &self,
-        result: CompactionResult,
+        mut result: CompactionResult,
         from_extension: bool,
         reason: CompactionReason,
         will_retry: bool,
     ) -> Result<CompactionResult, String> {
+        if result.summary.trim().is_empty() {
+            return Err("compaction summary must not be empty".into());
+        }
         if reason == CompactionReason::Overflow {
             let manager = lock(&self.inner.manager);
             let projection = manager.build_session_projection();
@@ -331,8 +338,27 @@ impl AgentSession {
             }
         }
         let loaded = self.loaded_deferred_tool_names();
+        let mut boundary_id = None;
         let entry_id = {
             let mut manager = lock(&self.inner.manager);
+            if result.first_kept_entry_id.as_str().is_empty() {
+                if oino_session::context::has_pending_tool_calls(&manager.branch(None)) {
+                    return Err("compaction anchor splits pending tool calls and results".into());
+                }
+                let id = manager
+                    .append_custom_message_entry(
+                        "oino.compaction-boundary",
+                        oino_ai::UserContentField::Text(
+                            "<system-reminder>\nContext compacted mid-turn; continue from the summary above.\n</system-reminder>"
+                                .to_owned(),
+                        ),
+                        false,
+                        None,
+                    )
+                    .map_err(|e| e.to_string())?;
+                result.first_kept_entry_id = id.clone();
+                boundary_id = Some(id);
+            }
             let mut state = manager
                 .prepare_compaction_state(CompactionDraft {
                     summary: result.summary.clone(),
@@ -349,6 +375,16 @@ impl AgentSession {
                 .append_compaction_state(state)
                 .map_err(|e| e.to_string())?
         };
+        if let Some(id) = &boundary_id {
+            self.publish_entry(id);
+        }
+        {
+            let mut book = lock(&self.inner.book);
+            book.threshold_suppression = None;
+            if reason != CompactionReason::Overflow {
+                book.overflow_recovery_attempted = false;
+            }
+        }
         lock(&self.inner.manager)
             .sync()
             .map_err(|e| e.to_string())?;
@@ -429,7 +465,9 @@ impl AgentSession {
                 .cloned()
                 .collect();
             let refs: Vec<&SessionEntry> = branch.iter().collect();
-            let Some(preparation) = prepare_compaction(&refs, &settings) else {
+            let Some(preparation) = prepare_compaction(&refs, &settings)
+                .or_else(|| prepare_single_turn_compaction(&refs, &settings))
+            else {
                 if branch.last().is_some_and(|e| {
                     matches!(
                         e.kind,
@@ -796,7 +834,9 @@ impl AgentSession {
             .cloned()
             .collect();
         let refs: Vec<&SessionEntry> = branch.iter().collect();
-        let Some(preparation) = prepare_compaction(&refs, &settings) else {
+        let Some(preparation) = prepare_compaction(&refs, &settings)
+            .or_else(|| prepare_single_turn_compaction(&refs, &settings))
+        else {
             return false;
         };
         let cancel = CancellationToken::new();

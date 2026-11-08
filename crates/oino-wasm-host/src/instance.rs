@@ -582,6 +582,14 @@ impl ExtensionInstance for WasmInstance {
             let limits = self.shared.manifest.limits;
             let deadline = Duration::from_millis(if kind == EventKind::ToolCall {
                 limits.tool_call_hook_timeout_ms
+            } else if matches!(
+                kind,
+                EventKind::SessionBeforeSwitch
+                    | EventKind::SessionBeforeFork
+                    | EventKind::SessionBeforeCompact
+                    | EventKind::SessionBeforeTree
+            ) {
+                limits.hook_timeout_ms.max(60_000)
             } else {
                 limits.hook_timeout_ms
             });

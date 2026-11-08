@@ -219,3 +219,40 @@ async fn delete_and_empty_only_touch_the_trash() {
     // Deleting the same id twice reports a clear failure, not a panic.
     assert!(hub.delete_archived(&a).await.is_err());
 }
+
+#[tokio::test]
+async fn fileless_live_session_supports_drafts_meta_and_archive_and_duplicate_archive_is_idempotent() {
+    let fx = fixture();
+    let hub = fx.hub();
+
+    // 1. File-less live session (`session_new` before any prompt writes `.jsonl`, E-03):
+    let empty = start(&hub).await;
+    let empty_id = empty.session_id();
+    drop(empty);
+
+    assert_eq!(hub.draft_get(&empty_id).await.unwrap(), None);
+    let card = hub
+        .draft_set(&empty_id, Some(serde_json::json!({"text": "draft"})))
+        .await
+        .unwrap();
+    assert_eq!(card.session_id, empty_id);
+    assert!(card.draft_at > 0);
+    let cleared = hub.draft_set(&empty_id, None).await.unwrap();
+    assert_eq!(cleared.draft_at, 0);
+
+    let archived_empty = hub.archive(&empty_id).await.unwrap();
+    assert_eq!(archived_empty.session_id, empty_id);
+    assert!(
+        hub.open(&empty_id).await.is_err(),
+        "archiving a file-less live session closes its runtime"
+    );
+
+    // 2. Duplicate archive on an already-trashed session succeeds idempotently instead of E_NOT_FOUND.
+    let ran = session_with_a_run(&hub).await;
+    let ran_id = ran.session_id();
+    let _ = card_after_prompt(&hub, &ran_id).await;
+    let first = hub.archive(&ran_id).await.unwrap();
+    let second = hub.archive(&ran_id).await.unwrap();
+    assert_eq!(first.session_id, ran_id);
+    assert_eq!(second.session_id, ran_id);
+}

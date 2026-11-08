@@ -137,6 +137,7 @@ struct Sess {
     pending_entry: bool,
     last_command: Option<String>,
     last_reason: Option<String>,
+    last_tokens_before: Option<u64>,
     last_stats: Option<Stats>,
     last_sections: Option<Vec<String>>,
     pending_follow_up: Option<String>,
@@ -382,6 +383,8 @@ impl Compactor {
         let tokens_before = prep
             .and_then(|p| p.get("tokensBefore"))
             .and_then(Value::as_u64);
+        self.sessions
+            .with(&sid, |s| s.last_tokens_before = tokens_before);
         if method == Method::Llm {
             let user = if parsed.is_compactor { None } else { custom };
             let mut messages: Vec<Value> = prep
@@ -487,26 +490,48 @@ impl Compactor {
             }
         });
         self.debug(&json!({"method": "vcc", "reason": reason, "details": plan.details, "summaryPreview": plan.summary.chars().take(800).collect::<String>()}));
-        // Keep the earlier of VCC's cut and the host's pinned tail. Advancing a
-        // VCC anchor would discard material its extraction did not summarize.
+        // Keep the earlier of VCC's cut and the host's pinned tail, bounded after the
+        // latest existing compaction so we never re-anchor into an older epoch.
+        let after_prev_compaction = branch
+            .iter()
+            .rposition(|entry| matches!(entry["type"].as_str(), Some("compaction" | "compaction_state")))
+            .map_or(0, |idx| idx + 1);
         let host_anchor = prep
             .and_then(|p| p.get("firstKeptEntryId"))
-            .and_then(Value::as_str);
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty());
         let position = |id: &str| {
             branch
                 .iter()
                 .position(|entry| entry["id"].as_str() == Some(id))
         };
-        let bound = position(&plan.first_kept)
+        let bound = (!plan.first_kept.is_empty())
+            .then(|| position(&plan.first_kept))
+            .flatten()
             .into_iter()
             .chain(host_anchor.and_then(position))
-            .min();
+            .min()
+            .filter(|&end| end >= after_prev_compaction);
+        let is_anchor = |entry: &Value| {
+            entry["message"]["role"] == "user" || entry["type"] == "custom_message"
+        };
         let anchor = bound
             .and_then(|end| {
-                branch[..=end]
+                branch[after_prev_compaction..=end]
                     .iter()
                     .rev()
-                    .find(|entry| entry["message"]["role"] == "user")
+                    .find(|entry| is_anchor(entry))
+                    .filter(|entry| {
+                        branch
+                            .iter()
+                            .position(|e| e["id"] == entry["id"])
+                            .is_some_and(|idx| idx > after_prev_compaction)
+                    })
+                    .or_else(|| {
+                        branch
+                            .get(end + 1..)
+                            .and_then(|tail| tail.iter().find(|entry| is_anchor(entry)))
+                    })
             })
             .and_then(|entry| entry["id"].as_str())
             .unwrap_or_default();
@@ -537,7 +562,7 @@ impl Compactor {
         } else {
             Method::Llm
         };
-        let (stats, sections, was_command, last_command, reason, follow) =
+        let (stats, sections, was_command, last_command, reason, follow, last_tokens_before) =
             self.sessions.with(cx.session_id(), |s| {
                 let wc = s.command_compaction;
                 s.command_compaction = false;
@@ -548,6 +573,7 @@ impl Compactor {
                     s.last_command.clone(),
                     s.last_reason.clone(),
                     s.pending_follow_up.take(),
+                    s.last_tokens_before.take(),
                 )
             });
         self.compactions.set(self.compactions.get() + 1);
@@ -562,6 +588,7 @@ impl Compactor {
                 .get("tokensBefore")
                 .and_then(Value::as_u64)
                 .or_else(|| stats.as_ref().and_then(|s| s.tokens_before))
+                .or(last_tokens_before)
                 .unwrap_or(0);
             let data = card::card_data(&card_input(
                 method,

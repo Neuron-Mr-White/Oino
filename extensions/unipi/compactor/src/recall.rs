@@ -14,6 +14,10 @@ use crate::blocks::{Block, extract_path};
 pub const MAX_RECALL_RESULTS: usize = 50;
 /// Max bytes of one expanded hit.
 pub const MAX_EXPANDED_HIT_BYTES: usize = 16 * 1024;
+/// Max bytes of one search snippet or recent-entry preview.
+pub const MAX_SNIPPET_BYTES: usize = 2 * 1024;
+/// Hard ceiling on total `session_recall` output bytes.
+pub const MAX_RECALL_OUTPUT_BYTES: usize = 32 * 1024;
 /// Recent entries without a query.
 pub const DEFAULT_RECENT: usize = 25;
 /// Page size.
@@ -168,6 +172,37 @@ fn block_files(b: &Block) -> Vec<String> {
     }
 }
 
+fn truncate_utf8(text: &str, max_bytes: usize) -> (&str, usize) {
+    if text.len() <= max_bytes {
+        return (text, 0);
+    }
+    let mut cut = max_bytes;
+    while !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    (&text[..cut], text.len() - cut)
+}
+
+fn truncate_snippet(text: &str, index: usize) -> String {
+    let (head, omitted) = truncate_utf8(text, MAX_SNIPPET_BYTES);
+    if omitted == 0 {
+        return text.to_owned();
+    }
+    format!(
+        "{head} … ({omitted} bytes omitted — use expand:[{index}] or narrow query)"
+    )
+}
+
+fn cap_recall_output(text: String) -> String {
+    let (head, omitted) = truncate_utf8(&text, MAX_RECALL_OUTPUT_BYTES);
+    if omitted == 0 {
+        return text;
+    }
+    format!(
+        "{head}\n\n… ({omitted} bytes omitted — output exceeded 32KB limit; narrow query or inspect fewer entries at a time) …"
+    )
+}
+
 fn line_snippet(text: &str, r: &Regex) -> Option<String> {
     let lines: Vec<&str> = text.split('\n').collect();
     let m = lines.iter().position(|l| is_match(r, l))?;
@@ -177,7 +212,14 @@ fn line_snippet(text: &str, r: &Regex) -> Option<String> {
     if start > 0 {
         parts.push(format!("...({start} lines above)"));
     }
-    parts.extend(lines[start..end].iter().map(|l| (*l).to_owned()));
+    for l in &lines[start..end] {
+        let (head, omitted) = truncate_utf8(l, MAX_SNIPPET_BYTES);
+        if omitted == 0 {
+            parts.push((*l).to_owned());
+        } else {
+            parts.push(format!("{head} … ({omitted} bytes omitted on this line)"));
+        }
+    }
     if end < lines.len() {
         parts.push(format!("...({} lines below)", lines.len() - end));
     }
@@ -415,11 +457,11 @@ fn format_hits(hits: &[Hit], query: Option<&str>, header: Option<&str>) -> Strin
             } else {
                 format!(" files:[{}]", h.files.join(", "))
             };
+            let body = truncate_snippet(h.snippet.as_deref().unwrap_or(&h.text), h.index);
             format!(
-                "#{} [{}]{files} {}",
+                "#{} [{}]{files} {body}",
                 h.index,
                 h.kind,
-                h.snippet.as_deref().unwrap_or(&h.text)
             )
         })
         .collect();
@@ -721,11 +763,11 @@ pub fn recall(blocks: &[Block], q: &Query, cwd: &str, now: &dyn Fn() -> i64) -> 
                 format!("#{i} [{}] {}", b.kind(), truncate_expanded(&t))
             })
             .collect();
-        return format!(
+        return cap_recall_output(format!(
             "{}{}",
             if q.all { "Scope: all\n\n" } else { "" },
             lines.join("\n\n")
-        );
+        ));
     }
     let all = match search(blocks, query, now) {
         Ok(h) => h,
@@ -768,18 +810,18 @@ pub fn recall(blocks: &[Block], q: &Query, cwd: &str, now: &dyn Fn() -> i64) -> 
         } else {
             String::new()
         };
-        return format!("{}{footer}", format_hits(&hits, Some(qs), Some(&header)));
+        return cap_recall_output(format!("{}{footer}", format_hits(&hits, Some(qs), Some(&header))));
     }
     let recent: Vec<Hit> = all
         .iter()
         .skip(all.len().saturating_sub(DEFAULT_RECENT))
         .cloned()
         .collect();
-    format!(
+    cap_recall_output(format!(
         "{}{}",
         if q.all { "Scope: all\n\n" } else { "" },
         format_hits(&recent, None, None)
-    )
+    ))
 }
 
 /// unipi `parseRecallScope` for the command form (`scope:all`, `page:N`).
@@ -983,5 +1025,31 @@ mod tests {
             (true, 2, "redis".into())
         );
         assert_eq!(short_path("/a/b/c/d/e.ts", "/w"), ".../c/d/e.ts");
+
+        // Regression: single-line 600 KB toolResult matched by kind ("toolResult") or regex
+        // must never dump untruncated payload past MAX_RECALL_OUTPUT_BYTES.
+        let huge = vec![Block::ToolResult {
+            name: "kanboard".into(),
+            text: format!("{{\"items\":\"{}\"}}", "x".repeat(600_000)),
+            is_error: false,
+            source: Some(42),
+        }];
+        for q_str in [Some("tool_result".to_owned()), Some("items|missing".to_owned()), None] {
+            let out = recall(
+                &huge,
+                &Query {
+                    query: q_str,
+                    ..Query::default()
+                },
+                "/w",
+                &now,
+            );
+            assert!(
+                out.len() <= MAX_RECALL_OUTPUT_BYTES + 256,
+                "recall output was {} bytes",
+                out.len()
+            );
+            assert!(out.contains("bytes omitted"), "{out}");
+        }
     }
 }

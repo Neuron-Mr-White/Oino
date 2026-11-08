@@ -3822,6 +3822,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
@@ -6302,7 +6303,7 @@ dependencies = [
 
 [[package]]
 name = "unipi-host"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "aes 0.9.3",
  "aes-gcm 0.11.1",

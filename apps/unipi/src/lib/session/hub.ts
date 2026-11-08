@@ -229,6 +229,8 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
   let closed = false;
   let inflight: Promise<void> | undefined;
   let archivedInflight: Promise<void> | undefined;
+  /** Sessions with an in-flight `session_archive`: a raced `sessions_list` snapshot must not resurrect them. */
+  const archiving = new Set<string>();
 
   /** The events stream dropped since the last good list: the next good one is "host back". */
   let droppedSinceList = false;
@@ -242,6 +244,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
         const byId: Record<string, SessionCard> = {};
         const meta: Record<string, SessionMeta> = {};
         for (const c of cards) {
+          if (archiving.has(c.session_id)) continue;
           byId[c.session_id] = { ...c };
           meta[c.session_id] = metaOf(c);
         }
@@ -443,13 +446,64 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
     archiveMany: (ids) => runBatch('archive', ids),
     restoreMany: (ids) => runBatch('restore', ids),
     async archive(sessionId) {
+      const prevCard = state.cards[sessionId] ? { ...state.cards[sessionId] } : undefined;
+      const prevMeta = state.meta[sessionId] ? { ...state.meta[sessionId] } : undefined;
+      const hasFile = !!prevCard?.file;
+      archiving.add(sessionId);
+      const racing = inflight;
+      batch(() => {
+        setState('error', undefined);
+        setState(
+          produce((s) => {
+            delete s.cards[sessionId];
+            delete s.meta[sessionId];
+            if (s.archivedLoaded && prevCard && hasFile && !s.archived.some((c) => c.session_id === sessionId)) {
+              s.archived = [{ ...prevCard, run_state: 'idle' as const }, ...s.archived];
+            }
+          }),
+        );
+      });
       try {
         await client.request('session_archive', { session: sessionId });
+        if (racing) {
+          void racing.then(() => {
+            if (!closed)
+              setState(
+                produce((s) => {
+                  delete s.cards[sessionId];
+                  delete s.meta[sessionId];
+                }),
+              );
+          });
+        }
         // An open Archived list gains the chat (re-read: its trash path and exact count).
         if (state.archivedLoaded) void loadArchived(true);
       } catch (error) {
-        setState('error', toAppError(error));
+        const app = toAppError(error);
+        // E_NOT_FOUND means the session is already gone / had no file on disk: keep it removed silently.
+        if (app.code === 'E_NOT_FOUND') {
+          if (state.archivedLoaded) {
+            setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+            void loadArchived(true);
+          }
+          void reload();
+          return;
+        }
+        batch(() => {
+          setState(
+            produce((s) => {
+              if (prevCard) {
+                s.cards[sessionId] = prevCard;
+                s.meta[sessionId] = prevMeta ?? metaOf(prevCard);
+              }
+              if (s.archivedLoaded && hasFile) s.archived = s.archived.filter((row) => row.session_id !== sessionId);
+            }),
+          );
+          setState('error', app);
+        });
         void reload();
+      } finally {
+        archiving.delete(sessionId);
       }
     },
     async restore(sessionId) {
@@ -467,6 +521,7 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
       }
     },
     async deleteArchived(sessionId) {
+      setState('error', undefined);
       try {
         // An archived fetch that raced this delete (fired before it finished — the
         // archive-then-delete flow does exactly that) answered from a snapshot that still
@@ -478,7 +533,12 @@ export function createHub(hostId: string, opts: CreateHubOptions = {}): HubHandl
           if (!closed) setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
         });
       } catch (error) {
-        setState('error', toAppError(error));
+        const app = toAppError(error);
+        if (app.code === 'E_NOT_FOUND') {
+          setState('archived', (list) => list.filter((row) => row.session_id !== sessionId));
+          return;
+        }
+        setState('error', app);
       }
     },
     async emptyTrash() {

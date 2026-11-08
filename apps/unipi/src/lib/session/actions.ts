@@ -75,6 +75,10 @@ export async function renameSession(hostId: string, sessionId: string, name: str
 
 /** Z-13: archive moves the session's file to the host's trash; the Archived list restores it. */
 export async function archiveSession(hostId: string, sessionId: string): Promise<void> {
+  // Leave the shown chat BEFORE closing/archiving it: otherwise the mounted route
+  // immediately re-runs `session_open`, hitting `E_TRANSPORT: backend closed` / `E_NOT_FOUND`
+  // or re-emitting `SessionChanged` on a file-less chat and resurrecting its sidebar row.
+  leaveShownSession(hostId, new Set([sessionId]));
   sessions().close(hostId, sessionId);
   const hub = hubOf(hostId);
   await hub.archive(sessionId);
@@ -94,6 +98,7 @@ export async function archiveSession(hostId: string, sessionId: string): Promise
  */
 export async function archiveMany(hostId: string, sessionIds: readonly string[], what = 'sessions'): Promise<string[]> {
   if (!sessionIds.length) return [];
+  leaveShownSession(hostId, new Set(sessionIds));
   for (const id of sessionIds) sessions().close(hostId, id);
   const hub = hubOf(hostId);
   const result = await hub.archiveMany(sessionIds);
@@ -141,17 +146,38 @@ export async function emptyTrash(hostId: string): Promise<void> {
  * PC first and then on any other PC with chats. `undefined` when no chat is
  * left anywhere — the empty state is then the only place to go.
  */
-export function nextChatAfter(hostId: string, sessionId: string): { hostId: string; sessionId: string } | undefined {
+export function nextChatAfter(
+  hostId: string,
+  sessionId: string,
+  exclude?: ReadonlySet<string>,
+): { hostId: string; sessionId: string } | undefined {
+  const skip = (id: string) => id === sessionId || (exclude?.has(id) ?? false);
   const of = (id: string): { hostId: string; sessionId: string } | undefined => {
     const hub = hubs().peek(id);
     if (!hub) return undefined;
     const groups = sessionGroups(hub.state.cards, hub.state.meta);
     const cards = [...groups.pinned, ...groups.projects.flatMap((group) => group.cards)];
     const at = cards.findIndex((card) => card.session_id === sessionId);
-    const next = (at >= 0 ? cards[at + 1] : undefined) ?? (at > 0 ? cards[at - 1] : undefined) ?? cards.find((card) => card.session_id !== sessionId);
+    const after = at >= 0 ? cards.slice(at + 1).find((c) => !skip(c.session_id)) : undefined;
+    const before =
+      at > 0
+        ? cards
+            .slice(0, at)
+            .reverse()
+            .find((c) => !skip(c.session_id))
+        : undefined;
+    const next = after ?? before ?? cards.find((card) => !skip(card.session_id));
     return next ? { hostId: id, sessionId: next.session_id } : undefined;
   };
   return of(hostId) ?? hubs().keys().filter((id) => id !== hostId).map(of).find(Boolean);
+}
+
+function leaveShownSession(hostId: string, removing: ReadonlySet<string>): void {
+  const shown = currentSessionRoute();
+  if (!shown || shown.hostId !== hostId || !removing.has(shown.sessionId)) return;
+  const next = nextChatAfter(hostId, shown.sessionId, removing);
+  if (next) appNavigate(sessionHref(next.hostId, next.sessionId));
+  else appNavigate(`/new/${encodeURIComponent(hostId)}`);
 }
 
 /**
@@ -164,11 +190,8 @@ export function nextChatAfter(hostId: string, sessionId: string): { hostId: stri
  * nothing.
  */
 export async function deleteSession(hostId: string, sessionId: string): Promise<void> {
-  const shown = currentSessionRoute();
-  const wasShown = shown?.hostId === hostId && shown.sessionId === sessionId;
   // Leave the deleted chat before it is gone: the route must not point at it.
-  const next = wasShown ? nextChatAfter(hostId, sessionId) : undefined;
-  if (next) appNavigate(sessionHref(next.hostId, next.sessionId));
+  leaveShownSession(hostId, new Set([sessionId]));
   sessions().close(hostId, sessionId);
   const hub = hubOf(hostId);
   await hub.archive(sessionId);

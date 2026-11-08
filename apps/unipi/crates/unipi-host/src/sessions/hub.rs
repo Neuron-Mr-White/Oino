@@ -879,7 +879,7 @@ impl SessionHub {
     ///
     /// Unknown or ambiguous target.
     pub async fn draft_get(&self, target: &str) -> Result<Option<serde_json::Value>, HubError> {
-        let id = self.inner.resolve(target).await?.info.id;
+        let id = self.inner.resolve_id(target).await?;
         Ok(self.inner.meta.draft(&id))
     }
 
@@ -894,7 +894,7 @@ impl SessionHub {
         target: &str,
         draft: Option<serde_json::Value>,
     ) -> Result<SessionCard, HubError> {
-        let id = self.inner.resolve(target).await?.info.id;
+        let id = self.inner.resolve_id(target).await?;
         if let Some(value) = &draft {
             let size = serde_json::to_vec(value).map_or(usize::MAX, |b| b.len());
             if size > super::meta::DRAFT_MAX_BYTES {
@@ -909,7 +909,7 @@ impl SessionHub {
             .set_draft(&id, draft.as_ref(), now)
             .map_err(|error| HubError::failed(format!("Could not save the draft: {error}")))?;
         self.inner
-            .card(&id)
+            .card_or_live(&id)
             .await?
             .inspect(|card| {
                 self.inner
@@ -1281,6 +1281,20 @@ impl Inner {
         }
     }
 
+    /// Disk card if persisted, else the live runtime's synthesized card (`session_new` before
+    /// its first message, E-03).
+    async fn card_or_live(&self, session_id: &str) -> Result<Option<SessionCard>, HubError> {
+        if let Some(card) = self.card(session_id).await? {
+            return Ok(Some(card));
+        }
+        if self.core.is_live(session_id).await {
+            if let Ok(backend) = self.core.open(session_id).await {
+                return Ok(Some(self.card_for(&backend, &self.cwd).await));
+            }
+        }
+        Ok(None)
+    }
+
     /// The card of one record, with the host's live state merged in.
     fn card_from(&self, state: &State, record: &CoreHubSession) -> SessionCard {
         let info = &record.info;
@@ -1419,9 +1433,9 @@ impl Inner {
         target: &str,
         patch: SessionMetaPatch,
     ) -> Result<SessionCard, HubError> {
-        let id = self.resolve(target).await?.info.id;
+        let id = self.resolve_id(target).await?;
         self.meta.patch(&id, patch);
-        self.card(&id)
+        self.card_or_live(&id)
             .await?
             .inspect(|card| self.emit(HubEvent::SessionChanged { card: card.clone() }))
             .ok_or_else(|| HubError::failed(format!("No session found matching '{target}'")))
@@ -1809,8 +1823,64 @@ impl Inner {
     }
 
     /// `session_archive{session}`: dispose, then move the file to `trash/` (§14.2).
+    /// A file-less live session (`session_new` before any prompt, E-03) has no `.jsonl` to
+    /// trash: closing its runtime + cleaning any scratch dir dismisses it cleanly. If the
+    /// session is already in `trash/` (raced/duplicate click), succeeds idempotently.
     async fn archive(&self, target: &str) -> Result<SessionCard, HubError> {
-        let record = self.resolve(target).await?;
+        let record = match self.resolve(target).await {
+            Ok(record) => record,
+            Err(HubError::NotFound(_)) if self.core.is_live(target).await => {
+                let card = match self.card_or_live(target).await? {
+                    Some(card) => card,
+                    None => {
+                        let now = epoch_ms(SystemTime::now());
+                        SessionCard {
+                            worker: None,
+                            session_id: target.to_owned(),
+                            file: PathBuf::new(),
+                            name: None,
+                            cwd: self.cwd.display().to_string(),
+                            updated_at: now,
+                            message_count: 0,
+                            state: HubState::Idle,
+                            needs_you: false,
+                            model: None,
+                            pinned: false,
+                            unread: false,
+                            title_locked: false,
+                            draft_at: 0,
+                            source: None,
+                            cron_job_id: None,
+                            cron_job_name: None,
+                            changes: None,
+                            last_activity: now,
+                            pending_work: None,
+                            background_work: None,
+                        }
+                    }
+                };
+                let id = card.session_id.clone();
+                self.core.close(&id).await?;
+                lock(&self.state).states.remove(&id);
+                self.remove_scratch(&id, Path::new(&card.cwd)).await;
+                self.emit(HubEvent::SessionRemoved {
+                    session_id: id.clone(),
+                });
+                tracing::info!(session_id = %id, "file-less session archived (closed)");
+                return Ok(card);
+            }
+            Err(HubError::NotFound(message)) => {
+                if let Ok(entry) = self.resolve_archived(target).await {
+                    let card = self.archived_card(&entry);
+                    self.emit(HubEvent::SessionRemoved {
+                        session_id: entry.id.clone(),
+                    });
+                    return Ok(card);
+                }
+                return Err(HubError::NotFound(message));
+            }
+            Err(error) => return Err(error),
+        };
         let id = record.info.id.clone();
         let card = self.card_from(&lock(&self.state), &record);
         self.core.close(&id).await?;
@@ -1836,6 +1906,37 @@ impl Inner {
         Ok(card)
     }
 
+    fn archived_card(&self, info: &oino_session::manager::SessionInfo) -> SessionCard {
+        let updated_at = info
+            .modified
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        let card = SessionCard {
+            worker: crate::superagent_session::worker_file(&info.path).map(Box::new),
+            session_id: info.id.clone(),
+            file: info.path.clone(),
+            name: info.name.clone(),
+            cwd: info.cwd.clone(),
+            updated_at,
+            message_count: info.message_count,
+            state: HubState::Idle,
+            needs_you: false,
+            model: None,
+            pinned: false,
+            unread: false,
+            title_locked: false,
+            draft_at: 0,
+            source: None,
+            cron_job_id: None,
+            cron_job_name: None,
+            changes: None,
+            last_activity: updated_at,
+            pending_work: None,
+            background_work: None,
+        };
+        self.meta.onto(card)
+    }
+
     /// `session_close{session}`: dispose, keep the file.
     async fn close(&self, session_id: &str) -> Result<(), HubError> {
         self.core.close(session_id).await?;
@@ -1853,36 +1954,7 @@ impl Inner {
             .await?
             .iter()
             .filter(|info| !self.is_superagent(&info.path))
-            .map(|info| {
-                let updated_at = info
-                    .modified
-                    .duration_since(UNIX_EPOCH)
-                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-                let card = SessionCard {
-                    worker: crate::superagent_session::worker_file(&info.path).map(Box::new),
-                    session_id: info.id.clone(),
-                    file: info.path.clone(),
-                    name: info.name.clone(),
-                    cwd: info.cwd.clone(),
-                    updated_at,
-                    message_count: info.message_count,
-                    state: HubState::Idle,
-                    needs_you: false,
-                    model: None,
-                    pinned: false,
-                    unread: false,
-                    title_locked: false,
-                    draft_at: 0,
-                    source: None,
-                    cron_job_id: None,
-                    cron_job_name: None,
-                    changes: None,
-                    last_activity: updated_at,
-                    pending_work: None,
-                    background_work: None,
-                };
-                self.meta.onto(card)
-            })
+            .map(|info| self.archived_card(info))
             .collect();
         cards.sort_by_key(|card| std::cmp::Reverse(card.updated_at));
         Ok(cards)
@@ -2062,6 +2134,16 @@ impl Inner {
     /// the records — core's own rules, without waking anything.
     async fn resolve(&self, target: &str) -> Result<CoreHubSession, HubError> {
         self.core.find(target).await.map_err(HubError::from_find)
+    }
+
+    /// Resolves `target` to its canonical session id, accepting file-less live sessions
+    /// (`session_new` before its first message writes a `.jsonl` record, E-03).
+    async fn resolve_id(&self, target: &str) -> Result<String, HubError> {
+        match self.resolve(target).await {
+            Ok(record) => Ok(record.info.id),
+            Err(HubError::NotFound(_)) if self.core.is_live(target).await => Ok(target.to_owned()),
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -2715,6 +2797,40 @@ impl Inner {
                     Ok(record) => {
                         resolved = record;
                         &resolved
+                    }
+                    Err(HubError::NotFound(_)) if self.core.is_live(target).await => {
+                        if !seen.insert(target.clone()) {
+                            continue;
+                        }
+                        let working = {
+                            let state = lock(&self.state);
+                            matches!(state.states.get(target), Some(HubState::Working))
+                                || state.needs_you.contains(target)
+                        };
+                        if working {
+                            fail(&mut out, "the session is running".to_owned());
+                            continue;
+                        }
+                        let scratch_cwd =
+                            self.card_or_live(target).await.ok().flatten().map(|c| c.cwd);
+                        if let Err(error) = self.core.close(target).await {
+                            fail(&mut out, error.to_string());
+                            continue;
+                        }
+                        lock(&self.state).states.remove(target);
+                        if let Some(cwd) = scratch_cwd {
+                            self.remove_scratch(target, Path::new(&cwd)).await;
+                        }
+                        out.done.push(target.clone());
+                        chunk.push(target.clone());
+                        if chunk.len() >= SESSIONS_EVENT_CHUNK {
+                            self.emit(HubEvent::SessionsRemoved {
+                                session_ids: std::mem::take(&mut chunk),
+                                archived: true,
+                            });
+                            tokio::task::yield_now().await;
+                        }
+                        continue;
                     }
                     Err(error) => {
                         fail(&mut out, error.to_string());
