@@ -261,3 +261,9 @@ html[data-shell=desktop] .sa-review-task-mount .board-page.task-page[data-embedd
 html[data-shell=phone] .app-content:has(.sa-page) { padding-left: 0; padding-right: 0; }
 html[data-shell=phone] .app-content:has(.sa-page)::after { display: none; }
 html[data-shell=phone] .sa-header { padding: 0 12px; }
+/* OIN-63: the phone frame (.app-shell) already shrinks by the keyboard (--kb, phone.css), so the composer dock
+   sits on the keyboard by layout. The base .tl-dock rule also pads max(--inset-ime, --vv-bottom, …) for the
+   desktop/legacy pages — here that was a second keyboard inset (a ~keyboard-tall dead band that squeezed the
+   transcript away). Same rule the chat layer uses (panes.css, PH-06): safe area only while the keyboard is closed. */
+html[data-shell=phone] .sa-center .tl-dock { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
+html[data-shell=phone][data-kb=open] .sa-center .tl-dock { padding-bottom: 8px; }
