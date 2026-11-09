@@ -2,6 +2,7 @@
  * WP-A25: the capability pages' "Manage…" actions — which chat they run in,
  * what they send, and the two R8 outcomes (no chat / extension off).
  */
+import { waitFor } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockHost, type MockWorld } from '../../dev/mock/host';
 import { capMcpNoChat } from '../../dev/mock/scenarios/capabilities';
@@ -74,7 +75,7 @@ describe('runManageAction', () => {
     const navigate = vi.fn();
     expect(runManageAction(manageActionsFor('mcp')[0]!, { navigate })).toBe('sent');
     expect(navigate).toHaveBeenCalledWith('/s/local/cap001');
-    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true);
+    await waitFor(() => expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/mcp-settings')).toBe(true));
   });
 
   it('no open chat ⇒ “no-chat” (the page offers New chat here, R8)', () => {
@@ -99,7 +100,7 @@ describe('the chat ⋯ Consolidate memories row (owner 2026-11-03)', () => {
     const world = await openChat(['memory', 'memory-consolidate']);
     expect(chatCanRun('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(true);
     expect(runInChat('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(true);
-    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/memory-consolidate')).toBe(true);
+    await waitFor(() => expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt' && (entry.args as { message?: string }).message === '/memory-consolidate')).toBe(true));
     resetSessions();
     await openChat(['model']);
     expect(chatCanRun('local', 'cap001', CONSOLIDATE_COMMAND)).toBe(false);

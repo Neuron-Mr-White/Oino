@@ -4,6 +4,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@solidjs/testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopUpdatePrompt, UpdateBanner, UpdateCard } from './UpdateCard';
 import { checkDesktopUpdate, resetDesktopUpdate, setDesktopUpdateTransport } from '../lib/desktopUpdate';
+import { resetUpdateSurface } from '../lib/updateSurface';
 import { setPlatformOverride } from '../lib/platform';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')) }));
@@ -23,6 +24,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
+  resetUpdateSurface();
   resetDesktopUpdate();
   setDesktopUpdateTransport(undefined);
   setPlatformOverride(undefined);
@@ -85,26 +88,18 @@ describe('the one Update card (desktop)', () => {
 });
 
 describe('update banner ([ui-shell] #4)', () => {
-  it('names Unipi, opens Settings, and × dismisses it for that version (remembered); a newer one shows again', async () => {
-    localStorage.removeItem('unipi.updateBanner.dismissed');
+  it('suppresses the banner while the desktop prompt is open or the version is skipped', async () => {
     setDesktopUpdateTransport({ check: async () => info, install });
     await checkDesktopUpdate(true);
-    const onOpen = vi.fn();
-    render(() => <UpdateBanner onOpen={onOpen} />);
-    const banner = await screen.findByTestId('update-banner');
-    expect(banner.textContent).toContain('Unipi 0.4.5 is available');
-    fireEvent.click(screen.getByText('Update'));
-    expect(onOpen).toHaveBeenCalled();
-    const close = screen.getByTestId('update-banner-dismiss');
-    expect(close.getAttribute('aria-label')).toBe('Dismiss: Unipi 0.4.5 is available');
-    fireEvent.click(close);
-    await waitFor(() => expect(screen.queryByTestId('update-banner')).toBeNull());
-    expect(localStorage.getItem('unipi.updateBanner.dismissed')).toBe('0.4.5');
-    cleanup();
-    render(() => <UpdateBanner onOpen={onOpen} />);
+    render(() => <><UpdateBanner onOpen={vi.fn()} /><DesktopUpdatePrompt /></>);
+    expect(await screen.findByTestId('desktop-update-prompt')).toBeTruthy();
+    expect(screen.queryByTestId('update-banner')).toBeNull();
+    fireEvent.click(screen.getByTestId('desktop-update-skip'));
+    await waitFor(() => expect(screen.queryByTestId('desktop-update-prompt')).toBeNull());
     expect(screen.queryByTestId('update-banner')).toBeNull();
     setDesktopUpdateTransport({ check: async () => ({ ...info, version: '0.4.6' }), install });
     await checkDesktopUpdate(true);
-    expect((await screen.findByTestId('update-banner')).textContent).toContain('Unipi 0.4.6 is available');
+    expect((await screen.findByTestId('desktop-update-prompt')).textContent).toContain('0.4.6');
+    expect(screen.queryByTestId('update-banner')).toBeNull();
   });
 });

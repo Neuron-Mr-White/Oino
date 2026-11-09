@@ -147,6 +147,8 @@ export type MockHostSpec = {
   transport?: 'local' | 'iroh';
   conn?: HostConn;
   cards?: SessionCard[];
+  /** Host registry, when supported by this scenario. */
+  models?: unknown[];
   /** WP-A5 (Z-13): the host's trash — `sessions_list{archived:true}` rows. */
   archived?: SessionCard[];
   /** The memory extension's store behind `memory_browse` (owner fix 2026-11-03); a function builds it on first use. */
@@ -426,6 +428,9 @@ function mockHostCmd(cmd: { kind: string } & Record<string, unknown>, h: MockHos
   const pi = (fixtures.pi ??= {});
   const namespaces = fixtures.namespaces ?? [];
   switch (cmd.kind) {
+    case 'available_models':
+      if (!h.spec.models) throw err('E_SCHEMA', 'Unknown host_cmd: available_models');
+      return { models: h.spec.models };
     case 'get_settings':
       return cmd.key === undefined || cmd.key === null
         ? { settings: pi }

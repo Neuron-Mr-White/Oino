@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@solidjs/testing-library';
 import type { Components } from '../lib/about';
 
+vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('1.0.0') }));
+
 const ipc = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock('../lib/ipc', () => ({ call: ipc.call }));
 
@@ -33,7 +35,7 @@ describe('ComponentsCard (About → Components)', () => {
     render(() => <ComponentsCard />);
     await waitFor(() => expect(screen.getByTestId('components-extensions').textContent).toBe('31 bundled'));
     expect(ipc.call).toHaveBeenCalledWith('about_components', {}, expect.anything());
-    expect(screen.getByTestId('about-version').textContent).toBe('1.0.0');
+    await waitFor(() => expect(screen.getByTestId('about-version').textContent).toBe('App 1.0.0 · Host unavailable'));
     expect(screen.getByTestId('components-host').textContent).toBe('1.0.0');
     expect(screen.getByTestId('components-oino').textContent).toBe('1.0.2');
     expect(screen.getByText('/usr/share/oino/extensions')).toBeInTheDocument();

@@ -15,6 +15,7 @@ import { setHostClientFactory } from '../../../lib/host/factory';
 import { resetHubs } from '../../../lib/session/hub';
 import { resetSessions, sessions } from '../../../lib/session/store';
 import { resetLayout, setDesktopOverride } from '../../../lib/layout';
+import { MOCK_MODELS } from '../../../dev/mock/models';
 import { createMockHost } from '../../../dev/mock/host';
 import { SCENARIOS } from '../../../dev/mock/scenarios';
 import { ModelPickerField } from '../ModelPickerField';
@@ -34,7 +35,8 @@ async function boot() {
 
 /** A PC with NO chat open: only the host's own registry can answer. */
 async function bootNoChat(name = 'model-draft-fusion') {
-  const world = createMockHost({ ...SCENARIOS[name]!, speed: 0 });
+  const scenario = SCENARIOS[name]!;
+  const world = createMockHost({ ...scenario, hosts: scenario.hosts.map((host) => ({ ...host, models: MOCK_MODELS })), speed: 0 });
   setHostClientFactory(world.client);
   await tick();
   expect(sessions().keys()).toHaveLength(0);
