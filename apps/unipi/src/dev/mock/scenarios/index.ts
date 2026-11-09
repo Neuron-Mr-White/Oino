@@ -2,6 +2,7 @@ import { superagent } from './superagent';
 import { superagentLeads } from './superagent-leads';
 import { superagentConcurrent } from './superagent-concurrent';
 import { superagentCanvas } from './superagent-canvas';
+import { superagentPhonePadding } from './superagent-phone-padding';
 import { superagentCap } from './superagent-cap';
 import { superagentReview } from './superagent-review';
 /** Capture/test scenarios by name (`?scenario=<name>`). Later WPs append theirs. */
@@ -56,6 +57,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'superagent-leads': superagentLeads,
   'superagent-concurrent': superagentConcurrent,
   'superagent-canvas': superagentCanvas,
+  'superagent-phone-padding': superagentPhonePadding,
   'superagent-cap': superagentCap,
   'superagent-review': superagentReview,
   empty,

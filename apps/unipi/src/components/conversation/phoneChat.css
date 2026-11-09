@@ -29,6 +29,16 @@ html[data-shell=phone][data-short][data-kb=open] .conv-head.ph-chat-head { displ
 html[data-shell=phone] .tl :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
 html[data-shell=phone] .tl-dock { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
 
+/* ── Nesting (OIN-64): one gutter, a thin rule per level instead of 23 px ──
+   The live tail already carries the gutter (timeline.css owner-fix-8 zeroes the turn inside it, but the
+   phone gutter rule above is more specific and put it back — a second 12–16 px on live turns). Work folds,
+   tool groups and the subagent group each indented 23 px (margin + rule + padding); on a phone that squeezed
+   the cards into ~64 % of the width, so a level is now 9 px and the cards fill the column. */
+html[data-shell=phone] .conv-tl .tl .tl-tail > .tl-turn { padding-left: 0; padding-right: 0; }
+html[data-shell=phone] .conv-tl .tl :is(.tl-fold-body, .tl-group-body, .tl-agents-body) { margin-left: 0; padding-left: 8px; }
+html[data-shell=phone] .conv-tl .tl .tl-fold-body > .tl-cardblock { margin-left: -9px; }
+html[data-shell=phone] .conv-tl .tl .tl-agent-body { margin: 0 4px 8px 14px; padding-left: 8px; }
+
 /* ── Turn chrome (§3.4, PH-26): only the last settled turn, 48 px hits ────── */
 html[data-shell=phone] .ph-turn-tail { gap: 4px; min-height: 48px; }
 html[data-shell=phone] .ph-turn-tail .tl-time { font-size: calc(12px * var(--ui-font-scale)); margin-right: 4px; }
