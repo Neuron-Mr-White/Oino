@@ -203,7 +203,6 @@ fn positional(args: &[String], number: &str) -> Option<String> {
         .cloned()
 }
 
-/// L o a d   T e m p l a t e   F r o m   F i l e.
 fn load_template_from_file(
     file_path: &Path,
     source_info: SourceInfo,

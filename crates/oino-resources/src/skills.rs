@@ -116,7 +116,6 @@ pub struct LoadSkillsOptions<'a> {
     pub include_defaults: bool,
 }
 
-/// V a l i d a t e   N a m e.
 fn validate_name(name: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let length = name.encode_utf16().count();
@@ -144,7 +143,6 @@ fn validate_name(name: &str) -> Vec<String> {
     errors
 }
 
-/// V a l i d a t e   D e s c r i p t i o n.
 fn validate_description(description: Option<&Value>) -> Vec<String> {
     match description.and_then(Value::as_str) {
         Some(text) if !text.trim().is_empty() => {

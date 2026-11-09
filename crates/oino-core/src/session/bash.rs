@@ -139,7 +139,6 @@ impl AgentSession {
         self.refresh_context();
     }
 
-    /// F l u s h   P e n d i n g   B a s h   M e s s a g e s.
     pub(crate) fn flush_pending_bash_messages(&self) {
         let pending = std::mem::take(&mut lock(&self.inner.book).pending_bash);
         if pending.is_empty() {

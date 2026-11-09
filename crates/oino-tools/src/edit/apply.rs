@@ -13,7 +13,6 @@ pub struct Edit {
     pub new_text: String,
 }
 
-/// N o r m a l i z e   T o   L F.
 pub(crate) fn normalize_to_lf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
@@ -48,7 +47,6 @@ struct Replacement {
     new_text: String,
 }
 
-/// F u z z y   F i n d   T e x t.
 struct FuzzyMatch {
     index: Option<usize>,
     len: usize,
@@ -252,7 +250,6 @@ pub(crate) struct AppliedEdits {
     pub(crate) new_content: String,
 }
 
-/// A p p l y   E d i t s   T o   N o r m a l i z e d   C o n t e n t.
 #[cfg(test)]
 pub(crate) fn apply_edits_to_normalized_content(
     normalized: &str,

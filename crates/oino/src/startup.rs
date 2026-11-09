@@ -149,7 +149,6 @@ enum Resolved {
     NotFound,
 }
 
-/// R e s o l v e   S e s s i o n   P a t h.
 #[allow(
     clippy::case_sensitive_file_extension_comparisons,
     reason = "`.jsonl` matches case-sensitively"

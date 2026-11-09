@@ -206,7 +206,7 @@ pub fn normalize_session_name(value: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_owned())
 }
 
-/// P a r s e   A r g s.
+/// Parses the command line (without the program name) into [`Args`].
 #[allow(
     clippy::too_many_lines,
     reason = "one branch per flag, in flag order, so the port stays reviewable"

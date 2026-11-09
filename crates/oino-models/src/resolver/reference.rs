@@ -113,7 +113,6 @@ impl ModelReferenceResult<'_> {
     }
 }
 
-/// S p l i t   T h i n k i n g   S u f f i x.
 pub(crate) fn split_thinking_suffix(text: &str) -> Option<(&str, ThinkingLevel)> {
     let colon = text.rfind(':')?;
     let level = text[colon + 1..].parse::<ThinkingLevel>().ok()?;

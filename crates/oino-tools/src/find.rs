@@ -165,7 +165,6 @@ fn walk(spec: &FindSpec, stop: &AtomicBool) -> Result<Vec<String>, String> {
     Ok(results)
 }
 
-/// R e l a t i v i z e   F i n d   R e s u l t   P a t h.
 fn relativize(result: &str, root: &str) -> String {
     let trailing = result.ends_with(node_path::SEP) || (cfg!(windows) && result.ends_with('/'));
     let relative = if node_path::is_absolute(result) {

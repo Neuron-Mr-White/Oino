@@ -146,7 +146,6 @@ fn token_limit(value: f64) -> u64 {
     value as u64
 }
 
-/// A p p l y   M o d e l   O v e r r i d e.
 #[must_use]
 pub(crate) fn apply_model_override(model: &Model, over: &ModelsJsonModelOverride) -> Model {
     let mut next = model.clone();
@@ -201,7 +200,6 @@ pub(crate) fn apply_model_override(model: &Model, over: &ModelsJsonModelOverride
     next
 }
 
-/// F i n d   M o d e l   D e f a u l t s.
 fn find_model_defaults<'a>(
     models: &'a [Model],
     model_id: &str,
@@ -215,7 +213,6 @@ fn find_model_defaults<'a>(
         .or_else(|| models.first())
 }
 
-/// M o d e l   F r o m   J s o n.
 fn model_from_json(
     provider_id: &str,
     definition: &ModelsJsonModel,
@@ -347,7 +344,6 @@ pub(crate) fn apply_models_json(
     Ok(models)
 }
 
-/// E x t e n s i o n   M o d e l   F r o m   D e f i n i t i o n.
 fn model_from_override_definition(
     provider_id: &str,
     models: &[Model],

@@ -99,7 +99,6 @@ fn read_piped_stdin() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
-/// E x p o r t   F r o m   F i l e.
 fn export_from_file(input: &str, output: Option<&str>, cwd: &Path) -> Result<PathBuf, String> {
     let home = oino_settings::paths::home_dir();
     let input = oino_settings::paths::resolve_path(input, cwd, home.as_deref(), false);

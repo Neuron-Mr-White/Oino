@@ -142,7 +142,6 @@ pub(crate) fn exif_orientation(bytes: &[u8]) -> u8 {
     tiff.map_or(1, |offset| read_orientation_from_tiff(bytes, offset))
 }
 
-/// A p p l y   E x i f   O r i e n t a t i o n.
 #[must_use]
 pub(crate) fn apply_exif_orientation(image: DynamicImage, original: &[u8]) -> DynamicImage {
     match exif_orientation(original) {

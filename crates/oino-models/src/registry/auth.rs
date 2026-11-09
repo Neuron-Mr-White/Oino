@@ -297,7 +297,6 @@ pub(crate) fn status(
     }
 }
 
-/// W i t h   C o n f i g u r e d   A u t h.
 fn with_configured_auth(
     mut auth: ResolvedAuth,
     headers: Option<IndexMap<String, String>>,
@@ -422,7 +421,6 @@ impl Resolver<'_> {
         .map_err(|error| self.api_key_error(error.into()))
     }
 
-    /// C o m p o s e   A p i   K e y   A u t h ( ) . r e s o l v e.
     fn resolve_api_key(
         &self,
         plan: &StandardAuth,

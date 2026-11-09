@@ -144,7 +144,6 @@ fn shrink(value: u32) -> u32 {
     next.max(1)
 }
 
-/// R e s i z e   I m a g e   I n   P r o c e s s.
 fn resize_image(bytes: &[u8], mime_type: &str, limits: ResizeLimits) -> Option<ResizedImage> {
     let input_base64_size = (bytes.len() as u64).div_ceil(3) * 4;
     let image = decode_oriented(bytes)?;
@@ -212,7 +211,6 @@ fn resize_image(bytes: &[u8], mime_type: &str, limits: ResizeLimits) -> Option<R
     }
 }
 
-/// F o r m a t   D i m e n s i o n   N o t e.
 fn dimension_note(resized: &ResizedImage) -> Option<String> {
     if !resized.was_resized {
         return None;

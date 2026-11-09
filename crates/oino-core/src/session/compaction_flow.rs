@@ -558,7 +558,6 @@ impl AgentSession {
         }
     }
 
-    /// E x c e e d s   C o m p a c t i o n   T h r e s h o l d.
     pub(crate) fn exceeds_compaction_threshold(
         &self,
         model: &Model,
@@ -755,7 +754,6 @@ impl AgentSession {
         false
     }
 
-    /// M o d e l   F o r   M e s s a g e.
     fn model_for_message(&self, message: &AssistantMessage) -> Option<Model> {
         let model = self.model()?;
         if oino_models::virtual_models::is_virtual_api(&model.api) {

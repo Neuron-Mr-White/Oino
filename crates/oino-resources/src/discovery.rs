@@ -146,7 +146,6 @@ fn add_resource(target: &mut Accumulator, path: PathBuf, metadata: &PathMetadata
         .or_insert_with(|| (metadata.clone(), enabled));
 }
 
-/// R e s o u r c e   P r e c e d e n c e   R a n k.
 fn precedence(metadata: &PathMetadata) -> u8 {
     if metadata.origin == SourceOrigin::Package {
         return 4;
@@ -175,7 +174,6 @@ fn finish(accumulator: Accumulator) -> Vec<ResolvedResource> {
     resolved
 }
 
-/// R e s o l v e   L o c a l   E n t r i e s.
 fn resolve_local_entries(
     input: &DiscoveryInput<'_>,
     entries: &[String],
@@ -388,7 +386,6 @@ fn ancestor_skill_dirs(start: &Path, dot: &str) -> Vec<PathBuf> {
     dirs
 }
 
-/// C o l l e c t   S k i l l   E n t r i e s.
 fn collect_skill_entries(dir: &Path, mode: SkillMode) -> Vec<PathBuf> {
     let mut ignore = IgnoreMatcher::new(dir);
     let mut out = Vec::new();
@@ -504,7 +501,6 @@ fn collect_resource_files(dir: &Path, kind: ResourceKind) -> Vec<PathBuf> {
     }
 }
 
-/// C o l l e c t   F i l e s   F r o m   P a t h s.
 fn collect_files_from_paths(paths: &[PathBuf], kind: ResourceKind) -> Vec<PathBuf> {
     let mut files = Vec::new();
     for path in paths {

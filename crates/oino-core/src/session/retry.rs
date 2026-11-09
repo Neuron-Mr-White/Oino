@@ -8,7 +8,6 @@ use crate::compaction::retry_delay_ms;
 use crate::events::AgentSessionEvent;
 
 impl AgentSession {
-    /// F i n i s h   C a n c e l l e d   R e t r y.
     pub(crate) fn finish_cancelled_retry(&self) {
         let attempt = std::mem::take(&mut lock(&self.inner.book).retry_attempt);
         if attempt == 0 {

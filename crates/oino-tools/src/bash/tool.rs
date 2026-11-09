@@ -174,7 +174,6 @@ fn format_output(
     (text, Some(JsonValue::Object(details)))
 }
 
-/// A p p e n d   S t a t u s.
 fn append_status(text: &str, status: &str) -> String {
     if text.is_empty() {
         status.to_owned()
