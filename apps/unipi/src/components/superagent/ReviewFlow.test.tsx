@@ -29,7 +29,7 @@ const pos = async () => (await screen.findByTestId('task-queue')).querySelector(
 const detail = () => screen.getByTestId('task-detail').getAttribute('aria-label');
 async function openReview(task: string) {
   await screen.findByTestId('superagent-page');
-  if (!screen.queryByRole('dialog', { name: 'Review' })) fireEvent.click(await screen.findByLabelText('Open review (7)'));
+  if (!screen.queryByRole('dialog', { name: 'Workbench' })) fireEvent.click(await screen.findByLabelText('Open review (7)'));
   fireEvent.click(await screen.findByLabelText(`Open ${task}`));
   await screen.findByTestId('task-detail');
 }
@@ -123,14 +123,14 @@ describe('OIN-40: reviewing tasks from Superagent', () => {
     await screen.findByText('Nothing to review.');
   });
 
-  it('Back returns to Superagent with the Review accordion still expanded and its rows intact', async () => {
+  it('Back returns to Superagent with the workbench still open and its rows intact', async () => {
     mount();
     await openReview('HP-5');
     fireEvent.click(screen.getByLabelText('Back to Superagent'));
     await waitFor(() => expect(screen.queryByTestId('task-detail')).toBeNull());
     expect(taskOrigin()).toBeUndefined();
     expect(location.hash).toContain('/superagent');
-    expect(screen.getByRole('dialog', { name: 'Review' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Workbench' })).toBeTruthy();
     expect(screen.getByLabelText('Open HP-5')).toBeTruthy();
   });
 
@@ -158,7 +158,7 @@ describe('OIN-40: review capsule and workspace', () => {
     expect(await screen.findByLabelText('Open LIVE-1')).toBeTruthy();
     expect(screen.queryByLabelText('Open OLD-1')).toBeNull();
   });
-  it('opens each segment with its filter, supports empty search and restores focus on Escape', async () => {
+  it('opens each segment on its section, one question at a time, empty search, focus restored on Escape', async () => {
     const status = StatusSchema.parse({ enabled: true, concurrencyCap: 1, leads: [],
       needsYou: [{ projectId: 'heartpick', taskId: 'HP-3', status: 'blocked', question: 'What next?' }],
       review: [{ projectId: 'oino', taskId: 'OIN-12', status: 'in_review' }], projects: [] });
@@ -167,12 +167,15 @@ describe('OIN-40: review capsule and workspace', () => {
     const segment = await screen.findByLabelText('Open escalations (1)');
     segment.focus(); fireEvent.click(segment);
     expect((await screen.findByRole('tab', { name: 'Escalate · 1' })).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByLabelText('Open HP-3')).toBeTruthy();
+    // One question at a time, with its reply box; no review rows here.
+    expect((await screen.findByTestId('sa-escalation')).textContent).toContain('What next?');
+    expect(screen.getByLabelText('Reply to HP-3')).toBeTruthy();
     expect(screen.queryByLabelText('Open OIN-12')).toBeNull();
-    fireEvent.input(screen.getByLabelText('Search review queue'), { target: { value: 'not-found' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Review · 1' }));
+    fireEvent.input(await screen.findByLabelText('Search review queue'), { target: { value: 'not-found' } });
     expect(screen.getByText('Nothing to review.')).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Review' }), { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Review' })).toBeNull());
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Workbench' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Workbench' })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(segment));
     fireEvent.click(screen.getByLabelText('Open review (1)'));
     expect((await screen.findByRole('tab', { name: 'Review · 1' })).getAttribute('aria-selected')).toBe('true');

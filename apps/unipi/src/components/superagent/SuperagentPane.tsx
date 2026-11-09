@@ -6,13 +6,12 @@ import { layout } from '../../lib/layout';
 import { countNeeds } from './needs';
 import type { SuperagentState } from './state';
 import { Toggle } from './parts';
-import { NeedsYouSection } from './NeedsYou';
 import { LeadsSection } from './Leads';
 import { ProjectsSection } from './Projects';
 import { PresetManager } from './Presets';
-import type { QueueKind } from '../../lib/board/taskOrigin';
 
-export type PaneTab = 'needs' | 'leads' | 'projects';
+/** The side pane keeps the leads and projects; decisions live in the workbench (capsule). */
+export type PaneTab = 'leads' | 'projects';
 
 /** Number of things waiting on the owner: drives the phone badge. */
 export function needsCount(sa: SuperagentState): number {
@@ -28,7 +27,7 @@ function Settings(props: { sa: SuperagentState; onManage: () => void }) {
   </div>;
 }
 
-export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab: PaneTab; onTab: (tab: PaneTab) => void; onOpen: (id: string) => void; onTicket: (project: string, task: string, queue: QueueKind) => void }) {
+export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab: PaneTab; onTab: (tab: PaneTab) => void; onOpen: (id: string) => void }) {
   const sa = props.sa;
   const [menu, setMenu] = createSignal<DOMRect>();
   const [managing, setManaging] = createSignal(false);
@@ -36,11 +35,10 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
   const show = (tab: PaneTab) => !phone() || props.tab === tab;
   const summary = () => { const s = sa.status(); return s ? (s.enabled ? 'Auto-start on' : 'Auto-start off') : 'Superagent'; };
   const tabs = () => [
-    { value: 'needs' as const, label: `Needs you · ${needsCount(sa)}` },
     { value: 'leads' as const, label: `Leads · ${sa.running().length}` },
     { value: 'projects' as const, label: 'Projects' },
   ];
-  return <div class="sa-pane" aria-label="Needs you, leads and projects">
+  return <div class="sa-pane" aria-label="Leads and projects">
     <div class="sa-pane-top">
     <div class="sa-pane-heading">
       <button type="button" class="sa-summary" aria-label="Auto-start settings" aria-haspopup="menu" disabled={!sa.status()} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())}><SlidersHorizontal size={15} /><span>{summary()}</span></button>
@@ -51,7 +49,6 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
     <Show when={sa.error()}><div class="sa-message" role="alert">{sa.error()} <button type="button" onClick={() => { sa.clearError(); void sa.refresh(); }}>Retry</button></div></Show>
     <Show when={sa.notice()}><p class="sa-message" role="status">{sa.notice()}</p></Show>
     <Show when={sa.status()} fallback={<Show when={!sa.error()}><div class="sa-loading" aria-label="Loading Superagent" aria-busy="true"><span /><span /><span /></div></Show>}>
-      <Show when={show('needs')}><NeedsYouSection hostId={props.hostId} sa={sa} onOpen={props.onOpen} onTicket={(project, task) => props.onTicket(project, task, 'needs')} /></Show>
       <Show when={show('leads')}><LeadsSection sa={sa} onOpen={props.onOpen} /></Show>
       <Show when={show('projects')}><ProjectsSection hostId={props.hostId} sa={sa} onManage={() => setManaging(true)} /></Show>
     </Show>

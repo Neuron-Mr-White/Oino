@@ -33,38 +33,26 @@ describe('SuperagentRailIndicator', () => {
     expect(css).toMatch(/\.rail-end\s*\{[^}]*display:\s*inline-flex/);
   });
 
-  it('shows a count pill when something waits on the owner, even with leads running', async () => {
-    mockStatus(status([lead(1)], [approval(1), approval(2)]));
+  it('shows no counts in the sidebar, even with leads running and approvals waiting', async () => {
+    const spy = mockStatus(status([lead(1)], [approval(1), approval(2)]));
     render(() => <SuperagentRailIndicator />);
-    const pill = await screen.findByTestId('rail-superagent-needs');
-    expect(pill.textContent).toBe('2');
-    expect(pill.getAttribute('aria-label')).toBe('2 waiting for you');
-    expect(pill.getAttribute('title')).toBe('2 waiting for you');
-    expect(screen.getByTestId('rail-superagent-live').textContent).toBe('1');
-  });
-
-  it('shows a running count while leads run and nothing waits', async () => {
-    mockStatus(status([lead(1), lead(2)], []));
-    render(() => <SuperagentRailIndicator />);
-    const dot = await screen.findByTestId('rail-superagent-live');
-    expect(dot.getAttribute('title')).toBe('2 running');
-    expect(dot.textContent).toBe('2');
+    await Promise.resolve();
+    expect(spy).not.toHaveBeenCalled();
     expect(screen.queryByTestId('rail-superagent-needs')).toBeNull();
+    expect(screen.queryByTestId('rail-superagent-live')).toBeNull();
   });
 
   it('shows nothing when idle', async () => {
-    const spy = mockStatus(status([], []));
+    mockStatus(status([], []));
     render(() => <SuperagentRailIndicator />);
-    await waitFor(() => expect(spy).toHaveBeenCalled());
     await Promise.resolve();
     expect(screen.queryByTestId('rail-superagent-needs')).toBeNull();
     expect(screen.queryByTestId('rail-superagent-live')).toBeNull();
   });
 
   it('shows nothing when the status is unavailable', async () => {
-    const spy = vi.spyOn(superagentApi, 'status').mockRejectedValue(new Error('offline'));
+    vi.spyOn(superagentApi, 'status').mockRejectedValue(new Error('offline'));
     render(() => <SuperagentRailIndicator />);
-    await waitFor(() => expect(spy).toHaveBeenCalled());
     await Promise.resolve();
     expect(screen.queryByTestId('rail-superagent-needs')).toBeNull();
     expect(screen.queryByTestId('rail-superagent-live')).toBeNull();

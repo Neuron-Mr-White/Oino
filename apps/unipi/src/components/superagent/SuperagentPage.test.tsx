@@ -10,6 +10,8 @@ import { superagentLeads } from '../../dev/mock/scenarios/superagent-leads';
 import { superagentConcurrent } from '../../dev/mock/scenarios/superagent-concurrent';
 import { createSuperagentState } from './state';
 import { SuperagentPane, type PaneTab } from './SuperagentPane';
+import { ApprovalQueue, Question } from './NeedsYou';
+import { isApproval, isQuestion } from './api';
 import { StatusSchema } from './api';
 import { confirmSheet } from '../phone/Sheet';
 import { createSignal } from 'solid-js';
@@ -50,37 +52,35 @@ const presets = [
   { id: 'quick-fix', label: 'Quick fix', description: '', model: null, thinking: null, autonomy: 'high', mode: 'none', maxParallel: null, review: 'none', profiles: null, priority: false },
   { id: 'bug-batch', label: 'Bug batch', description: 'Batch independent bug fixes', model: null, thinking: null, autonomy: 'high', mode: 'swarm', maxParallel: 4, review: 'light', profiles: null, priority: false },
 ];
-function Harness(p: { onOpen: (id: string) => void; onTicket: (project: string, task: string) => void; tab?: PaneTab }) {
+type View = 'pane' | 'approvals' | 'question';
+function Harness(p: { onOpen: (id: string) => void; onTicket: (project: string, task: string) => void; tab?: PaneTab; view?: View }) {
   const sa = createSuperagentState(() => 'pc-coffee');
-  const [tab, setTab] = createSignal<PaneTab>(p.tab ?? 'needs');
-  return <SuperagentPane hostId="pc-coffee" sa={sa} tab={tab()} onTab={setTab} onOpen={p.onOpen} onTicket={p.onTicket} />;
+  const [tab, setTab] = createSignal<PaneTab>(p.tab ?? 'leads');
+  const needs = () => sa.status()?.needsYou ?? [];
+  return <>
+    <Show when={(p.view ?? 'pane') === 'pane'}><SuperagentPane hostId="pc-coffee" sa={sa} tab={tab()} onTab={setTab} onOpen={p.onOpen} /></Show>
+    <Show when={p.view === 'approvals' && sa.status()}><Show when={sa.error()}><div role="alert">{sa.error()}</div></Show><Show when={sa.notice()}><p role="status">{sa.notice()}</p></Show><ApprovalQueue hostId="pc-coffee" sa={sa} items={needs().filter(isApproval)} onOpen={p.onOpen} onTicket={p.onTicket} /></Show>
+    <Show when={p.view === 'question' && needs().find(isQuestion)}>{(q) => <><Show when={sa.error()}><div role="alert">{sa.error()}</div></Show><Show when={sa.notice()}><p role="status">{sa.notice()}</p></Show><Question sa={sa} item={q()} onTicket={p.onTicket} /></>}</Show>
+  </>;
 }
-function mount(value: object = raw(), opts: { tab?: PaneTab; phone?: boolean } = {}) {
+function mount(value: object = raw(), opts: { tab?: PaneTab; phone?: boolean; view?: View } = {}) {
   setHostClientFactory(createMockHost(superagentLeads).client);
   setPlatformOverride(opts.phone ? 'tauri-mobile' : 'tauri-desktop'); setDesktopOverride(!opts.phone);
   vi.spyOn(superagentApi, 'status').mockResolvedValue({ ok: true, value: StatusSchema.parse(value) });
   vi.spyOn(superagentApi.presets, 'list').mockResolvedValue({ ok: true, value: { defaultPresetId: 'quick-fix', presets: presets as never } });
   const onOpen = vi.fn(); const onTicket = vi.fn();
-  render(() => <Harness onOpen={onOpen} onTicket={onTicket} tab={opts.tab} />);
+  render(() => <Harness onOpen={onOpen} onTicket={onTicket} tab={opts.tab} view={opts.view} />);
   return { onOpen, onTicket };
 }
 const ok = <T,>(value: T) => ({ ok: true as const, value });
 const fail = (message: string, detail?: unknown) => ({ ok: false as const, error: { code: 'E_BOARD_REJECTED' as const, message, retryable: false, detail } });
 
 describe('v3 Superagent leads', () => {
-  it('worker_and_needs_you', async () => {
+  it('the pane keeps only leads and projects; approvals and questions live in the workbench', async () => {
     const { onOpen } = mount();
-    await screen.findByText('1 of 3');
-    expect(document.activeElement === document.body || !screen.getByTestId('sa-needs').contains(document.activeElement)).toBe(true);
-    // One approval at a time.
-    expect(screen.getAllByTestId('approval-card')).toHaveLength(1);
-    expect(screen.getByText('git push origin branch-1')).toBeTruthy();
-    // Blocked questions carry their own reply box.
-    await screen.findByText('Which domain should I use?');
-    expect(screen.getByLabelText('Reply to WEB-8')).toBeTruthy();
-    expect(screen.getByLabelText('Reply to BIL-3')).toBeTruthy();
-    // Lead cards.
-    const cards = screen.getAllByTestId('sa-lead');
+    const cards = await screen.findAllByTestId('sa-lead');
+    expect(screen.queryByTestId('sa-needs')).toBeNull();
+    expect(screen.queryByTestId('approval-card')).toBeNull();
     expect(cards).toHaveLength(2);
     expect(cards[0]!.textContent).toContain('Bug batch');
     expect(cards[0]!.textContent).toContain('claude-sonnet-4-5');
@@ -94,9 +94,15 @@ describe('v3 Superagent leads', () => {
     fireEvent.click(within(cards[0]!).getByText('Open')); expect(onOpen).toHaveBeenCalledWith('lead-hp');
     expect(screen.queryByTestId('sa-review')).toBeNull();
   });
+  it('shows one approval at a time', async () => {
+    mount(raw(), { view: 'approvals' });
+    await screen.findByText('1 of 3');
+    expect(screen.getAllByTestId('approval-card')).toHaveLength(1);
+    expect(screen.getByText('git push origin branch-1')).toBeTruthy();
+  });
   it('steps through approvals and answers the current one', async () => {
     const respond = vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue(ok({ accepted: true as const }));
-    mount();
+    mount(raw(), { view: 'approvals' });
     await screen.findByText('1 of 3');
     fireEvent.click(screen.getByLabelText('Next approval'));
     await screen.findByText('2 of 3');
@@ -109,21 +115,21 @@ describe('v3 Superagent leads', () => {
   });
   it('removes a stale approval and shows a notice', async () => {
     vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue(fail('stale or wrong-session approval response', { code: 'E_APPROVAL' }));
-    mount(raw({ needsYou: [approval(1)] }));
+    mount(raw({ needsYou: [approval(1)] }), { view: 'approvals' });
     fireEvent.click(await screen.findByText('Allow once'));
     await screen.findByText('This request is no longer pending');
     expect(screen.queryByTestId('approval-card')).toBeNull();
   });
   it('keeps an approval visible when the host is unavailable', async () => {
     vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue({ ok: false, error: { code: 'E_TRANSPORT', message: 'Host offline', retryable: true } });
-    mount(raw({ needsYou: [approval(1)] }));
+    mount(raw({ needsYou: [approval(1)] }), { view: 'approvals' });
     fireEvent.click(await screen.findByText('Allow once'));
     await screen.findByText('Host offline');
     expect(screen.getByTestId('approval-card')).toBeTruthy();
   });
   it('relays a reply to the project lead without taking focus', async () => {
     const relay = vi.spyOn(superagentApi, 'relay').mockResolvedValue(ok({ commentId: null, sessionId: 'lead-hp', delivered: true }));
-    mount(raw({ needsYou: [{ projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain should I use?' }] }));
+    mount(raw({ needsYou: [{ projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain should I use?' }] }), { view: 'question' });
     const box = await screen.findByLabelText('Reply to WEB-8') as HTMLTextAreaElement;
     expect(document.activeElement).not.toBe(box);
     expect((screen.getByLabelText('Send reply for WEB-8') as HTMLButtonElement).disabled).toBe(true);
@@ -135,7 +141,7 @@ describe('v3 Superagent leads', () => {
   });
   it('shows a failed relay and keeps the reply text', async () => {
     vi.spyOn(superagentApi, 'relay').mockResolvedValue(ok({ commentId: 'c', sessionId: 'lead-hp', delivered: false, error: { code: 'E_RELAY_DELIVERY', message: 'Lead disconnected' } }));
-    mount(raw({ needsYou: [{ projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain?' }] }));
+    mount(raw({ needsYou: [{ projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain?' }] }), { view: 'question' });
     const box = await screen.findByLabelText('Reply to WEB-8') as HTMLTextAreaElement;
     fireEvent.input(box, { target: { value: 'staging' } });
     fireEvent.click(screen.getByLabelText('Send reply for WEB-8'));
@@ -237,7 +243,7 @@ describe('v3 Superagent leads', () => {
   });
   it('collapses long lists behind show more', async () => {
     mount(raw({ needsYou: [] }));
-    await screen.findByText('Nothing needs you.');
+    await screen.findAllByTestId('sa-lead');
     expect(screen.getAllByText(/^(Heartpick|Oino|Website|Billing|Notes)$/).length).toBeGreaterThan(0);
     expect(screen.queryByLabelText('Start Notes')).toBeNull();
     fireEvent.click(screen.getByText('Show 1 more'));
@@ -245,13 +251,12 @@ describe('v3 Superagent leads', () => {
   });
   it('empty_and_refresh_failure', async () => {
     mount(raw({ leads: [], needsYou: [], review: [], projects: [] }));
-    await screen.findByText('Nothing needs you.');
-    expect(screen.getByText(/No lead is running/)).toBeTruthy();
+    expect(await screen.findByText(/No lead is running/)).toBeTruthy();
     expect(screen.getByText('No projects on this computer.')).toBeTruthy();
     vi.mocked(superagentApi.status).mockResolvedValue({ ok: false, error: { code: 'E_TRANSPORT', message: 'Host offline', retryable: true } });
     fireEvent.click(screen.getByLabelText('Refresh'));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Host offline'));
-    expect(screen.getByText('Nothing needs you.')).toBeTruthy();
+    expect(screen.getByText(/No lead is running/)).toBeTruthy();
   });
   it('degrades an older worker-shaped host', async () => {
     const legacy = { enabled: false, concurrencyCap: 2, workers: [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'medium', step: 'Testing', tool: 'bash', startedAt: null, cost: null }], needsYou: [{ projectId: 'oino', taskId: 'OIN-12', status: 'in_review' }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Which domain?' }] };
@@ -271,15 +276,13 @@ describe('v3 Superagent leads', () => {
     await waitFor(() => expect(stop).toHaveBeenCalledWith('pc-coffee', 'oino', 'OIN-14'));
   });
   it('phone shows one tab at a time', async () => {
-    mount(raw(), { tab: 'needs', phone: true });
+    mount(raw(), { tab: 'leads', phone: true });
     await screen.findByRole('radiogroup', { name: 'Superagent sections' });
-    expect(await screen.findByRole('radio', { name: 'Needs you · 5' })).toBeTruthy();
-    expect(screen.queryByTestId('sa-leads')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Leads · 2' }));
+    expect(screen.queryByRole('radio', { name: /Needs you/ })).toBeNull();
     await screen.findByTestId('sa-leads');
-    expect(screen.queryByTestId('sa-needs')).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Projects' }));
     await screen.findByTestId('sa-projects');
+    expect(screen.queryByTestId('sa-leads')).toBeNull();
   });
 });
 describe('v3 Superagent shared', () => {
@@ -339,7 +342,7 @@ describe('v3 Superagent shared', () => {
     expect(world.log.filter((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toHaveLength(before);
     expect(field.textContent).toContain('keep this draft');
   });
-  it('shows streaming activity beside the white count and in history', async () => {
+  it('shows streaming activity in the sidebar (no counts) and in history', async () => {
     const host = superagent.hosts[0]!;
     const chat = structuredClone(host.sessions!['superagent-chat']!);
     chat.snapshot.state = { ...chat.snapshot.state as object, isStreaming: true };
@@ -347,10 +350,9 @@ describe('v3 Superagent shared', () => {
     setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
     location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
     render(() => <Root />);
-    const spinner = await screen.findByTestId('rail-superagent-working');
-    const badge = await screen.findByTestId('rail-superagent-needs');
-    expect(spinner.parentElement).toBe(badge.parentElement);
-    expect(badge.classList.contains('rail-count')).toBe(true);
+    await screen.findByTestId('rail-superagent-working');
+    expect(screen.queryByTestId('rail-superagent-needs')).toBeNull();
+    expect(screen.queryByTestId('rail-superagent-live')).toBeNull();
     fireEvent.click(screen.getByLabelText('Superagent history'));
     expect(await screen.findByText(/Running now/)).toBeTruthy();
   });

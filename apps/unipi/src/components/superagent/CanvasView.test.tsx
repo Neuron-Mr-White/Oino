@@ -30,7 +30,7 @@ const chip = (canvas: HTMLElement, name: string) => within(canvas).getByRole('bu
 const nodeIds = () => screen.queryAllByTestId(/^fleet-node-/).map((el) => el.getAttribute('data-testid')!.slice('fleet-node-'.length));
 
 describe('Superagent right rail', () => {
-  it('collapses to a slim rail, keeps the badge and the conversation, and remembers it', async () => {
+  it('collapses to a slim rail, keeps the conversation, and remembers it', async () => {
     await mount();
     const toggle = await screen.findByLabelText('Collapse panel');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -42,7 +42,7 @@ describe('Superagent right rail', () => {
     expect(document.querySelector('.sa-center')).toBe(center); // same DOM: no remount, no transcript jump
     expect(screen.getByLabelText('Expand panel').getAttribute('aria-expanded')).toBe('false');
     expect(localStorage.getItem(RAIL_KEY)).toBe('1');
-    await waitFor(() => expect(screen.getByTestId('sa-slim-needs').textContent).toBe('5'));
+    expect(screen.queryByTestId('sa-slim-needs')).toBeNull();
     expect(side.querySelector('.sa-side-body')!.hasAttribute('inert')).toBe(true);
     // Mounted again: read from storage.
     cleanup();
