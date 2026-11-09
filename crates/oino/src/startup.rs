@@ -709,6 +709,11 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
             },
             str::to_owned,
         );
+        let settings = settings_snapshot(&services);
+        let provider = args.provider.as_deref()
+            .or_else(|| args.model.as_deref().and_then(|model| model.split_once('/').map(|(provider, _)| provider)))
+            .or_else(|| settings.default_provider());
+        let message = services.models.with_list_error(message, provider);
         let mut lines = crate::report_lines(&diagnostics);
         lines.push(message);
         runtime.dispose().await;
