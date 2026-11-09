@@ -115,6 +115,13 @@ export function startRefusal(error: { code?: unknown; detail?: unknown }): 'not_
   return null;
 }
 
+export const WORKER_CAP_MESSAGE = 'Worker cap reached — waiting for a slot';
+/** Host errors may be wrapped by the board adapter in detail. */
+export function isWorkerCap(error: { code?: unknown; detail?: unknown }): boolean {
+  const detail = error.detail && typeof error.detail === 'object' ? (error.detail as { code?: unknown }).code : undefined;
+  return error.code === 'E_WORKER_CAP' || detail === 'E_WORKER_CAP';
+}
+
 export type RelayDelivery = 'queue' | 'steer';
 export const superagentApi = {
   sessions: (host: string) => hostCall(host, 'superagent.sessions', {}, SessionsSchema),

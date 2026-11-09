@@ -12,6 +12,8 @@
 .sa-history .sa-history-selected { background:var(--color-surface-3); border-radius:6px; }
 .sa-history .sa-history-recent { color:var(--color-text-muted); }
 .sa-history button { justify-content:flex-start; }
+.sa-occupancy { padding:4px 20px; color:var(--color-text-muted); font-size:12px; font-variant-numeric:tabular-nums; border-bottom:1px solid var(--color-line); }
+.ph-shell .sa-occupancy { padding:4px 12px; }
 .sa-current { display:flex; align-items:center; gap:8px; padding:6px 20px; min-width:0; border-bottom:1px solid var(--color-line); font-size:12px; color:var(--color-text-muted); }
 .sa-current strong { color:var(--color-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .sa-current > span:not(:first-child) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -117,6 +119,7 @@
 .sa-project-main { display:flex; flex-direction:column; flex:1; min-width:0; }
 .sa-project-main strong { overflow:hidden; text-overflow:ellipsis; font-weight:550; }
 .sa-project-main .sa-sub { display:inline-flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; }
+.sa-cap-hint { white-space:normal; overflow-wrap:anywhere; line-height:1.35; }
 .sa-hint { display:inline-flex; align-items:center; gap:6px; min-width:0; }
 .sa-hint-text { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .sa-hint-btn { position:relative; flex:0 0 auto; padding:0; font:inherit; color:var(--color-text); background:none; border:0; text-decoration:underline; text-underline-offset:3px; }

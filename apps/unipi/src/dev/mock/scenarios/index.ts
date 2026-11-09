@@ -1,6 +1,7 @@
 import { superagent } from './superagent';
 import { superagentLeads } from './superagent-leads';
 import { superagentConcurrent } from './superagent-concurrent';
+import { superagentCap } from './superagent-cap';
 import { superagentReview } from './superagent-review';
 /** Capture/test scenarios by name (`?scenario=<name>`). Later WPs append theirs. */
 import { autonomy } from './autonomy';
@@ -53,6 +54,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   superagent,
   'superagent-leads': superagentLeads,
   'superagent-concurrent': superagentConcurrent,
+  'superagent-cap': superagentCap,
   'superagent-review': superagentReview,
   empty,
   'turn-files': turnFiles,
