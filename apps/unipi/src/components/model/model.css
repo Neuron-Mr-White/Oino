@@ -268,6 +268,7 @@ html[data-shell=phone] .sheet.model-picker-sheet { z-index: var(--z-sheet, 61); 
 .mp-fusion-off { margin-top: -4px; }
 
 /* The collapsed "Advanced: provider/model" escape hatch under a field's list. */
+.model-picker-dialog:has(.mp-advanced) .mp-list:not(.mp-col-list) { min-height: min(28vh, 240px); max-height: min(30vh, 260px); }
 .mp-advanced { border-top: 1px solid var(--color-line); padding-top: 8px; }
 .mp-advanced > summary { cursor: pointer; width: fit-content; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); border-radius: 6px; }
 .mp-advanced > summary:hover { color: var(--color-text-muted); }
