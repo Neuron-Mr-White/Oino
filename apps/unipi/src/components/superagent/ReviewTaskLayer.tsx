@@ -12,7 +12,7 @@ import { taskOrigin } from '../../lib/board/taskOrigin';
  * from the Board screen — the note / confirm sheets, the report reader, the
  * image viewer and the live board feed.
  */
-export function ReviewTaskLayer() {
+export function ReviewTaskLayer(props: { mount?: HTMLElement; embedded?: boolean; onBack?: () => void } = {}) {
   const store = boardStore();
   useBoardLive(store, () => {
     const origin = taskOrigin();
@@ -20,7 +20,7 @@ export function ReviewTaskLayer() {
     return origin && at?.hostId === origin.hostId ? { hostId: origin.hostId, slug: at.slug ?? null } : null;
   });
   return <>
-    <TaskDetail />
+    <TaskDetail mount={props.mount} embedded={props.embedded} onBack={props.onBack} />
     <CommentSheet />
     <ConfirmSheet />
     <ReportReader />

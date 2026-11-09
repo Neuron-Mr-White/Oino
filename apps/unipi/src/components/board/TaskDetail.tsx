@@ -53,12 +53,12 @@ import { BodyEditor } from './BodyEditor';
 import { MoveMenu, PriorityMenu, TaskMoreMenu } from './TaskMenus';
 import { DepPicker, LabelPicker } from './NewTaskSheet';
 
-export function TaskDetail() {
+export function TaskDetail(props: { mount?: HTMLElement; embedded?: boolean; onBack?: () => void } = {}) {
   const ui = boardUi();
-  return <Show when={ui.openedTask()}>{(id) => <TaskPage id={id()} />}</Show>;
+  return <Show when={ui.openedTask()}>{(id) => <TaskPage id={id()} mount={props.mount} embedded={props.embedded} onBack={props.onBack} />}</Show>;
 }
 
-function TaskPage(props: { id: string }) {
+function TaskPage(props: { id: string; mount?: HTMLElement; embedded?: boolean; onBack?: () => void }) {
   const store = boardStore();
   const ui = boardUi();
   const task = () => store.taskById(props.id);
@@ -86,7 +86,7 @@ function TaskPage(props: { id: string }) {
         setConfirmDiscard(false);
         setMenu(null);
         setSheet(null);
-        scroller?.scrollTo?.({ top: 0 });
+        if (!props.embedded) scroller?.scrollTo?.({ top: 0 });
         queueMicrotask(fitTitle);
       },
     ),
@@ -126,15 +126,16 @@ function TaskPage(props: { id: string }) {
       setConfirmDiscard(false);
       const last = ui.detail().length === 1;
       const id = props.id; // read before popTask unmounts this page
-      ui.popTask();
+      if (props.onBack && last) props.onBack();
+      else ui.popTask();
       // Back on the board: show where this task sits (lane page + flash).
       // Opened from a Superagent queue: the page underneath is the destination.
-      if (last && !taskOrigin()) highlightTask(id, true);
+      if (last && !props.embedded && !taskOrigin()) highlightTask(id, true);
       return;
     }
     setConfirmDiscard(true);
   }
-  onMount(() => onCleanup(pushBack(requestBack)));
+  onMount(() => { if (!props.embedded) onCleanup(pushBack(requestBack)); });
   const queue = queueView(() => props.id);
   const backLabel = () => (ui.detail().length > 1 ? 'Back to the previous task' : taskBackTarget(taskOrigin()?.from) === '/superagent' ? 'Back to Superagent' : 'Back to the board');
   // The title's height follows its width: re-fit when the pane/window is resized
@@ -174,8 +175,8 @@ function TaskPage(props: { id: string }) {
   const closeMenu = () => setMenu(null);
 
   return (
-    <Portal>
-      <div class="board-page task-page" role="dialog" aria-label={`${props.id} details`} data-testid="task-detail" data-lane={task()?.status}>
+    <Portal mount={props.mount}>
+      <div class="board-page task-page" data-embedded={props.embedded ? '' : undefined} role="dialog" aria-label={`${props.id} details`} data-testid="task-detail" data-lane={task()?.status}>
         <Show
           when={task()}
           fallback={

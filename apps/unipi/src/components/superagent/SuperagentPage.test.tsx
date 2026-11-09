@@ -68,7 +68,7 @@ const fail = (message: string, detail?: unknown) => ({ ok: false as const, error
 
 describe('v3 Superagent leads', () => {
   it('worker_and_needs_you', async () => {
-    const { onOpen, onTicket } = mount();
+    const { onOpen } = mount();
     await screen.findByText('1 of 3');
     expect(document.activeElement === document.body || !screen.getByTestId('sa-needs').contains(document.activeElement)).toBe(true);
     // One approval at a time.
@@ -91,12 +91,7 @@ describe('v3 Superagent leads', () => {
     expect((screen.getByLabelText('Mode for Heartpick') as HTMLSelectElement).value).toBe('swarm');
     expect((screen.getByLabelText('Mode for Oino') as HTMLSelectElement).value).toBe('graph');
     fireEvent.click(within(cards[0]!).getByText('Open')); expect(onOpen).toHaveBeenCalledWith('lead-hp');
-    // Review is collapsed with a count, and opens the ticket.
-    expect(screen.getByTestId('sa-review').textContent).toContain('3');
-    expect(screen.queryByText('HP-3', { exact: false })).toBeNull();
-    fireEvent.click(screen.getByText('Review'));
-    await screen.findByLabelText('Open HP-3');
-    fireEvent.click(screen.getByLabelText('Open HP-3')); expect(onTicket).toHaveBeenCalledWith('heartpick', 'HP-3', 'review');
+    expect(screen.queryByTestId('sa-review')).toBeNull();
   });
   it('steps through approvals and answers the current one', async () => {
     const respond = vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue(ok({ accepted: true as const }));

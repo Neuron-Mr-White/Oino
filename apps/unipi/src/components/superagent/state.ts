@@ -8,7 +8,7 @@ import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type L
 export type RunError = { message: string; code?: unknown; detail?: unknown };
 export type EnableInput = { action: EnableAction; projectId?: string; path?: string };
 export type EnableResult = { ok: true; projectId: string | null } | { ok: false; message: string };
-export type TicketMeta = { title: string; autonomy?: string };
+export type TicketMeta = { title: string; autonomy?: string; status?: string };
 export const ticketKey = (project: string, task: string) => `${project}/${task}`;
 const POLL_MS = 5000;
 
@@ -61,7 +61,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       try {
         const task = await within(boardApi.task(host, row.projectId, row.taskId), () => undefined);
         if (!task) { requested.delete(key); return [key, { title: '' }] as const; }
-        return [key, { title: task.displayTitle || task.title, autonomy: task.autonomy ?? 'medium' }] as const;
+        return [key, { title: task.displayTitle || task.title, autonomy: task.autonomy ?? 'medium', status: task.status }] as const;
       } catch { requested.delete(key); return [key, { title: '' }] as const; }
     }));
     if (gen === generation && found.length) setTitles((old) => ({ ...old, ...Object.fromEntries(found) }));

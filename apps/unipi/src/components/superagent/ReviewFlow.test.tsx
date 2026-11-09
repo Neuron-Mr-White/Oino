@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { superagentReview } from '../../dev/mock/scenarios/superagent-review';
@@ -12,7 +12,7 @@ import { setPlatformOverride } from '../../lib/platform';
 import { boardUi } from '../../lib/board/ui';
 import { boardStore } from '../../lib/board/store';
 import { endQueue, taskOrigin } from '../../lib/board/taskOrigin';
-import { setReviewAll, setReviewOpen } from './reviewUi';
+import { StatusSchema, superagentApi } from './api';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri')), transformCallback: () => 0 }));
@@ -29,15 +29,11 @@ const pos = async () => (await screen.findByTestId('task-queue')).querySelector(
 const detail = () => screen.getByTestId('task-detail').getAttribute('aria-label');
 async function openReview(task: string) {
   await screen.findByTestId('superagent-page');
-  const review = await screen.findByTestId('sa-review');
-  const head = within(review).getByText('Review').closest('button')!;
-  if (head.getAttribute('aria-expanded') !== 'true') fireEvent.click(head);
-  if (!screen.queryByLabelText(`Open ${task}`)) fireEvent.click(await within(review).findByText(/Show \d+ more/));
+  if (!screen.queryByRole('dialog', { name: 'Review' })) fireEvent.click(await screen.findByLabelText('Open review (7)'));
   fireEvent.click(await screen.findByLabelText(`Open ${task}`));
   await screen.findByTestId('task-detail');
 }
 
-beforeEach(() => { setReviewOpen(false); setReviewAll(false); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); setHostClientFactory(undefined); resetSessions(); resetHubs(); resetLayout(); setDesktopOverride(undefined); setPlatformOverride(undefined); boardUi().closeTask(); endQueue(); location.hash = ''; });
 
 describe('OIN-40: reviewing tasks from Superagent', () => {
@@ -84,6 +80,7 @@ describe('OIN-40: reviewing tasks from Superagent', () => {
     await waitFor(() => expect(detail()).toBe('HP-5 details'));
     expect(screen.getByTestId('task-detail')).toBe(dialog); // the same page element: it never closed
     expect(await pos()).toBe('1 of 6'); // HP-3 left the queue
+    expect(await screen.findByLabelText('Open review (6)')).toBeTruthy();
     expect(location.hash).toContain('/superagent');
     // …and again, crossing into the next project.
     fireEvent.click(await screen.findByText('Mark done'));
@@ -133,7 +130,7 @@ describe('OIN-40: reviewing tasks from Superagent', () => {
     await waitFor(() => expect(screen.queryByTestId('task-detail')).toBeNull());
     expect(taskOrigin()).toBeUndefined();
     expect(location.hash).toContain('/superagent');
-    expect(within(screen.getByTestId('sa-review')).getByText('Review').closest('button')!.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('dialog', { name: 'Review' })).toBeTruthy();
     expect(screen.getByLabelText('Open HP-5')).toBeTruthy();
   });
 
@@ -143,6 +140,49 @@ describe('OIN-40: reviewing tasks from Superagent', () => {
     location.hash = '#/cron';
     await waitFor(() => expect(taskOrigin()).toBeUndefined());
     expect(boardUi().openedTask()).toBeUndefined();
+  });
+});
+
+describe('OIN-40: review capsule and workspace', () => {
+  it('excludes archived projects and hides zero escalations', async () => {
+    const status = StatusSchema.parse({ enabled: true, concurrencyCap: 1, leads: [], needsYou: [], review: [
+      { projectId: 'live', taskId: 'LIVE-1', status: 'in_review' },
+      { projectId: 'old', taskId: 'OLD-1', status: 'in_review' },
+      { projectId: 'live', taskId: 'LIVE-2', status: 'archived' },
+    ], projects: [{ projectId: 'live', autoStart: true }, { projectId: 'old', autoStart: false, archived: true }] });
+    vi.spyOn(superagentApi, 'status').mockResolvedValue({ ok: true, value: status });
+    mount();
+    expect(await screen.findByLabelText('Open review (1)')).toBeTruthy();
+    expect(screen.queryByLabelText(/Open escalations/)).toBeNull();
+    fireEvent.click(screen.getByLabelText('Open review (1)'));
+    expect(await screen.findByLabelText('Open LIVE-1')).toBeTruthy();
+    expect(screen.queryByLabelText('Open OLD-1')).toBeNull();
+  });
+  it('opens each segment with its filter, supports empty search and restores focus on Escape', async () => {
+    const status = StatusSchema.parse({ enabled: true, concurrencyCap: 1, leads: [],
+      needsYou: [{ projectId: 'heartpick', taskId: 'HP-3', status: 'blocked', question: 'What next?' }],
+      review: [{ projectId: 'oino', taskId: 'OIN-12', status: 'in_review' }], projects: [] });
+    vi.spyOn(superagentApi, 'status').mockResolvedValue({ ok: true, value: status });
+    mount();
+    const segment = await screen.findByLabelText('Open escalations (1)');
+    segment.focus(); fireEvent.click(segment);
+    expect((await screen.findByRole('tab', { name: 'Escalate · 1' })).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Open HP-3')).toBeTruthy();
+    expect(screen.queryByLabelText('Open OIN-12')).toBeNull();
+    fireEvent.input(screen.getByLabelText('Search review queue'), { target: { value: 'not-found' } });
+    expect(screen.getByText('Nothing to review.')).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Review' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Review' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(segment));
+    fireEvent.click(screen.getByLabelText('Open review (1)'));
+    expect((await screen.findByRole('tab', { name: 'Review · 1' })).getAttribute('aria-selected')).toBe('true');
+  });
+  it('restores a deep-linked task and replaces the task query on Next', async () => {
+    mount('#/superagent?session=superagent-chat&host=pc-coffee&review=review&task=HP-5');
+    await waitFor(() => expect(detail()).toBe('HP-5 details'));
+    fireEvent.click(screen.getByLabelText('Next task'));
+    await waitFor(() => expect(detail()).toBe('HP-8 details'));
+    await waitFor(() => expect(location.hash).toContain('task=HP-8'));
   });
 });
 

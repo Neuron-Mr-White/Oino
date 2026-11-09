@@ -10,7 +10,6 @@ import { Toggle } from './parts';
 import { NeedsYouSection } from './NeedsYou';
 import { LeadsSection } from './Leads';
 import { ProjectsSection } from './Projects';
-import { ReviewSection } from './Review';
 import { PresetManager } from './Presets';
 import type { QueueKind } from '../../lib/board/taskOrigin';
 
@@ -64,8 +63,6 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
       <Show when={show('needs')}><NeedsYouSection hostId={props.hostId} sa={sa} onOpen={props.onOpen} onTicket={(project, task) => props.onTicket(project, task, 'needs')} /></Show>
       <Show when={show('leads')}><LeadsSection sa={sa} onOpen={props.onOpen} /></Show>
       <Show when={show('projects')}><ProjectsSection hostId={props.hostId} sa={sa} onManage={() => setManaging(true)} /></Show>
-      {/* Review follows Needs you on the phone's first tab; on desktop it closes the pane. */}
-      <Show when={show('needs')}><ReviewSection sa={sa} onTicket={(project, task) => props.onTicket(project, task, 'review')} /></Show>
     </Show>
     <Show when={menu()}>{(rect) => <AnchoredMenu anchor={rect()} onDismiss={() => setMenu(undefined)} label="Auto-start settings" title="Settings" width={300}><Settings sa={sa} onManage={() => { setMenu(undefined); setManaging(true); }} /></AnchoredMenu>}</Show>
     <PresetManager sa={sa} open={managing()} onClose={() => setManaging(false)} />

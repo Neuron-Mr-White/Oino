@@ -17,6 +17,7 @@ import { createSuperagentState } from './state';
 import { readSavedSuperagentSession, rememberSuperagentSession, superagentChatBusy } from './chatActivity';
 import { needsCount, SuperagentPane, type PaneTab } from './SuperagentPane';
 import { ReviewTaskLayer } from './ReviewTaskLayer';
+import { ReviewWorkspace } from './ReviewWorkspace';
 import { restorePaneScroll, savePaneScroll } from './reviewUi';
 import './superagent.css';
 
@@ -105,12 +106,12 @@ export default function SuperagentPage() {
   // Items the lead or another device moved on their own leave the open queue.
   createEffect(() => {
     const o = taskOrigin();
-    if (!o || !sa.status()) return;
+    if (!o || !sa.status() || params.review) return;
     pruneQueue(queueOf(o.queue));
   });
   // The ticket closed (Back, or the queue ran out): the phone's pane sheet comes back where it was.
   createEffect(on(() => boardUi().openedTask(), (now, prev) => {
-    if (now !== undefined || prev === undefined || !taskOrigin()) return;
+    if (now !== undefined || prev === undefined || !taskOrigin() || params.review) return;
     endQueue();
     void sa.refresh(); // the tickets reviewed meanwhile leave the Review list
     // The desktop pane never unmounted; the phone's sheet did, so it reopens on the queue's tab.
@@ -118,9 +119,9 @@ export default function SuperagentPage() {
   }));
   onCleanup(() => { if (taskOrigin()) { boardUi().closeTask(); endQueue(); } });
   const pane = () => <Show when={hostId()}>{(host) => <SuperagentPane hostId={host()} sa={sa} tab={tab()} onTab={setTab} onOpen={(id) => { setPaneOpen(false); navigate(sessionHref(host(), id)); }} onTicket={(project, task, queue) => { setPaneOpen(false); void openTicket(project, task, queue); }} />}</Show>;
-  return <div class="sa-page" data-testid="superagent-page"><div class="sa-center"><header class="sa-header"><Show when={!layout().desktop()}><button class="shell-icon-btn" aria-label="Back to chats" onClick={() => navigate('/chat')}><ArrowLeft size={18} /></button></Show><Bot size={19} /><h1>Superagent</h1><HostChip /><button class="shell-icon-btn" aria-label="Kanboard dashboard" title="Kanboard dashboard" onClick={() => { boardUi().setOverview(true); navigate('/board'); }}><LayoutDashboard size={19} /></button><button class="shell-icon-btn" aria-label="New superagent chat" title="New superagent chat" disabled={creating() || !hostId()} onClick={() => void newChat()}><Plus size={19} /></button><button class="shell-icon-btn" aria-label="Superagent history" title="Superagent history" aria-expanded={historyOpen()} onClick={() => { setHistoryOpen(!historyOpen()); if (historyOpen()) void refreshHistory(); }}><History size={19} /></button><Show when={!layout().desktop()}><IconButton icon={Users} label={needs() ? `Needs you · ${needs()}` : 'Needs you, leads and projects'} badge={needs()} testId="sa-sheet-open" onClick={() => { if (needs()) setTab('needs'); setPaneOpen(true); }} /></Show></header>
+  return <div class="sa-page" data-testid="superagent-page"><div class="sa-center"><header class="sa-header"><Show when={!layout().desktop()}><button class="shell-icon-btn" aria-label="Back to chats" onClick={() => navigate('/chat')}><ArrowLeft size={18} /></button></Show><Bot size={19} /><h1>Superagent</h1><HostChip /><ReviewWorkspace sa={sa} hostId={hostId} /><button class="shell-icon-btn" aria-label="Kanboard dashboard" title="Kanboard dashboard" onClick={() => { boardUi().setOverview(true); navigate('/board'); }}><LayoutDashboard size={19} /></button><button class="shell-icon-btn" aria-label="New superagent chat" title="New superagent chat" disabled={creating() || !hostId()} onClick={() => void newChat()}><Plus size={19} /></button><button class="shell-icon-btn" aria-label="Superagent history" title="Superagent history" aria-expanded={historyOpen()} onClick={() => { setHistoryOpen(!historyOpen()); if (historyOpen()) void refreshHistory(); }}><History size={19} /></button><Show when={!layout().desktop()}><IconButton icon={Users} label={needs() ? `Needs you · ${needs()}` : 'Needs you, leads and projects'} badge={needs()} testId="sa-sheet-open" onClick={() => { if (needs()) setTab('needs'); setPaneOpen(true); }} /></Show></header>
     <Show when={historyOpen()}><div class="sa-history" aria-label="Superagent history list"><Show when={!history.loading} fallback={<div class="sa-loading" aria-label="Loading history" aria-busy="true"><span /></div>}><Show when={history()?.length} fallback={<p class="sa-empty">No past superagent chats.</p>}><For each={history()}>{(item) => <button onClick={() => { const host = hostId(); if (host) selectSession(host, item.sessionId); }}><span>{item.title || 'Superagent'}</span><Show when={superagentChatBusy(hostId(), item.sessionId)}><LoaderCircle size={14} class="srow-spin" aria-label="Working" data-testid="sa-history-working" /></Show><small>{typeof item.updatedAt === 'number' ? new Date(item.updatedAt).toLocaleDateString() : item.updatedAt}</small></button>}</For></Show></Show></div></Show>
     <Show when={openingError()}><div role="alert" class="sa-message">{openingError()} <button onClick={() => setRetry((v) => v + 1)}>Retry</button></div></Show>
     <Show when={hostId()} fallback={<p class="sa-empty">Connect a computer to use Superagent.</p>}><Show when={current()} fallback={<div class="sa-loading" aria-busy="true" aria-label="Opening Superagent"><span /><span /></div>}>{(s) => <Conversation hostId={s().host} sessionId={s().id} superagent />}</Show></Show>
-  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side">{pane()}</aside></Show><ReviewTaskLayer /></div>;
+  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side">{pane()}</aside></Show><Show when={!params.review}><ReviewTaskLayer /></Show></div>;
 }

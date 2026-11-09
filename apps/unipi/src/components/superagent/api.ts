@@ -42,7 +42,7 @@ export type Blocker = z.infer<typeof BlockerSchema>;
 /** `not_registered` and `archived` refuse any start; the auto blockers only stop automatic starts. */
 export const isHardBlocker = (b: Blocker | undefined) => b?.code === 'not_registered' || b?.code === 'archived';
 const ProjectSchema = z.object({
-  projectId: z.string(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0),
+  projectId: z.string(), archived: z.boolean().optional(), name: z.string().nullish(), autoStart: z.boolean(), lead: z.string().nullish(), ready: z.number().int().nonnegative().default(0),
   root: z.string().nullish(), leadModel: z.string().nullish(), leadThinking: z.string().nullish(),
   /** Older hosts omit these: no blockers, always registered. */
   blockers: z.array(BlockerSchema).default([]), registered: z.boolean().default(true), path: z.string().nullish(),
