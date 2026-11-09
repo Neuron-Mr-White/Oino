@@ -10,6 +10,13 @@ What changed in each Unipi app release (desktop and phone), newest first.
 - Phone: Superagent is the centred bottom tab, the Settings gear sits in the Chats header, and the Superagent screen uses one keyboard inset and one gutter.
 - A retired lead that you reopen keeps its board tool.
 - Internal cleanup (untangle) of unused parameters, duplicate wrappers and stale comments, with no behaviour change.
+- Messages sent by extensions (graph checkpoints, wakes, memory) show as muted Graph / Memory / Wake / System rows instead of your own `Steer` messages; identical repeats collapse to one row.
+- Long-horizon graphs with only stopped, replaced or blocked work show `Finished` with a count breakdown instead of `0/N done`; List and Diagram gain Stopped / Replaced / Blocked / Done / Active / Errors filters.
+- Todo rows show a priority badge only when the item set one (no more `high` on every row).
+- Needs you: the blocked item's question is pinned at the top of the workbench, with the report folded behind `Read full report`.
+- First launch finds the local host without a reload; installing an extension reloads it and reports real failures.
+- `oino install <package>.zip` works; unsupported archive types get a clear error.
+- The parked-graph hint names the real resume command (`/graph resume`) instead of `/continue`.
 
 ## 1.0.3 — 2026-11-09
 
