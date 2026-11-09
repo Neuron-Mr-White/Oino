@@ -4,6 +4,12 @@ What changed in each Unipi app release (desktop and phone), newest first.
 
 ## Unreleased
 
+## 1.0.3 — 2026-11-09
+
+- Prevent duplicate user messages after chat catch-up and keep final responses outside work folds.
+- Scope subagent activity to its session, and show concurrent Superagent runs and review queues.
+- Improve model selection and updater screens, and normalize tool names for providers.
+
 ## 1.0.2 — 2026-11-08
 
 - Superagent workspace onboarding, working-lead preservation, wire-call normalization, paired remote settings routing, and wake-aware Lead row activity/spinners.
