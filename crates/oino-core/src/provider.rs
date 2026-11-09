@@ -133,7 +133,11 @@ fn normalize_legacy_transcript(value: &mut JsonValue) -> HashMap<String, String>
     let mut active: HashSet<String> = HashSet::new();
     for message in messages {
         if message["role"] == "system" {
-            if let Some(removed) = message["toolsRemoved"].as_array_mut() {
+            // `get_mut`, not `[]`: mutable indexing would insert `null` for absent keys.
+            if let Some(removed) = message
+                .get_mut("toolsRemoved")
+                .and_then(JsonValue::as_array_mut)
+            {
                 let mut emitted = HashSet::new();
                 let original: Vec<String> = removed
                     .iter()
@@ -156,7 +160,10 @@ fn normalize_legacy_transcript(value: &mut JsonValue) -> HashMap<String, String>
                     true
                 });
             }
-            if let Some(added) = message["toolsAdded"].as_array_mut() {
+            if let Some(added) = message
+                .get_mut("toolsAdded")
+                .and_then(JsonValue::as_array_mut)
+            {
                 let mut emitted = HashSet::new();
                 added.retain_mut(|tool| {
                     let Some(name) = tool["name"].as_str() else {
@@ -489,6 +496,8 @@ mod tests {
         ]}});
         normalize_legacy_transcript(&mut request);
         assert_eq!(request["context"]["messages"][1]["toolsRemoved"], json!([]));
+        assert!(request["context"]["messages"][0].get("toolsRemoved").is_none());
+        assert!(request["context"]["messages"][1].get("toolsAdded").is_none());
     }
 
     #[test]
