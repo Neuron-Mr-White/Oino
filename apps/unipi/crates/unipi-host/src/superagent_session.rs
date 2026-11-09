@@ -664,7 +664,25 @@ pub fn superagent_title(name: Option<&str>, first_message: &str, created_ms: i64
     if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty() && *name != "Superagent") {
         return name.to_owned();
     }
-    let message = first_message.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut seed = first_message.trim_start();
+    let mut skill = None;
+    if let Some(frontmatter) = seed.strip_prefix("---\n").or_else(|| seed.strip_prefix("---\r\n")) {
+        if let Some((header, rest)) = frontmatter.split_once("\n---") {
+            skill = header.lines().find_map(|line| line.trim().strip_prefix("name:").map(str::trim)).filter(|name| !name.is_empty());
+            seed = rest.trim_start_matches('\r').trim_start_matches('\n').trim_start();
+        }
+    }
+    if let Some(skill) = skill {
+        return skill.trim_matches(['\'', '"']).to_owned();
+    }
+    while seed.starts_with("```") || seed.starts_with("~~~") {
+        let fence = &seed[..3];
+        let Some((_, body)) = seed.split_once('\n') else { break };
+        let Some(end) = body.lines().position(|line| line.trim_start().starts_with(fence)) else { break };
+        let consumed: usize = body.split_inclusive('\n').take(end + 1).map(str::len).sum();
+        seed = body[consumed..].trim_start();
+    }
+    let message = seed.split_whitespace().collect::<Vec<_>>().join(" ");
     if !message.is_empty() && message != "(no messages)" {
         let mut chars = message.chars();
         let head: String = chars.by_ref().take(60).collect();
@@ -720,6 +738,12 @@ mod title_tests {
     fn fixed_superagent_name_falls_back_to_the_first_message() {
         assert_eq!(superagent_title(Some("Superagent"), "What is running?", 0), "What is running?");
         assert_eq!(superagent_title(None, "What is running?", 0), "What is running?");
+    }
+
+    #[test]
+    fn frontmatter_and_leading_fences_do_not_become_titles() {
+        assert_eq!(superagent_title(None, "---\nname: untangle-codebase\ndescription: test\n---\nInstructions", 0), "untangle-codebase");
+        assert_eq!(superagent_title(None, "```text\nignore this\n```\nFix the project", 0), "Fix the project");
     }
 
     #[test]
