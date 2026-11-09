@@ -36,12 +36,16 @@ fn body(wire: Wire, custom: bool) -> Value {
             }
         }
     }
-    let request = ProviderRequest::parse(&json!({"model":{"id":"target","name":"target","api":wire.api(),"provider":"gateway","baseUrl":"https://example.com/v1","reasoning":false,"compat":{"supportsOpenAIGrammarTools":custom},"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200000,"maxTokens":8192},"context":{"messages":messages},"options":{},"apiKey":"test"})).unwrap();
+    let request = ProviderRequest::parse(&json!({"model":{"id":"target","name":"target","api":wire.api(),"provider":"gateway","baseUrl":"https://example.com/v1","reasoning":false,"compat":{"supportsOpenAIGrammarTools":custom},"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":200_000,"maxTokens":8192},"context":{"messages":messages},"options":{},"apiKey":"test"})).unwrap();
     let prepared = prepare(wire, &request, PrepareOptions::default(), 100).unwrap();
     let mut headers = prepared.http.headers.clone();
     finalize(wire, prepared.http.payload, &mut headers)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "compare the three wire formats in one test"
+)]
 fn check(wire: Wire, custom: bool) {
     let body = body(wire, custom);
     let tools = body["tools"].as_array().unwrap();

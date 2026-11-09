@@ -1003,35 +1003,6 @@ fn migrate_superagent_declarations(
         .collect()
 }
 
-#[cfg(test)]
-mod declaration_migration_tests {
-    use super::migrate_superagent_declarations;
-    use oino_ai::ToolDecl;
-    use serde_json::json;
-
-    #[test]
-    fn stale_superagent_aliases_are_dropped_only_when_replacement_registered() {
-        let decl = |name: &str| ToolDecl {
-            name: name.into(),
-            description: "old".into(),
-            parameters: json!({}),
-            constrained_sampling: None,
-        };
-        let tools = migrate_superagent_declarations(
-            vec![
-                decl("superagent.start"),
-                decl("superagent.relay"),
-                decl("other.tool"),
-            ],
-            |name| name == "superagent_start",
-        );
-        assert_eq!(
-            tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
-            ["superagent.relay", "other.tool"]
-        );
-    }
-}
-
 /// Normalises a prompt snippet.
 fn normalize_snippet(text: Option<&str>) -> Option<String> {
     let text = text?;
@@ -1204,5 +1175,34 @@ fn append_codemode_declarations(
             remaining -= declaration.len();
             meta.description.push_str(&declaration);
         }
+    }
+}
+
+#[cfg(test)]
+mod declaration_migration_tests {
+    use super::migrate_superagent_declarations;
+    use oino_ai::ToolDecl;
+    use serde_json::json;
+
+    #[test]
+    fn stale_superagent_aliases_are_dropped_only_when_replacement_registered() {
+        let decl = |name: &str| ToolDecl {
+            name: name.into(),
+            description: "old".into(),
+            parameters: json!({}),
+            constrained_sampling: None,
+        };
+        let tools = migrate_superagent_declarations(
+            vec![
+                decl("superagent.start"),
+                decl("superagent.relay"),
+                decl("other.tool"),
+            ],
+            |name| name == "superagent_start",
+        );
+        assert_eq!(
+            tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            ["superagent.relay", "other.tool"]
+        );
     }
 }
