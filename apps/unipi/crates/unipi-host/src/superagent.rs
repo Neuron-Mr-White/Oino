@@ -94,6 +94,7 @@ fn project_blockers(project_id: &str, project: Option<&Project>, enabled: bool, 
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
     pub enabled: bool,
+    #[serde(default, skip_serializing)]
     pub concurrency_cap: usize,
 }
 impl Default for Config {
@@ -106,12 +107,6 @@ impl Default for Config {
 }
 impl Config {
     pub fn validate(&self) -> Result<()> {
-        if !(1..=3).contains(&self.concurrency_cap) {
-            return Err(fail(
-                "E_SCHEMA",
-                "concurrencyCap must be an integer between 1 and 3",
-            ));
-        }
         Ok(())
     }
 }
@@ -605,12 +600,6 @@ impl Dispatcher {
             }
             return Ok(id.clone());
         }
-        if occupied.len() >= config.concurrency_cap {
-            return Err(fail(
-                "E_WORKER_CAP",
-                "Worker cap reached; wait for a worker or raise concurrencyCap",
-            ));
-        }
         let id = uuid::Uuid::now_v7().to_string();
         let tasks = if watcher {
             dispatcher::reserve_many(&self.layout, project.clone(), task_ids, &id)
@@ -910,7 +899,7 @@ impl Dispatcher {
             projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":auto_start,"lead":lead,"ready":ready,"blockers":blockers,"registered":true,"leadModel":project_lead.and_then(|lead| lead.model.clone()),"leadThinking":project_lead.and_then(|lead| lead.thinking.clone()),"root":project.root}));
         }
         Ok(
-            json!({"enabled":config.enabled,"concurrencyCap":config.concurrency_cap,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
+            json!({"enabled":config.enabled,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
         )
     }
 }
@@ -1275,7 +1264,7 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             dispatcher
                 .configure(Config {
                     enabled,
-                    concurrency_cap,
+                    concurrency_cap: concurrency_cap.unwrap_or_default(),
                 })
                 .await?,
         )

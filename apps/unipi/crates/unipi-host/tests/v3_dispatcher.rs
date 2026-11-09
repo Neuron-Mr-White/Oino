@@ -19,24 +19,11 @@ use unipi_kanboard::{
 };
 
 #[test]
-fn concurrency_cap_is_limited_to_one_through_three() {
-    for cap in 1..=3 {
-        assert!(Config {
-            enabled: true,
-            concurrency_cap: cap
-        }
-        .validate()
-        .is_ok());
-    }
-    for cap in [0, 4, usize::MAX] {
-        let error = Config {
-            enabled: true,
-            concurrency_cap: cap,
-        }
-        .validate()
-        .unwrap_err();
-        assert!(error.to_string().contains("between 1 and 3"));
-    }
+fn legacy_config_cap_is_accepted_and_not_serialized() {
+    let config: Config = serde_json::from_str(r#"{"enabled":true,"concurrencyCap":1}"#).unwrap();
+    assert!(config.enabled);
+    assert!(serde_json::to_value(config).unwrap().get("concurrencyCap").is_none());
+    assert!(serde_json::from_str::<Config>(r#"{"enabled":true}"#).is_ok());
 }
 
 #[derive(Default)]
@@ -416,7 +403,7 @@ async fn multiple_tasks_feed_one_lead_and_route_delivery() {
     let root = tempfile::tempdir().unwrap();
     let other = Project::create(&f.layout, root.path(), Some("other"), Some("OT")).unwrap();
     let task = commands::add(&f.layout, other.clone(), &Common::new(Actor::User, ChainGate::InReview), "other", None, Some(Status::Todo), Priority::Medium, &[], &[], &[], false).unwrap();
-    assert!(d.start(&other.slug, task["id"].as_str().unwrap()).await.is_err());
+    assert_ne!(d.start(&other.slug, task["id"].as_str().unwrap()).await.unwrap(), id);
 }
 
 #[tokio::test]
@@ -828,7 +815,34 @@ async fn superagent_has_only_cross_project_tools_and_no_cwd() {
 }
 
 #[tokio::test]
-async fn global_cap_lowering_and_worker_exit_question() {
+async fn multiple_projects_dispatch_without_a_global_limit() {
+    let f = Fixture::new();
+    let first = f.add("oino work", &[]);
+    let roots: Vec<_> = (0..3).map(|_| tempfile::tempdir().unwrap()).collect();
+    let projects: Vec<_> = ["zmstudio-migration", "cloud-agent", "manual"].iter().enumerate().map(|(i, name)|
+        Project::create(&f.layout, roots[i].path(), Some(name), Some(&format!("P{i}"))).unwrap()).collect();
+    let add = |project: &Project, title: &str| commands::add(&f.layout, project.clone(), &Common::new(Actor::User, ChainGate::InReview), title, None, Some(Status::Todo), Priority::Medium, &[], &[], &[], false).unwrap()["id"].as_str().unwrap().to_owned();
+    let zm = add(&projects[0], "zm work");
+    for i in 0..8 { add(&projects[1], &format!("cloud {i}")); }
+    let manual = add(&projects[2], "manual work");
+    let fake = Arc::new(Fake::default());
+    let d = f.dispatcher(fake.clone()).await;
+    d.start(&f.project.slug, &first).await.unwrap();
+    d.start(&projects[0].slug, &zm).await.unwrap();
+    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap();
+    d.configure_project(&projects[1].slug, true).await.unwrap();
+    d.tick().await.unwrap();
+    assert_eq!(fake.live.lock().unwrap().len(), 3);
+    assert_eq!(fake.batches.lock().unwrap().last().unwrap().len(), 8);
+    d.start(&projects[2].slug, &manual).await.unwrap();
+    assert_eq!(fake.live.lock().unwrap().len(), 4);
+    let status = d.status().await.unwrap();
+    assert_eq!(status["leads"].as_array().unwrap().len(), 4);
+    assert!(status.get("concurrencyCap").is_none());
+}
+
+#[tokio::test]
+async fn concurrent_projects_and_worker_exit_question() {
     let f = Fixture::new();
     let a = f.add("first", &[]);
     let other_root = tempfile::tempdir().unwrap();
@@ -854,23 +868,7 @@ async fn global_cap_lowering_and_worker_exit_question() {
     let fake = Arc::new(Fake::default());
     let d = f.dispatcher(fake.clone()).await;
     d.start(&f.project.slug, &a).await.unwrap();
-    assert_eq!(
-        d.start(&project.slug, &b).await.unwrap_err().code,
-        "E_WORKER_CAP"
-    );
-    d.configure(Config {
-        enabled: false,
-        concurrency_cap: 2,
-    })
-    .await
-    .unwrap();
     d.start(&project.slug, &b).await.unwrap();
-    d.configure(Config {
-        enabled: false,
-        concurrency_cap: 1,
-    })
-    .await
-    .unwrap();
     assert_eq!(
         d.status().await.unwrap()["workers"]
             .as_array()
