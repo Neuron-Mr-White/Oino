@@ -9,11 +9,13 @@
  * the slim `UpdateBanner` above Home content (absorbed from the former
  * DesktopUpdate.tsx — one file, one updater surface).
  */
-import { Match, Show, Switch, createEffect, createResource, createSignal } from 'solid-js';
+import { Match, Show, Switch, createEffect, createResource, createSignal, onCleanup } from 'solid-js';
 import { Download, ExternalLink, RefreshCw, Server, Sparkles, X } from 'lucide-solid';
 import { BoardSheet } from './board/BoardSheet';
 import {
   checkDesktopUpdate,
+  closeDesktopUpdateForSession,
+  isUpdateDismissed,
   desktopUpdateState,
   dismissDesktopUpdate,
   installDesktopUpdate,
@@ -30,6 +32,7 @@ import { refreshThisComputer, thisComputer } from '../lib/thisComputer';
 import { hubs } from '../lib/session/hub';
 import { can, platform } from '../lib/platform';
 import { toasts } from '../lib/toasts';
+import { extensionOpen } from '../lib/updateSurface';
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 100 * 1024 * 1024 ? 0 : 1)} MB`;
 
@@ -311,7 +314,7 @@ export function UpdateBanner(props: { onOpen: () => void }) {
     desktopReady() ? (d() as { info: { version: string } }).info.version : s().kind === 'available' || s().kind === 'ready' ? `${apk().release.version}+${apk().release.build}` : undefined;
   const label = () => (desktopReady() ? `Unipi ${(d() as { info: { version: string } }).info.version} is available` : `Unipi ${apk().release.version} (${apk().release.build}) is ready`);
   return (
-    <Show when={version() !== undefined && version() !== bannerDismissed()}>
+    <Show when={!extensionOpen() && !promptOpen() && version() !== undefined && version() !== bannerDismissed() && !isUpdateDismissed(version())}>
       <div class="update-banner" data-testid="update-banner">
         <button type="button" class="update-banner-main" onClick={() => props.onOpen()}>
           <Sparkles size={15} class="shrink-0" />
@@ -342,7 +345,7 @@ export function apkUpdateVersion(state: ReturnType<typeof updateState>): { key: 
 export function PhoneUpdateToast(props: { onOpen: () => void }) {
   createEffect(() => {
     const v = apkUpdateVersion(updateState());
-    if (!v) return;
+    if (!v || extensionOpen()) return;
     let seen: string | null = null;
     try {
       seen = localStorage.getItem(TOASTED_KEY);
@@ -364,11 +367,20 @@ export function PhoneUpdateToast(props: { onOpen: () => void }) {
 export function DesktopUpdatePrompt() {
   const s = desktopUpdateState;
   const busy = () => s().kind === 'downloading' || s().kind === 'installing';
+  createEffect(() => {
+    if (!promptOpen() || extensionOpen()) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const esc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy()) { event.preventDefault(); event.stopPropagation(); closeDesktopUpdateForSession(); }
+    };
+    document.addEventListener('keydown', esc, true);
+    onCleanup(() => { document.removeEventListener('keydown', esc, true); if (previous?.isConnected) previous.focus(); });
+  });
   return (
     <BoardSheet
-      open={promptOpen()}
+      open={!extensionOpen() && promptOpen()}
       onClose={() => {
-        if (!busy()) dismissDesktopUpdate();
+        if (!busy()) closeDesktopUpdateForSession();
       }}
       label={desktopHeadline(s())}
       testId="desktop-update-prompt"

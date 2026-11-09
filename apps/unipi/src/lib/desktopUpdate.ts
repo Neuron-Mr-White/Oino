@@ -16,6 +16,7 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import { createSignal } from 'solid-js';
 import { z } from 'zod';
 import { can } from './platform';
+import { closeUpdateForSession, sessionUpdateClosed } from './updateSurface';
 
 export const RECHECK_MS = 4 * 60 * 60 * 1000;
 export const FIRST_CHECK_MS = 8000;
@@ -71,7 +72,7 @@ function readDismissal(): Dismissal | undefined {
 }
 const [dismissal, setDismissal] = createSignal<Dismissal | undefined>(readDismissal());
 const dismissed = () => dismissal()?.version;
-function saveDismissal(value?: Dismissal): void {
+export function saveDismissal(value?: Dismissal): void {
   setDismissal(value);
   try { if (value) localStorage.setItem(DISMISS_KEY, JSON.stringify(value)); else localStorage.removeItem(DISMISS_KEY); } catch { /* storage unavailable */ }
 }
@@ -149,10 +150,21 @@ export function dismissDesktopUpdate(skip = false): void {
   if ('info' in s && s.info?.version) saveDismissal({ version: s.info.version, ...(skip ? {} : { until: Date.now() + SNOOZE_MS }) });
 }
 
+export function closeDesktopUpdateForSession(): void {
+  const s = state();
+  if ('info' in s) closeUpdateForSession(s.info?.version);
+}
+
+export function isUpdateDismissed(version?: string): boolean {
+  const d = dismissal();
+  return !!version && (sessionUpdateClosed(version) || (!!d && d.version === version && (d.until === undefined || Date.now() < d.until)));
+}
+
 /** Should the prompt be open? */
 export function promptOpen(s: DesktopUpdateState = state(), later = dismissal()): boolean {
   const hidden = (version?: string) => !!version && !!later && later.version === version && (later.until === undefined || Date.now() < later.until);
   if (s.kind === 'downloading' || s.kind === 'installing') return true;
+  if ('info' in s && sessionUpdateClosed(s.info?.version)) return false;
   if (s.kind === 'error') return !!s.info?.version && !hidden(s.info.version);
   return s.kind === 'available' && !hidden(s.info.version);
 }

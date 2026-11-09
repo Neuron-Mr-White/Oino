@@ -14,6 +14,9 @@ import { ICONS } from '../nodes/icons';
 import { plainLine } from '../nodes/Text';
 import { uiTransport } from '../actions';
 import { reservedGate, reservedRowFor } from './reserved';
+import { desktopUpdateState, isUpdateDismissed, promptOpen, saveDismissal, SNOOZE_MS } from '../../lib/desktopUpdate';
+import { closeUpdateForSession, setExtensionUpdateOpen } from '../../lib/updateSurface';
+import { wrapTab } from '../../lib/focusTrap';
 import type { UiEntry } from '../types';
 import type { UiTarget } from '../actions';
 
@@ -39,8 +42,24 @@ const nativeOverlay = (entry: UiEntry): boolean => {
   return !!row && row.container === 'overlay' && reservedGate(row);
 };
 
+/** Updater payload contains the release version in its tree, not panel metadata. */
+function updaterVersion(entry: UiEntry): string | undefined {
+  if (entry.id !== 'unipi.updater/update') return undefined;
+  const text = JSON.stringify(entry.view);
+  return /(?:Oino[^0-9]*|Latest[^0-9]*)([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1]
+    ?? /([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1];
+}
+
 export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: boolean; /** Drop the terminal key chips (the GUI has buttons). */ hideKeys?: boolean }) {
-  const top = () => (void dismissRev(), [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e)));
+  const updater = () => [...props.stack].reverse().find(e => e.id === 'unipi.updater/update' && !dismissed.has(`${e.id}:${e.seq}`));
+  const desktopOwns = () => {
+    const s = desktopUpdateState();
+    return 'info' in s && s.info?.kind === 'in_app' && promptOpen();
+  };
+  const top = () => (void dismissRev(), [...props.stack].reverse().find((e) => !dismissed.has(`${e.id}:${e.seq}`) && !nativeOverlay(e)
+    && (e.id !== 'unipi.updater/update' || (!desktopOwns() && !isUpdateDismissed(updaterVersion(e))))));
+  createEffect(() => { const e = updater(); setExtensionUpdateOpen(!!e && top()?.id === e.id); });
+  onCleanup(() => setExtensionUpdateOpen(false));
   let shown: { target: UiTarget; id: string } | undefined;
   createEffect(
     on(
@@ -58,16 +77,21 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
     if (shown) uiTransport().visible(shown.target, shown.id, false).catch(() => {});
     shown = undefined;
   });
-  const close = (entry: UiEntry) => {
+  const close = (entry: UiEntry, localOnly = false) => {
+    if (entry.id === 'unipi.updater/update' && localOnly) closeUpdateForSession(updaterVersion(entry));
     dismissed.add(`${entry.id}:${entry.seq}`);
     setDismissRev((n) => n + 1);
-    uiTransport().action(props.target, { entryId: entry.id, actionId: '$close' }).catch(() => {});
+    if (!localOnly) uiTransport().action(props.target, { entryId: entry.id, actionId: '$close' }).catch(() => {});
   };
   return (
     <Show when={top()} keyed>
       {(entry) => {
         // `large`/`full` fill the phone sheet (§13.6 row 6); desktop keeps the width.
         const full = () => entry.size === 'full' || (props.phone === true && entry.size === 'large');
+        let dialog: HTMLDivElement | undefined;
+        const previous = document.activeElement as HTMLElement | null;
+        queueMicrotask(() => dialog?.focus());
+        onCleanup(() => previous?.isConnected && previous.focus());
         const Icon = entry.icon ? ICONS[entry.icon] : undefined;
         const badge = () => plainLine(entry.badge);
         return (
@@ -77,12 +101,15 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
             onKeyDown={(e) => {
               if (e.key === 'Escape' && !e.defaultPrevented && entry.closeOnEscape !== false) {
                 e.preventDefault();
-                close(entry);
+                close(entry, entry.id === 'unipi.updater/update');
               }
             }}
             tabIndex={-1}
           >
             <div
+              ref={dialog}
+              tabIndex={-1}
+              onKeyDown={(e) => wrapTab(e, e.currentTarget)}
               class="ui-modal"
               role="dialog"
               aria-modal="true"
@@ -111,7 +138,12 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
                 </button>
               </div>
               <div class="ui-modal-body">
-                <EntryView entry={entry} target={props.target} mode="auto" />
+                <EntryView entry={entry} target={props.target} mode="auto" onAction={(p) => {
+                  if (entry.id !== 'unipi.updater/update' || !['skip', 'close'].includes(p.actionId)) return;
+                  const version = updaterVersion(entry);
+                  if (version) saveDismissal({ version, ...(p.actionId === 'skip' ? {} : { until: Date.now() + SNOOZE_MS }) });
+                  close(entry, true);
+                }} />
               </div>
               <Show when={!props.hideKeys && entry.id !== 'unipi.updater/update' && (entry.keys ?? []).length > 0}>
                 <div class="ui-modal-keys" aria-label="Panel keys">
