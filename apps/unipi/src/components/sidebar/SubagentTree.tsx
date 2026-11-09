@@ -19,6 +19,7 @@ import { appNavigate } from '../../lib/nav';
 import { useClock } from '../../lib/clock';
 import { sessions, type SessionHandle } from '../../lib/session/store';
 import { SUBAGENTS_LIST_TOPIC } from '../../lib/status/running';
+import { scopedSubagents } from '../../lib/status/scopedSubagents';
 import type { RowVariant } from './SessionRow';
 
 export type SubRun = { id: string; title: string; profile?: string; status: string; startedAt?: number; endedAt?: number };
@@ -27,11 +28,11 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 
 /** `{records:[…]}` (the topic) → runs; `undefined` when the value is not a list. */
-export function runsFromTopic(data: unknown): SubRun[] | undefined {
-  const d = data as { records?: unknown } | undefined;
-  if (!d || !Array.isArray(d.records)) return undefined;
+export function runsFromTopic(data: unknown, sessionId?: string): SubRun[] | undefined {
+  const records = scopedSubagents(data, sessionId);
+  if (!records) return undefined;
   const out: SubRun[] = [];
-  for (const raw of d.records) {
+  for (const raw of records) {
     const r = raw as Record<string, unknown>;
     const id = str(r?.id);
     if (!id) continue;
@@ -82,7 +83,7 @@ export function filterOf(hostId: string, sessionId: string, runs: readonly unkno
 /** Known runs of a chat (reactive): the live topic, else the cache. */
 export function knownRuns(hostId: string, sessionId: string): SubRun[] | undefined {
   const h = sessions().peek(hostId, sessionId);
-  const live = h ? runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data) : undefined;
+  const live = h ? runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data, sessionId) : undefined;
   return live ?? cache()[key(hostId, sessionId)];
 }
 
@@ -173,7 +174,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
   createEffect(() => {
     const h = handle();
     if (!h) return;
-    const live = runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data);
+    const live = runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data, props.sessionId);
     if (live) {
       setCache((c) => ({ ...c, [k()]: live }));
       setLoading(false);
@@ -184,7 +185,7 @@ export function SubagentTree(props: { hostId: string; sessionId: string; cwd?: s
       void h
         .cmd<{ agents?: unknown }>({ type: '_oino/agents' })
         .then((reply) => {
-          if (!runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data)) setCache((c) => ({ ...c, [k()]: runsFromAgents(reply?.agents) }));
+          if (!runsFromTopic(h.state.topics[SUBAGENTS_LIST_TOPIC]?.data, props.sessionId)) setCache((c) => ({ ...c, [k()]: runsFromAgents(reply?.agents) }));
         })
         .catch(() => setCache((c) => ({ ...c, [k()]: c[k()] ?? [] })))
         .finally(() => setLoading(false));

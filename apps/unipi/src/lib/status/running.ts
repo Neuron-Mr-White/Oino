@@ -10,6 +10,7 @@ import type { AgentInfo, TrayTab } from '../../components/session/modalData';
 import type { TopicValue } from '../session/types';
 import type { fetchRunning } from '../../components/session/RunningTab';
 import { shownInApp } from '../surfaces';
+import { scopedSubagents } from './scopedSubagents';
 import { isLive, mergeRuns, SUBAGENTS_EXT, type RunRow } from './subagentRows';
 
 export type RunningData = Awaited<ReturnType<typeof fetchRunning>>;
@@ -109,13 +110,13 @@ const runningCountIn = (v: unknown): number => {
 /** Running bg tasks + running subagents from the session's sticky topics. */
 export function topicRunningCount(topics: Record<string, TopicValue>, sessionId?: string): number {
   // Tasks + runs, not sources: the number must equal the Running list's rows.
-  return runningCountIn(bgTopicData(topics, sessionId)) + runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data);
+  return runningCountIn(bgTopicData(topics, sessionId)) + runningCountIn({ records: scopedSubagents(topics[SUBAGENTS_LIST_TOPIC]?.data, sessionId) });
 }
 
 /** G-08: live running-only label from the session's sticky topics (survives app restarts even when `unipi.core`'s strip doesn't fire). */
 export function topicRunningTrayLabel(topics: Record<string, TopicValue>, sessionId?: string): string | undefined {
   const bg = runningCountIn(bgTopicData(topics, sessionId));
-  const sa = runningCountIn(topics[SUBAGENTS_LIST_TOPIC]?.data);
+  const sa = runningCountIn({ records: scopedSubagents(topics[SUBAGENTS_LIST_TOPIC]?.data, sessionId) });
   const parts: string[] = [];
   if (bg > 0) parts.push(`Background tasks ${bg} running`);
   if (sa > 0) parts.push(`Subagents ${sa} running`);

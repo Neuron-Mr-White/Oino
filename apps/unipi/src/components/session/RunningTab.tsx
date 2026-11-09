@@ -28,6 +28,7 @@ import { EntryContext, type EntryActions, type UiTarget } from '../../ui/actions
 import { NodeView } from '../../ui/NodeView';
 import { useVirtual, VirtualWindow } from '../../ui/virtual';
 import { formatDurationMs, liveSource, parseAgents, parseExtensions, parseRunningBash, parseSubagentRuns, parseTrayTabs, serviceCall, type AgentInfo, type SubagentRun, type TrayTab } from './modalData';
+import { scopedSubagents } from '../../lib/status/scopedSubagents';
 import { bgTasksTopics, bgTopicData, runningCounts, runningTotal, runRowsOf, SUBAGENTS_LIST_TOPIC, visibleTrayTabsOf, type RunningData } from '../../lib/status/running';
 import { filterCounts, isLive, matchesFilter, profileChip, ROW_STATUS_LABEL, RUN_FILTERS, rowDurationMs, shortModel, statParts, SUBAGENTS_EXT, type RunFilter, type RunRow, type RunRowStatus } from '../../lib/status/subagentRows';
 import { openBgTaskTab, openSubagentTab } from '../panes/tabs/sessionTabs';
@@ -82,7 +83,7 @@ export async function fetchRunning(s: SessionHandle): Promise<{ bash: ReturnType
         e.id === SUBAGENTS_EXT
           ? serviceCall<unknown>(s, 'subagents.list', undefined, e.id)
               .then((v) => {
-                runs = parseSubagentRuns(v);
+                runs = parseSubagentRuns(scopedSubagents(v, s.sessionId()));
                 return [] as TrayTab[];
               })
               .catch(() => [] as TrayTab[])
@@ -171,7 +172,7 @@ export function useRunningData(s: () => SessionHandle): { data: Accessor<Running
   });
   const merged = createMemo(() => {
     const d = data.latest;
-    const topic = parseSubagentRuns(s().state.topics[SUBAGENTS_LIST_TOPIC]?.data);
+    const topic = parseSubagentRuns(scopedSubagents(s().state.topics[SUBAGENTS_LIST_TOPIC]?.data, s().sessionId()));
     const bg = parseBgTasks(bgTopicData(s().state.topics, s().sessionId()));
     return d ? { ...d, ...(topic ? { runs: topic } : {}), ...(bg ? { bg } : {}) } : d;
   });
