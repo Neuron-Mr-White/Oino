@@ -101,8 +101,8 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
         let _ = ui::notify(message, kind);
     };
     if sub.is_empty() {
-        let status = ext.host_op("status", json!({})).await;
-        let list = ext.list_value();
+        let status = crate::host_op("status", json!({})).await;
+        let list = crate::list_value();
         match status {
             Ok(status) => notify(&render_overview(&status, &list), "info"),
             Err(e) => notify(
@@ -137,7 +137,7 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
             };
             payload["id"] = Value::String(id.clone());
         }
-        let result = ext.host_op(sub, payload).await;
+        let result = crate::host_op(sub, payload).await;
         match result {
             Ok(value) => notify(
                 &render(sub, rest.first().map(String::as_str), &value),
@@ -159,7 +159,6 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
     }
     let id = id.unwrap_or_default();
     let result = file_op(
-        ext,
         sub,
         &id,
         rest.get(1).and_then(|n| n.parse::<usize>().ok()),
@@ -173,13 +172,12 @@ pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx:
 
 /// One storage subcommand against the job files; `Err` = a user-facing message.
 async fn file_op(
-    ext: &'static Cron,
     sub: &str,
     id: &str,
     limit: Option<usize>,
 ) -> Result<String, String> {
     match sub {
-        "list" => Ok(render_list(&ext.list_value())),
+        "list" => Ok(render_list(&crate::list_value())),
         "show" => match jobs::load(id) {
             Some(job) => Ok(render(
                 "show",

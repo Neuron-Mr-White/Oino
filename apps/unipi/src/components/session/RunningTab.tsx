@@ -20,7 +20,7 @@
  * Empty sections are not drawn; when nothing is there at all the tab is one
  * quiet "Nothing running" line.
  */
-import { useClock as sharedClock } from '../../lib/clock';
+import { useClock } from '../../lib/clock';
 import { createEffect, createMemo, createResource, createSignal, For, Show, type Accessor, type JSX } from 'solid-js';
 import { ArrowDownToLine, Bot, CircleCheck, Layers, LoaderCircle, RefreshCw, Sparkles, SquareTerminal, Terminal } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
@@ -38,10 +38,6 @@ import { setSessionModalTarget } from './modalTarget';
 
 export { agentSeenAt } from '../../lib/status/running';
 
-/** Now, ticking once a second while the tab is mounted (durations). */
-export function useClock(): Accessor<number> {
-  return sharedClock();
-}
 
 /** Stops a bash tool call: the run's Stop (pi `abort`) — the run is what owns the call. */
 export const stopRun = (s: SessionHandle) => s.cmd({ type: 'abort' }).then(() => undefined);

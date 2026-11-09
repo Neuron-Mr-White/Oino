@@ -67,6 +67,21 @@ struct IdsCache {
     ids: Vec<String>,
 }
 
+/// One live-scheduler op over the `cron` host service.
+pub(crate) async fn host_op(op: &str, payload: Value) -> Result<Value, String> {
+    if !host_service::available("cron") {
+        return Err(NOT_RUNNING.to_owned());
+    }
+    host_service::call("cron", op, &payload)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The `list` reply shape (jobs with `next_fire`), shared by `/cron` and `cron_list`.
+pub(crate) fn list_value() -> Value {
+    json!({ "jobs": jobs::list().iter().map(jobs::job_value).collect::<Vec<_>>() })
+}
+
 /// The extension.
 #[derive(Default)]
 pub struct Cron {
@@ -75,16 +90,6 @@ pub struct Cron {
 }
 
 impl Cron {
-    /// One live-scheduler op over the `cron` host service.
-    async fn host_op(&'static self, op: &str, payload: Value) -> Result<Value, String> {
-        if !host_service::available("cron") {
-            return Err(NOT_RUNNING.to_owned());
-        }
-        host_service::call("cron", op, &payload)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
     /// The job ids for completions (cached briefly; read from the files).
     fn job_ids(&'static self) -> Vec<String> {
         let now = oino_extension::timers::now_ms();
@@ -99,12 +104,6 @@ impl Cron {
             ids: ids.clone(),
         });
         ids
-    }
-
-    /// The `list` reply shape (jobs with `next_fire`), shared by `/cron` and `cron_list`.
-    pub(crate) fn list_value(&'static self) -> Value {
-        let _ = self;
-        json!({ "jobs": jobs::list().iter().map(jobs::job_value).collect::<Vec<_>>() })
     }
 
     /// `/cron …`.

@@ -11,17 +11,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::jobs::{self, Job, NotifySpec};
-use crate::{Cron, NOT_RUNNING};
-
-/// One live-scheduler op, mapped to a tool error message.
-async fn host_op(op: &str, payload: Value) -> Result<Value, String> {
-    if !oino_extension::host_service::available("cron") {
-        return Err(NOT_RUNNING.to_owned());
-    }
-    oino_extension::host_service::call("cron", op, &payload)
-        .await
-        .map_err(|e| e.to_string())
-}
+use crate::Cron;
 
 fn policy(value: Option<&str>) -> Result<Option<String>, String> {
     match value {
@@ -352,7 +342,7 @@ pub fn register(cx: &mut Init<Cron>) {
                 if jobs::load(&args.id).is_none() {
                     return Ok(ToolResult::text(format!("No cron job {:?}.", args.id)));
                 }
-                let reply = host_op("run", json!({"id": args.id})).await?;
+                let reply = crate::host_op("run", json!({"id": args.id})).await?;
                 Ok(ToolResult::text(format!(
                     "Started run {} ({}). Check it with cron_list or `/cron show {}`.",
                     reply.get("run_id").and_then(Value::as_str).unwrap_or(""),

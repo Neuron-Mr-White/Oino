@@ -239,14 +239,8 @@ fn valid_section_name(name: &str) -> bool {
 }
 
 /// `preamble`, `tools`, `rules` and `docs` of the default prompt.
-fn insert_default_sections(
-    raw: &mut IndexMap<String, String>,
-    options: &BuildSystemPromptOptions,
-    declared: &[String],
-    docs_root: &Path,
-) {
+fn insert_default_sections(raw: &mut IndexMap<String, String>, docs_root: &Path) {
     raw.insert("preamble".into(), DEFAULT_PREAMBLE.to_owned());
-    let _ = (options, declared);
     // P-DOCS: an empty docs root means "absent" (nothing was bundled or staged) — omit the
     // section instead of pointing the model at a missing path.
     if !docs_root.as_os_str().is_empty() {
@@ -271,12 +265,6 @@ pub fn build_system_prompt_sections(
     {
         return Err(InvalidSectionName { name: name.clone() });
     }
-    let declared: Vec<String> = options
-        .selected_tools
-        .iter()
-        .filter(|name| !options.hidden_tools.contains(name))
-        .cloned()
-        .collect();
     let mut raw: IndexMap<String, String> = IndexMap::new();
     if let Some(custom) = options
         .custom_prompt
@@ -285,7 +273,7 @@ pub fn build_system_prompt_sections(
     {
         raw.insert("preamble".into(), custom.to_owned());
     } else {
-        insert_default_sections(&mut raw, options, &declared, docs_root);
+        insert_default_sections(&mut raw, docs_root);
     }
     if !options.append_system_prompt.is_empty() {
         raw.insert("addendum".into(), options.append_system_prompt.clone());
