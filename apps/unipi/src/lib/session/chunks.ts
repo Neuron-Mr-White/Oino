@@ -17,12 +17,13 @@
  * branch begins there.
  */
 import type { AgentMessage, SessionEntry } from './types';
+import { messageAuthor } from './turns';
 
 // The two predicates below MUST match `turns.ts` (`isSteer`, `isMarkerCompaction`); the
 // chunks test cross-checks every boundary against the turns index.
 const TERMINAL = new Set(['stop', 'aborted', 'error', 'length']);
-function isSteer(prev: AgentMessage | undefined): boolean {
-  if (!prev) return false;
+function isSteer(prev: AgentMessage | undefined, message: AgentMessage): boolean {
+  if (messageAuthor(message) || !prev) return false;
   if (prev.role === 'toolResult') return true;
   return prev.role === 'assistant' && prev.stopReason === 'toolUse';
 }
@@ -64,7 +65,7 @@ export function isTurnStart(entries: readonly SessionEntry[], i: number, atBranc
     }
   }
   if (!found && !atBranchStart) return false;
-  if (isMsg(e) && e.message.role === 'user') return !isSteer(prev);
+  if (isMsg(e) && e.message.role === 'user') return !isSteer(prev, e.message);
   if (e.type === 'compaction') return isMarkerCompaction(prev);
   return false;
 }

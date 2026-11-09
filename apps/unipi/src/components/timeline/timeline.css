@@ -64,6 +64,10 @@ html .tl-tail > .tl-turn { padding-left: 0; padding-right: 0; }
 .tl-cron { display: flex; align-items: center; justify-content: flex-end; gap: 5px; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); padding-right: 4px; }
 .tl-cron svg { color: var(--color-amber); }
 
+/* Host-authored messages are notifications, not user bubbles. */
+.tl-notification { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; padding: 10px 12px; border-left: 2px solid var(--color-line); color: var(--color-text-dim); font-size: calc(13px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-notification-label { font-weight: 600; }
+
 /* harness / command row (Z-36) */
 .tl-harness .chat-bubble.tl-harness-typed { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); }
 .tl-harness-cmd { align-self: flex-end; }

@@ -83,8 +83,12 @@ export const liveEvents: MockScenario = {
               }),
               // the same memory card, but mid-turn: it lands inside the running fold
               entry(7, 'e0006', { type: 'custom_message', customType: 'unipi-memory-recall-reminder', content: RECALL }),
+              ...(typeof location !== 'undefined' && new URLSearchParams(location.search).has('oin55') ? [
+                entry(8, 'e0007', { type: 'message', message: { role: 'user', content: 'Agent graph “release” checkpoint: work needs attention (2 errored, 5 completed).', details: { oinoProvenance: { source: 'Long-horizon', title: 'Graph checkpoint' } }, timestamp: T + 24000 } }),
+                entry(9, 'e0008', { type: 'message', message: { role: 'user', content: 'A background task is ready.', author: 'Host', timestamp: T + 27000 } }),
+              ] : []),
             ],
-            leaf_id: 'e0007',
+            leaf_id: typeof location !== 'undefined' && new URLSearchParams(location.search).has('oin55') ? 'e0009' : 'e0007',
             commands: [],
             ui: { scope: 'session', sessionId: 's001', rev: 0, entries: [], dialogs: [] },
             topics: [],

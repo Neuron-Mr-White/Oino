@@ -48,6 +48,12 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
   };
   const tag = () => tagOf(harness().source, harness().title) ?? messageAuthor(m());
   return (
+    <Show when={echo()} fallback={
+      <div class="tl-notification" data-testid="tl-harness">
+        <span class="tl-notification-label">{tag() ?? 'System'}</span>
+        <span>{sent()}</span>
+      </div>
+    }>
     <div class="chat-user tl-user tl-harness" data-testid="tl-harness">
       <div class="chat-bubble tl-harness-typed">{echo()?.text ?? sent()}</div>
       <Show when={echo()}>
@@ -89,5 +95,6 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
         </Show>
       </Show>
     </div>
+    </Show>
   );
 }

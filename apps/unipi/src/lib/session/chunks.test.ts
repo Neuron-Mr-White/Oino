@@ -73,6 +73,17 @@ describe('chunks: turn starts', () => {
   });
 });
 
+describe('chunks: host-authored turn boundaries', () => {
+  it('matches the turn index after a tool result while preserving genuine steers', () => {
+    const host = user('host');
+    host.message!.details = { oinoProvenance: { source: 'Long-horizon', title: 'Graph checkpoint' } };
+    const all = chain([user('start'), assistant('call', true), result('result', 'call'), host, assistant('call2', true), result('result2', 'call2'), user('steer')]);
+    expect(all.flatMap((e, i) => isTurnStart(all, i, true) ? [e.id] : [])).toEqual(turnIds(all));
+    expect(isTurnStart(all, 3, true)).toBe(true);
+    expect(isTurnStart(all, 6, true)).toBe(false);
+  });
+});
+
 describe('chunks: assembleChunk', () => {
   it('a giant turn spread over many host pages comes whole, in one commit, cut at its own start', async () => {
     const all = owner();
