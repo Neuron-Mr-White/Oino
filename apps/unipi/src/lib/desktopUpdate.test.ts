@@ -7,12 +7,15 @@ import {
   promptOpen,
   resetDesktopUpdate,
   RECHECK_MS,
+  SNOOZE_MS,
+  compareVersions,
   setDesktopUpdateTransport,
 } from './desktopUpdate';
 
 const available = { current: '0.4.4', kind: 'in_app', version: '0.4.5', notes: 'Fixes', downloadPage: 'https://unipi.nrn.one/' };
 
 afterEach(() => {
+  localStorage.clear();
   resetDesktopUpdate();
   setDesktopUpdateTransport(undefined);
 });
@@ -90,5 +93,32 @@ describe('desktop app updates (UNI-263)', () => {
     check.mockResolvedValueOnce({ garbage: true } as never);
     await checkDesktopUpdate(true);
     expect(desktopUpdateState().kind).toBe('error');
+  });
+});
+
+describe('version and persisted dismissals', () => {
+  it('compares semver including prereleases', () => {
+    expect(compareVersions('1.0.2', '1.0.1')).toBe(1);
+    expect(compareVersions('1.0.2', '1.0.2')).toBe(0);
+    expect(compareVersions('1.0.2-rc.2', '1.0.2-rc.10')).toBe(-1);
+    expect(compareVersions('1.0.2', '1.0.2-rc.1')).toBe(1);
+    expect(compareVersions('oops', '1.0.2')).toBeUndefined();
+  });
+  it('never prompts for an equal version', async () => {
+    setDesktopUpdateTransport({ check: async () => ({ ...available, current: '0.4.5' }), install: vi.fn() });
+    await checkDesktopUpdate(true);
+    expect(desktopUpdateState().kind).toBe('current');
+    expect(promptOpen()).toBe(false);
+  });
+  it('persists skip and expires later after 24 hours', async () => {
+    vi.useFakeTimers();
+    try {
+      setDesktopUpdateTransport({ check: async () => available, install: vi.fn() });
+      await checkDesktopUpdate(true); dismissDesktopUpdate(true); resetDesktopUpdate();
+      await checkDesktopUpdate(true); expect(promptOpen()).toBe(false);
+      dismissDesktopUpdate(); resetDesktopUpdate();
+      await checkDesktopUpdate(true); expect(promptOpen()).toBe(false);
+      vi.advanceTimersByTime(SNOOZE_MS); expect(promptOpen()).toBe(true);
+    } finally { vi.useRealTimers(); }
   });
 });

@@ -427,7 +427,8 @@ impl HostLoader {
         let wasm = if packages.is_empty() {
             None
         } else {
-            let config = HostConfig::new(agent_dir.to_path_buf(), cwd.to_path_buf());
+            let mut config = HostConfig::new(agent_dir.to_path_buf(), cwd.to_path_buf());
+            config.oino_version = env!("CARGO_PKG_VERSION").to_owned();
             match WasmRuntime::new(WasmRuntimeOptions::new(config)) {
                 Ok(runtime) => Some(CoreLoader::new(Arc::new(runtime), packages)),
                 Err(error) => {

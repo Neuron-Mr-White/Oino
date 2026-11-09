@@ -81,7 +81,7 @@ fn err(message: impl Into<String>) -> AppErrorDto {
 }
 
 fn updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, AppErrorDto> {
-    let mut builder = app.updater_builder();
+    let mut builder = app.updater_builder().header("Cache-Control", "no-cache, no-store").map_err(|e| err(e.to_string()))?;
     if let Some(feed) = std::env::var(FEED_ENV).ok().filter(|f| !f.is_empty()) {
         let url = feed
             .parse()

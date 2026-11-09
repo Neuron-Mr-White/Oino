@@ -302,6 +302,7 @@ function dismissBanner(version: string): void {
 /** Slim banner above the content when an update is waiting (tap → Settings). Dismissible (×) per
  *  version, remembered: a newer version shows it again ([ui-shell] #4). */
 export function UpdateBanner(props: { onOpen: () => void }) {
+  createEffect(() => { if (desktopUpdateState().kind === 'current') setBannerDismissed(undefined); });
   const s = updateState;
   const d = desktopUpdateState;
   const desktopReady = () => d().kind === 'available';
@@ -378,6 +379,7 @@ export function DesktopUpdatePrompt() {
             <button type="button" class="btn btn-secondary" data-testid="desktop-update-later" onClick={() => dismissDesktopUpdate()}>
               Later
             </button>
+            <button type="button" class="btn btn-secondary" data-testid="desktop-update-skip" onClick={() => dismissDesktopUpdate(true)}>Skip this version</button>
             <Actions s={s()} compact />
           </div>
         )

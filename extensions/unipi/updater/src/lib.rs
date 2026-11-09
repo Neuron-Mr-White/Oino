@@ -85,6 +85,7 @@ async fn github_json(path: &str) -> std::result::Result<Value, String> {
     let url = format!("{}{path}", channel::API_BASE);
     let resp = http::get(&url)
         .header("accept", "application/vnd.github+json")
+        .header("cache-control", "no-cache")
         .header("user-agent", "oino-updater")
         .timeout_ms(FETCH_TIMEOUT_MS)
         .send()
@@ -260,7 +261,7 @@ impl Updater {
         if !result.update_available || result.error.is_some() {
             return result;
         }
-        if cache::is_skipped(cache::read(&cache::path()).as_ref(), &result.latest_version) {
+        if cache::is_dismissed(cache::read(&cache::path()).as_ref(), &result.latest_version, &result.channel, timers::now_ms()) {
             return result;
         }
         unipi_kit::bus::emit(&UpdateAvailable {
@@ -388,6 +389,10 @@ impl Updater {
             });
         };
         if matches!(action, "$close" | "close") {
+            if let View::Update(r, _) | View::Instructions(r, _) = &current {
+                cache::snooze(&cache::path(), &r.latest_version, timers::now_ms());
+                self.offered.borrow_mut().remove(&r.latest_version);
+            }
             if action == "close" {
                 ui::panel_close(&panel);
             }

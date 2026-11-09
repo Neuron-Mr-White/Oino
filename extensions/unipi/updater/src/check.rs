@@ -48,7 +48,9 @@ pub(crate) fn from_releases(
     let cache = LastCheck {
         last_check: now_iso.to_owned(),
         latest_version: picked.version().to_owned(),
-        skipped_version: previous.and_then(|p| p.skipped_version.clone()),
+        skipped_version: previous.filter(|p| p.channel() == channel).and_then(|p| p.skipped_version.clone()),
+        snoozed_version: previous.filter(|p| p.channel() == channel).and_then(|p| p.snoozed_version.clone()),
+        snoozed_until: previous.filter(|p| p.channel() == channel).and_then(|p| p.snoozed_until),
         channel: Some(channel.to_owned()),
         install_tag: Some(tag),
     };
@@ -139,7 +141,7 @@ mod tests {
             .unwrap_or_default();
         assert_eq!(r.latest_version, "1.1.0-alpha.1");
         assert!(r.update_available);
-        assert_eq!(c.skipped_version.as_deref(), Some("0.9.0"), "skips survive");
+        assert_eq!(c.skipped_version, None, "skips do not cross channels");
         assert_eq!(c.channel.as_deref(), Some("alpha"));
         assert_eq!(c.install_tag.as_deref(), Some("alpha"));
         assert_eq!(picked.map(|p| p.tag_name), Some("v1.1.0-alpha.1".into()));

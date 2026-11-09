@@ -153,7 +153,8 @@ impl CliLoader {
         let wasm = if packages.is_empty() {
             None
         } else {
-            let config = HostConfig::new(context.agent_dir.clone(), context.cwd.clone());
+            let mut config = HostConfig::new(context.agent_dir.clone(), context.cwd.clone());
+            config.oino_version = crate::VERSION.to_owned();
             // Resolves the process-shared engine (E-ENGINE): repeated loaders (ACP sessions,
             // a multi-cwd host) reuse one engine, one ticker thread and the compile caches.
             match WasmRuntime::new(WasmRuntimeOptions::new(config)) {

@@ -63,7 +63,37 @@ export function setDesktopUpdateTransport(t: DesktopUpdateTransport | undefined)
 const [state, setState] = createSignal<DesktopUpdateState>({ kind: 'idle' });
 export const desktopUpdateState = state;
 /** The version whose prompt the user closed with "Later" (this run only). */
-const [dismissed, setDismissed] = createSignal<string | undefined>();
+const DISMISS_KEY = 'unipi.desktopUpdate.dismissed.latest';
+export const SNOOZE_MS = 24 * 60 * 60 * 1000;
+type Dismissal = { version: string; until?: number };
+function readDismissal(): Dismissal | undefined {
+  try { const value = JSON.parse(localStorage.getItem(DISMISS_KEY) ?? 'null'); return value && typeof value.version === 'string' ? value : undefined; } catch { return undefined; }
+}
+const [dismissal, setDismissal] = createSignal<Dismissal | undefined>(readDismissal());
+const dismissed = () => dismissal()?.version;
+function saveDismissal(value?: Dismissal): void {
+  setDismissal(value);
+  try { if (value) localStorage.setItem(DISMISS_KEY, JSON.stringify(value)); else localStorage.removeItem(DISMISS_KEY); } catch { /* storage unavailable */ }
+}
+/** Semver precedence; invalid versions are never offered. */
+export function compareVersions(a: string, b: string): number | undefined {
+  const parse = (v: string) => /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(v);
+  const x = parse(a), y = parse(b);
+  if (!x || !y || [x[4], y[4]].some(pre => pre?.split('.').some(id => /^\d+$/.test(id) && id.length > 1 && id[0] === '0'))) return undefined;
+  for (let i = 1; i <= 3; i++) { const d = BigInt(x[i]) - BigInt(y[i]); if (d) return d > 0 ? 1 : -1; }
+  if (!x[4] || !y[4]) return x[4] ? -1 : y[4] ? 1 : 0;
+  const xp = x[4].split('.'), yp = y[4].split('.');
+  for (let i = 0; i < Math.max(xp.length, yp.length); i++) {
+    if (xp[i] === undefined) return -1; if (yp[i] === undefined) return 1;
+    const l = xp[i], r = yp[i]; if (l === r) continue;
+    const ln = /^\d+$/.test(l), rn = /^\d+$/.test(r);
+    if ((ln && l.length > 1 && l[0] === '0') || (rn && r.length > 1 && r[0] === '0')) return undefined;
+    if (ln && rn) return BigInt(l) > BigInt(r) ? 1 : -1;
+    if (ln !== rn) return ln ? -1 : 1;
+    return l > r ? 1 : -1;
+  }
+  return 0;
+}
 export const dismissedVersion = dismissed;
 
 let lastCheck = 0;
@@ -84,7 +114,10 @@ export async function checkDesktopUpdate(force = false, now = Date.now()): Promi
     const parsed = UpdateInfoSchema.safeParse(await transport.check());
     if (!parsed.success) throw new Error('Unexpected answer from the update check');
     const info = parsed.data;
-    setState(info.version ? { kind: 'available', info } : { kind: 'current', info });
+    const comparison = info.version ? compareVersions(info.version, info.current) : 0;
+    if (comparison === undefined) throw new Error('Invalid update version');
+    if (comparison > 0) setState({ kind: 'available', info });
+    else { saveDismissal(); try { localStorage.removeItem('unipi.updateBanner.dismissed'); } catch { /* unavailable */ } setState({ kind: 'current', info: { ...info, version: undefined } }); }
   } catch (error) {
     if (force) setState({ kind: 'error', message: errorText(error) });
     else if (s.kind === 'checking') setState({ kind: 'idle' });
@@ -111,16 +144,17 @@ export async function installDesktopUpdate(): Promise<void> {
 }
 
 /** "Later": hide the prompt for this version (Settings still shows it). */
-export function dismissDesktopUpdate(): void {
+export function dismissDesktopUpdate(skip = false): void {
   const s = state();
-  if ('info' in s && s.info?.version) setDismissed(s.info.version);
+  if ('info' in s && s.info?.version) saveDismissal({ version: s.info.version, ...(skip ? {} : { until: Date.now() + SNOOZE_MS }) });
 }
 
 /** Should the prompt be open? */
-export function promptOpen(s: DesktopUpdateState = state(), later = dismissed()): boolean {
+export function promptOpen(s: DesktopUpdateState = state(), later = dismissal()): boolean {
+  const hidden = (version?: string) => !!version && !!later && later.version === version && (later.until === undefined || Date.now() < later.until);
   if (s.kind === 'downloading' || s.kind === 'installing') return true;
-  if (s.kind === 'error') return !!s.info?.version && s.info.version !== later;
-  return s.kind === 'available' && s.info.version !== later;
+  if (s.kind === 'error') return !!s.info?.version && !hidden(s.info.version);
+  return s.kind === 'available' && !hidden(s.info.version);
 }
 
 /** Desktop app only: first check soon after start, then every RECHECK_MS. */
@@ -137,6 +171,6 @@ export function watchDesktopUpdates(): () => void {
 /** Test hook. */
 export function resetDesktopUpdate(): void {
   setState({ kind: 'idle' });
-  setDismissed(undefined);
+  setDismissal(readDismissal());
   lastCheck = 0;
 }

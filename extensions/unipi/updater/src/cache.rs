@@ -17,6 +17,10 @@ pub(crate) struct LastCheck {
     /// Version the user chose to skip.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snoozed_until: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snoozed_version: Option<String>,
     /// Channel the check followed (absent = `latest`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
@@ -68,6 +72,20 @@ pub(crate) fn skip_version(path: &Path, version: &str) {
 /// unipi `isVersionSkipped`.
 pub(crate) fn is_skipped(cache: Option<&LastCheck>, version: &str) -> bool {
     cache.and_then(|c| c.skipped_version.as_deref()) == Some(version)
+}
+
+/// Later suppresses the same release for 24 hours across sessions.
+pub(crate) fn snooze(path: &Path, version: &str, now: i64) {
+    if let Some(mut c) = read(path) {
+        c.snoozed_version = Some(version.to_owned());
+        c.snoozed_until = Some(now.saturating_add(24 * 60 * 60 * 1000));
+        write(path, &c);
+    }
+}
+
+pub(crate) fn is_dismissed(c: Option<&LastCheck>, version: &str, channel: &str, now: i64) -> bool {
+    c.is_some_and(|c| c.channel() == channel && (is_skipped(Some(c), version)
+        || (c.snoozed_version.as_deref() == Some(version) && c.snoozed_until.is_some_and(|until| now < until))))
 }
 
 /// Epoch ms of an ISO-8601 UTC timestamp (`2026-10-26T06:22:37.855Z`, offsets honoured).
@@ -146,6 +164,15 @@ mod tests {
         };
         assert!(is_skipped(Some(&skipped), "1.0.0"));
         assert_eq!(skipped.channel(), "latest");
+    }
+
+    #[test]
+    fn dismissal_is_channel_and_time_scoped() {
+        let c = LastCheck { skipped_version: Some("1.0.2".into()), snoozed_version: Some("1.0.3".into()), snoozed_until: Some(200), ..LastCheck::default() };
+        assert!(is_dismissed(Some(&c), "1.0.2", "latest", 500));
+        assert!(!is_dismissed(Some(&c), "1.0.2", "alpha", 0));
+        assert!(is_dismissed(Some(&c), "1.0.3", "latest", 199));
+        assert!(!is_dismissed(Some(&c), "1.0.3", "latest", 200));
     }
 
     #[test]
