@@ -258,6 +258,10 @@ impl Updater {
             update_available: result.update_available,
             error: result.error.clone(),
         });
+        if !result.update_available && result.error.is_none() {
+            cache::clear_current(&cache::path(), &result.channel);
+            self.offered.borrow_mut().clear();
+        }
         if !result.update_available || result.error.is_some() {
             return result;
         }
@@ -390,7 +394,7 @@ impl Updater {
         };
         if matches!(action, "$close" | "close") {
             if let View::Update(r, _) | View::Instructions(r, _) = &current {
-                cache::snooze(&cache::path(), &r.latest_version, timers::now_ms());
+                cache::snooze(&cache::path(), &r.channel, &r.latest_version, timers::now_ms());
                 self.offered.borrow_mut().remove(&r.latest_version);
             }
             if action == "close" {
@@ -421,7 +425,7 @@ impl Updater {
                 }
             }
             (View::Update(r, _) | View::Instructions(r, _), "skip") => {
-                cache::skip_version(&cache::path(), &r.latest_version);
+                cache::skip_version(&cache::path(), &r.channel, &r.latest_version);
                 ui::panel_close(&panel);
                 set(None);
                 let _ = ui::notify(

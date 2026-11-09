@@ -1826,6 +1826,7 @@ name = "unipi-updater"
 version = "3.0.0"
 dependencies = [
  "oino-extension",
+ "semver",
  "serde",
  "serde_json",
  "unipi-kit",

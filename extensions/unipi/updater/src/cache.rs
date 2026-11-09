@@ -2,6 +2,7 @@
 //! `~/.unipi/cache/updater/last-check.json`.
 
 use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,8 @@ pub(crate) struct LastCheck {
     pub snoozed_until: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed_version: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dismissals: BTreeMap<String, Dismissal>,
     /// Channel the check followed (absent = `latest`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
@@ -28,6 +31,15 @@ pub(crate) struct LastCheck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_tag: Option<String>,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Dismissal {
+    pub skipped: Option<String>,
+    pub snoozed: Option<String>,
+    pub until: Option<i64>,
+}
+pub(crate) const SNOOZE_MS: i64 = 24 * 60 * 60 * 1000;
 
 impl LastCheck {
     /// Channel with the pre-channel default.
@@ -49,7 +61,10 @@ pub(crate) fn read(path: &Path) -> Option<LastCheck> {
 
 /// unipi `writeLastCheck`.
 pub(crate) fn write(path: &Path, c: &LastCheck) {
+    #[cfg(target_arch = "wasm32")]
     let _ = unipi_kit::paths::write_json(path, c);
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = std::fs::write(path, serde_json::to_vec(c).unwrap_or_default());
 }
 
 /// unipi `isCheckDue`.
@@ -62,30 +77,37 @@ pub(crate) fn is_check_due(cache: Option<&LastCheck>, interval_ms: u64, now_ms: 
 }
 
 /// unipi `writeSkippedVersion` (only when a cache exists).
-pub(crate) fn skip_version(path: &Path, version: &str) {
+pub(crate) fn skip_version(path: &Path, channel: &str, version: &str) {
     if let Some(mut c) = read(path) {
-        c.skipped_version = Some(version.to_owned());
+        c.dismissals.entry(channel.to_owned()).or_default().skipped = Some(version.to_owned());
         write(path, &c);
     }
 }
 
-/// unipi `isVersionSkipped`.
-pub(crate) fn is_skipped(cache: Option<&LastCheck>, version: &str) -> bool {
-    cache.and_then(|c| c.skipped_version.as_deref()) == Some(version)
-}
-
-/// Later suppresses the same release for 24 hours across sessions.
-pub(crate) fn snooze(path: &Path, version: &str, now: i64) {
+pub(crate) fn snooze(path: &Path, channel: &str, version: &str, now: i64) {
     if let Some(mut c) = read(path) {
-        c.snoozed_version = Some(version.to_owned());
-        c.snoozed_until = Some(now.saturating_add(24 * 60 * 60 * 1000));
+        let d = c.dismissals.entry(channel.to_owned()).or_default();
+        d.snoozed = Some(version.to_owned());
+        d.until = Some(now.saturating_add(SNOOZE_MS));
         write(path, &c);
     }
 }
 
 pub(crate) fn is_dismissed(c: Option<&LastCheck>, version: &str, channel: &str, now: i64) -> bool {
-    c.is_some_and(|c| c.channel() == channel && (is_skipped(Some(c), version)
-        || (c.snoozed_version.as_deref() == Some(version) && c.snoozed_until.is_some_and(|until| now < until))))
+    c.is_some_and(|c| {
+        let legacy = c.channel() == channel && (c.skipped_version.as_deref() == Some(version)
+            || (c.snoozed_version.as_deref() == Some(version) && c.snoozed_until.is_some_and(|until| now < until)));
+        legacy || c.dismissals.get(channel).is_some_and(|d| d.skipped.as_deref() == Some(version)
+            || (d.snoozed.as_deref() == Some(version) && d.until.is_some_and(|until| now < until)))
+    })
+}
+
+pub(crate) fn clear_current(path: &Path, channel: &str) {
+    if let Some(mut c) = read(path) {
+        c.dismissals.remove(channel);
+        if c.channel() == channel { c.skipped_version = None; c.snoozed_version = None; c.snoozed_until = None; }
+        write(path, &c);
+    }
 }
 
 /// Epoch ms of an ISO-8601 UTC timestamp (`2026-10-26T06:22:37.855Z`, offsets honoured).
@@ -157,12 +179,12 @@ mod tests {
         assert!(is_check_due(None, 3_600_000, now));
         assert!(!is_check_due(Some(&c), 3_600_000, now));
         assert!(is_check_due(Some(&c), 500, now));
-        assert!(!is_skipped(Some(&c), "1.0.0"));
+        assert!(!is_dismissed(Some(&c), "1.0.0", "latest", now));
         let skipped = LastCheck {
             skipped_version: Some("1.0.0".into()),
             ..c
         };
-        assert!(is_skipped(Some(&skipped), "1.0.0"));
+        assert!(is_dismissed(Some(&skipped), "1.0.0", "latest", now));
         assert_eq!(skipped.channel(), "latest");
     }
 
@@ -173,6 +195,22 @@ mod tests {
         assert!(!is_dismissed(Some(&c), "1.0.2", "alpha", 0));
         assert!(is_dismissed(Some(&c), "1.0.3", "latest", 199));
         assert!(!is_dismissed(Some(&c), "1.0.3", "latest", 200));
+    }
+
+    #[test]
+    fn persisted_skip_and_snooze_survive_reload_and_expire() {
+        let dir = std::env::temp_dir().join(format!("oin38-dismiss-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cache.json");
+        write(&path, &LastCheck { last_check: "2026-01-01T00:00:00Z".into(), latest_version: "1.0.2".into(), ..LastCheck::default() });
+        skip_version(&path, "latest", "1.0.2");
+        snooze(&path, "alpha", "2.0.0-alpha.1", 100);
+        assert!(is_dismissed(read(&path).as_ref(), "1.0.2", "latest", 999));
+        assert!(is_dismissed(read(&path).as_ref(), "2.0.0-alpha.1", "alpha", 100 + SNOOZE_MS - 1));
+        assert!(!is_dismissed(read(&path).as_ref(), "2.0.0-alpha.1", "alpha", 100 + SNOOZE_MS));
+        clear_current(&path, "latest");
+        assert!(!is_dismissed(read(&path).as_ref(), "1.0.2", "latest", 999));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

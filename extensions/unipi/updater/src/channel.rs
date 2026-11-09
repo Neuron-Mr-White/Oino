@@ -7,7 +7,15 @@
 //! sees prereleases. Downgrades are never offered.
 
 use serde::Deserialize;
-use unipi_kit::fmt::{compare_versions, is_newer_version};
+use std::cmp::Ordering;
+
+pub(crate) fn compare_versions(a: &str, b: &str) -> Ordering {
+    match (semver::Version::parse(a.trim_start_matches('v')), semver::Version::parse(b.trim_start_matches('v'))) {
+        (Ok(a), Ok(b)) => a.cmp_precedence(&b),
+        _ => Ordering::Equal,
+    }
+}
+fn is_newer_version(a: &str, b: &str) -> bool { compare_versions(a, b).is_gt() }
 
 /// GitHub repository of Oino releases.
 pub(crate) const REPO: &str = "Neuron-Mr-White/Oino";
@@ -224,6 +232,10 @@ mod tests {
 
     #[test]
     fn never_offers_a_downgrade() {
+        assert!(!CheckResult::new("1.0.2", "1.0.2", "latest", "latest").update_available);
+        assert!(CheckResult::new("1.0.2", "1.0.1", "latest", "latest").update_available);
+        assert!(!CheckResult::new("1.0.2+new", "1.0.2+old", "latest", "latest").update_available);
+        assert!(!CheckResult::new("invalid", "1.0.1", "latest", "latest").update_available);
         assert!(!CheckResult::new("2.0.4", "2.0.5", "latest", "latest").update_available);
         assert!(CheckResult::new("2.0.6", "2.0.5", "latest", "latest").update_available);
         assert!(!CheckResult::new("v2.0.5", "2.0.5", "latest", "latest").update_available);

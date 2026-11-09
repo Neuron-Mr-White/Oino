@@ -1,6 +1,6 @@
 //! Update check decisions (unipi `checkForUpdates`), network-free so they are unit-testable.
 
-use unipi_kit::fmt::compare_versions;
+use crate::channel::compare_versions;
 
 use crate::cache::{LastCheck, is_check_due};
 use crate::channel::{CheckResult, Release, install_tag, pick_release};
@@ -51,6 +51,7 @@ pub(crate) fn from_releases(
         skipped_version: previous.filter(|p| p.channel() == channel).and_then(|p| p.skipped_version.clone()),
         snoozed_version: previous.filter(|p| p.channel() == channel).and_then(|p| p.snoozed_version.clone()),
         snoozed_until: previous.filter(|p| p.channel() == channel).and_then(|p| p.snoozed_until),
+        dismissals: previous.map(|p| p.dismissals.clone()).unwrap_or_default(),
         channel: Some(channel.to_owned()),
         install_tag: Some(tag),
     };

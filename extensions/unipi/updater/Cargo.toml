@@ -12,6 +12,7 @@ description = "unipi.updater: Oino release checks, update screen, README and cha
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+semver = "1"
 oino-extension.workspace = true
 serde.workspace = true
 serde_json.workspace = true
