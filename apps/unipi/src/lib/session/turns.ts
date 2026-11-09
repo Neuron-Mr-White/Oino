@@ -739,7 +739,7 @@ function finishSegment(s: Segment, meta: { startedAt?: number; endedAt?: number;
       s.work = s.work.slice(0, i);
       break;
     }
-    if (item.kind !== 'card' && item.kind !== 'compaction') break;
+    if (live && item.kind !== 'card' && item.kind !== 'compaction') break;
   }
   // Even if the segment ended without prose (e.g. tool-only turn followed by auto-compaction),
   // lift trailing compaction + event cards out of the closed fold so compaction is always visible.

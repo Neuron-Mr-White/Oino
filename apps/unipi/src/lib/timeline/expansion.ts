@@ -16,6 +16,14 @@ const entries = new Map<string, boolean>();
 const [rev, setRev] = createSignal(0);
 
 const keyOf = (sessionId: string, key: string) => `${sessionId}|${key}`;
+const storageKey = (sessionId: string, key: string) => `unipi:expansion:${keyOf(sessionId, key)}`;
+const storedFold = (sessionId: string, key: string): boolean | undefined => {
+  if (!key.startsWith('fold:')) return undefined;
+  try {
+    const value = localStorage.getItem(storageKey(sessionId, key));
+    return value === 'true' ? true : value === 'false' ? false : undefined;
+  } catch { return undefined; }
+};
 
 /**
  * The open state of `key` in `sessionId`; `fallback` when the user never
@@ -24,7 +32,7 @@ const keyOf = (sessionId: string, key: string) => `${sessionId}|${key}`;
  */
 export function expansionOpen(sessionId: string, key: string, fallback: boolean): boolean {
   rev();
-  return entries.get(keyOf(sessionId, key)) ?? fallback;
+  return entries.get(keyOf(sessionId, key)) ?? storedFold(sessionId, key) ?? fallback;
 }
 
 /** Writes the state; refreshes the LRU order. */
@@ -32,6 +40,9 @@ export function setExpansion(sessionId: string, key: string, open: boolean): voi
   const k = keyOf(sessionId, key);
   entries.delete(k);
   entries.set(k, open);
+  if (key.startsWith('fold:')) {
+    try { localStorage.setItem(storageKey(sessionId, key), String(open)); } catch { /* storage unavailable */ }
+  }
   while (entries.size > EXPANSION_MAX) {
     const oldest = entries.keys().next();
     if (oldest.done) break;
@@ -42,7 +53,7 @@ export function setExpansion(sessionId: string, key: string, open: boolean): voi
 
 /** Toggles, honouring `fallback` for a first touch. */
 export function toggleExpansion(sessionId: string, key: string, fallback: boolean): boolean {
-  const next = !(entries.get(keyOf(sessionId, key)) ?? fallback);
+  const next = !(entries.get(keyOf(sessionId, key)) ?? storedFold(sessionId, key) ?? fallback);
   setExpansion(sessionId, key, next);
   return next;
 }

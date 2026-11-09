@@ -192,7 +192,13 @@ function SegmentView(props: {
         {(ask) => <AskUserCard tool={ask()} ctx={props.ctx} />}
       </Show>
       <Show when={seg().after?.length}>
-        <WorkNodes nodes={seg().after!} ctx={props.ctx} live={false} />
+        <ByKey each={seg().after!} key={(node) => node.key}>
+          {(node) => (
+            <Show when={node().kind !== 'card' && node().kind !== 'compaction'} fallback={<WorkNodes nodes={[node()]} ctx={props.ctx} live={false} />}>
+              <SegmentFold segment={{ id: `${seg().id}:after:${node().key}`, index: seg().index, work: [], nodes: [node()], live: false, fold: { state: 'done', label: 'Worked', detail: '', forcedOpen: false } }} ctx={props.ctx} />
+            </Show>
+          )}
+        </ByKey>
       </Show>
     </div>
   );

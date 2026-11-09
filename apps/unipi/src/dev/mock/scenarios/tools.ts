@@ -189,6 +189,18 @@ const renderers: Record<string, unknown> = {
   'customMessage/acme:stuck': { never: true },
 };
 
+export const transcriptFinal: MockScenario = {
+  name: 'transcript-final',
+  hosts: [{ id: 'pc-coffee', name: 'coffee', conn: { state: 'connected' }, cards: genCards(1), fs: genFsTree(), sessions: { s001: { snapshot: (() => {
+    const c = chain();
+    c.user('Check the transcript fix');
+    c.assistant([c.think('Inspect the turn grouping.'), c.call('t1', 'bash', { command: 'npm test' })]);
+    c.result('t1', 'bash', [c.text('All tests passed.')]);
+    c.assistant([c.text('The transcript fix is complete. The final answer stays visible when work is collapsed.\n\n```ts\nconst answer = "always visible";\n```\n\nThe trailing thought is separate.'), c.think('One last check after the answer.')], { stopReason: 'stop' });
+    return snapshotOf('s001', c.out);
+  })() } } }],
+};
+
 export const toolsMix: MockScenario = {
   name: 'tools-mix',
   hosts: [

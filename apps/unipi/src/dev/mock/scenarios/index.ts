@@ -38,7 +38,7 @@ import { settingsUsage, settingsUsageEmpty, settingsUsageLoading, settingsUsageO
 import { settingsExtensions, settingsForm, settingsFormAdvanced, settingsFormAgent, settingsFormList, settingsNav, settingsRemote, settingsSafeMode, settingsSearch } from './settings';
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
-import { rendererCards, toolsGroups, toolsMix } from './tools';
+import { rendererCards, toolsGroups, toolsMix, transcriptFinal } from './tools';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreeLong, tabTreePhone } from './tabs';
 import { turnFiles, turnFilesConflict, turnFilesUndo } from './turn-files';
 import { emptyChat, motionExits } from './empty-chat';
@@ -111,6 +111,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'status-running': statusRunning,
   capsule: capsuleScenario,
   'files-tree': filesTree,
+  'transcript-final': transcriptFinal,
   'tools-mix': toolsMix,
   'tools-groups': toolsGroups,
   'renderer-cards': rendererCards,
