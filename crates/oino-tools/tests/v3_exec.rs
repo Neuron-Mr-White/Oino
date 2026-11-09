@@ -97,11 +97,19 @@ async fn background_registry_and_stop() {
     assert_eq!(sub, "agent-legacy-42");
     assert_ne!(sub, id);
     assert_eq!(tasks.list("s1").len(), 2);
+    assert!(
+        tasks.list("s2").is_empty(),
+        "another session must not list either task"
+    );
     let update: TaskSpec = serde_json::from_value(json!({"name":"Subagent acceptance", "command":"Inspect project", "externalId":sub, "externalState":"done", "externalOutput":"Agent final report", "isAgent":true})).unwrap();
     tasks
         .start(&child_owner, "s1", root.path(), update, Arc::new(|_| {}))
         .unwrap();
     assert_eq!(tasks.logs(&sub, 32768, true).unwrap(), "Agent final report");
+    assert!(
+        tasks.list("s2").is_empty(),
+        "completion must not reassign the subagent"
+    );
     let command = if cfg!(windows) {
         "Start-Sleep -Seconds 30"
     } else {
