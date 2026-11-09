@@ -262,3 +262,14 @@ div:has(> .recent-popover.mp-row-menu) > .recent-popover-backdrop { z-index: 76;
    sheet at --z-sheet); the scrim must stay under it, or the full-screen model sheet reads dimmed. */
 html[data-shell=phone] body > div:has(> .sheet.model-picker-sheet) > .sheet-overlay { z-index: var(--z-scrim, 60); }
 html[data-shell=phone] .sheet.model-picker-sheet { z-index: var(--z-sheet, 61); }
+
+/* A settings field takes one model: the Fusion tab stays visible but off, with its hint. */
+.mp-tabs .sm-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+.mp-fusion-off { margin-top: -4px; }
+
+/* The collapsed "Advanced: provider/model" escape hatch under a field's list. */
+.mp-advanced { border-top: 1px solid var(--color-line); padding-top: 8px; }
+.mp-advanced > summary { cursor: pointer; width: fit-content; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); border-radius: 6px; }
+.mp-advanced > summary:hover { color: var(--color-text-muted); }
+.mp-advanced > summary:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 2px; }
+.mp-advanced-form { margin-top: 8px; }

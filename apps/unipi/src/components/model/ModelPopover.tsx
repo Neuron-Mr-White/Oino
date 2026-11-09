@@ -135,17 +135,39 @@ export function NowLine(props: { value: string }) {
   );
 }
 
-/** Single / Fusion tabs (shown only where Fusion is on for the context). */
-export function ModeTabs(props: { mode: 'single' | 'fusion'; onMode: (m: 'single' | 'fusion') => void }) {
+/**
+ * Single / Fusion tabs (shown only where Fusion is on for the context).
+ * `fusionDisabled` (a settings field that takes one model): the Fusion tab
+ * stays visible but off, with that hint under the tabs.
+ */
+export function ModeTabs(props: { mode: 'single' | 'fusion'; onMode: (m: 'single' | 'fusion') => void; fusionDisabled?: string }) {
   return (
+    <>
     <div class="sm-tabs mp-tabs" role="tablist" aria-label="Model mode">
       <button type="button" role="tab" aria-selected={props.mode === 'single'} class="sm-tab" onClick={() => props.onMode('single')} data-testid="model-tab-single">
         Single
       </button>
-      <button type="button" role="tab" aria-selected={props.mode === 'fusion'} class="sm-tab" onClick={() => props.onMode('fusion')} data-testid="model-tab-fusion">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={props.mode === 'fusion'}
+        aria-disabled={props.fusionDisabled ? 'true' : undefined}
+        aria-describedby={props.fusionDisabled ? 'mp-fusion-off' : undefined}
+        disabled={!!props.fusionDisabled}
+        title={props.fusionDisabled}
+        class="sm-tab"
+        onClick={() => props.onMode('fusion')}
+        data-testid="model-tab-fusion"
+      >
         Fusion
       </button>
     </div>
+    <Show when={props.fusionDisabled}>
+      <p class="mp-hint mp-fusion-off" id="mp-fusion-off" data-testid="model-fusion-off">
+        {props.fusionDisabled}
+      </p>
+    </Show>
+    </>
   );
 }
 
