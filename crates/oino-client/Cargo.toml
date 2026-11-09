@@ -35,6 +35,7 @@ indexmap.workspace = true
 oino-core = { path = "../oino-core", version = "1.0.0", features = ["testing"] }
 oino-models = { path = "../oino-models", version = "1.0.1" }
 tempfile.workspace = true
+tokio-util.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]

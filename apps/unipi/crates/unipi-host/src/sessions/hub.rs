@@ -546,6 +546,11 @@ impl SessionHub {
             tracing::warn!(root = %scratch_root.display(), "scratch root not created: {error}");
         }
         limits = limits.with_shared_services_root(scratch_root.clone());
+        // A retired dispatcher lead the user reopens keeps its board tool (it is declared in
+        // the session's history; without it every board call fails as unavailable).
+        limits = limits.with_session_tools(oino_client::hub::SessionTools(Arc::new(
+            crate::superagent_session::reopened_lead_tools,
+        )));
         let home = if options.host_data_dir.is_some() {
             crate::fs::home_dir_opt()
         } else {

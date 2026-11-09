@@ -610,6 +610,21 @@ pub fn worker_board(project: unipi_kanboard::Project, session: String) -> ToolEn
         Vec::new(),
     )
 }
+/// The board tool for a lead session woken from its file after the dispatcher retired it
+/// (the user keeps talking to the lead directly). Same identity as at launch: the lead
+/// marker names the project and the session id is the reserved lead id. Non-lead files,
+/// and leads whose project is gone or archived, get nothing.
+#[must_use]
+pub fn reopened_lead_tools(path: &std::path::Path, session: &str) -> Vec<ToolEntry> {
+    let Some(card) = worker_file(path) else { return Vec::new() };
+    let project = unipi_kanboard::Layout::from_env()
+        .and_then(|layout| unipi_kanboard::Project::load(&layout, &card.project_id));
+    match project {
+        Ok(project) if !project.archived => vec![worker_board(project, session.to_owned())],
+        _ => Vec::new(),
+    }
+}
+
 struct WorkerBoard {
     project: unipi_kanboard::Project,
     session: String,

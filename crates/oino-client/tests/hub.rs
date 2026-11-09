@@ -714,3 +714,98 @@ async fn services_cap_never_retires_a_session_it_just_woke() {
         "still live"
     );
 }
+
+/// A tool that only the embedding host knows about (the desktop's lead board tool).
+struct HostTool {
+    meta: oino_agent::ToolDefinitionMeta,
+    calls: Arc<AtomicUsize>,
+}
+
+impl oino_agent::AgentTool for HostTool {
+    fn meta(&self) -> &oino_agent::ToolDefinitionMeta {
+        &self.meta
+    }
+    fn execute(
+        &self,
+        _: oino_agent::ToolInvocation,
+        _: oino_agent::UpdateSink,
+        _: tokio_util::sync::CancellationToken,
+    ) -> BoxFuture<'static, Result<AgentToolResult, oino_agent::ToolError>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(AgentToolResult::text("host tool ran")) })
+    }
+}
+
+/// `HubLimits::with_session_tools`: a session woken from its file gets the host's extra
+/// tools for that file (a reopened dispatcher lead keeps its board tool), and the hook is
+/// asked with the file and id it wakes.
+#[tokio::test]
+async fn session_tools_are_attached_when_a_record_wakes() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("sessions")).unwrap();
+    std::fs::create_dir_all(dir.path().join("agent")).unwrap();
+    let (file, id) = conversation_file(dir.path());
+    let provider = FauxProvider::new(vec![
+        FauxResponse::ToolCalls(vec![(
+            "c1".into(),
+            "host_tool".into(),
+            serde_json::from_value(json!({})).unwrap(),
+        )]),
+        FauxResponse::Text("done".into()),
+    ]);
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.set_runtime_api_key("faux", "k");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let hook = {
+        let calls = Arc::clone(&calls);
+        let asked = Arc::clone(&asked);
+        oino_client::hub::SessionTools(Arc::new(move |path: &Path, session: &str| {
+            asked
+                .lock()
+                .unwrap()
+                .push((path.to_path_buf(), session.to_owned()));
+            vec![oino_core::session::ToolEntry::builtin(
+                Arc::new(HostTool {
+                    meta: oino_agent::ToolDefinitionMeta::new(
+                        "host_tool",
+                        "Host tool",
+                        "host tool",
+                        json!({"type": "object"}),
+                    ),
+                    calls: Arc::clone(&calls),
+                }),
+                None,
+                Vec::new(),
+            )]
+        }))
+    };
+    let hub = SessionHub::create_with(
+        HubOptions {
+            cwd: dir.path().to_path_buf(),
+            agent_dir: dir.path().join("agent"),
+            docs_root: None,
+            session_dir: Some(dir.path().join("sessions")),
+            mode: ExtensionMode::Rpc,
+            has_ui: false,
+            approve: Some(false),
+            flags: ResourceFlags {
+                no_context_files: true,
+                ..ResourceFlags::default()
+            },
+            loader: Arc::new(StaticLoader(vec![
+                Arc::new(FauxComponent(Arc::clone(&provider))) as Arc<dyn ExtensionInstance>,
+            ])),
+            models: Some(models),
+            tools: ToolSelection::Default,
+            exclude_tools: Vec::new(),
+        },
+        HubLimits::default().with_session_tools(hook),
+    )
+    .unwrap();
+
+    let backend = hub.open(&id).await.unwrap();
+    assert_eq!(*asked.lock().unwrap(), vec![(file, id.clone())]);
+    prompt(&backend, "use the host tool").await;
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "the woken session ran the host tool");
+}

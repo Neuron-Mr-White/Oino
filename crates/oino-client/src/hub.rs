@@ -30,7 +30,7 @@ use oino_core::events::{ClientEvent, OinoEvent};
 use oino_core::extensions::api::ExtensionMode;
 use oino_core::runtime::{AgentSessionRuntime, SessionOptions, SessionSource, ToolSelection};
 use oino_core::services::{ExtensionLoader, ResourceFlags, Services, ServicesOptions};
-use oino_core::session::SessionOpError;
+use oino_core::session::{SessionOpError, ToolEntry};
 use oino_core::ui::UiResponse;
 use oino_models::ModelRegistry;
 use oino_session::{SessionInfo, SessionManager, lock_metadata_path};
@@ -149,6 +149,22 @@ pub struct HubLimits {
     /// Sessions whose cwd is a direct child of this dir share the services set of the dir
     /// itself (see [`HubLimits::with_shared_services_root`]).
     shared_services_root: Option<PathBuf>,
+    /// See [`HubLimits::with_session_tools`].
+    session_tools: Option<SessionTools>,
+}
+
+/// Extra custom tools for a session the hub wakes from its record: called with the
+/// session file and id; an empty list adds nothing.
+#[derive(Clone)]
+pub struct SessionTools(pub Arc<SessionToolsFn>);
+
+/// The [`SessionTools`] callback: session file and id → extra tools.
+pub type SessionToolsFn = dyn Fn(&Path, &str) -> Vec<ToolEntry> + Send + Sync;
+
+impl std::fmt::Debug for SessionTools {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionTools(..)")
+    }
 }
 
 impl HubLimits {
@@ -168,6 +184,16 @@ impl HubLimits {
     #[must_use]
     pub fn with_shared_services_root(mut self, root: PathBuf) -> Self {
         self.shared_services_root = Some(root);
+        self
+    }
+
+    /// Custom tools the embedding host attaches when the hub wakes a session from its
+    /// file, e.g. the desktop's board tool for a dispatcher lead the user reopens. The
+    /// session's recorded tool declarations survive a reopen, so a tool that existed only
+    /// in the original runtime would otherwise be declared but unavailable.
+    #[must_use]
+    pub fn with_session_tools(mut self, tools: SessionTools) -> Self {
+        self.session_tools = Some(tools);
         self
     }
 }
@@ -302,6 +328,8 @@ struct Inner {
     config: HubConfig,
     /// [`HubLimits::with_shared_services_root`].
     shared_services_root: Option<PathBuf>,
+    /// [`HubLimits::with_session_tools`].
+    session_tools: Option<SessionTools>,
     /// Ids of the live runtimes ([`LiveMap`]'s lock-free mirror).
     live_ids: Arc<Mutex<HashSet<String>>>,
     state: tokio::sync::Mutex<State>,
@@ -371,6 +399,7 @@ impl SessionHub {
             exclude_tools: opts.exclude_tools,
             config,
             shared_services_root: limits.shared_services_root,
+            session_tools: limits.session_tools,
             state: tokio::sync::Mutex::new(State {
                 services: Vec::new(),
                 live: LiveMap {
@@ -673,6 +702,11 @@ impl SessionHub {
             session_dir: Some(self.inner.sessions_root.clone()),
             tools: self.inner.tools.clone(),
             exclude_tools: self.inner.exclude_tools.clone(),
+            custom_tools: self
+                .inner
+                .session_tools
+                .as_ref()
+                .map_or_else(Vec::new, |tools| (tools.0)(&info.path, &info.id)),
             ..SessionOptions::default()
         };
         let runtime =
