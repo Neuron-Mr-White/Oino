@@ -2,16 +2,18 @@
 //! [--project] [--yes]`, `remove|uninstall <id> [--project]`, `update <id>… | --extensions`,
 //! `list`, `config`.
 //!
-//! Sources: a local package directory, a `.tar.zst` / `.tar.gz` / `.tgz` archive file, an
-//! `https://` URL of such an archive, or `git+https://…[#ref]` (cloned with the system
-//! `git`). Archives are unpacked with the system `tar`. A package is a directory with
+//! Sources: a local package directory, a `.zip` / `.tar.zst` / `.tar.gz` / `.tgz` archive
+//! file, an `https://` URL of such an archive, or `git+https://…[#ref]` (cloned with the
+//! system `git`). Tar archives are unpacked with the system `tar`; `.zip` files with the
+//! `zip` crate, using the desktop installer's rules (one root folder or files at the root).
+//! A package is a directory with
 //! `extension.json` (at the source root or in its only subdirectory); it is validated
 //! (manifest, `apiVersion`, `checksums`) before it is copied to `<agent>/extensions/<id>/`
 //! (or `.oino/extensions/<id>/` with `--project`) next to a `.source.json` record that
 //! `update` re-installs from. `list` also shows the distribution share-dir packages
 //! (`OINO_DIST_EXTENSIONS`), which the installers own and `remove` refuses to touch.
 
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::{BufRead, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -19,6 +21,11 @@ use serde_json::{Value, json};
 
 /// The record `update` re-installs from.
 pub const SOURCE_FILE: &str = ".source.json";
+
+/// Largest total size a zip may expand to (a package is a wasm component plus resources).
+const MAX_UNPACKED: u64 = 1024 * 1024 * 1024;
+/// Most entries a zip may hold.
+const MAX_ENTRIES: usize = 20_000;
 
 /// Failure of a package command (printed as `Error: …`).
 #[derive(Debug, thiserror::Error)]
@@ -140,6 +147,63 @@ fn is_archive(name: &str) -> bool {
         .any(|ext| name.ends_with(ext))
 }
 
+fn is_zip(name: &str) -> bool {
+    name.ends_with(".zip")
+}
+
+/// Unpacks `archive` into `dest`, refusing entries that escape it, symlinks, and archives
+/// that expand past [`MAX_UNPACKED`] / [`MAX_ENTRIES`] (the desktop installer's rules).
+fn unzip(archive: &Path, dest: &Path) -> Result<(), PackageError> {
+    let file =
+        std::fs::File::open(archive).map_err(io(format!("opening {}", archive.display())))?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|e| PackageError::Fetch(format!("not a readable .zip: {e}")))?;
+    if zip.len() > MAX_ENTRIES {
+        return Err(PackageError::Invalid(format!(
+            "the .zip holds {} entries (at most {MAX_ENTRIES})",
+            zip.len()
+        )));
+    }
+    let mut total: u64 = 0;
+    for index in 0..zip.len() {
+        let mut entry = zip
+            .by_index(index)
+            .map_err(|e| PackageError::Fetch(format!("damaged .zip: {e}")))?;
+        let Some(relative) = entry.enclosed_name() else {
+            return Err(PackageError::Invalid(format!(
+                "the .zip entry `{}` points outside the package",
+                entry.name()
+            )));
+        };
+        if entry.is_symlink() {
+            continue;
+        }
+        let target = dest.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&target)
+                .map_err(io(format!("creating {}", target.display())))?;
+            continue;
+        }
+        total = total.saturating_add(entry.size());
+        if total > MAX_UNPACKED {
+            return Err(PackageError::Invalid(
+                "the .zip expands past 1 GiB — that is not an extension package".to_owned(),
+            ));
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(io(format!("creating {}", parent.display())))?;
+        }
+        let mut out =
+            std::fs::File::create(&target).map_err(io(format!("writing {}", target.display())))?;
+        // `take` guards against a lying size header.
+        let mut limited = (&mut entry).take(MAX_UNPACKED);
+        std::io::copy(&mut limited, &mut out)
+            .map_err(io(format!("unpacking {}", target.display())))?;
+    }
+    Ok(())
+}
+
 fn unpack(archive: &Path, into: &Path) -> Result<(), PackageError> {
     let archive = archive.to_string_lossy();
     let into = into.to_string_lossy();
@@ -248,9 +312,20 @@ async fn fetch(source: &str, context: &PackageContext) -> Result<Fetched, Packag
             _temp: None,
         });
     }
-    if path.is_file() && is_archive(&path.to_string_lossy()) {
+    if path.is_file() {
+        let name = path.to_string_lossy();
+        if !is_archive(&name) && !is_zip(&name) {
+            return Err(PackageError::Fetch(format!(
+                "Unsupported archive type: {} (supported: .zip, .tar.zst, .tar.gz, .tgz, .tar)",
+                path.display()
+            )));
+        }
         let temp = temp_dir(context)?;
-        unpack(&path, temp.path())?;
+        if is_zip(&name) {
+            unzip(&path, temp.path())?;
+        } else {
+            unpack(&path, temp.path())?;
+        }
         return Ok(Fetched {
             root: package_root(temp.path())?,
             _temp: Some(temp),
@@ -504,7 +579,7 @@ pub async fn run_command(command: &str, args: &[String], context: &PackageContex
     if args.iter().any(|a| a == "--help" || a == "-h") {
         let usage = match command {
             "install" => {
-                "oino install <source> [--project|-l] [--yes|-y]\n  <source>: package dir, .tar.zst/.tar.gz archive, https:// archive URL, git+https://…[#ref]"
+                "oino install <source> [--project|-l] [--yes|-y]\n  <source>: package dir, .zip/.tar.zst/.tar.gz/.tgz/.tar archive, https:// archive URL, git+https://…[#ref]"
             }
             "remove" | "uninstall" => "oino remove <id> [--project|-l]",
             "update" => {
@@ -585,6 +660,178 @@ pub async fn run_command(command: &str, args: &[String], context: &PackageContex
 mod tests {
     use super::*;
 
+    /// A valid package folder (component + matching checksum) at `dir`.
+    fn package_dir(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        let wasm = b"\0asm\x01\0\0\0";
+        std::fs::write(dir.join("component.wasm"), wasm).unwrap();
+        let tag = oino_extension_api::manifest::sha256_tag(wasm);
+        std::fs::write(
+            dir.join("extension.json"),
+            format!(
+                r#"{{"apiVersion":"oino.extension/2","id":"acme.zip","name":"Zip","version":"1.0.0","checksums":{{"component.wasm":"{tag}"}}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    fn package_files(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+        fn walk(
+            root: &Path,
+            dir: &Path,
+            out: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>,
+        ) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                let relative = path.strip_prefix(root).unwrap().to_path_buf();
+                if relative.as_os_str() == SOURCE_FILE {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk(root, &path, out);
+                } else {
+                    out.insert(relative, std::fs::read(&path).unwrap());
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(dir, dir, &mut out);
+        out
+    }
+
+    fn context(root: &Path, name: &str) -> PackageContext {
+        PackageContext {
+            agent_dir: root.join(name),
+            cwd: root.to_path_buf(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_zip_with_a_root_folder_installs_like_the_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("acme-zip");
+        package_dir(&src);
+        let manifest = std::fs::read(src.join("extension.json")).unwrap();
+        let wasm = std::fs::read(src.join("component.wasm")).unwrap();
+        let archive = tmp.path().join("acme.zip");
+        write_zip(
+            &archive,
+            &[
+                ("acme-zip/extension.json", &manifest),
+                ("acme-zip/component.wasm", &wasm),
+            ],
+        );
+        let folder = context(tmp.path(), "agent-folder");
+        let zipped = context(tmp.path(), "agent-zip");
+        install(
+            &src.display().to_string(),
+            false,
+            true,
+            &folder,
+            &mut Vec::new(),
+        )
+        .await
+        .unwrap();
+        install(
+            &archive.display().to_string(),
+            false,
+            true,
+            &zipped,
+            &mut Vec::new(),
+        )
+        .await
+        .unwrap();
+        let from_folder = package_files(&folder.agent_dir.join("extensions/acme.zip"));
+        let from_zip = package_files(&zipped.agent_dir.join("extensions/acme.zip"));
+        assert!(!from_zip.is_empty());
+        assert_eq!(from_zip, from_folder);
+    }
+
+    #[tokio::test]
+    async fn a_zip_with_files_at_the_root_installs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("acme-zip");
+        package_dir(&src);
+        let manifest = std::fs::read(src.join("extension.json")).unwrap();
+        let wasm = std::fs::read(src.join("component.wasm")).unwrap();
+        let archive = tmp.path().join("acme.zip");
+        write_zip(
+            &archive,
+            &[("extension.json", &manifest), ("component.wasm", &wasm)],
+        );
+        let ctx = context(tmp.path(), "agent");
+        let (id, version) = install(
+            &archive.display().to_string(),
+            false,
+            true,
+            &ctx,
+            &mut Vec::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!((id.as_str(), version.as_str()), ("acme.zip", "1.0.0"));
+        let target = ctx.agent_dir.join("extensions/acme.zip");
+        assert_eq!(std::fs::read(target.join("component.wasm")).unwrap(), wasm);
+        assert!(target.join(SOURCE_FILE).is_file());
+    }
+
+    #[tokio::test]
+    async fn a_zip_escaping_its_folder_is_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("evil.zip");
+        write_zip(&archive, &[("../evil.txt", b"x")]);
+        let ctx = context(tmp.path(), "agent");
+        let error = fetch(&archive.display().to_string(), &ctx)
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            error.to_string().contains("points outside the package"),
+            "{error}"
+        );
+        assert!(!ctx.agent_dir.join("cache/packages/evil.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn unsupported_and_missing_local_paths_say_what_is_wrong() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ctx = context(tmp.path(), "agent");
+        let rar = tmp.path().join("pkg.rar");
+        std::fs::write(&rar, b"x").unwrap();
+        let error = fetch(&rar.display().to_string(), &ctx)
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Unsupported archive type: {} (supported: .zip, .tar.zst, .tar.gz, .tgz, .tar)",
+                rar.display()
+            )
+        );
+        let missing = tmp.path().join("missing.zip");
+        let error = fetch(&missing.display().to_string(), &ctx)
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(
+            error.to_string(),
+            format!("Source not found: {}", missing.display())
+        );
+    }
+
     #[test]
     fn dates_and_sources() {
         let date = now_rfc3339();
@@ -598,7 +845,13 @@ mod tests {
             canonical_source("git+https://x/y#v1", Path::new("/w")),
             "git+https://x/y#v1"
         );
-        assert!(is_archive("a.tar.zst") && is_archive("a.tgz") && !is_archive("a.zip"));
+        assert!(
+            is_archive("a.tar.zst")
+                && is_archive("a.tgz")
+                && !is_archive("a.zip")
+                && is_zip("a.zip")
+                && !is_zip("a.tar.gz")
+        );
     }
 
     #[test]

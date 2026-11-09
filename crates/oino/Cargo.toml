@@ -51,6 +51,7 @@ tempfile.workspace = true
 thiserror = "2"
 tokio = { workspace = true, features = ["io-std", "io-util", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 oino = { package = "oino-cli", path = ".", features = ["faux"] }
