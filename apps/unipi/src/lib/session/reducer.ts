@@ -416,7 +416,15 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       const message = event.message as AgentMessage | undefined;
       if (!isObject(message) || typeof message.role !== 'string') return {};
       if (message.role === 'assistant') delete s.streaming;
-      if (message.role === 'user') settleByMessage(s, message);
+      if (message.role === 'user') {
+        settleByMessage(s, message);
+        // A catch-up reply can include this persisted message before its queued live event.
+        // Match its original timestamp and complete content, not text alone: repeated prompts
+        // and different images must remain separate messages.
+        if (typeof message.timestamp === 'number' && s.entries.some((e) =>
+          !isProvisional(e.id) && e.type === 'message' && e.message?.role === 'user' &&
+          e.message.timestamp === message.timestamp && JSON.stringify(e.message.content) === JSON.stringify(message.content))) return {};
+      }
       if (message.role === 'toolResult' && typeof message.toolCallId === 'string') delete s.liveTools[message.toolCallId];
       appendEntry(s, entryForMessage(message, `${LIVE_PREFIX}${dto.seq}`, s.leafId, now));
       return {};
