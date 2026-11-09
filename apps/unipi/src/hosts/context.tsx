@@ -4,7 +4,7 @@
  * read and refresh through this context, so there is one source of
  * truth and one in-flight refresh at a time.
  */
-import { type Accessor, type JSX, createContext, createSignal, onMount, useContext } from 'solid-js';
+import { type Accessor, type JSX, createContext, createSignal, onCleanup, onMount, useContext } from 'solid-js';
 import type { AppError } from '@unipi/protocol';
 import { call } from '../lib/ipc';
 import { HostInfoSchema, type HostInfo, type PathKind } from '../lib/schemas';
@@ -92,7 +92,23 @@ export function HostsProvider(props: { children: JSX.Element }): JSX.Element {
   };
 
   onMount(() => {
-    void refresh().finally(markAppReady);
+    // The desktop host may publish its endpoint after the first discovery.
+    // Bound retries so a phone or a PC without a local host does not poll forever.
+    const delays = [500, 1000, 2000, 4000, 8000, 8000, 8000];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+    const discover = async (attempt: number) => {
+      try {
+        await refresh();
+      } finally {
+        if (attempt === 0) markAppReady();
+      }
+      if (!disposed && !hosts().some((host) => host.transport === 'local') && attempt < delays.length) {
+        timer = setTimeout(() => void discover(attempt + 1), delays[attempt]);
+      }
+    };
+    onCleanup(() => { disposed = true; if (timer) clearTimeout(timer); });
+    void discover(0);
   });
 
   const api: HostsApi = {
