@@ -4,8 +4,9 @@ import { AnchoredMenu } from '../board/AnchoredMenu';
 import { Segmented } from '../phone';
 import { layout } from '../../lib/layout';
 import { countNeeds } from './needs';
+import type { PausedGraphPolicy } from './api';
 import type { SuperagentState } from './state';
-import { Toggle } from './parts';
+import { ChipSelect, Toggle } from './parts';
 import { LeadsSection } from './Leads';
 import { ProjectsSection } from './Projects';
 import { PresetManager } from './Presets';
@@ -18,11 +19,18 @@ export function needsCount(sa: SuperagentState): number {
   return countNeeds(sa.status()?.needsYou);
 }
 
+const PAUSED_GRAPH_OPTIONS = [
+  { value: 'report', label: 'Ask me' },
+  { value: 'reuse', label: 'Wake the previous lead' },
+] as const;
+
 function Settings(props: { sa: SuperagentState; onManage: () => void }) {
   const s = () => props.sa.status()!;
   return <div class="sa-settings" data-testid="sa-settings">
     <div class="sa-set-row"><div><strong>Auto-start</strong><p>Master switch. Each project also needs its own.</p></div>
       <Toggle label="Auto-start" checked={s().enabled} disabled={props.sa.isBusy('configure')} onChange={(v) => void props.sa.configure(v)} /></div>
+    <div class="sa-set-row"><div><strong>When a new lead finds a paused graph</strong></div>
+      <ChipSelect label="When a new lead finds a paused graph" value={s().pausedGraphPolicy} options={PAUSED_GRAPH_OPTIONS} disabled={props.sa.isBusy('configure')} onChange={(v) => void props.sa.setPausedGraphPolicy(v as PausedGraphPolicy)} /></div>
     <Show when={props.sa.presets().supported}><button type="button" class="sa-btn" data-block onClick={props.onManage}>Manage presets</button></Show>
   </div>;
 }

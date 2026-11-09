@@ -602,3 +602,77 @@ describe('OIN-27 dispatch blockers', () => {
     expect((screen.getByRole('button', { name: 'Turn on Auto' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe('OIN-56 paused graph lead state and policy', () => {
+  it('renders and saves the pausedGraphPolicy setting with default report', async () => {
+    const configure = vi.spyOn(superagentApi, 'configure').mockImplementation(async (_h, c) => ok(c));
+    mount();
+    await screen.findByTestId('sa-leads');
+    fireEvent.click(screen.getByLabelText('Auto-start settings'));
+    const select = await screen.findByLabelText('When a new lead finds a paused graph') as HTMLSelectElement;
+    expect(select.value).toBe('report');
+    expect(Array.from(select.options).map((o) => ({ value: o.value, label: o.text }))).toEqual([
+      { value: 'report', label: 'Ask me' },
+      { value: 'reuse', label: 'Wake the previous lead' },
+    ]);
+    fireEvent.change(select, { target: { value: 'reuse' } });
+    await waitFor(() => expect(configure).toHaveBeenCalledWith('pc-coffee', { enabled: true, pausedGraphPolicy: 'reuse' }));
+    await waitFor(() => expect(select.value).toBe('reuse'));
+  });
+
+  it('shows Graph paused badge with Plain lead and Resume sends /graph resume to the old sessionId', async () => {
+    const baseHost = superagentLeads.hosts[0]!;
+    const template = structuredClone(baseHost.sessions!['superagent-chat']!);
+    const oldSession = structuredClone(template);
+    oldSession.snapshot.session_id = 'lead-old-graph';
+    const newSession = structuredClone(template);
+    newSession.snapshot.session_id = 'lead-new-plain';
+    const oldCommands: Array<Record<string, unknown>> = [];
+    const newCommands: Array<Record<string, unknown>> = [];
+    const world = createMockHost({
+      ...superagentLeads,
+      hosts: [{
+        ...baseHost,
+        sessions: {
+          ...baseHost.sessions,
+          'lead-old-graph': {
+            ...oldSession,
+            cmd: { prompt: (cmd) => { oldCommands.push(cmd); return { disposition: 'handled' }; } },
+          },
+          'lead-new-plain': {
+            ...newSession,
+            cmd: { prompt: (cmd) => { newCommands.push(cmd); return { disposition: 'handled' }; } },
+          },
+        },
+      }],
+    });
+    setHostClientFactory(world.client);
+    setPlatformOverride('tauri-desktop');
+    setDesktopOverride(true);
+    vi.spyOn(superagentApi, 'status').mockResolvedValue(ok(StatusSchema.parse(raw({
+      leads: [lead({
+        projectId: 'oino',
+        sessionId: 'lead-new-plain',
+        presetId: 'quick-fix',
+        mode: 'none',
+        ticketIds: ['OIN-56'],
+        pausedGraph: { sessionId: 'lead-old-graph', title: 'Auth refactor graph' },
+      })],
+    }))));
+    vi.spyOn(superagentApi.presets, 'list').mockResolvedValue(ok({ defaultPresetId: 'quick-fix', presets: presets as never }));
+    const onOpen = vi.fn();
+    render(() => <Harness onOpen={onOpen} onTicket={vi.fn()} />);
+
+    const card = await screen.findByTestId('sa-lead');
+    expect((within(card).getByLabelText('Mode for Oino') as HTMLSelectElement).value).toBe('none');
+    expect(within(card).getByText('Graph paused')).toBeTruthy();
+    expect(within(card).getByText('Paused graph: Auth refactor graph')).toBeTruthy();
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Resume' }));
+    await waitFor(() => expect(oldCommands).toEqual([{ type: 'prompt', message: '/graph resume' }]));
+    expect(newCommands).toEqual([]);
+    expect(world.log.some((entry) => entry.kind === 'open' && entry.op === 'session_open' && (entry.args as { session?: string })?.session === 'lead-old-graph')).toBe(true);
+    await screen.findByText('Resuming paused graph.');
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+});

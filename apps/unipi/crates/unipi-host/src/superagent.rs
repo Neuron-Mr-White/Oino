@@ -90,18 +90,37 @@ fn project_blockers(project_id: &str, project: Option<&Project>, enabled: bool, 
     blockers
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PausedGraphPolicy {
+    #[default]
+    Report,
+    Reuse,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PausedGraph {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
     pub enabled: bool,
     #[serde(default, skip_serializing)]
     pub concurrency_cap: usize,
+    #[serde(default)]
+    pub paused_graph_policy: PausedGraphPolicy,
 }
 impl Default for Config {
     fn default() -> Self {
         Self {
             enabled: false,
             concurrency_cap: 1,
+            paused_graph_policy: PausedGraphPolicy::Report,
         }
     }
 }
@@ -211,6 +230,9 @@ pub trait Workers: Send + Sync {
     }
     fn progress<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, Value> {
         Box::pin(async { json!({"step":null,"tool":null,"cost":null}) })
+    }
+    fn agent_dir(&self) -> Option<&Path> {
+        None
     }
 }
 
@@ -324,6 +346,9 @@ impl Dispatcher {
         }
         Ok(out)
     }
+    pub async fn paused_graph_policy(&self) -> PausedGraphPolicy {
+        self.transaction.lock().await.paused_graph_policy
+    }
     pub async fn configure(&self, config: Config) -> Result<Config> {
         config.validate()?;
         let mut current = self.transaction.lock().await;
@@ -368,8 +393,8 @@ impl Dispatcher {
                 Some(id.to_owned())
             }
             "enable_auto_start" => {
-                let cap = self.transaction.lock().await.concurrency_cap;
-                self.configure(Config { enabled: true, concurrency_cap: cap }).await?;
+                let current = self.transaction.lock().await.clone();
+                self.configure(Config { enabled: true, ..current }).await?;
                 None
             }
             _ => return Err(fail("E_SCHEMA", "Unknown enable action")),
@@ -602,6 +627,7 @@ impl Dispatcher {
             }
             return Ok(id.clone());
         }
+        // TODO(OIN-56 phase 2): when config.paused_graph_policy == PausedGraphPolicy::Reuse and a parked graph owner exists for this project, wake/reuse that previous lead session instead of launching a new Plain lead.
         let id = uuid::Uuid::now_v7().to_string();
         let tasks = if watcher {
             dispatcher::reserve_many(&self.layout, project.clone(), task_ids, &id)
@@ -863,7 +889,15 @@ impl Dispatcher {
                             if let Some(ids) = existing["ticketIds"].as_array_mut() { ids.push(json!(task.id)); }
                             existing["progress"]["running"] = json!(existing["ticketIds"].as_array().map_or(0, Vec::len));
                         } else {
-                            leads.push(json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":preset.as_ref().map_or("none", |p| &p.mode),"ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}}));
+                            let paused_graph = self
+                                .workers
+                                .agent_dir()
+                                .and_then(|dir| paused_graph_for_lead(dir, &project.root, &run.session));
+                            let mut entry = json!({"projectId":project.slug,"sessionId":run.session,"presetId":preset.as_ref().map(|p| &p.id),"model":progress.get("model").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.model.as_ref()).map(|v| json!(v))),"thinking":progress.get("thinking").filter(|v| !v.is_null()).cloned().or_else(|| preset.as_ref().and_then(|p| p.thinking.as_ref()).map(|v| json!(v))),"autonomy":progress.get("autonomy").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!(preset.as_ref().map_or("high", |p| &p.autonomy))),"mode":preset.as_ref().map_or("none", |p| &p.mode),"ticketIds":[task.id],"step":progress["step"],"tool":progress["tool"],"startedAt":run.started,"cost":progress["cost"],"progress":{"running":1,"queued":0,"done":0}});
+                            if let Some(paused_graph) = paused_graph {
+                                entry["pausedGraph"] = json!(paused_graph);
+                            }
+                            leads.push(entry);
                         }
                         }
                         workers.push(json!({"projectId":project.slug,"taskId":task.id,"sessionId":run.session,
@@ -901,7 +935,7 @@ impl Dispatcher {
             projects.push(json!({"projectId":project.slug,"name":project.name,"autoStart":auto_start,"lead":lead,"ready":ready,"blockers":blockers,"registered":true,"leadModel":project_lead.and_then(|lead| lead.model.clone()),"leadThinking":project_lead.and_then(|lead| lead.thinking.clone()),"root":project.root}));
         }
         Ok(
-            json!({"enabled":config.enabled,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
+            json!({"enabled":config.enabled,"pausedGraphPolicy":config.paused_graph_policy,"workers":workers,"leads":leads,"needsYou":needs_you,"review":review,"projects":projects}),
         )
     }
 }
@@ -1011,6 +1045,9 @@ impl HostWorkers {
     }
 }
 impl Workers for HostWorkers {
+    fn agent_dir(&self) -> Option<&Path> {
+        Some(self.hub.agent_dir())
+    }
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
         Box::pin(async move { self.runtimes.lock().await.contains_key(id) })
     }
@@ -1287,18 +1324,52 @@ impl Workers for HostWorkers {
     }
 }
 
+fn long_horizon_workspace_dir(agent_dir: &Path, cwd: &Path) -> PathBuf {
+    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let root = cwd.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(&cwd);
+    agent_dir
+        .join("state/unipi.long-horizon/workspace")
+        .join(oino_wasm_host::workspace_id(root))
+}
+
 // Long-horizon owners are workspace-scoped and may be parked without an arbiter
 // wait reason. Read the extension's durable owner record, respecting chat ownership.
 fn has_long_horizon_owner(agent_dir: &Path, cwd: &Path, id: &str) -> bool {
-    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-    let root = cwd.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(&cwd);
-    let path = agent_dir.join("state/unipi.long-horizon/workspace")
-        .join(oino_wasm_host::workspace_id(root)).join("state.json");
+    let path = long_horizon_workspace_dir(agent_dir, cwd).join("state.json");
     let Ok(Some(state)) = crate::data_dir::read_json::<Value>(&path) else { return false; };
     ["active", "parked"].iter().any(|key| {
         state.get(*key).is_some_and(|owner| owner.is_object()
             && owner.get("session").and_then(Value::as_str).is_none_or(|session| session == id))
     })
+}
+
+fn paused_graph_for_lead(agent_dir: &Path, cwd: &Path, current_session_id: &str) -> Option<PausedGraph> {
+    let ws_dir = long_horizon_workspace_dir(agent_dir, cwd);
+    let state = crate::data_dir::read_json::<Value>(&ws_dir.join("state.json")).ok().flatten()?;
+    if state.get("active").is_some_and(|v| !v.is_null()) {
+        return None;
+    }
+    let parked = state.get("parked").filter(|v| v.is_object())?;
+    if parked.get("kind").and_then(Value::as_str) != Some("graph") {
+        return None;
+    }
+    let graph = crate::data_dir::read_json::<Value>(&ws_dir.join("graph.json")).ok().flatten();
+    let current_graph = graph.as_ref().and_then(|g| g.get("current")).filter(|v| v.is_object());
+    let session_id = parked
+        .get("session")
+        .and_then(Value::as_str)
+        .or_else(|| current_graph.and_then(|g| g.get("ownerSession")).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != current_session_id)?
+        .to_owned();
+    let title = parked
+        .get("label")
+        .and_then(Value::as_str)
+        .or_else(|| current_graph.and_then(|g| g.get("task")).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    Some(PausedGraph { session_id, title })
 }
 
 static DISPATCHER: OnceLock<Arc<Dispatcher>> = OnceLock::new();
@@ -1343,15 +1414,24 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
         Request::SuperagentConfigure {
             enabled,
             concurrency_cap,
-        } => serde_json::to_value(
-            dispatcher
-                .configure(Config {
-                    enabled,
-                    concurrency_cap: concurrency_cap.unwrap_or_default(),
-                })
-                .await?,
-        )
-        .map_err(storage),
+            paused_graph_policy,
+        } => {
+            let policy = match paused_graph_policy {
+                Some(policy) => serde_json::from_value::<PausedGraphPolicy>(json!(policy))
+                    .map_err(|_| fail("E_SCHEMA", "pausedGraphPolicy must be report or reuse"))?,
+                None => dispatcher.paused_graph_policy().await,
+            };
+            serde_json::to_value(
+                dispatcher
+                    .configure(Config {
+                        enabled,
+                        concurrency_cap: concurrency_cap.unwrap_or_default(),
+                        paused_graph_policy: policy,
+                    })
+                    .await?,
+            )
+            .map_err(storage)
+        }
         Request::SuperagentConfigureProject {
             project_id,
             auto_start,

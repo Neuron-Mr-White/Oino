@@ -114,6 +114,8 @@
 .sa-lead { display:flex; flex-direction:column; gap:6px; padding:12px; margin-bottom:8px; background:var(--color-surface-2); border:1px solid var(--color-line); border-radius:10px; }
 .sa-lead-top { display:flex; align-items:center; gap:8px; min-width:0; }
 .sa-lead-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
+.sa-paused-badge { flex:0 0 auto; white-space:nowrap; color:var(--color-amber); background:rgb(240 168 24 / 14%); }
+.sa-paused-title { color:var(--color-amber); }
 .sa-live-dot { display:inline-block; flex:0 0 auto; width:6px; height:6px; background:var(--color-wm-green); border-radius:50%; }
 .sa-lead-meta, .sa-lead-count { margin:0; overflow:hidden; text-overflow:ellipsis; font-size:calc(12px * var(--ui-font-scale)); color:var(--color-text-muted); }
 .sa-lead-step { display:flex; align-items:baseline; justify-content:space-between; gap:12px; min-width:0; }

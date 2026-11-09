@@ -42,11 +42,17 @@ function LeadCard(props: { sa: SuperagentState; lead: Lead; onOpen: (id: string)
     <div class="sa-lead-top">
       <span class="sa-live-dot" aria-hidden="true" />
       <strong class="sa-lead-name" title={name()}>{name()}</strong>
+      <Show when={lead().pausedGraph}>{(pg) =>
+        <span class="sa-badge sa-paused-badge" title={pg().title ?? undefined}>Graph paused</span>
+      }</Show>
       <Show when={lead().mode && !lead().legacy}>
         <ChipSelect class="sa-mode" label={`Mode for ${name()}`} value={lead().mode!} options={options()} disabled={props.sa.isBusy(modeKey())}
           onChange={(v) => void pickMode(v)} />
       </Show>
     </div>
+    <Show when={lead().pausedGraph?.title}>{(title) =>
+      <p class="sa-lead-meta sa-paused-title">Paused graph: {title()}</p>
+    }</Show>
     <p class="sa-lead-meta"><Show when={meta()}>{meta()} · </Show><span class="sa-autonomy">{autonomyLabel(lead().autonomy)}</span></p>
     <div class="sa-lead-step">
       <span class="sa-step"><span class="sa-step-text">{lead().step ?? 'Step not reported'}</span><Show when={lead().tool}><code>{lead().tool}</code></Show></span>
@@ -55,6 +61,9 @@ function LeadCard(props: { sa: SuperagentState; lead: Lead; onOpen: (id: string)
     <Progress lead={lead()} />
     <p class="sa-lead-count"><Show when={progressText(lead())}>{progressText(lead())} · </Show>{tickets()} {tickets() === 1 ? 'ticket' : 'tickets'}</p>
     <div class="sa-actions">
+      <Show when={lead().pausedGraph}>{(pg) =>
+        <button type="button" class="sa-btn" data-tone="primary" disabled={props.sa.isBusy(`resume:${pg().sessionId}`)} onClick={() => void props.sa.resumePausedGraph(pg().sessionId)}>Resume</button>
+      }</Show>
       <button type="button" class="sa-btn" onClick={() => props.onOpen(lead().sessionId)}>Open</button>
       <button type="button" class="sa-btn" data-tone="danger" disabled={props.sa.isBusy(`stop:${lead().projectId}`)} onClick={() => void stop()}>Stop</button>
     </div>

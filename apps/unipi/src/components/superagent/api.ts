@@ -7,8 +7,13 @@ export const AutonomySchema = z.enum(['low', 'medium', 'high']);
 export const MODES = ['none', 'goal', 'ralph', 'swarm', 'graph'] as const;
 export type LeadMode = (typeof MODES)[number];
 export const REVIEWS = ['none', 'light', 'full'] as const;
+export const PAUSED_GRAPH_POLICIES = ['report', 'reuse'] as const;
+export type PausedGraphPolicy = (typeof PAUSED_GRAPH_POLICIES)[number];
+export const PausedGraphPolicySchema = z.enum(PAUSED_GRAPH_POLICIES);
 
 const ProgressSchema = z.object({ running: z.number(), queued: z.number(), done: z.number() });
+const PausedGraphSchema = z.object({ sessionId: z.string().min(1), title: z.string().nullish() });
+export type PausedGraph = z.infer<typeof PausedGraphSchema>;
 const LeadSchema = z.object({
   projectId: z.string(), sessionId: z.string(),
   presetId: z.string().nullish(), model: z.string().nullish(), thinking: z.string().nullish(),
@@ -16,6 +21,7 @@ const LeadSchema = z.object({
   ticketIds: z.array(z.string()).default([]),
   step: z.string().nullish(), tool: z.string().nullish(), startedAt: z.string().nullish(), cost: z.number().nullish(),
   progress: ProgressSchema.nullish(),
+  pausedGraph: PausedGraphSchema.nullish(),
 });
 /** An older host reports one worker per ticket. */
 const WorkerSchema = z.object({
@@ -48,6 +54,7 @@ const ProjectSchema = z.object({
 
 const RawStatusSchema = z.object({
   enabled: z.boolean(),
+  pausedGraphPolicy: PausedGraphPolicySchema.default('report'),
   leads: z.array(LeadSchema).optional(), workers: z.array(WorkerSchema).optional(),
   needsYou: z.array(NeedsSchema).default([]), review: z.array(ReviewSchema).optional(), projects: z.array(ProjectSchema).optional(),
 });
@@ -59,7 +66,7 @@ export type ReviewItem = z.infer<typeof ReviewSchema>;
 /** `blockers` / `registered` are always set on parsed rows; optional here so a row built by hand (an older host's shape) still type-checks. */
 export type ProjectRow = Omit<z.infer<typeof ProjectSchema>, 'blockers' | 'registered'> & { blockers?: Blocker[]; registered?: boolean };
 export type SuperagentStatus = {
-  enabled: boolean; leads: Lead[]; needsYou: NeedsItem[]; review: ReviewItem[];
+  enabled: boolean; pausedGraphPolicy: PausedGraphPolicy; leads: Lead[]; needsYou: NeedsItem[]; review: ReviewItem[];
   /** null: the host predates per-project controls. */
   projects: ProjectRow[] | null;
   /** The host still reports one worker per ticket. */
@@ -80,7 +87,7 @@ export function normalizeStatus(raw: z.infer<typeof RawStatusSchema>): Superagen
   }));
   const oldReview = raw.needsYou.filter((n) => n.status === 'in_review').map((n) => ({ projectId: n.projectId, taskId: n.taskId, status: n.status }));
   return {
-    enabled: raw.enabled, leads, legacy,
+    enabled: raw.enabled, pausedGraphPolicy: raw.pausedGraphPolicy, leads, legacy,
     needsYou: raw.needsYou.filter((n) => n.status !== 'in_review'),
     review: raw.review ?? oldReview,
     projects: raw.projects ?? null,
@@ -88,8 +95,8 @@ export function normalizeStatus(raw: z.infer<typeof RawStatusSchema>): Superagen
 }
 export const StatusSchema = RawStatusSchema.transform(normalizeStatus);
 
-export const ConfigSchema = z.object({ enabled: z.boolean() });
-const ConfigReplySchema = z.object({ enabled: z.boolean() });
+export const ConfigSchema = z.object({ enabled: z.boolean(), pausedGraphPolicy: PausedGraphPolicySchema.optional() });
+const ConfigReplySchema = z.object({ enabled: z.boolean(), pausedGraphPolicy: PausedGraphPolicySchema.optional() });
 export const RelayTextSchema = z.string().trim().min(1, 'Enter a message to relay.');
 export const SuperagentSessionSchema = z.object({ sessionId: z.string(), title: z.string(), createdAt: z.union([z.string(), z.number()]), updatedAt: z.union([z.string(), z.number()]), path: z.string(), project: z.string().nullish(), state: z.object({ kind: z.string() }).nullish(), pendingWork: z.string().nullish() });
 export type SuperagentSession = z.infer<typeof SuperagentSessionSchema>;

@@ -603,7 +603,13 @@ pub enum Request {
     #[serde(rename = "superagent.fleet")]
     SuperagentFleet,
     #[serde(rename = "superagent.configure", rename_all = "camelCase")]
-    SuperagentConfigure { enabled: bool, #[serde(default)] concurrency_cap: Option<usize> },
+    SuperagentConfigure {
+        enabled: bool,
+        #[serde(default)]
+        concurrency_cap: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        paused_graph_policy: Option<String>,
+    },
     #[serde(rename = "superagent.start", rename_all = "camelCase")]
     SuperagentStart { project_id: String, #[serde(default)] task_id: Option<String>, #[serde(default)] task_ids: Vec<String>, #[serde(default)] preset_id: Option<String>, #[serde(default)] overrides: Option<serde_json::Value> },
     #[serde(rename = "superagent.set_mode", rename_all = "camelCase")]
@@ -1107,6 +1113,7 @@ mod tests {
         for value in [
             serde_json::json!({"op":"superagent.start","projectId":"p","taskIds":["T-1"],"presetId":"feature","overrides":{"autonomy":"low"}}),
             serde_json::json!({"op":"superagent.start","projectId":"p","taskId":"T-1"}),
+            serde_json::json!({"op":"superagent.configure","enabled":true,"pausedGraphPolicy":"reuse"}),
             serde_json::json!({"op":"superagent.configure_project","projectId":"p","autoStart":true}),
             serde_json::json!({"op":"superagent.enable","action":"register","path":"/tmp/project"}),
             serde_json::json!({"op":"superagent.configure_project_lead","projectId":"p","model":"faux/example","thinking":"high"}),

@@ -1,12 +1,12 @@
-import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { createEffect, createMemo, createRoot, createSignal, onCleanup, type Accessor } from 'solid-js';
 import { toAppError } from '@unipi/protocol';
 import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
-import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Fleet, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
+import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Fleet, type Lead, type LeadMode, type PausedGraphPolicy, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
 import { superagentSessionId } from './chatActivity';
 import { runningSessions, type RunningSession } from './runningSessions';
 import { fallbackFleet } from './fleet';
-import { sessions } from '../../lib/session/store';
+import { openFailed, sessionMissing, sessions, type SessionHandle } from '../../lib/session/store';
 
 /** A mutation's failure, as far as the pane cares. */
 export type RunError = { message: string; code?: unknown; detail?: unknown };
@@ -15,6 +15,43 @@ export type EnableResult = { ok: true; projectId: string | null } | { ok: false;
 export type TicketMeta = { title: string; autonomy?: string; status?: string };
 export const ticketKey = (project: string, task: string) => `${project}/${task}`;
 const POLL_MS = 5000;
+
+function waitOutboxSent(handle: SessionHandle, ref: string, timeoutMs = 15_000): Promise<{ ok: true; value: undefined } | { ok: false; error: RunError }> {
+  return new Promise((resolve) => {
+    createRoot((dispose) => {
+      let done = false;
+      const finish = (res: { ok: true; value: undefined } | { ok: false; error: RunError }) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        queueMicrotask(dispose);
+        resolve(res);
+      };
+      const timer = setTimeout(() => {
+        handle.dismiss(ref);
+        finish({ ok: false, error: { message: 'Timed out resuming the paused graph. Retry.' } });
+      }, timeoutMs);
+      createEffect(() => {
+        const current = handle.state.outbox.find((o) => o.ref === ref);
+        if (!current || current.status === 'acked') {
+          finish({ ok: true, value: undefined });
+          return;
+        }
+        if (current.status === 'lost') {
+          const message = current.error || 'Could not resume the paused graph.';
+          handle.dismiss(ref);
+          finish({ ok: false, error: { message } });
+          return;
+        }
+        if (openFailed(handle.state) || sessionMissing(handle.state)) {
+          const message = handle.state.connError?.message || 'Could not open the previous lead session.';
+          handle.dismiss(ref);
+          finish({ ok: false, error: { message } });
+        }
+      });
+    });
+  });
+}
 
 /**
  * One host's Superagent state: polled status, ticket titles, presets and every
@@ -140,7 +177,32 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     meta: (project: string, task: string) => titles()[ticketKey(project, task)],
     configure(enabled: boolean) {
       const parsed = ConfigSchema.parse({ enabled });
-      return run('configure', () => superagentApi.configure(hostId(), parsed), (v) => { patchStatus((s) => ({ ...s, enabled: v.enabled })); });
+      return run('configure', () => superagentApi.configure(hostId(), parsed), (v) => {
+        patchStatus((s) => ({ ...s, enabled: v.enabled, ...(v.pausedGraphPolicy ? { pausedGraphPolicy: v.pausedGraphPolicy } : {}) }));
+      });
+    },
+    setPausedGraphPolicy(pausedGraphPolicy: PausedGraphPolicy) {
+      // TODO(OIN-56 phase 2): host-side "reuse" currently behaves like "report" until automatic wake/reuse is wired.
+      const parsed = ConfigSchema.parse({ enabled: status()?.enabled ?? false, pausedGraphPolicy });
+      return run('configure', () => superagentApi.configure(hostId(), parsed), (v) => {
+        patchStatus((s) => ({ ...s, enabled: v.enabled, pausedGraphPolicy: v.pausedGraphPolicy ?? pausedGraphPolicy }));
+      });
+    },
+    resumePausedGraph(sessionId: string) {
+      return run(`resume:${sessionId}`, async () => {
+        const handle = sessions().ensure(hostId(), sessionId);
+        const release = handle.acquire();
+        if (openFailed(handle.state)) handle.retry();
+        try {
+          const item = handle.send('/graph resume', { mode: 'prompt' });
+          return await waitOutboxSent(handle, item.ref);
+        } finally {
+          release();
+        }
+      }, async () => {
+        flash('Resuming paused graph.');
+        await refresh();
+      });
     },
     async setAutoStart(projectId: string, autoStart: boolean) {
       const before = status()?.projects?.find((p) => p.projectId === projectId)?.autoStart;

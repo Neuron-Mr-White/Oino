@@ -41,8 +41,12 @@ struct Fake {
     batches: Mutex<Vec<Vec<String>>>,
     deliveries: Mutex<Vec<(String, unipi_host::superagent::Delivery)>>,
     modes: Mutex<Vec<String>>,
+    agent_dir: Option<std::path::PathBuf>,
 }
 impl Workers for Fake {
+    fn agent_dir(&self) -> Option<&std::path::Path> {
+        self.agent_dir.as_deref()
+    }
     fn live<'a>(&'a self, id: &'a str) -> BoxFuture<'a, bool> {
         Box::pin(async move { self.live.lock().unwrap().contains(id) })
     }
@@ -315,6 +319,7 @@ async fn watcher_requires_project_toggle_and_status_separates_review() {
     d.configure(Config {
         enabled: true,
         concurrency_cap: 1,
+        ..Config::default()
     })
     .await
     .unwrap();
@@ -370,7 +375,7 @@ async fn archived_projects_and_tasks_are_absent_from_status_and_dispatch() {
     assert_eq!(d.blockers(&project.slug).await.unwrap()[0].code, "archived");
     assert_eq!(d.start(&project.slug, &ready).await.unwrap_err().code, "E_PROJECT_ARCHIVED");
     d.configure_project(&project.slug, true).await.unwrap();
-    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap();
+    d.configure(Config { enabled: true, concurrency_cap: 1, ..Config::default() }).await.unwrap();
     d.tick().await.unwrap();
     assert_eq!(fake.launches.load(Ordering::SeqCst), 0);
 }
@@ -410,7 +415,7 @@ async fn multiple_tasks_feed_one_lead_and_route_delivery() {
 async fn auto_start_batches_all_ready_tickets() {
     let f = Fixture::new(); let a = f.add("first", &[]); let b = f.add("second", &[]); let _blocked = f.add("wait", std::slice::from_ref(&a));
     let fake = Arc::new(Fake::default()); let d = f.dispatcher(fake.clone()).await;
-    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap(); d.configure_project(&f.project.slug, true).await.unwrap();
+    d.configure(Config { enabled: true, concurrency_cap: 1, ..Config::default() }).await.unwrap(); d.configure_project(&f.project.slug, true).await.unwrap();
     d.tick().await.unwrap();
     let batches = fake.batches.lock().unwrap(); assert_eq!(batches.len(), 1); assert_eq!(batches[0].len(), 2); assert!(batches[0].contains(&a)); assert!(batches[0].contains(&b));
 }
@@ -617,6 +622,7 @@ async fn watcher_manual_race_one_run() {
     d.configure(Config {
         enabled: true,
         concurrency_cap: 3,
+        ..Config::default()
     })
     .await
     .unwrap();
@@ -635,6 +641,7 @@ async fn two_todos_one_project_worker() {
     d.configure(Config {
         enabled: false,
         concurrency_cap: 3,
+        ..Config::default()
     })
     .await
     .unwrap();
@@ -829,7 +836,7 @@ async fn multiple_projects_dispatch_without_a_global_limit() {
     let d = f.dispatcher(fake.clone()).await;
     d.start(&f.project.slug, &first).await.unwrap();
     d.start(&projects[0].slug, &zm).await.unwrap();
-    d.configure(Config { enabled: true, concurrency_cap: 1 }).await.unwrap();
+    d.configure(Config { enabled: true, concurrency_cap: 1, ..Config::default() }).await.unwrap();
     d.configure_project(&projects[1].slug, true).await.unwrap();
     d.tick().await.unwrap();
     assert_eq!(fake.live.lock().unwrap().len(), 3);
@@ -1261,6 +1268,7 @@ async fn watcher_tick_does_not_start_backlog() {
     d.configure(Config {
         enabled: true,
         concurrency_cap: 1,
+        ..Config::default()
     })
     .await
     .unwrap();
@@ -1336,6 +1344,7 @@ async fn project_lead_applies_to_watcher_launch_and_status() {
     d.configure(Config {
         enabled: true,
         concurrency_cap: 1,
+        ..Config::default()
     })
     .await
     .unwrap();
@@ -1516,4 +1525,92 @@ async fn unattached_lead_tracks_waking_but_not_quiet_work() {
         }
     }).await.expect("quiet task must not keep the lead working");
     workers.stop(&session_id).await.unwrap();
+}
+
+#[tokio::test]
+async fn paused_graph_policy_defaults_to_report_and_status_attaches_parked_graph() {
+    use unipi_host::superagent::PausedGraphPolicy;
+    let f = Fixture::new();
+    let task = f.add("follow-up ticket", &[]);
+    let agent_dir = f.home.path().join("agent");
+    let ws_dir = agent_dir
+        .join("state/unipi.long-horizon/workspace")
+        .join(oino_wasm_host::workspace_id(&f.project.root.canonicalize().unwrap()));
+    std::fs::create_dir_all(&ws_dir).unwrap();
+    std::fs::write(
+        ws_dir.join("state.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "parked": {
+                "ownerId": "owner-1",
+                "kind": "graph",
+                "label": "Auth refactor graph",
+                "session": "lead-prev-1",
+                "status": "parked",
+                "reason": "paused(superseded_by:none)",
+                "revision": 2,
+                "lease": { "ownerId": "owner-1", "generation": 1 },
+                "updatedAt": "2026-11-09T00:00:00Z"
+            },
+            "history": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let fake = Arc::new(Fake {
+        agent_dir: Some(agent_dir),
+        ..Fake::default()
+    });
+    let d = f.dispatcher(fake.clone()).await;
+
+    assert_eq!(Config::default().paused_graph_policy, PausedGraphPolicy::Report);
+    let initial = d.status().await.unwrap();
+    assert_eq!(initial["pausedGraphPolicy"], "report");
+
+    let saved = d
+        .configure(Config {
+            enabled: true,
+            paused_graph_policy: PausedGraphPolicy::Reuse,
+            ..Config::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(saved.paused_graph_policy, PausedGraphPolicy::Reuse);
+    assert_eq!(d.status().await.unwrap()["pausedGraphPolicy"], "reuse");
+
+    let new_lead = d.start(&f.project.slug, &task).await.unwrap();
+    assert_ne!(new_lead, "lead-prev-1");
+
+    let status = d.status().await.unwrap();
+    assert_eq!(status["leads"][0]["sessionId"], new_lead);
+    assert_eq!(status["leads"][0]["mode"], "none");
+    assert_eq!(
+        status["leads"][0]["pausedGraph"],
+        serde_json::json!({
+            "sessionId": "lead-prev-1",
+            "title": "Auth refactor graph"
+        })
+    );
+
+    // Once resumed (moved to active) or owned by the running lead itself, pausedGraph clears.
+    std::fs::write(
+        ws_dir.join("state.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "active": {
+                "ownerId": "owner-1",
+                "kind": "graph",
+                "label": "Auth refactor graph",
+                "session": "lead-prev-1",
+                "status": "active"
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let resumed_status = d.status().await.unwrap();
+    assert!(resumed_status["leads"][0].get("pausedGraph").is_none());
+
+    drop(d);
+    let reopened = f.dispatcher(fake).await;
+    assert_eq!(reopened.status().await.unwrap()["pausedGraphPolicy"], "reuse");
 }
