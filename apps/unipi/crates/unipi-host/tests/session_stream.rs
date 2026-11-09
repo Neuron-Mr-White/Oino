@@ -841,3 +841,52 @@ async fn navigate_tree_moves_the_branch_for_every_client() {
     a.close().await;
     b.close().await;
 }
+
+/// OIN-75: switching away from a session and re-opening `session_open` without `since_seq`
+/// returns queued `steering` / `followUp` texts in `SessionSnapshot.state` (`RpcSessionState`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn session_open_snapshot_includes_queued_steering_on_reattach() {
+    let fixture = fixture().await;
+    let id = fixture.session_id.clone();
+    let target = || -> unipi_proto::SessionTarget { id.clone().try_into().unwrap() };
+
+    let mut a = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: target(),
+            since_seq: None,
+        },
+    );
+    let _ = a.snapshot().await;
+    a.send(&Control::SessionCmd {
+        id: Some(json!("steer1")),
+        cmd: json!({"type": "steer", "message": "keep API unchanged"}),
+    })
+    .await;
+    let (_, reply) = until_reply(&mut a, "steer1").await;
+    assert_eq!(reply["type"], "ok", "{reply}");
+    a.send(&Control::SessionCmd {
+        id: Some(json!("fu1")),
+        cmd: json!({"type": "follow_up", "message": "run cargo test after"}),
+    })
+    .await;
+    let (_, reply) = until_reply(&mut a, "fu1").await;
+    assert_eq!(reply["type"], "ok", "{reply}");
+    a.close().await;
+
+    let mut b = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: target(),
+            since_seq: None,
+        },
+    );
+    let full = b.snapshot().await;
+    assert!(full.reset);
+    let state: RpcSessionState =
+        serde_json::from_value(full.state.expect("snapshot state")).expect("RpcSessionState");
+    assert_eq!(state.pending_message_count, 2);
+    assert_eq!(state.steering, vec!["keep API unchanged".to_owned()]);
+    assert_eq!(state.follow_up, vec!["run cargo test after".to_owned()]);
+    b.close().await;
+}

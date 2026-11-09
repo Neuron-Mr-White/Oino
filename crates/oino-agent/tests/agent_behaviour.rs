@@ -164,6 +164,42 @@ async fn abort_cancels_running_tool() {
 }
 
 #[tokio::test]
+async fn abort_keeps_queued_steering_undelivered() {
+    let agent = agent();
+    let running = agent.clone();
+    let task = tokio::spawn(async move { running.prompt_text("go", Vec::new()).await });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    agent.steer(AgentMessage::User(oino_ai::UserMessage {
+        author: None,
+        content: "hold me".into(),
+        timestamp: 0,
+    }));
+    agent.abort();
+    task.await.unwrap().unwrap();
+    let messages = agent.messages();
+    assert!(
+        !messages
+            .iter()
+            .any(|m| matches!(m, AgentMessage::User(u) if u.content.text("") == "hold me")),
+        "aborted run must not silently deliver a queued steer"
+    );
+    assert_eq!(agent.steering_queue().len(), 1);
+    match messages.last() {
+        Some(AgentMessage::Assistant(last)) => assert_eq!(last.stop_reason, StopReason::Aborted),
+        other => panic!("unexpected last message {other:?}"),
+    }
+    // Resuming after stop drains the held steer cleanly.
+    agent.continue_run().await.unwrap();
+    assert!(agent.steering_queue().is_empty());
+    assert!(
+        agent
+            .messages()
+            .iter()
+            .any(|m| matches!(m, AgentMessage::User(u) if u.content.text("") == "hold me"))
+    );
+}
+
+#[tokio::test]
 async fn tool_changes_are_declared_before_next_request() {
     let agent = agent();
     agent.prompt_text("one", Vec::new()).await.unwrap();

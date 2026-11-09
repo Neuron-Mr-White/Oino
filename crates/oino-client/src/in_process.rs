@@ -249,6 +249,8 @@ impl Shared {
             auto_compaction_enabled,
             message_count: session.message_count(),
             pending_message_count: session.pending_message_count(),
+            steering: session.steering_messages(),
+            follow_up: session.follow_up_messages(),
             waiting_on: session.waiting_on(),
             background_on: session.background_on(),
         }

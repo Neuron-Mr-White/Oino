@@ -695,10 +695,11 @@ async fn nested_tool_calls_are_recorded() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn abort_settles_with_aborted_and_delivers_queued_steering() {
+async fn abort_settles_with_aborted_and_holds_queued_steering() {
     let provider = FauxProvider::new(vec![
         FauxResponse::ToolCalls(vec![("c1".into(), "slow".into(), args(json!({})))]),
         FauxResponse::Text("never".into()),
+        FauxResponse::Text("resumed".into()),
     ]);
     let extension = FakeExtension::new(
         "ext",
@@ -759,17 +760,39 @@ async fn abort_settles_with_aborted_and_delivers_queued_steering() {
         })
         .collect();
     assert_eq!(settled, vec![true]);
-    // Steering is polled after the running batch even when aborted: the queued message is
-    // delivered into the (aborted) next request, nothing is discarded.
-    assert_eq!(session.steering_messages().len(), 0);
+    // OIN-75: aborting a run before a steer point must NOT auto-send the queued steer;
+    // it remains queued (held) so the owner can send, edit, or discard it.
+    assert_eq!(session.steering_messages(), vec!["queued".to_owned()]);
+    assert!(
+        !session
+            .messages()
+            .iter()
+            .any(|m| matches!(m, AgentMessage::User(u) if u.content.text("") == "queued")),
+        "queued steer must not be sent into the transcript on abort"
+    );
+    let last = session.last_assistant_message().unwrap();
+    assert_eq!(last.stop_reason, StopReason::Aborted);
+
+    // Sending the held steer explicitly delivers it as a normal turn.
+    session
+        .edit_queue(oino_core::session::QueueEdit::SendNow {
+            queue: oino_core::session::QueueKind::Steering,
+            index: 0,
+        })
+        .await
+        .unwrap();
+    session.wait_for_idle().await;
+    assert!(session.steering_messages().is_empty());
     assert!(
         session
             .messages()
             .iter()
             .any(|m| matches!(m, AgentMessage::User(u) if u.content.text("") == "queued"))
     );
-    let last = session.last_assistant_message().unwrap();
-    assert_eq!(last.stop_reason, StopReason::Aborted);
+    assert_eq!(
+        session.last_assistant_text().as_deref(),
+        Some("resumed")
+    );
 }
 
 /// E-04: Stop must always end a turn. A dialog the user never answers (the approval

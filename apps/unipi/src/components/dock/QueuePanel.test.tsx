@@ -11,7 +11,7 @@ import { createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
 import type { RpcCommand, SessionSnapshot } from '../../lib/host/client';
-import { createSession, type SessionHandle } from '../../lib/session/store';
+import { createSession, createSessionRegistry, type SessionHandle } from '../../lib/session/store';
 import { clearScrollMemory } from '../../lib/timeline/scrollMemory';
 import { composerDraft, setComposerText, clearComposer } from '../../lib/composer/drafts';
 import { QueuePanel, applyMove, moveEdit, queueItems } from './QueuePanel';
@@ -199,6 +199,103 @@ describe('QueuePanel', () => {
     const s = await createSessionSetup(w);
     render(() => <QueuePanel session={s} />);
     expect(screen.queryByTestId('queue-panel')).toBeNull();
+  });
+
+  it('restores a queued steer from host state across session switch + re-attach and holds it on abort (OIN-75)', async () => {
+    const q = { steering: [] as string[], followUp: [] as string[] };
+    let running = true;
+    let seq = 1;
+    const snapshotForS1 = (): SessionSnapshot => ({
+      ...structuredClone(rt.fresh),
+      session_id: 's1',
+      seq,
+      entries: [],
+      state: {
+        ...((rt.fresh.state ?? {}) as Record<string, unknown>),
+        sessionId: 's1',
+        isStreaming: running,
+        pendingMessageCount: q.steering.length + q.followUp.length,
+        ...(q.steering.length ? { steering: [...q.steering] } : {}),
+        ...(q.followUp.length ? { followUp: [...q.followUp] } : {}),
+      },
+    });
+    const sessionS1 = {
+      get snapshot() {
+        return snapshotForS1();
+      },
+      events: [] as never[],
+      cmd: {
+        prompt: (cmd: Record<string, unknown>, host: { hostId: string; world: MockWorld }) => {
+          if (cmd.streamingBehavior === 'steer') {
+            q.steering.push(String(cmd.message ?? ''));
+            host.world.push(host.hostId, 's1', [{ session: 's1', seq: ++seq, event: { type: 'queue_update', steering: [...q.steering], followUp: [...q.followUp] } }]);
+            return { disposition: 'queued' };
+          }
+          return { disposition: 'started' };
+        },
+        abort: (_cmd: Record<string, unknown>, host: { hostId: string; world: MockWorld }) => {
+          running = false;
+          host.world.push(host.hostId, 's1', [
+            { session: 's1', seq: ++seq, event: { type: 'agent_end', messages: [] } },
+            { session: 's1', seq: ++seq, event: { type: 'agent_settled', aborted: true } },
+          ]);
+          return {};
+        },
+      },
+    };
+    const w = createMockHost({
+      name: 'steer-reattach',
+      hosts: [
+        {
+          id: 'h1',
+          name: 'coffee',
+          sessions: {
+            s1: sessionS1,
+            s2: { snapshot: { ...structuredClone(rt.fresh), session_id: 's2', seq: 0, entries: [] } as SessionSnapshot, events: [] },
+          },
+        },
+      ],
+    });
+    const registry = createSessionRegistry(1, (hostId, sessionId) =>
+      createSession(hostId, sessionId, { client: w.client(hostId), schedule: (f) => f(), now: () => Date.now() }),
+    );
+    disposers.push(() => registry.closeAll());
+
+    // 1. Open s1 during a running turn and send a steer.
+    const first = registry.ensure('h1', 's1');
+    const releaseS1 = first.acquire();
+    await waitFor(() => expect(first.state.conn).toBe('live'));
+    first.send('Hold off on touching public types', { mode: 'steer' });
+    await waitFor(() => expect(first.state.queue.steering).toEqual(['Hold off on touching public types']));
+    expect(first.state.outbox).toEqual([]);
+
+    // 2. Switch to s2: s1 is released and evicted from the in-memory registry (limit = 1).
+    releaseS1();
+    const second = registry.ensure('h1', 's2');
+    const releaseS2 = second.acquire();
+    await waitFor(() => expect(second.state.conn).toBe('live'));
+    expect(first.closed).toBe(true);
+
+    // 3. Switch back to s1: re-attaches via a fresh session_open snapshot (no client-side cache, no new queue_update).
+    releaseS2();
+    const reopened = registry.ensure('h1', 's1');
+    const releaseReopened = reopened.acquire();
+    disposers.push(releaseReopened);
+    expect(reopened).not.toBe(first);
+    await waitFor(() => expect(reopened.state.conn).toBe('live'));
+
+    render(() => <QueuePanel session={reopened} />);
+    expect(screen.getByTestId('queue-panel')).toBeTruthy();
+    expect(screen.getByText('Hold off on touching public types')).toBeTruthy();
+    expect(screen.getByTestId('queue-panel').hasAttribute('data-held')).toBe(false);
+
+    // 4. Stop/abort the run: steer is NOT sent into the transcript and remains held in QueuePanel.
+    await reopened.abort();
+    await waitFor(() => expect(reopened.state.run.running).toBe(false));
+    expect(reopened.state.entries).toEqual([]);
+    expect(screen.getByTestId('queue-panel').hasAttribute('data-held')).toBe(true);
+    expect(screen.getByTestId('queue-resume')).toBeTruthy();
+    expect(screen.getByText('Hold off on touching public types')).toBeTruthy();
   });
 });
 

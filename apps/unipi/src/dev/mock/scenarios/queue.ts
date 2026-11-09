@@ -23,6 +23,22 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
   const q: Queues = { steering: [...opts.queues.steering], followUp: [...opts.queues.followUp] };
   let seq = 0;
   let live = opts.running;
+  const syncSnapshot = () => {
+    const state = { ...((base.snapshot.state ?? {}) as Record<string, unknown>) };
+    delete state.steering;
+    delete state.followUp;
+    base.snapshot = {
+      ...base.snapshot,
+      state: {
+        ...state,
+        isStreaming: live,
+        pendingMessageCount: q.steering.length + q.followUp.length,
+        ...(q.steering.length ? { steering: [...q.steering] } : {}),
+        ...(q.followUp.length ? { followUp: [...q.followUp] } : {}),
+      },
+    };
+  };
+  syncSnapshot();
   const ev = (event: Record<string, unknown>, at = 0): Step => ({ at, dto: { session: id, seq: ++seq, event: event as never } });
   const push = (host: MockHost, events: Array<Record<string, unknown>>) =>
     host.world.push(host.hostId, id, events.map((event) => ({ session: id, seq: ++seq, event: event as never })));
@@ -43,24 +59,28 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
         const behavior = String((cmd as { streamingBehavior?: unknown }).streamingBehavior ?? '');
         if (behavior === 'steer') {
           q.steering.push(String(cmd.message ?? ''));
+          syncSnapshot();
           push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
-          return {};
+          return { disposition: 'queued' };
         }
         if (behavior === 'followUp') {
           q.followUp.push(String(cmd.message ?? ''));
+          syncSnapshot();
           push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
-          return {};
+          return { disposition: 'queued' };
         }
         return {};
       },
-      abort: (cmd, host) => {
+      abort: (_cmd, host) => {
         live = false;
+        syncSnapshot();
         push(host, [{ type: 'agent_end', messages: [] }, { type: 'run_state', state: 'idle' }]);
         return {};
       },
       clear_queue: (_cmd, host) => {
         q.steering = [];
         q.followUp = [];
+        syncSnapshot();
         push(host, [{ type: 'queue_update', steering: [], followUp: [] }]);
         return { steering: [], followUp: [] };
       },
@@ -85,6 +105,8 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
               q.steering.unshift(taken);
               break;
             }
+            live = true;
+            syncSnapshot();
             push(host, [
               { type: 'agent_start' },
               { type: 'message_start', message: { role: 'user', content: taken ?? '' } },
@@ -93,6 +115,7 @@ function queueSession(id: string, opts: { running: boolean; queues: Queues }): M
             return {};
           }
         }
+        syncSnapshot();
         push(host, [{ type: 'queue_update', steering: q.steering, followUp: q.followUp }]);
         return {};
       },

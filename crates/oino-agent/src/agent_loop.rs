@@ -125,7 +125,7 @@ async fn run_loop(
     let config = initial_config;
     let mut last_turn: Option<CompletedTurn> = None;
     let mut explicit_continuation = false;
-    let mut pending = poll(config.get_steering_messages.as_ref()).await;
+    let mut pending = poll(config.get_steering_messages.as_ref(), cancel).await;
     let mut guards = LoopGuards::new(&current.messages);
 
     loop {
@@ -150,7 +150,7 @@ async fn run_loop(
                     }
                 }
                 if pending.is_empty() {
-                    pending = poll(config.get_steering_messages.as_ref()).await;
+                    pending = poll(config.get_steering_messages.as_ref(), cancel).await;
                 }
                 sink.emit(AgentEvent::TurnStart).await;
             }
@@ -395,13 +395,13 @@ async fn run_loop(
                 return Ok(());
             }
             explicit_continuation = guard_continue || decision == Some(TurnDecision::Continue);
-            pending = poll(config.get_steering_messages.as_ref()).await;
+            pending = poll(config.get_steering_messages.as_ref(), cancel).await;
             if has_more_tool_calls || !pending.is_empty() {
                 explicit_continuation = false;
             }
         }
 
-        let follow_ups = poll(config.get_follow_up_messages.as_ref()).await;
+        let follow_ups = poll(config.get_follow_up_messages.as_ref(), cancel).await;
         if !follow_ups.is_empty() {
             explicit_continuation = false;
             pending = follow_ups;
@@ -735,7 +735,13 @@ async fn fail_guarded_tool_calls(
     }
 }
 
-async fn poll(source: Option<&Arc<dyn crate::config::QueueSource>>) -> Vec<AgentMessage> {
+async fn poll(
+    source: Option<&Arc<dyn crate::config::QueueSource>>,
+    cancel: &CancellationToken,
+) -> Vec<AgentMessage> {
+    if cancel.is_cancelled() {
+        return Vec::new();
+    }
     match source {
         Some(source) => source.drain().await,
         None => Vec::new(),

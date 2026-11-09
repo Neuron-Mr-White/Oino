@@ -100,7 +100,7 @@ function topicsOf(list: readonly unknown[] | undefined): Record<string, TopicVal
   return out;
 }
 
-/** `RpcSessionState` → run / name / model / thinking. */
+/** `RpcSessionState` → run / name / model / thinking / queue. */
 function applyInfo(s: SessionState, info: Record<string, unknown>): void {
   s.info = info;
   const streaming = info.isStreaming === true || info.running === true;
@@ -123,6 +123,12 @@ function applyInfo(s: SessionState, info: Record<string, unknown>): void {
   if (isObject(info.model)) s.model = info.model as SessionState['model'];
   const thinking = str(info.thinkingLevel) ?? str(info.thinking);
   if (thinking !== undefined) s.thinkingLevel = thinking;
+  if (Array.isArray(info.steering) || Array.isArray(info.followUp) || info.pendingMessageCount === 0) {
+    const steering = Array.isArray(info.steering) ? info.steering.filter((t): t is string => typeof t === 'string') : [];
+    const followUp = Array.isArray(info.followUp) ? info.followUp.filter((t): t is string => typeof t === 'string') : [];
+    s.queue = { steering, followUp };
+    settleByQueue(s, [...steering, ...followUp]);
+  }
 }
 
 /**

@@ -1264,6 +1264,16 @@ impl App {
         self.session.session_file = parse(Some(state), "sessionFile");
         self.session.session_name = parse(Some(state), "sessionName");
         self.session.auto_compaction = parse(Some(state), "autoCompactionEnabled").unwrap_or(true);
+        if state.get("steering").is_some()
+            || state.get("followUp").is_some()
+            || state.get("pendingMessageCount").and_then(JsonValue::as_u64) == Some(0)
+        {
+            let steering: Vec<String> = parse(Some(state), "steering").unwrap_or_default();
+            let follow_up: Vec<String> = parse(Some(state), "followUp").unwrap_or_default();
+            if !steering.is_empty() || !follow_up.is_empty() {
+                self.queue = (steering, follow_up);
+            }
+        }
     }
 
     fn on_sessions(&mut self, result: Result<Vec<SessionItem>, String>) {

@@ -1015,6 +1015,7 @@ fn session_busy(runtime: &Arc<AgentSessionRuntime>) -> bool {
     let session = runtime.session();
     session.run_state() != oino_core::events::RunState::Idle
         || session.is_bash_running()
+        || session.pending_message_count() > 0
         || session
             .agent_tree()
             .iter()

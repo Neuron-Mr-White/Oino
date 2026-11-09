@@ -1001,6 +1001,13 @@ pub struct RpcSessionState {
     pub message_count: usize,
     /// Queued texts.
     pub pending_message_count: usize,
+    /// Oino: queued steering texts (`queue_update` `steering`), so a re-attached client
+    /// restores queued steers from `get_state` / `session_open`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steering: Vec<String>,
+    /// Oino: queued follow-up texts (`queue_update` `followUp`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_up: Vec<String>,
     /// Oino: work the session waits on while idle (`waiting`: background tasks with a
     /// wake, background subagents, graph nodes); it wakes the session when done.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

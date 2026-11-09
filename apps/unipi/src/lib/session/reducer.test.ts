@@ -162,6 +162,31 @@ describe('session reducer: reset, gaps, host events', () => {
     expect(comparable(s)).toEqual(comparable(fromFresh()));
   });
 
+  it('restores queued steering and follow-up messages from reset snapshots and woken state (OIN-75)', () => {
+    const s = fresh();
+    const pending = enqueue(s, { text: 'check edge cases', mode: 'steer' }, true, NOW);
+    markAcked(s, pending.ref, NOW);
+    const snap = structuredClone(rt.fresh);
+    snap.state = {
+      ...((snap.state ?? {}) as Record<string, unknown>),
+      isStreaming: true,
+      pendingMessageCount: 2,
+      steering: ['check edge cases'],
+      followUp: ['run tests after'],
+    };
+    applySnapshot(s, snap, NOW);
+    expect(s.queue).toEqual({ steering: ['check edge cases'], followUp: ['run tests after'] });
+    expect(s.outbox).toEqual([]);
+
+    // Empty host queue clears stale queue state on woken too.
+    applyEvent(
+      s,
+      { session: 's1', seq: snap.seq + 1, event: { kind: 'woken', state: { sessionId: 's1', isStreaming: false, isCompacting: false, pendingMessageCount: 0 } } },
+      NOW,
+    );
+    expect(s.queue).toEqual({ steering: [], followUp: [] });
+  });
+
   it('a seq gap that coalesced deltas cannot explain is reported and not applied', () => {
     const s = fresh();
     applySnapshot(s, structuredClone(rt.snapshot), NOW);

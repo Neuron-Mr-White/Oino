@@ -812,3 +812,61 @@ async fn session_tools_are_attached_when_a_record_wakes() {
     prompt(&backend, "use the host tool").await;
     assert_eq!(calls.load(Ordering::SeqCst), 1, "the woken session ran the host tool");
 }
+
+/// OIN-75: `get_state` carries queued `steering` / `followUp` texts so re-attached clients
+/// restore queued steers from the snapshot, and an idle session holding unpersisted queued
+/// messages is not idle-evicted before the owner sends or clears them.
+#[tokio::test]
+async fn get_state_exposes_queued_messages_and_prevents_idle_eviction() {
+    let (dir, hub, _loads, _provider) = hub_with(
+        Some(r#"{"extensionSettings":{"hub":{"sessionIdleSec":1}}}"#),
+        Vec::new(),
+        Vec::new(),
+        ToolSelection::Default,
+    );
+    let (_file, id) = conversation_file(dir.path());
+    let backend = hub.open(&id).await.unwrap();
+    backend
+        .send(RpcCommand::Agent(AgentCommand::Steer {
+            message: "steer one".into(),
+            images: Vec::new(),
+        }))
+        .await
+        .unwrap();
+    backend
+        .send(RpcCommand::Agent(AgentCommand::FollowUp {
+            message: "after turn".into(),
+            images: Vec::new(),
+        }))
+        .await
+        .unwrap();
+
+    let state = state_of(&backend).await;
+    assert_eq!(state.pending_message_count, 2);
+    assert_eq!(state.steering, vec!["steer one".to_owned()]);
+    assert_eq!(state.follow_up, vec!["after turn".to_owned()]);
+
+    // Past the 1 s idle window with no external subscribers: held queue keeps the session live.
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let listed = hub.list().await.unwrap();
+    assert_eq!(
+        listed.iter().find(|s| s.info.id == id).unwrap().state,
+        HubSessionState::Live,
+        "held steering/follow-up queue prevents idle eviction"
+    );
+
+    // Re-opening returns the same live session with its queued items intact in `get_state`.
+    let reopened = hub.open(&id).await.unwrap();
+    let reopened_state = state_of(&reopened).await;
+    assert_eq!(reopened_state.steering, vec!["steer one".to_owned()]);
+    assert_eq!(reopened_state.follow_up, vec!["after turn".to_owned()]);
+
+    reopened
+        .send(RpcCommand::Agent(AgentCommand::ClearQueue))
+        .await
+        .unwrap();
+    let cleared = state_of(&reopened).await;
+    assert!(cleared.steering.is_empty());
+    assert!(cleared.follow_up.is_empty());
+    wait_state(&hub, &id, HubSessionState::Record).await;
+}
