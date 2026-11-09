@@ -1,9 +1,11 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, createUniqueId, onCleanup, Show, type JSX } from 'solid-js';
 import { ChevronLeft, ChevronRight, Send } from 'lucide-solid';
 import { ApprovalCard } from '../composer/ApprovalCard';
+import { Markdown } from '../board/Markdown';
 import { sessions } from '../../lib/session/store';
 import { superagentApi, type ApprovalItem, type NeedsItem } from './api';
 import type { SuperagentState } from './state';
+import { isLongReport, splitBlocked } from './blocked';
 
 /** Clears the card as soon as the worker's own stream drops the request. */
 function WatchApproval(props: { hostId: string; item: ApprovalItem; onGone: () => void }) {
@@ -56,37 +58,62 @@ function Approvals(props: { hostId: string; sa: SuperagentState; items: Approval
   </div>;
 }
 
-/** One blocked ticket's question with its reply box; `onSent` fires once the lead got the answer. */
-export function Question(props: { sa: SuperagentState; item: NeedsItem; onTicket?: (project: string, task: string) => void; onSent?: () => void }) {
+/**
+ * One blocked ticket as a decision (OIN-62): the question pinned at the top and large, the reply
+ * box under it, the lead's report behind "Read full report". `onSent` fires once the lead got the answer.
+ */
+export function Question(props: { sa: SuperagentState; item: NeedsItem; onTicket?: (project: string, task: string) => void; onSent?: () => void; /** The workbench's "N of M" pager, kept with the pinned part. */ pager?: JSX.Element }) {
   const [text, setText] = createSignal('');
+  const [open, setOpen] = createSignal(false);
+  const reportId = createUniqueId();
   const key = () => `answer:${props.item.projectId}/${props.item.taskId}`;
   const title = () => props.sa.meta(props.item.projectId, props.item.taskId)?.title;
+  const parts = createMemo(() => splitBlocked(props.item.question));
+  const long = () => isLongReport(parts().report);
   async function send() {
     if (!text().trim() || props.sa.isBusy(key())) return;
     if (await props.sa.answer(props.item.projectId, props.item.taskId, text())) { setText(''); props.onSent?.(); }
   }
   const heading = () => <><span class="sa-project">{props.sa.projectName(props.item.projectId)} · Blocked</span><strong>{props.item.taskId}{title() ? ` · ${title()}` : ''}</strong></>;
-  return <article class="sa-question">
-    <Show when={props.onTicket} fallback={<div class="sa-link">{heading()}</div>}>
-      <button type="button" class="sa-link" onClick={() => props.onTicket!(props.item.projectId, props.item.taskId)}>{heading()}</button>
+  return <article class="sa-question" data-testid="sa-question">
+    <div class="sa-pin">
+      <div class="sa-approval-head">
+        <Show when={props.onTicket} fallback={<div class="sa-link">{heading()}</div>}>
+          <button type="button" class="sa-link" onClick={() => props.onTicket!(props.item.projectId, props.item.taskId)}>{heading()}</button>
+        </Show>
+        {props.pager}
+      </div>
+      <Show when={parts().reason}><p class="sa-question-reason" data-testid="sa-question-reason" title={parts().reason}>{parts().reason}</p></Show>
+      <section class="sa-ask" aria-label="Need from you" data-testid="sa-ask">
+        <h3>Need from you</h3>
+        <Markdown text={parts().ask} class="sa-ask-text" />
+      </section>
+      <form class="sa-reply" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <textarea rows="1" aria-label={`Reply to ${props.item.taskId}`} placeholder="Reply to the lead" value={text()} disabled={props.sa.isBusy(key())}
+          onInput={(e) => setText(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); void send(); } }} />
+        <button type="submit" class="sa-icon-btn sa-send" aria-label={`Send reply for ${props.item.taskId}`} disabled={!text().trim() || props.sa.isBusy(key())}><Send size={16} /></button>
+      </form>
+      <Show when={long()}>
+        <button type="button" class="sa-report-toggle" aria-expanded={open()} aria-controls={reportId} onClick={() => setOpen(!open())}>
+          <ChevronRight size={14} class="sa-chev" aria-hidden="true" />{open() ? 'Hide full report' : 'Read full report'}
+        </button>
+      </Show>
+    </div>
+    <Show when={parts().report && (!long() || open())}>
+      <div class="sa-report" id={reportId} role="region" aria-label="Full report" data-testid="sa-report"><Markdown text={parts().report} class="sa-report-md" /></div>
     </Show>
-    <p class="sa-question-text">{props.item.question}</p>
-    <form class="sa-reply" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-      <textarea rows="1" aria-label={`Reply to ${props.item.taskId}`} placeholder="Reply to the lead" value={text()} disabled={props.sa.isBusy(key())}
-        onInput={(e) => setText(e.currentTarget.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); void send(); } }} />
-      <button type="submit" class="sa-icon-btn sa-send" aria-label={`Send reply for ${props.item.taskId}`} disabled={!text().trim() || props.sa.isBusy(key())}><Send size={16} /></button>
-    </form>
   </article>;
 }
 
 /** The workbench's Approve tab: approvals one at a time, a decided or stale one drops out at once. */
-export function ApprovalQueue(props: { hostId: string; sa: SuperagentState; items: ApprovalItem[]; onOpen: (id: string) => void; onTicket: (project: string, task: string) => void; onCurrent?: (item: ApprovalItem) => void }) {
+export function ApprovalQueue(props: { hostId: string; sa: SuperagentState; items: ApprovalItem[]; onOpen: (id: string) => void; onTicket: (project: string, task: string) => void; onCurrent?: (item: ApprovalItem) => void; onAdvance?: () => void }) {
   const [cleared, setCleared] = createSignal<string[]>([]);
   const items = createMemo(() => props.items.filter((a) => !cleared().includes(a.requestId)));
   function gone(id: string, stale = false) {
     setCleared((old) => (old.includes(id) ? old : [...old, id]));
     if (stale) props.sa.flash('This request is no longer pending');
+    props.onAdvance?.();
   }
   return <section class="sa-approvals" aria-label="Approvals" data-testid="sa-approvals">
     <Show when={items().length} fallback={<p class="sa-empty">No approvals waiting.</p>}>

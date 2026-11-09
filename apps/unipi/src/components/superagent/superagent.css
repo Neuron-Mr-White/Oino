@@ -89,9 +89,22 @@
 .sa-approval .dlg-btn { min-height:32px; padding:0 10px; font-size:calc(13px * var(--ui-font-scale)); flex:0 1 auto; }
 .sa-approval-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
 .sa-pager { display:inline-flex; align-items:center; gap:2px; flex:0 0 auto; color:var(--color-text-muted); font-size:calc(12px * var(--ui-font-scale)); font-variant-numeric:tabular-nums; white-space:nowrap; }
-.sa-question { display:flex; flex-direction:column; gap:6px; padding:12px 0; border-bottom:1px solid var(--color-line); }
 .sa-approval + .sa-question { margin-top:4px; }
-.sa-question-text { margin:0; white-space:normal; overflow-wrap:anywhere; line-height:1.5; }
+/* OIN-62: a blocked ticket is a decision. The question is pinned (sticky) above its report, large; the report reads in a measure. */
+.sa-question { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.sa-pin { position:sticky; top:0; z-index:2; display:flex; flex-direction:column; gap:10px; margin:0 -16px; padding:0 16px 12px; background:var(--color-surface-1); }
+.sa-question-reason { margin:-4px 0 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:calc(12px * var(--ui-font-scale)); color:var(--color-text-muted); }
+.sa-ask { padding:12px 14px 14px; background:var(--color-surface-2); border:1px solid var(--color-line); border-left:3px solid var(--color-amber); border-radius:10px; }
+.sa-ask h3 { margin:0 0 6px; font-size:calc(11px * var(--ui-font-scale)); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--color-amber); }
+.sa-ask .sa-ask-text { max-height:36vh; overflow-y:auto; scrollbar-width:thin; font-size:calc(19px * var(--ui-font-scale)); line-height:1.4; font-weight:550; }
+.sa-ask .sa-ask-text > :first-child { margin-top:0; }
+.sa-ask .sa-ask-text > :last-child { margin-bottom:0; }
+.sa-report-toggle { display:inline-flex; align-items:center; align-self:flex-start; gap:4px; min-height:32px; padding:0 10px 0 6px; font:inherit; font-size:calc(13px * var(--ui-font-scale)); font-weight:550; color:var(--color-text); background:var(--color-surface-3); border:0; border-radius:9999px; }
+.sa-report-toggle:hover { filter:brightness(1.12); }
+.sa-report-toggle[aria-expanded=true] .sa-chev { transform:rotate(90deg); }
+.sa-report { min-width:0; padding-top:4px; border-top:1px solid var(--color-line); }
+.sa-report .sa-report-md { max-width:68ch; font-size:calc(14px * var(--ui-font-scale)); line-height:1.6; overflow-wrap:anywhere; }
+.sa-report .sa-report-md > :first-child { margin-top:12px; }
 .sa-reply { display:flex; align-items:flex-end; gap:6px; }
 .sa-reply textarea { flex:1; min-width:0; min-height:36px; max-height:120px; padding:8px 10px; resize:none; color:var(--color-text); background:var(--color-bg); border:1px solid var(--color-line); border-radius:var(--radius-input, 8px); box-sizing:border-box; field-sizing:content; }
 .sa-reply textarea::placeholder { color:var(--color-text-muted); }
@@ -233,8 +246,11 @@ html[data-shell=phone] .sa-approval .autonomy-command .dock-queue-icon { min-wid
 .sa-review-capsule .sa-escalate-badge { color:var(--color-amber); background:rgb(240 168 24 / 14%); }
 .sa-review-capsule .sa-approve-badge { color:#fff; background:var(--color-shell); }
 .sa-escalation { display:flex; flex-direction:column; gap:8px; }
-.sa-escalation > .sa-pager { align-self:flex-end; }
 .sa-review-list-pane[data-section=approve], .sa-review-list-pane[data-section=escalate] { width:420px; padding:16px; }
+/* The Escalate tab is the reading surface: it takes the whole workbench until a ticket opens beside it. */
+.sa-review-body[data-section=escalate]:not([data-ticket]) .sa-review-list-pane { flex:1; width:auto; border-right:0; }
+.sa-review-body[data-section=escalate]:not([data-ticket]) .sa-review-detail { display:none; }
+.sa-review-body[data-section=escalate]:not([data-ticket]) .sa-escalation { width:min(760px, 100%); margin:0 auto; }
 .sa-review-dialog.sm-dialog { width:min(1160px, calc(100vw - 48px)); height:85vh; max-height:85vh; border-radius:var(--radius-sheet); }
 .sa-review-heading { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-bottom:1px solid var(--color-line); }
 .sa-review-heading h2 { font-size:calc(17px * var(--ui-font-scale)); margin:0; }
@@ -261,6 +277,11 @@ html[data-shell=phone] .sa-approval .autonomy-command .dock-queue-icon { min-wid
 html[data-shell=phone] .sa-review-sheet .board-sheet-body { display:flex; flex-direction:column; overflow:hidden; padding:0; }
 html[data-shell=phone] .sa-review-controls { padding:10px; }
 html[data-shell=phone] .sa-review-list-pane { width:100%; border:0; }
+html[data-shell=phone] .sa-review-list-pane[data-section=escalate], html[data-shell=phone] .sa-review-list-pane[data-section=approve] { padding:12px; box-sizing:border-box; }
+html[data-shell=phone] .sa-pin { margin:0 -12px; padding:0 12px 12px; }
+html[data-shell=phone] .sa-ask .sa-ask-text { font-size:calc(18px * var(--ui-font-scale)); max-height:30vh; }
+html[data-shell=phone] .sa-report-toggle { min-height:44px; }
+html[data-shell=phone] .sa-report .sa-report-md { font-size:calc(16px * var(--ui-font-scale)); }
 html[data-shell=phone] .sa-review-detail { display:none; }
 html[data-shell=phone] .sa-review-body[data-detail] .sa-review-list-pane { display:none; }
 html[data-shell=phone] .sa-review-body[data-detail] .sa-review-detail { display:flex; }

@@ -31,6 +31,8 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
   const [mount, setMount] = createSignal<HTMLDivElement>();
   let trigger: HTMLElement | undefined;
   let dialog: HTMLDivElement | undefined;
+  let root: HTMLDivElement | undefined;
+  let capsule: HTMLDivElement | undefined;
   let prior: ReturnType<typeof taskOrigin>;
   let opening = false;
   let ignoredTask: string | undefined;
@@ -51,7 +53,7 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
   let wasOpen = false;
   createEffect(() => {
     const now = open();
-    if (wasOpen && !now) { endQueue(); boardUi().closeTask(); prior = undefined; queueMicrotask(() => trigger?.focus()); }
+    if (wasOpen && !now) { endQueue(); boardUi().closeTask(); prior = undefined; returnFocus(); }
     wasOpen = now;
   });
   createEffect(() => {
@@ -88,6 +90,11 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     try { await openFromSuperagent(host, 'needs', [ref], ref); }
     finally { opening = false; }
   }
+  const pager = () => <span class="sa-pager" role="group" aria-label="Questions">
+    <button type="button" class="sa-icon-btn" aria-label="Previous question" disabled={qAt() === 0} onClick={() => setQIndex(qAt() - 1)}><ChevronLeft size={16} /></button>
+    <span aria-live="polite">{qAt() + 1} of {questions().length}</span>
+    <button type="button" class="sa-icon-btn" aria-label="Next question" disabled={qAt() >= questions().length - 1} onClick={() => setQIndex(qAt() + 1)}><ChevronRight size={16} /></button>
+  </span>;
   function openSession(id: string) { close(); props.onOpenSession?.(id); }
   // Restore a deep-linked task once status has arrived.
   createEffect(() => {
@@ -97,6 +104,24 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     const row = rows().find((r) => r.taskId === id);
     if (row) void choose(row);
   });
+  /** Back to the capsule segment that opened the workbench; if acting emptied it (it hides at zero), to Review, which stays. */
+  function returnFocus() {
+    queueMicrotask(() => (trigger?.isConnected ? trigger : capsule?.querySelector<HTMLElement>('button'))?.focus());
+  }
+  /** The card the owner acted on is gone with its focus: hand it to the next reply box (or the dialog), so Esc and Tab keep working. */
+  function settle(toReply: boolean) {
+    queueMicrotask(() => {
+      const host = root?.closest<HTMLElement>('[role=dialog]') ?? root;
+      if (!host) return;
+      const box = toReply ? host.querySelector<HTMLElement>('.sa-escalation textarea') : null;
+      if (box) box.focus();
+      else if (!host.contains(document.activeElement) || document.activeElement === host) host.focus();
+    });
+  }
+  /** Steps the one-at-a-time pager (Approve, Escalate) through its own buttons. */
+  function stepPager(direction: -1 | 1) {
+    root?.querySelector<HTMLButtonElement>(`.sa-pager button[aria-label^="${direction < 0 ? 'Previous' : 'Next'}"]:not(:disabled)`)?.click();
+  }
   function openFilter(next: Filter, element: HTMLElement) {
     trigger = element; setDone(false);
     setParams({ review: next, task: undefined });
@@ -106,7 +131,7 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     ignoredTask = boardUi().openedTask(); endQueue(); prior = undefined; boardUi().closeTask();
     setParams({ review: undefined, task: undefined }, { replace: true });
     void props.sa.refresh();
-    queueMicrotask(() => trigger?.focus());
+    returnFocus();
   }
   function backToList() { ignoredTask = boardUi().openedTask(); setParams({ task: undefined }, { replace: true }); endQueue(); prior = undefined; boardUi().closeTask(); }
   function changeFilter(next: Filter) { backToList(); setDone(false); setParams({ review: next }, { replace: true }); }
@@ -115,6 +140,10 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     if (e.key === 'Tab') { wrapTab(e, phone() ? (e.currentTarget as HTMLElement).closest('[role=dialog]') ?? e.currentTarget as HTMLElement : e.currentTarget as HTMLElement); return; }
     const target = e.target as HTMLElement;
     if (target.closest('input,textarea,select,[contenteditable=true]')) return;
+    if (filter() !== 'review') {
+      const step = ['[', 'k', 'ArrowLeft'].includes(e.key) ? -1 : [']', 'j', 'ArrowRight'].includes(e.key) ? 1 : 0;
+      if (step) { e.preventDefault(); stepPager(step); return; }
+    }
     if (e.key === '[' || e.key === ']') { e.preventDefault(); void stepQueue(e.key === '[' ? -1 : 1); return; }
     if (filter() === 'review' && ['j', 'k', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
       e.preventDefault(); const list = rows(); const at = list.findIndex((r) => r.taskId === boardUi().openedTask());
@@ -123,7 +152,7 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     }
   }
   onCleanup(() => { if (open() && taskOrigin()) { boardUi().closeTask(); endQueue(); } });
-  const content = () => <div class="sa-review-workspace" onKeyDown={phone() ? keys : undefined}>
+  const content = () => <div class="sa-review-workspace" ref={root} onKeyDown={phone() ? keys : undefined}>
     <div class="sa-review-controls">
       <div class="sa-review-tabs" role="tablist" aria-label="Workbench sections"><For each={FILTERS}>{(f) => <button type="button" role="tab" aria-selected={filter() === f} onClick={() => changeFilter(f)}>{LABEL[f]} · {count(f)}</button>}</For></div>
       <Show when={filter() === 'review'}>
@@ -131,26 +160,19 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
         <input type="search" aria-label="Search review queue" placeholder="Search tasks" value={search()} onInput={(e) => { backToList(); setSearch(e.currentTarget.value); }} />
       </Show>
     </div>
-    <div class="sa-review-body" data-detail={phone() && boardUi().openedTask() ? '' : undefined}>
+    <div class="sa-review-body" data-section={filter()} data-ticket={boardUi().openedTask() ? '' : undefined} data-detail={phone() && boardUi().openedTask() ? '' : undefined}>
       <div class="sa-review-list-pane" data-section={filter()}>
         <Show when={props.sa.error()}><div class="sa-message" role="alert">{props.sa.error()} <button type="button" onClick={() => props.sa.clearError()}>Dismiss</button></div></Show>
         <Show when={props.sa.notice()}><p class="sa-message" role="status">{props.sa.notice()}</p></Show>
         <Switch>
           <Match when={filter() === 'approve'}>
-            <Show when={props.hostId()}>{(host) => <ApprovalQueue hostId={host()} sa={props.sa} items={approvals()} onOpen={openSession} onTicket={(p, t) => void openOne(p, t)} />}</Show>
+            <Show when={props.hostId()}>{(host) => <ApprovalQueue hostId={host()} sa={props.sa} items={approvals()} onOpen={openSession} onTicket={(p, t) => void openOne(p, t)} onAdvance={() => settle(false)} />}</Show>
           </Match>
           <Match when={filter() === 'escalate'}>
             <Show when={question() ? key(question()!) : undefined} keyed fallback={<p class="sa-empty">No questions waiting.</p>}>{(k) => {
               const item = questions().find((q) => key(q) === k)!;
               return <div class="sa-escalation" data-testid="sa-escalation">
-                <Show when={questions().length > 1}>
-                  <span class="sa-pager" role="group" aria-label="Questions">
-                    <button type="button" class="sa-icon-btn" aria-label="Previous question" disabled={qAt() === 0} onClick={() => setQIndex(qAt() - 1)}><ChevronLeft size={16} /></button>
-                    <span aria-live="polite">{qAt() + 1} of {questions().length}</span>
-                    <button type="button" class="sa-icon-btn" aria-label="Next question" disabled={qAt() >= questions().length - 1} onClick={() => setQIndex(qAt() + 1)}><ChevronRight size={16} /></button>
-                  </span>
-                </Show>
-                <Question sa={props.sa} item={item} onTicket={(p, t) => void openOne(p, t)} onSent={() => setAnswered((old) => [...old, k])} />
+                <Question sa={props.sa} item={item} pager={questions().length > 1 ? pager() : undefined} onTicket={(p, t) => void openOne(p, t)} onSent={() => { setAnswered((old) => [...old, k]); settle(true); }} />
               </div>;
             }}</Show>
           </Match>
@@ -165,13 +187,13 @@ export function ReviewWorkspace(props: { sa: SuperagentState; hostId: () => stri
     <Show when={mount()}>{(el) => <ReviewTaskLayer mount={el()} embedded onBack={backToList} />}</Show>
   </div>;
   return <>
-    <div class="sa-review-capsule" role="group" aria-label={`Workbench: ${count('approve')} to approve, ${count('review')} to review, ${count('escalate')} to escalate`}>
+    <div class="sa-review-capsule" ref={capsule} role="group" aria-label={`Workbench: ${count('approve')} to approve, ${count('review')} to review, ${count('escalate')} to escalate`}>
       <Show when={count('approve') > 0}><button type="button" aria-label={`Open approvals (${count('approve')})`} aria-haspopup="dialog" aria-expanded={open() && filter() === 'approve'} onClick={(e) => openFilter('approve', e.currentTarget)}><ShieldAlert size={14} /><span class="sa-capsule-label">Approve</span><span class="sa-badge sa-approve-badge">{count('approve')}</span></button></Show>
       <button type="button" aria-label={`Open review (${count('review')})`} aria-haspopup="dialog" aria-expanded={open() && filter() === 'review'} onClick={(e) => openFilter('review', e.currentTarget)}><ClipboardCheck size={14} /><span class="sa-capsule-label">Review</span><span class="sa-badge" data-zero={count('review') === 0 ? '' : undefined}>{count('review')}</span></button>
       <Show when={count('escalate') > 0}><button type="button" aria-label={`Open escalations (${count('escalate')})`} aria-haspopup="dialog" aria-expanded={open() && filter() === 'escalate'} onClick={(e) => openFilter('escalate', e.currentTarget)}><Hand size={14} /><span class="sa-capsule-label">Escalate</span><span class="sa-badge sa-escalate-badge">{count('escalate')}</span></button></Show>
     </div>
     <Show when={open()}><Show when={!phone()} fallback={<SheetFrame open={open()} onClose={close} label="Workbench" title="Workbench" detents={['full']} class="sa-review-sheet" headerAction={<Show when={boardUi().openedTask()} fallback={<button type="button" class="ghost-icon-button" aria-label="Close workbench" onClick={close}><X size={20} /></button>}><button type="button" class="ghost-icon-button" aria-label="Back to the workbench" onClick={backToList}><ArrowLeft size={20} /></button></Show>}>{content()}</SheetFrame>}>
-      <Portal><div class="sm-overlay sa-review-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}><div class="sm-dialog sa-review-dialog" role="dialog" aria-modal="true" aria-label="Workbench" tabIndex={-1} ref={dialog} onKeyDown={keys}><header class="sa-review-heading"><h2>Workbench</h2><button type="button" class="ghost-icon-button" aria-label="Close workbench" onClick={close}><X size={20} /></button></header>{content()}</div></div></Portal>
+      <Portal><div class="sm-overlay sa-review-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}><div class="sm-dialog sa-review-dialog" role="dialog" aria-modal="true" aria-label="Workbench" tabIndex={-1} ref={(el) => { dialog = el; queueMicrotask(() => el.focus()); }} onKeyDown={keys}><header class="sa-review-heading"><h2>Workbench</h2><button type="button" class="ghost-icon-button" aria-label="Close workbench" onClick={close}><X size={20} /></button></header>{content()}</div></div></Portal>
     </Show></Show>
   </>;
 }
