@@ -29,6 +29,7 @@ import { oin42 } from './oin42';
 import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { lhGoal, lhGoalErrored, lhGraphBig, lhHistory, lhRalph, lhSwarm } from './lh';
+import { lhFinished } from './lh-finished';
 import { capsuleScenario, statusLhGraph, statusRunning, statusTodos, statusTodosPane, todoCapsule } from './status';
 import { crashBoundary, dialogApproval, dialogDock, errorRepeat, errorRow, takenOver } from './dock';
 import { slots, slotsDialogs, slotsOverlay, slotsTray } from './slots';
@@ -104,6 +105,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'git-pane-many': gitPaneMany,
   'status-lh-graph': statusLhGraph,
   'lh-graph-big': lhGraphBig,
+  'lh-finished': lhFinished,
   'lh-history': lhHistory,
   'lh-swarm': lhSwarm,
   'lh-goal': lhGoal,

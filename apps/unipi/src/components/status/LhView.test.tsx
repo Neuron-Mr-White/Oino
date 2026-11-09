@@ -89,6 +89,28 @@ describe('LhView', () => {
     expect(Array.from(document.querySelectorAll('.lh-dia-node')).every((n) => ['errored', 'failed'].includes(n.getAttribute('data-status')!))).toBe(true);
   });
 
+  it('shows whole-graph finished counts while filtering stopped nodes in both views', async () => {
+    await boot('lh-finished');
+    const view = mount();
+    await waitFor(() => expect(screen.getAllByTestId('lh-node')).toHaveLength(7));
+    const header = screen.getByTestId('lh-counts').textContent!;
+    expect(header).toContain('Finished');
+    for (const count of ['0 done', '5 stopped', '1 replaced', '1 blocked']) expect(header).toContain(count);
+    expect(header).not.toContain('0/7');
+    fireEvent.click(screen.getByTestId('lh-filter-stopped'));
+    expect(screen.getAllByTestId('lh-node')).toHaveLength(5);
+    expect(screen.getAllByTestId('lh-node').every((n) => n.dataset.status === 'stopped')).toBe(true);
+    expect(screen.getByTestId('lh-counts').textContent).toBe(header);
+    fireEvent.click(screen.getByTestId('lh-tab-diagram'));
+    await waitFor(() => expect(screen.getAllByTestId('lh-dia-node')).toHaveLength(5));
+    expect(screen.getAllByTestId('lh-dia-node').every((n) => n.dataset.status === 'stopped')).toBe(true);
+    view.unmount();
+    mount();
+    await waitFor(() => expect(screen.getByTestId('lh-filter-stopped').getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.getAllByTestId('lh-node')).toHaveLength(5);
+    expect(JSON.parse(localStorage.getItem('lh-filters:graph-oin57')!)).toEqual(['stopped']);
+  });
+
   it('History lists earlier graphs; a row opens a read-only snapshot with no Retry', async () => {
     await boot('lh-history');
     mount();
