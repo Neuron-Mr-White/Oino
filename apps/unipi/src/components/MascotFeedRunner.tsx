@@ -52,18 +52,22 @@ export function MascotFeedRunner() {
     if (!isTauri() || !can('tray')) return;
     const offs: (() => void)[] = [];
     void (async () => {
-      const { listen } = await import('@tauri-apps/api/event');
-      offs.push(
-        await listen<{ link?: string }>('mascot-open', (e) => {
-          void call('mascot_focus_main', {}, z.null());
-          if (e.payload.link) openChatFromDeepLink(hosts.hosts(), e.payload.link);
-          else setNeedsYouOpen(true);
-        }),
-        await listen<boolean>('mascot-window-changed', (e) => setMascotWindowOn(!!e.payload)),
-        await listen('mascot-ready', () => send(buildFeed(live.state(), live.count(), undefined))),
-        // UNI-255: Settings changed the crab size — tell the window at once.
-        await listen('mascot-size-changed', () => send(buildFeed(live.state(), live.count(), undefined))),
-      );
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        offs.push(
+          await listen<{ link?: string }>('mascot-open', (e) => {
+            void call('mascot_focus_main', {}, z.null());
+            if (e.payload.link) openChatFromDeepLink(hosts.hosts(), e.payload.link);
+            else setNeedsYouOpen(true);
+          }),
+          await listen<boolean>('mascot-window-changed', (e) => setMascotWindowOn(!!e.payload)),
+          await listen('mascot-ready', () => send(buildFeed(live.state(), live.count(), undefined))),
+          // UNI-255: Settings changed the crab size — tell the window at once.
+          await listen('mascot-size-changed', () => send(buildFeed(live.state(), live.count(), undefined))),
+        );
+      } catch {
+        // No Tauri IPC (tests, plain web): there is no mascot window to listen to.
+      }
     })();
     onCleanup(() => offs.forEach((off) => off()));
   });
