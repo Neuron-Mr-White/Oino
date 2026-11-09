@@ -43,7 +43,7 @@
   },
   "component": "component.wasm",
   "checksums": {
-    "component.wasm": "sha256:1f721e592cf948528dc48f2a91ead75d7d637b8faab0b1ace71f7056071dede4",
+    "component.wasm": "sha256:e81f654e1fa0b548fa7c007851eb436531084e7cbda851f7bfe1de3f453f4f32",
     "bin/unipi-kanboard": "sha256:567113909115916b6ca8f665d6cfa86e098e0c1dab91b636045365e5d65d8608"
   }
 }
