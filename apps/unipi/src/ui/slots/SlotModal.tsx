@@ -113,7 +113,7 @@ export function SlotModal(props: { stack: UiEntry[]; target: UiTarget; phone?: b
               <div class="ui-modal-body">
                 <EntryView entry={entry} target={props.target} mode="auto" />
               </div>
-              <Show when={!props.hideKeys && (entry.keys ?? []).length > 0}>
+              <Show when={!props.hideKeys && entry.id !== 'unipi.updater/update' && (entry.keys ?? []).length > 0}>
                 <div class="ui-modal-keys" aria-label="Panel keys">
                   <For each={entry.keys}>{(k) => <kbd class="kbd ui-modal-key" title={k.key}>{k.label}</kbd>}</For>
                 </div>
