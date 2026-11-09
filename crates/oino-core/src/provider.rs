@@ -69,6 +69,10 @@ pub fn request_json(request: &StreamRequest) -> JsonValue {
 }
 
 // All providers receive this same normalized transcript, including system tool patches.
+#[allow(
+    clippy::too_many_lines,
+    reason = "tool patches and message names share one mapping"
+)]
 fn normalize_legacy_transcript(value: &mut JsonValue) -> HashMap<String, String> {
     let completions = value["model"]["api"] == "openai-completions";
     let Some(messages) = value["context"]["messages"].as_array_mut() else {
@@ -271,132 +275,6 @@ fn normalize_completions_id(value: &mut JsonValue) {
     *value = json!(format!("call_{}", &digest[..35]));
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_catalog_names_and_collision_round_trip() {
-        let names = [
-            "superagent_start",
-            "superagent_stop",
-            "superagent_relay",
-            "superagent_set_mode",
-            "project_resolver",
-            "kanboard",
-            "ask_user",
-            "memory_search",
-            "memory_list",
-            "global_memory_search",
-            "global_memory_list",
-            "tool_search",
-            "superagent.start",
-            "a.b",
-            "a_b",
-            "",
-            &"x".repeat(140),
-        ];
-        for api in [
-            "openai-completions",
-            "openai-responses",
-            "anthropic-messages",
-            "openai-compat",
-        ] {
-            let tools: Vec<_> = names
-                .iter()
-                .map(|name| json!({"name":name,"description":"tool","parameters":{}}))
-                .collect();
-            let mut request = json!({"model":{"api":api},"context":{"messages":[
-                {"role":"system","toolsAdded":tools},
-                {"role":"assistant","content":[{"type":"toolCall","id":"1","name":"superagent.start"},{"type":"toolCall","id":"2","name":"a.b"}]},
-                {"role":"toolResult","toolCallId":"1","toolName":"superagent.start"},
-                {"role":"toolResult","toolCallId":"2","toolName":"a.b"}
-            ]}});
-            let reverse = normalize_legacy_transcript(&mut request);
-            let messages = &request["context"]["messages"];
-            let tools = messages[0]["toolsAdded"].as_array().unwrap();
-            let wire: Vec<_> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-            assert_eq!(wire.len(), names.len() - 1);
-            assert_eq!(wire.iter().collect::<HashSet<_>>().len(), wire.len());
-            assert!(wire.iter().all(|n| {
-                !n.is_empty()
-                    && n.len() <= 128
-                    && n.bytes()
-                        .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-            }));
-            assert_eq!(messages[1]["content"][0]["name"], "superagent_start");
-            assert_eq!(messages[1]["content"][0]["name"], messages[2]["toolName"]);
-            assert_eq!(messages[1]["content"][1]["name"], messages[3]["toolName"]);
-            let collision = messages[3]["toolName"].as_str().unwrap();
-            assert_ne!(collision, "a_b");
-            assert_eq!(reverse.get(collision).map(String::as_str), Some("a.b"));
-            let mut event = ProviderEvent::ToolcallEnd {
-                content_index: 0,
-                tool_call: oino_ai::ToolCall {
-                    name: collision.into(),
-                    ..Default::default()
-                },
-            };
-            restore_event(&mut event, &reverse);
-            assert!(
-                matches!(event, ProviderEvent::ToolcallEnd { tool_call, .. } if tool_call.name == "a.b")
-            );
-        }
-    }
-
-    #[test]
-    fn removing_legacy_alias_does_not_remove_current_tool() {
-        let mut request = json!({"context":{"messages":[
-            {"role":"system","toolsAdded":[{"name":"superagent.start"},{"name":"superagent_start"}]},
-            {"role":"system","toolsRemoved":[{"name":"superagent.start"}]}
-        ]}});
-        normalize_legacy_transcript(&mut request);
-        assert_eq!(request["context"]["messages"][1]["toolsRemoved"], json!([]));
-    }
-
-    #[test]
-    fn completions_ids_are_valid_distinct_and_paired() {
-        let mut request = json!({"model":{"api":"openai-completions"},"context":{"messages":[
-            {"role":"assistant","content":[{"type":"toolCall","id":"gemini/call:0","name":"superagent.start"},{"type":"toolCall","id":"gemini_call_0","name":"superagent.stop"}]},
-            {"role":"toolResult","toolCallId":"gemini/call:0","toolName":"superagent.start"},
-            {"role":"toolResult","toolCallId":"gemini_call_0","toolName":"superagent.stop"}
-        ]}});
-        normalize_legacy_transcript(&mut request);
-        let messages = request["context"]["messages"].as_array().unwrap();
-        let first = messages[0]["content"][0]["id"].as_str().unwrap();
-        let second = messages[0]["content"][1]["id"].as_str().unwrap();
-        assert_ne!(first, second);
-        assert!(
-            first.len() <= 40
-                && first
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        );
-        assert_eq!(first, messages[1]["toolCallId"]);
-        assert_eq!(second, messages[2]["toolCallId"]);
-    }
-
-    #[test]
-    fn legacy_tool_names_are_normalized_without_changing_pair_ids() {
-        let mut request = json!({"context":{"messages":[
-            {"role":"assistant","content":[{"type":"toolCall","id":"call_1","name":"superagent.start","arguments":{}}]},
-            {"role":"toolResult","toolCallId":"call_1","toolName":"superagent.start"},
-            {"role":"assistant","content":[{"type":"toolCall","id":"call_2","name":"superagent.set_mode","arguments":{}}]},
-            {"role":"toolResult","toolCallId":"call_2","toolName":"superagent.set_mode"}
-        ]}});
-        normalize_legacy_transcript(&mut request);
-        let messages = request["context"]["messages"].as_array().unwrap();
-        for (call, result, name) in [(0, 1, "superagent_start"), (2, 3, "superagent_set_mode")] {
-            assert_eq!(messages[call]["content"][0]["name"], name);
-            assert_eq!(messages[result]["toolName"], name);
-            assert_eq!(
-                messages[call]["content"][0]["id"],
-                messages[result]["toolCallId"]
-            );
-        }
-    }
-}
-
 fn failure(
     mut message: AssistantMessage,
     error: &str,
@@ -527,5 +405,131 @@ impl StreamFn for ProviderStream {
             )
             .flat_map(stream::iter),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_catalog_names_and_collision_round_trip() {
+        let names = [
+            "superagent_start",
+            "superagent_stop",
+            "superagent_relay",
+            "superagent_set_mode",
+            "project_resolver",
+            "kanboard",
+            "ask_user",
+            "memory_search",
+            "memory_list",
+            "global_memory_search",
+            "global_memory_list",
+            "tool_search",
+            "superagent.start",
+            "a.b",
+            "a_b",
+            "",
+            &"x".repeat(140),
+        ];
+        for api in [
+            "openai-completions",
+            "openai-responses",
+            "anthropic-messages",
+            "openai-compat",
+        ] {
+            let tools: Vec<_> = names
+                .iter()
+                .map(|name| json!({"name":name,"description":"tool","parameters":{}}))
+                .collect();
+            let mut request = json!({"model":{"api":api},"context":{"messages":[
+                {"role":"system","toolsAdded":tools},
+                {"role":"assistant","content":[{"type":"toolCall","id":"1","name":"superagent.start"},{"type":"toolCall","id":"2","name":"a.b"}]},
+                {"role":"toolResult","toolCallId":"1","toolName":"superagent.start"},
+                {"role":"toolResult","toolCallId":"2","toolName":"a.b"}
+            ]}});
+            let reverse = normalize_legacy_transcript(&mut request);
+            let messages = &request["context"]["messages"];
+            let tools = messages[0]["toolsAdded"].as_array().unwrap();
+            let wire: Vec<_> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+            assert_eq!(wire.len(), names.len() - 1);
+            assert_eq!(wire.iter().collect::<HashSet<_>>().len(), wire.len());
+            assert!(wire.iter().all(|n| {
+                !n.is_empty()
+                    && n.len() <= 128
+                    && n.bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+            }));
+            assert_eq!(messages[1]["content"][0]["name"], "superagent_start");
+            assert_eq!(messages[1]["content"][0]["name"], messages[2]["toolName"]);
+            assert_eq!(messages[1]["content"][1]["name"], messages[3]["toolName"]);
+            let collision = messages[3]["toolName"].as_str().unwrap();
+            assert_ne!(collision, "a_b");
+            assert_eq!(reverse.get(collision).map(String::as_str), Some("a.b"));
+            let mut event = ProviderEvent::ToolcallEnd {
+                content_index: 0,
+                tool_call: oino_ai::ToolCall {
+                    name: collision.into(),
+                    ..Default::default()
+                },
+            };
+            restore_event(&mut event, &reverse);
+            assert!(
+                matches!(event, ProviderEvent::ToolcallEnd { tool_call, .. } if tool_call.name == "a.b")
+            );
+        }
+    }
+
+    #[test]
+    fn removing_legacy_alias_does_not_remove_current_tool() {
+        let mut request = json!({"context":{"messages":[
+            {"role":"system","toolsAdded":[{"name":"superagent.start"},{"name":"superagent_start"}]},
+            {"role":"system","toolsRemoved":[{"name":"superagent.start"}]}
+        ]}});
+        normalize_legacy_transcript(&mut request);
+        assert_eq!(request["context"]["messages"][1]["toolsRemoved"], json!([]));
+    }
+
+    #[test]
+    fn completions_ids_are_valid_distinct_and_paired() {
+        let mut request = json!({"model":{"api":"openai-completions"},"context":{"messages":[
+            {"role":"assistant","content":[{"type":"toolCall","id":"gemini/call:0","name":"superagent.start"},{"type":"toolCall","id":"gemini_call_0","name":"superagent.stop"}]},
+            {"role":"toolResult","toolCallId":"gemini/call:0","toolName":"superagent.start"},
+            {"role":"toolResult","toolCallId":"gemini_call_0","toolName":"superagent.stop"}
+        ]}});
+        normalize_legacy_transcript(&mut request);
+        let messages = request["context"]["messages"].as_array().unwrap();
+        let first = messages[0]["content"][0]["id"].as_str().unwrap();
+        let second = messages[0]["content"][1]["id"].as_str().unwrap();
+        assert_ne!(first, second);
+        assert!(
+            first.len() <= 40
+                && first
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        );
+        assert_eq!(first, messages[1]["toolCallId"]);
+        assert_eq!(second, messages[2]["toolCallId"]);
+    }
+
+    #[test]
+    fn legacy_tool_names_are_normalized_without_changing_pair_ids() {
+        let mut request = json!({"context":{"messages":[
+            {"role":"assistant","content":[{"type":"toolCall","id":"call_1","name":"superagent.start","arguments":{}}]},
+            {"role":"toolResult","toolCallId":"call_1","toolName":"superagent.start"},
+            {"role":"assistant","content":[{"type":"toolCall","id":"call_2","name":"superagent.set_mode","arguments":{}}]},
+            {"role":"toolResult","toolCallId":"call_2","toolName":"superagent.set_mode"}
+        ]}});
+        normalize_legacy_transcript(&mut request);
+        let messages = request["context"]["messages"].as_array().unwrap();
+        for (call, result, name) in [(0, 1, "superagent_start"), (2, 3, "superagent_set_mode")] {
+            assert_eq!(messages[call]["content"][0]["name"], name);
+            assert_eq!(messages[result]["toolName"], name);
+            assert_eq!(
+                messages[call]["content"][0]["id"],
+                messages[result]["toolCallId"]
+            );
+        }
     }
 }
