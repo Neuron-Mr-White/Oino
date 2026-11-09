@@ -1,0 +1,71 @@
+oino-acp -> oino-agent, oino-ai, oino-client, oino-core, oino-models, oino-session, oino-settings, oino-tools
+oino-agent -> oino-ai
+oino-ai -> 
+oino-bench -> oino-ai, oino-core, oino-models, oino-session, oino-settings
+oino-cli -> oino-acp, oino-agent, oino-ai, oino-cli, oino-client, oino-core, oino-extension-api, oino-models, oino-rpc, oino-session, oino-settings, oino-tools, oino-tui, oino-wasm-host
+oino-client -> oino-agent, oino-ai, oino-core, oino-models, oino-session, oino-settings
+oino-core -> oino-agent, oino-ai, oino-core, oino-extension-api, oino-models, oino-resources, oino-session, oino-settings, oino-tools, oino-ui
+oino-extension-api -> oino-ai, oino-extension-api, oino-ui
+oino-models -> oino-ai
+oino-resources -> oino-ai, oino-settings
+oino-rpc -> oino-agent, oino-ai, oino-client, oino-core, oino-ui
+oino-session -> oino-ai
+oino-settings -> oino-ai
+oino-tools -> oino-agent, oino-ai, oino-extension-api, oino-wasm-host
+oino-tui -> oino-agent, oino-ai, oino-client, oino-core, oino-resources, oino-session, oino-settings, oino-ui, oino-view
+oino-ui -> 
+oino-view -> oino-agent, oino-ai, oino-core, oino-session, oino-ui
+oino-wasm-host -> oino-agent, oino-ai, oino-core, oino-extension-api, oino-models, oino-settings, oino-wasm-host
+oino-zvec -> oino-tools
+xtask -> 
+
+unipi-browser -> oino-extension-api, unipi-browser-protocol
+unipi-browser-protocol -> 
+unipi-cron -> oino-extension-api, unipi-cron-schedule
+unipi-cron-schedule -> 
+unipi-host -> oino-agent, oino-ai, oino-client, oino-core, oino-extension-api, oino-models, oino-session, oino-settings, oino-ui, oino-wasm-host, unipi-browser, unipi-cron, unipi-kanboard, unipi-proto
+unipi-kanboard -> 
+unipi-proto -> 
+
+fixture-agent-probe -> oino-extension
+fixture-async-probe -> oino-extension
+fixture-echo -> oino-extension
+fixture-hibernate-probe -> oino-extension
+fixture-panic-probe -> oino-extension
+fixture-provider-faux -> oino-extension
+fixture-ui-probe -> oino-extension
+oino-extension -> oino-ai, oino-extension-macros, oino-ui
+oino-extension-macros -> 
+oino-provider-kit -> oino-ai, oino-extension
+provider-anthropic -> oino-extension, oino-provider-kit
+provider-azure -> oino-extension, oino-provider-kit
+provider-bedrock -> oino-extension, oino-provider-kit
+provider-google -> oino-extension, oino-provider-kit
+provider-openai-codex -> oino-extension, oino-provider-kit
+provider-openai-compat -> oino-extension, oino-provider-kit
+provider-openai-responses -> oino-extension, oino-provider-kit
+unipi-ask-user -> oino-extension, unipi-kit
+unipi-background-tasks -> oino-extension, unipi-kit
+unipi-browser-ext -> oino-extension
+unipi-btw -> oino-extension, unipi-kit
+unipi-compactor -> oino-extension, unipi-kit
+unipi-core -> oino-extension, unipi-kit
+unipi-cron -> oino-extension, unipi-cron-schedule, unipi-kit
+unipi-dream -> oino-extension, unipi-cron-schedule, unipi-kit
+unipi-file-summary -> oino-extension, unipi-kit
+unipi-fusion -> oino-extension, unipi-kit
+unipi-info-screen -> oino-extension, unipi-kit
+unipi-kanboard -> oino-extension, unipi-kit
+unipi-kit -> oino-extension, oino-ui
+unipi-long-horizon -> oino-extension, unipi-kit
+unipi-mcp -> oino-extension, unipi-kit
+unipi-memory -> oino-extension, unipi-kit
+unipi-notify -> oino-extension, unipi-kit
+unipi-skill-registry -> oino-extension, unipi-kit
+unipi-subagents -> oino-extension, unipi-kit
+unipi-updater -> oino-extension, unipi-kit
+unipi-utility -> oino-extension, unipi-kit
+unipi-watchdog -> oino-extension, unipi-kit
+unipi-web-api -> oino-extension, unipi-kit
+unipi-workflow -> oino-extension, unipi-kit
+
