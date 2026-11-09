@@ -626,8 +626,9 @@ pub fn mode_fragment(mode: Mode, owner: Option<&Owner>, parked: Option<&Owner>) 
     }
     if let Some(p) = parked {
         parts.push(format!(
-            "a parked {} owner exists (see /continue)",
-            p.kind.as_str()
+            "a parked {} owner exists (resume with /{} resume)",
+            p.kind.as_str(),
+            p.kind.mode().as_str()
         ));
     }
     if !parts.is_empty() {
@@ -732,6 +733,18 @@ mod tests {
             "Active owner: goal \"obj\" (rev 2, lease gen 2)\nRecent: graph→complete(finish)"
         ));
         assert_eq!(stop_kind("budget_limited(token)"), "budget");
+    }
+
+    #[test]
+    fn parked_owner_hint_names_resume_command() {
+        for kind in [OwnerKind::Goal, OwnerKind::RalphLoop, OwnerKind::Swarm, OwnerKind::Graph] {
+            let mut owners = Owners::default();
+            owners.activate("id".into(), kind, "work", None, "t").unwrap();
+            let parked = owners.suspend("paused", "t").unwrap();
+            let hint = mode_fragment(Mode::None, None, Some(&parked));
+            assert!(hint.contains(&format!("/{} resume", kind.mode().as_str())), "{hint}");
+            assert!(!hint.contains("/continue"));
+        }
     }
 
     #[test]
