@@ -459,7 +459,9 @@ impl Dispatcher {
         if !matches!(mode, "none" | "goal" | "ralph" | "swarm" | "graph") { return Err(fail("E_SCHEMA", "Invalid long-horizon mode")); }
         let _transaction = self.transaction.lock().await;
         let id = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(_, p)| p.as_str() == project_id).map(|(id, _)| id.clone()).ok_or_else(|| fail("E_WORKER_CLAIM", "Project has no active lead"))?;
+        let previous = self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&id).map(|preset| preset.mode.clone());
         self.workers.set_mode(&id, mode).await.map_err(|e| fail("E_MODE", e))?;
+        tracing::info!(actor = "superagent", project = project_id, session = %id, from = previous.as_deref().unwrap_or("unknown"), to = mode, "lead mode changed");
         if let Some(preset) = self.launch_presets.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(&id) { preset.mode = mode.into(); }
         Ok(json!({"sessionId":id,"mode":mode}))
     }
@@ -1124,6 +1126,7 @@ impl Workers for HostWorkers {
                 .with_manager(|m| m.materialize())
                 .map_err(|e| e.to_string())?;
             apply_mode(&session, &preset.mode).await?;
+            tracing::info!(actor = "dispatcher", project = %project.slug, session = id, from = "unknown", to = %preset.mode, "lead mode applied");
             let prompt = lead_brief(project, tasks);
             if !attaching {
                 session
