@@ -709,10 +709,15 @@ impl SessionHub {
     /// List dedicated and legacy Superagent transcripts without waking them.
     pub async fn superagent_sessions(&self) -> Result<serde_json::Value, HubError> {
         let records = self.inner.core.list().await?;
+        let state = lock(&self.inner.state);
         let sessions: Vec<_> = records.into_iter().filter(|r| self.inner.is_superagent(&r.info.path)).map(|r| {
+            let card = self.inner.card_from(&state, &r);
             let info = r.info;
-            let title = crate::superagent_session::superagent_title(info.name.as_deref(), &info.first_message, info.created.to_ms().unwrap_or(0));
-            serde_json::json!({"sessionId": info.id, "title": title, "createdAt": info.created.to_ms().unwrap_or(0), "updatedAt": epoch_ms(info.modified), "path": info.path})
+            // Dedicated Superagent chats have no workspace until they explicitly move.
+            let cwd = info.moved_cwd.as_deref().or_else(|| (!info.cwd.is_empty() && info.cwd != self.inner.agent_dir.join("superagent").to_string_lossy()).then_some(info.cwd.as_str()));
+            let project = cwd.and_then(|cwd| Path::new(cwd).file_name()).and_then(|name| name.to_str());
+            let title = crate::superagent_session::superagent_title_in_project(info.name.as_deref(), &info.first_message, info.created.to_ms().unwrap_or(0), project);
+            serde_json::json!({"sessionId": info.id, "title": title, "createdAt": info.created.to_ms().unwrap_or(0), "updatedAt": epoch_ms(info.modified), "path": info.path, "project": project, "state": card.state, "pendingWork": card.pending_work})
         }).collect();
         Ok(serde_json::json!({"sessions": sessions}))
     }

@@ -93,7 +93,8 @@ export const StatusSchema = RawStatusSchema.transform(normalizeStatus);
 export const ConfigSchema = z.object({ enabled: z.boolean(), concurrencyCap: z.number().int().min(CAP_MIN).max(CAP_MAX) });
 const ConfigReplySchema = z.object({ enabled: z.boolean(), concurrencyCap: z.number().int().min(1) });
 export const RelayTextSchema = z.string().trim().min(1, 'Enter a message to relay.');
-export const SuperagentSessionSchema = z.object({ sessionId: z.string(), title: z.string(), createdAt: z.union([z.string(), z.number()]), updatedAt: z.union([z.string(), z.number()]), path: z.string() });
+export const SuperagentSessionSchema = z.object({ sessionId: z.string(), title: z.string(), createdAt: z.union([z.string(), z.number()]), updatedAt: z.union([z.string(), z.number()]), path: z.string(), project: z.string().nullish(), state: z.object({ kind: z.string() }).nullish(), pendingWork: z.string().nullish() });
+export type SuperagentSession = z.infer<typeof SuperagentSessionSchema>;
 const SessionsSchema = z.union([z.array(SuperagentSessionSchema), z.object({ sessions: z.array(SuperagentSessionSchema) }).transform((value) => value.sessions)]);
 
 export const PresetSchema = z.object({

@@ -1,8 +1,10 @@
-import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from 'solid-js';
 import { toAppError } from '@unipi/protocol';
 import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
-import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentStatus } from './api';
+import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
+import { superagentSessionId } from './chatActivity';
+import { runningSessions } from './runningSessions';
 
 /** A mutation's failure, as far as the pane cares. */
 export type RunError = { message: string; code?: unknown; detail?: unknown };
@@ -19,6 +21,8 @@ const POLL_MS = 5000;
 export function createSuperagentState(hostOrNone: Accessor<string | undefined>) {
   const hostId = () => hostOrNone() ?? '';
   const [status, setStatus] = createSignal<SuperagentStatus>();
+  const [history, setHistory] = createSignal<SuperagentSession[]>([]);
+  const running = createMemo(() => runningSessions(status(), history(), superagentSessionId(hostId())));
   const [error, setError] = createSignal('');
   const [notice, setNotice] = createSignal('');
   const [busy, setBusy] = createSignal<readonly string[]>([]);
@@ -76,6 +80,9 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       if (gen !== generation) return;
       if (!result.ok) { setError(result.error.message); return; }
       setStatus(result.value);
+      void within(superagentApi.sessions(hostId()), () => undefined).then((sessions) => {
+        if (gen === generation && sessions?.ok) setHistory(sessions.value);
+      }).catch(() => { /* History is optional on older hosts. */ });
       setError('');
       void ensureTitles(result.value.needsYou);
     } catch (e) { if (gen === generation) setError(toAppError(e).message); }
@@ -97,7 +104,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     generation++;
     loading = false;
     requested.clear();
-    setStatus(undefined); setError(''); setNotice(''); setTitles({}); setBusy([]);
+    setStatus(undefined); setHistory([]); setError(''); setNotice(''); setTitles({}); setBusy([]);
     setPresets({ list: [], defaultId: null, supported: true });
     if (!hostId()) return;
     void refresh();
@@ -109,7 +116,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
   const patchStatus = (patch: (s: SuperagentStatus) => SuperagentStatus) => setStatus((old) => old && patch(old));
 
   return {
-    status, error, notice, titles, presets, now, isBusy, refresh, ensureTitles, loadPresets,
+    status, history, running, error, notice, titles, presets, now, isBusy, refresh, ensureTitles, loadPresets,
     clearError: () => setError(''),
     flash,
     projectName: (id: string) => status()?.projects?.find((p) => p.projectId === id)?.name || id,

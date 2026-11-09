@@ -661,6 +661,12 @@ impl AgentTool for WorkerBoard {
 /// list time without rewriting their files.
 #[must_use]
 pub fn superagent_title(name: Option<&str>, first_message: &str, created_ms: i64) -> String {
+    superagent_title_in_project(name, first_message, created_ms, None)
+}
+
+/// Include the known project for skill-paste titles, without changing explicit names.
+#[must_use]
+pub fn superagent_title_in_project(name: Option<&str>, first_message: &str, created_ms: i64, project: Option<&str>) -> String {
     if let Some(name) = name.map(str::trim).filter(|name| !name.is_empty() && *name != "Superagent") {
         return name.to_owned();
     }
@@ -673,7 +679,11 @@ pub fn superagent_title(name: Option<&str>, first_message: &str, created_ms: i64
         }
     }
     if let Some(skill) = skill {
-        return skill.trim_matches(['\'', '"']).to_owned();
+        let skill = skill.trim_matches(['\'', '"']);
+        return match project.filter(|project| !project.trim().is_empty()) {
+            Some(project) => format!("{skill} · {project}"),
+            None => skill.to_owned(),
+        };
     }
     while seed.starts_with("```") || seed.starts_with("~~~") {
         let fence = &seed[..3];
@@ -727,7 +737,7 @@ pub fn is_superagent_file(path: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod title_tests {
-    use super::superagent_title;
+    use super::{superagent_title, superagent_title_in_project};
 
     #[test]
     fn explicit_name_wins() {
@@ -744,6 +754,8 @@ mod title_tests {
     fn frontmatter_and_leading_fences_do_not_become_titles() {
         assert_eq!(superagent_title(None, "---\nname: untangle-codebase\ndescription: test\n---\nInstructions", 0), "untangle-codebase");
         assert_eq!(superagent_title(None, "```text\nignore this\n```\nFix the project", 0), "Fix the project");
+        assert_eq!(superagent_title_in_project(None, "---\nname: untangle-codebase\n---\nInstructions", 0, Some("zmstudio-migration")), "untangle-codebase · zmstudio-migration");
+        assert_eq!(superagent_title_in_project(Some("My title"), "---\nname: skill\n---\ntext", 0, Some("project")), "My title");
     }
 
     #[test]
