@@ -230,6 +230,22 @@ async fn reload_extensions_answers_with_the_fresh_list() {
 }
 
 #[tokio::test]
+async fn reload_extensions_refreshes_models_and_returns_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_models_json(&dir, "qwen");
+    assert_eq!(model_ids(&run_on(&hub, HostCmd::AvailableModels).await.unwrap()), vec!["qwen".to_owned()]);
+    std::fs::write(
+        hub.agent_dir().join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": "llama"}]}}}).to_string(),
+    ).unwrap();
+    let reply = run_on(&hub, HostCmd::ReloadExtensions).await.unwrap();
+    assert!(reply["diagnostics"].is_array());
+    assert!(!reply["extensions"].as_array().unwrap().is_empty());
+    assert_eq!(model_ids(&run_on(&hub, HostCmd::AvailableModels).await.unwrap()), vec!["llama".to_owned()]);
+}
+
+#[tokio::test]
 async fn reload_rereads_models_json_alongside_the_packages() {
     // The settings page's Reload: models.json + credentials + the extension packages,
     // without restarting the host (a model edited outside the app becomes usable).

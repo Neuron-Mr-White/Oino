@@ -145,7 +145,10 @@ pub async fn run(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<Value, AppErrorD
                 .core_services()
                 .await
                 .map_err(|error| failed(error.to_string()))?;
-            return Ok(json!({ "extensions": extension_infos(&services, hub.agent_dir()) }));
+            services.models.auth_storage().reload();
+            services.models.refresh();
+            hub.readiness().invalidate_all();
+            return Ok(json!({ "extensions": extension_infos(&services, hub.agent_dir()), "diagnostics": services.diagnostics }));
         }
         // The settings page's "Reload": the same rediscovery, and the model catalogue
         // with it (`models.json` + `auth.json`), so a provider or model edited outside

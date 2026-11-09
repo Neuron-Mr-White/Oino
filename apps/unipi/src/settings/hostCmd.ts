@@ -93,10 +93,8 @@ export function listExtensions(hostId = settingsHostId()): Promise<HostResult<Ex
  * discovers the packages again — a freshly installed (or removed) package is
  * live right away, without restarting the host.
  */
-export function reloadExtensions(hostId = settingsHostId()): Promise<HostResult<ExtensionInfo[]>> {
-  return hostCmd({ kind: 'reload_extensions' }, ExtensionsSchema, hostId).then((r) =>
-    r.ok ? { ok: true as const, value: r.value.extensions } : r,
-  );
+export function reloadExtensions(hostId = settingsHostId()) {
+  return hostCmd({ kind: 'reload_extensions' }, ExtensionsSchema.extend({ diagnostics: z.array(z.string()).optional() }), hostId);
 }
 
 /**

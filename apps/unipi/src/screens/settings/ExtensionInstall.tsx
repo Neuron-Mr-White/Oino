@@ -1,8 +1,7 @@
 /**
  * Settings › Extensions › "Install extension…" (ext-install): pick a package, hand its
  * path to the host (`host_cmd install_extension`), confirm a same-id replace, then —
- * the host cannot load a package into running services — "Restart agent host" and open
- * the new extension's own settings page once it is live.
+ * reload the host's services and open the extension's settings page once it is live.
  *
  * Where the package comes from:
  * - the desktop app on its own PC: a native folder picker (`extension.json` +
@@ -16,7 +15,6 @@ import { CheckCircle2, FolderOpen, Download, RotateCw, X, AlertTriangle } from '
 import { installExtension, removeExtension, listExtensions, reloadExtensions, type InstallReply } from '../../settings/hostCmd';
 import { isOwnPcFile, pickFolderNative } from '../../lib/openLocal';
 import { uploadPicked } from '../../lib/blob';
-import { canRestartHost, restartAgentHost } from '../../lib/host/restart';
 import { ErrorBanner } from '../../components/ErrorBanner';
 
 /** What the install card shows. */
@@ -87,6 +85,7 @@ export function ExtensionInstallCard(props: {
   const phase = () => props.phase?.() ?? own();
   const setPhase = (next: InstallPhase) => (props.setPhase ? props.setPhase(next) : setOwn(next));
   const [error, setError] = createSignal<AppError | undefined>();
+  const [loadFailed, setLoadFailed] = createSignal(false);
   let fileInput: HTMLInputElement | undefined;
   const desktop = () => isOwnPcFile(props.hostId);
 
@@ -161,6 +160,7 @@ export function ExtensionInstallCard(props: {
 
   const start = () => {
     setError(undefined);
+    setLoadFailed(false);
     // The phone / a remote PC: only a .zip can travel.
     if (desktop()) setPhase({ kind: 'choose' });
     else pickZip();
@@ -174,48 +174,30 @@ export function ExtensionInstallCard(props: {
    * "Restarting the agent host…" until the poll gave up.
    */
   const reload = async () => {
+    setError(undefined);
+    setLoadFailed(false);
     const current = phase();
     const id = current.kind === 'restart' ? current.id : undefined;
     const warnings = current.kind === 'restart' ? current.warnings : [];
     setPhase({ kind: 'waiting', id });
-    const result = await reloadExtensions(props.hostId).catch(() => undefined);
-    if (!result?.ok) {
-      setError(appError('E_INTERNAL', 'Could not load the extension', { hint: 'Restart the agent host to load it.' }));
+    const result = await reloadExtensions(props.hostId).catch((e: unknown) => ({ ok: false as const, error: asError(e, 'Could not load the extension') }));
+    if (!result.ok) {
+      setLoadFailed(true);
+      setError(result.error);
       setPhase(current);
       return;
     }
     await props.onChanged();
-    const loaded = id ? result.value.some((row) => row.id === id && row.loaded) : true;
+    const loaded = id ? result.value.extensions.some((row) => row.id === id && row.loaded) : true;
     if (!loaded) {
-      setPhase({ kind: 'done', text: `The host did not load ${id} — restart the agent host to pick it up.`, warnings });
+      const row = result.value.extensions.find((extension) => extension.id === id);
+      const reason = result.value.diagnostics?.join('\n') || (row && !row.enabled ? 'The extension is disabled.' : 'The host did not report a load reason.');
+      setLoadFailed(true);
+      setError(appError('E_INTERNAL', `Could not load ${id}: ${reason}`));
+      setPhase(current);
       return;
     }
     await live(id, `${id} is loaded.`, warnings);
-  };
-
-  const restart = async () => {
-    const current = phase();
-    const id = current.kind === 'restart' ? current.id : undefined;
-    const warnings = current.kind === 'restart' ? current.warnings : [];
-    setPhase({ kind: 'waiting', id });
-    const ok = await restartAgentHost();
-    if (!ok) {
-      setError(appError('E_INTERNAL', 'Could not restart the agent host', { hint: 'Quit and reopen Unipi to load the change.' }));
-      setPhase(current);
-      return;
-    }
-    if (!id) {
-      await props.onChanged();
-      setPhase({ kind: 'done', text: 'Agent host restarted.', warnings });
-      return;
-    }
-    const loaded = await waitForLoaded(props.hostId, id, props.wait);
-    await props.onChanged();
-    if (!loaded) {
-      setPhase({ kind: 'done', text: `The agent host restarted but ${id} did not load — check the notices above.`, warnings });
-      return;
-    }
-    await live(id, `${id} is loaded. It has no settings page.`, warnings);
   };
 
   return (
@@ -287,7 +269,9 @@ export function ExtensionInstallCard(props: {
         {(p) => (
           <div class="flex flex-col gap-2" role="status" data-testid={p.kind === 'restart' ? 'ext-install-restart' : 'ext-install-done'}>
             <p class="text-[13px] text-text flex items-start gap-2">
-              <CheckCircle2 size={15} class="shrink-0 mt-0.5 text-wm-green" />
+              <Show when={!loadFailed()} fallback={<AlertTriangle size={15} class="shrink-0 mt-0.5 text-wm-red" />}>
+                <CheckCircle2 size={15} class="shrink-0 mt-0.5 text-wm-green" />
+              </Show>
               <span>{p.text}</span>
             </p>
             <For each={p.warnings}>
@@ -310,11 +294,6 @@ export function ExtensionInstallCard(props: {
                 <button type="button" class={primary} data-testid="ext-install-load-now" onClick={() => void reload()}>
                   <RotateCw size={13} /> Load it now
                 </button>
-                <Show when={canRestartHost()}>
-                  <button type="button" class={button} data-testid="ext-install-restart-host" onClick={() => void restart()}>
-                    Restart agent host
-                  </button>
-                </Show>
                 <button type="button" class={button} onClick={() => setPhase({ kind: 'idle' })}>
                   Later
                 </button>

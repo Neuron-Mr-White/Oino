@@ -28,7 +28,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (cmd: string, args?: unknown) =
 type Cmd = { kind: string } & Record<string, unknown>;
 
 /** A host whose `install_extension` / `remove_extension` are scripted by the test. */
-function world(handler: (cmd: Cmd) => unknown) {
+function world(handler: (cmd: Cmd) => unknown, reload?: () => unknown) {
   const extensions: MockExtension[] = [
     { id: 'unipi.memory', enabled: true, loaded: true, path: '/usr/share/oino/extensions/unipi.memory', removable: false },
     { id: 'acme.old', enabled: true, loaded: true, path: '/home/me/.oino/extensions/acme.old', removable: true },
@@ -49,6 +49,7 @@ function world(handler: (cmd: Cmd) => unknown) {
         if (prop === 'request') {
           return async (op: string, args?: Record<string, unknown>) => {
             const cmd = (args?.cmd ?? {}) as Cmd;
+            if (op === 'host_cmd' && cmd.kind === 'reload_extensions' && reload) return reload();
             if (op === 'host_cmd' && (cmd.kind === 'install_extension' || cmd.kind === 'remove_extension')) {
               calls.push(cmd);
               return handler(cmd);
@@ -95,14 +96,14 @@ describe('Install extension… (desktop)', () => {
     setHostClientFactory(undefined);
   });
 
-  it('folder → install → Restart agent host → the extension\'s own settings page opens', async () => {
+  it('folder → install → load now → the extension\'s own settings page opens', async () => {
     const w = world(() => installed());
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'pick_folder') return '/home/me/Downloads/gateway-bridge';
-      if (cmd === 'restart_host') {
-        // The restarted host has loaded the package and its settings namespace.
-        w.extensions.push({ id: OMNI.id, enabled: true, loaded: true, path: '/home/me/.oino/extensions/gateway.bridge' });
-        w.namespaces.push({
+      throw new Error(`unexpected ${cmd}`);
+    });
+    w.extensions.push({ id: OMNI.id, enabled: true, loaded: true, path: '/home/me/.oino/extensions/gateway.bridge' });
+    w.namespaces.push({
           namespace: 'gateway',
           title: 'Gateway Bridge',
           extensionId: OMNI.id,
@@ -111,20 +112,16 @@ describe('Install extension… (desktop)', () => {
             { key: 'apiKey', type: 'secret', title: 'API key' },
           ],
         });
-        return null;
-      }
-      throw new Error(`unexpected ${cmd}`);
-    });
     renderSection();
     fireEvent.click(await screen.findByTestId('ext-install-open'));
     fireEvent.click(await screen.findByTestId('ext-install-folder'));
     const notice = await screen.findByTestId('ext-install-restart');
     expect(w.calls).toEqual([{ kind: 'install_extension', path: '/home/me/Downloads/gateway-bridge' }]);
     expect(notice.textContent).toContain('Installed Gateway Bridge v1.2.0');
-    fireEvent.click(screen.getByTestId('ext-install-restart-host'));
+    fireEvent.click(screen.getByTestId('ext-install-load-now'));
     const page = await screen.findByTestId('namespace-page', {}, { timeout: 3000 });
     expect(page.textContent).toContain('Gateway Bridge');
-    expect(invoke).toHaveBeenCalledWith('restart_host', {});
+    expect(invoke).not.toHaveBeenCalledWith('restart_host', {});
   });
 
   it('[owner-fix-8] loads the installed package without restarting the host', async () => {
@@ -142,6 +139,21 @@ describe('Install extension… (desktop)', () => {
     fireEvent.click(screen.getByTestId('ext-install-load-now'));
     await waitFor(() => expect(screen.getByTestId('ext-install-done')).toBeTruthy());
     expect(screen.getByTestId('ext-install-done').textContent).toContain('gateway.bridge is loaded');
+    expect(screen.getByTestId('ext-install-done').querySelector('.text-wm-green')).toBeTruthy();
+  });
+
+  it('shows a load failure with an error icon instead of success', async () => {
+    world(() => installed(), () => ({ extensions: [], diagnostics: ['gateway.bridge: invalid component'] }));
+    invoke.mockImplementation(async (cmd: string) => cmd === 'pick_folder' ? '/tmp/package' : null);
+    renderSection();
+    fireEvent.click(await screen.findByTestId('ext-install-open'));
+    fireEvent.click(await screen.findByTestId('ext-install-folder'));
+    fireEvent.click(await screen.findByTestId('ext-install-load-now'));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('gateway.bridge: invalid component');
+    expect(alert.querySelector('.text-wm-red')).toBeTruthy();
+    expect(screen.getByTestId('ext-install').querySelector('.text-wm-green')).toBeNull();
+    expect(screen.queryByTestId('ext-install-done')).toBeNull();
   });
 
   it('a same-id package asks before replacing, then sends replace: true', async () => {
