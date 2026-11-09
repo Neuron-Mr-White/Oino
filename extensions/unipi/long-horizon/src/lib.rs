@@ -192,6 +192,50 @@ struct State {
     early_done: Vec<Value>,
 }
 
+impl State {
+    fn graph_busy_owner(&self, session: &str) -> Option<&str> {
+        let active = self.owners.active.as_ref()?;
+        if !matches!(active.kind, OwnerKind::Graph | OwnerKind::Swarm)
+            || self.graph.owned_by(session)
+        {
+            return None;
+        }
+        self.graph.open()?.owner_session.as_deref()
+    }
+
+    fn close_other_graph(&mut self, session: &str, now: i64) -> Option<String> {
+        if self.graph_busy_owner(session).is_some() || self.graph.owned_by(session) {
+            return None;
+        }
+        let label = self.graph.open()?.task.clone();
+        self.graph.abandon("superseded(new_graph)", By::User, now);
+        if self
+            .owners
+            .parked
+            .as_ref()
+            .is_some_and(|o| matches!(o.kind, OwnerKind::Graph | OwnerKind::Swarm))
+        {
+            self.owners.clear_parked();
+        }
+        Some(label)
+    }
+
+    fn clear_graph(&mut self, now: i64) -> bool {
+        let open = self.graph.open().is_some();
+        if open {
+            self.graph.abandon("stopped(user_cleared)", By::User, now);
+        }
+        open
+    }
+}
+
+fn graph_busy_message(owner: &str) -> String {
+    let prefix: String = owner.chars().take(8).collect();
+    format!(
+        "Another chat ({prefix}) is running a graph — only one graph runs at a time. Use /graph stop in that chat."
+    )
+}
+
 /// The extension.
 #[derive(Default)]
 pub struct Lh {
@@ -1607,21 +1651,13 @@ impl Lh {
             .collect()
     }
 
-    /// [owner-fix-8] The open graph belongs to another chat: at most one graph
-    /// runs at a time across the app.
-    fn graph_owned_elsewhere(&self, session_id: &str) -> bool {
-        let st = self.state.borrow();
-        st.graph.open().is_some() && !st.graph.owned_by(session_id)
-    }
-
     async fn update_graph(&'static self, args: &Value, cx: &ToolCtx) -> ToolResult {
         // [owner-fix-8] At most ONE graph runs at a time across the app: a
         // second chat must not take over or extend the running one.
-        if !cx.cx.is_child() && self.graph_owned_elsewhere(cx.cx.session_id()) {
-            return ToolResult::error(
-                "graph_busy: another chat is running this graph — only one graph runs at a time; stop it there first."
-                    .to_owned(),
-            );
+        if !cx.cx.is_child()
+            && let Some(owner) = self.state.borrow().graph_busy_owner(cx.cx.session_id())
+        {
+            return ToolResult::error(format!("graph_busy: {}", graph_busy_message(owner)));
         }
         // The calling session owns whatever graph changes follow (tools are not
         // registered for child sessions; the check keeps a stray delivery honest).
@@ -1823,6 +1859,19 @@ impl Lh {
             radix36(u64::try_from(now).unwrap_or(0)),
             unipi_kit::fmt::random_hex(4)
         );
+        if op == "add_work" && !u.add.is_empty() && !cx.cx.is_child() {
+            let closed = self
+                .state
+                .borrow_mut()
+                .close_other_graph(cx.cx.session_id(), now);
+            if let Some(label) = closed {
+                self.save();
+                let _ = ui::notify(
+                    &format!("Closed paused graph \"{label}\" from another chat."),
+                    "info",
+                );
+            }
+        }
         let result = self.state.borrow_mut().graph.update(&u, &gid, now);
         let r = match result {
             Ok(r) => r,
@@ -2475,11 +2524,10 @@ impl Lh {
         };
         // [owner-fix-8] At most ONE graph runs at a time across the app: a
         // second chat asking for a graph is told why it cannot start.
-        if matches!(mode, Mode::Graph | Mode::Swarm) && self.graph_owned_elsewhere(cx.session_id())
+        if matches!(mode, Mode::Graph | Mode::Swarm)
+            && let Some(owner) = self.state.borrow().graph_busy_owner(cx.session_id())
         {
-            notify(
-                "Another chat is running a graph — only one graph runs at a time. Stop it there first, then start this one.",
-            );
+            notify(&graph_busy_message(owner));
             return;
         }
         if mode == Mode::Ralph && sub == "start" {
@@ -2680,7 +2728,15 @@ impl Lh {
                     notify(&m);
                     return;
                 }
-                let r = st.owners.resume(&now_iso());
+                let mut r = st.owners.resume(&now_iso());
+                if let Some(owner) = r.as_mut()
+                    && matches!(owner.kind, OwnerKind::Graph | OwnerKind::Swarm)
+                {
+                    owner.session = Some(cx.session_id().to_owned());
+                    st.owners.active = Some(owner.clone());
+                    st.graph.set_owner(cx.session_id());
+                    st.graph_session = Some(cx.session_id().to_owned());
+                }
                 if r.is_some() {
                     st.machine.resume(&now_iso());
                     if let Some(o) = r.as_ref().map(|o| o.kind.mode()) {
@@ -2696,6 +2752,43 @@ impl Lh {
             Self::owner_event("resumed", Some(&r), None);
             self.save();
             self.send("Continue the resumed owner from its own durable state; re-read its status before acting.", "Resume").await;
+            return;
+        }
+        if sub == "clear" && matches!(mode, Mode::Graph | Mode::Swarm) {
+            let (active_graph, cleared, graph_cleared) =
+                {
+                    let mut st = self.state.borrow_mut();
+                    let active_graph = st
+                        .owners
+                        .active
+                        .as_ref()
+                        .is_some_and(|o| matches!(o.kind, OwnerKind::Graph | OwnerKind::Swarm));
+                    if active_graph {
+                        (true, None, false)
+                    } else {
+                        let cleared =
+                            if st.owners.parked.as_ref().is_some_and(|o| {
+                                matches!(o.kind, OwnerKind::Graph | OwnerKind::Swarm)
+                            }) {
+                                st.owners.clear_parked()
+                            } else {
+                                None
+                            };
+                        let graph_cleared = st.clear_graph(timers::now_ms());
+                        (false, cleared, graph_cleared)
+                    }
+                };
+            if active_graph {
+                notify("A graph is running — use /graph stop to end it.");
+            } else if cleared.is_some() || graph_cleared {
+                if let Some(owner) = &cleared {
+                    Self::owner_event("cleared", Some(owner), None);
+                }
+                self.save();
+                notify("Cleared paused graph.");
+            } else {
+                notify("Nothing to clear.");
+            }
             return;
         }
         if sub == "clear" {
@@ -2766,6 +2859,18 @@ impl Lh {
                     ));
                     return;
                 }
+            }
+        }
+        if matches!(mode, Mode::Graph | Mode::Swarm) {
+            let closed = self
+                .state
+                .borrow_mut()
+                .close_other_graph(cx.session_id(), timers::now_ms());
+            if let Some(label) = closed {
+                notify(&format!(
+                    "Closed paused graph \"{label}\" from another chat."
+                ));
+                self.save();
             }
         }
         {
@@ -3268,7 +3373,9 @@ impl Lh {
                             st.display = Some(mode);
                             drop(st);
                             Self::persist_mode(session, mode);
-                            if control::is_idle() { apply_mode_tools(mode); }
+                            if control::is_idle() {
+                                apply_mode_tools(mode);
+                            }
                             self.save();
                             self.publish();
                             json!({"ok": true, "mode": m})
@@ -3825,6 +3932,85 @@ oino_extension::export_extension!(Lh);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn graph_state(parked: bool) -> State {
+        let mut st = State::default();
+        let mut update = graph::Update::new(GraphMode::Graph);
+        update.task = Some("old task".into());
+        update.add.push(graph::AddWork {
+            instruction: "work".into(),
+            profile: Some("worker".into()),
+            ..Default::default()
+        });
+        st.graph.update(&update, "old", 1).unwrap();
+        st.graph.set_owner("abcdefgh-session-a");
+        st.owners.activate(
+            "owner".into(),
+            OwnerKind::Graph,
+            "old task",
+            Some("abcdefgh-session-a".into()),
+            "now",
+        );
+        if parked {
+            st.owners.suspend("paused(superseded_by:goal)", "now");
+        }
+        st
+    }
+
+    #[test]
+    fn parked_graph_is_superseded_by_another_chat() {
+        let mut st = graph_state(true);
+        assert_eq!(st.graph_busy_owner("session-b"), None);
+        assert_eq!(
+            st.close_other_graph("session-b", 2).as_deref(),
+            Some("old task")
+        );
+        assert_eq!(
+            st.graph.current.as_ref().unwrap().abandoned.as_deref(),
+            Some("superseded(new_graph)")
+        );
+        assert!(st.owners.parked.is_none());
+        let mut update = graph::Update::new(GraphMode::Graph);
+        update.add.push(graph::AddWork {
+            instruction: "new work".into(),
+            profile: Some("worker".into()),
+            ..Default::default()
+        });
+        assert!(st.graph.update(&update, "new", 3).unwrap().opened);
+        assert_eq!(
+            st.graph.history[0].abandoned.as_deref(),
+            Some("superseded(new_graph)")
+        );
+    }
+
+    #[test]
+    fn active_graph_blocks_other_chat_and_names_owner() {
+        let mut st = graph_state(false);
+        let owner = st.graph_busy_owner("session-b").unwrap();
+        assert_eq!(
+            graph_busy_message(owner),
+            "Another chat (abcdefgh) is running a graph — only one graph runs at a time. Use /graph stop in that chat."
+        );
+        assert!(st.close_other_graph("session-b", 2).is_none());
+        assert!(st.graph.open().is_some());
+        assert!(st.graph_busy_owner("abcdefgh-session-a").is_none());
+    }
+
+    #[test]
+    fn clearing_parked_or_orphan_graph_abandons_it() {
+        let mut st = graph_state(true);
+        assert!(st.graph_busy_owner("session-b").is_none());
+        st.owners.clear_parked();
+        assert!(st.clear_graph(2));
+        assert_eq!(
+            st.graph.current.as_ref().unwrap().abandoned.as_deref(),
+            Some("stopped(user_cleared)")
+        );
+        let mut orphan = graph_state(false);
+        orphan.owners.active = None;
+        assert!(orphan.graph_busy_owner("session-b").is_none());
+        assert!(orphan.clear_graph(2));
+    }
 
     #[test]
     fn helpers() {
