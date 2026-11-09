@@ -4,6 +4,13 @@ What changed in each Unipi app release (desktop and phone), newest first.
 
 ## Unreleased
 
+## 1.0.4 — 2026-11-09
+
+- Superagent canvas: a collapsible right rail and a full-screen live agent canvas, a floating capsule with a one-at-a-time workbench, and a leads-only pane.
+- Phone: Superagent is the centred bottom tab, the Settings gear sits in the Chats header, and the Superagent screen uses one keyboard inset and one gutter.
+- A retired lead that you reopen keeps its board tool.
+- Internal cleanup (untangle) of unused parameters, duplicate wrappers and stale comments, with no behaviour change.
+
 ## 1.0.3 — 2026-11-09
 
 - Prevent duplicate user messages after chat catch-up and keep final responses outside work folds.
