@@ -334,6 +334,7 @@ function SubagentsSection(props: { s: SessionHandle; rows: RunRow[]; now: number
         </Show>
       }
     >
+      <div class="sm-runs-none" data-testid="sm-agents-summary">{live() > 0 ? `${live()} running · ${props.rows.length} total` : counts().done === props.rows.length ? `All ${props.rows.length} done` : `${props.rows.length} total`}</div>
       <FilterChips counts={counts()} filter={filter()} onFilter={setFilter} label="Filter runs by status" />
       <Show when={shown().length > 0} fallback={<div class="sm-runs-none">No {RUN_FILTERS.find((f) => f.id === filter())?.label.toLowerCase()} runs</div>}>
         <RunList rows={shown()} now={props.now} actions={actions} />

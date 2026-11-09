@@ -3,6 +3,9 @@
  * rows only the rows in view mount (bounded DOM), newest first.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { createSignal } from 'solid-js';
+import { scopedSubagents } from '../../lib/status/scopedSubagents';
+import { parseSubagentRuns } from './modalData';
 import { cleanup, fireEvent, render, screen } from '@solidjs/testing-library';
 import type { SessionHandle } from '../../lib/session/store';
 import type { RunningData } from '../../lib/status/running';
@@ -23,6 +26,19 @@ const view = (n: number) => {
 };
 
 describe('RunningTab subagents list', () => {
+  it('renders only the current session and updates one group when all finish', () => {
+    const records = Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, title: `Agent ${i}`, parentSessionId: 'A', status: i < 3 ? 'running' : 'completed' }));
+    const [topic, setTopic] = createSignal({ parentSessionId: 'A', records });
+    const data = (id: string): RunningData => ({ bash: [], agents: [], tabs: [], runs: parseSubagentRuns(scopedSubagents(topic(), id)) });
+    const a = render(() => <RunningTab s={handle} running={{ data: () => data('A'), refetch: () => {} }} />);
+    expect(a.getAllByTestId('sm-sec-agents')).toHaveLength(1);
+    expect(a.getByTestId('sm-agents-summary').textContent).toBe('3 running · 5 total');
+    const b = render(() => <RunningTab s={handle} running={{ data: () => data('B'), refetch: () => {} }} />);
+    expect(b.queryByTestId('sm-sec-agents')).toBeNull();
+    setTopic({ parentSessionId: 'A', records: records.map((r) => ({ ...r, status: 'completed' })) });
+    expect(a.getByTestId('sm-agents-summary').textContent).toBe('All 5 done');
+    expect(b.queryByTestId('sm-sec-agents')).toBeNull();
+  });
   it('the status filter opens on "Running" (in progress)', () => {
     const data: RunningData = { bash: [], agents: [], runs: runs(4), tabs: [] };
     render(() => <RunningTab s={handle} running={{ data: () => data, refetch: () => {} }} />);

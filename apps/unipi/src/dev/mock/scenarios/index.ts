@@ -21,6 +21,7 @@ import { modalContext } from './modal-context';
 import { modalInfo } from './modal-info';
 import { modalLimits } from './modal-limits';
 import { modalRunning } from './modal-running';
+import { oin42 } from './oin42';
 import { boardDashboard, boardLanes } from './board';
 import { gitHistory, gitLastTurn, gitPane, gitPaneMany } from './git';
 import { lhGoal, lhGoalErrored, lhGraphBig, lhHistory, lhRalph, lhSwarm } from './lh';
@@ -84,6 +85,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'bubble-fold': bubbleFold,
   'modal-context': modalContext,
   'modal-running': modalRunning,
+  oin42,
   'modal-info': modalInfo,
   'modal-limits': modalLimits,
   'board-lanes': boardLanes,
