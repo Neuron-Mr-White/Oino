@@ -89,31 +89,58 @@ mod tests {
     #[tokio::test]
     async fn same_file_runs_in_order() {
         let queue = FileMutationQueue::default();
-        let env = LocalEnv::new();
         let log = Arc::new(Mutex::new(Vec::new()));
+        let (entered, first_entered) = oneshot::channel();
+        let (release, released) = oneshot::channel();
         let first = {
             let (queue, log) = (queue.clone(), Arc::clone(&log));
-            async move {
+            tokio::spawn(async move {
                 queue
-                    .run(&env, "/nonexistent/a", async {
-                        tokio::time::sleep(Duration::from_millis(30)).await;
+                    .run(&LocalEnv::new(), "/nonexistent/a", async {
+                        entered.send(()).unwrap();
+                        released.await.unwrap();
                         log.lock().unwrap().push(1);
                     })
                     .await;
-            }
+            })
         };
+        tokio::time::timeout(Duration::from_secs(5), first_entered)
+            .await
+            .unwrap()
+            .unwrap();
+        let first_tail = queue.lock_tails().get("/nonexistent/a").unwrap().clone();
         let second = {
             let (queue, log) = (queue.clone(), Arc::clone(&log));
-            async move {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+            tokio::spawn(async move {
                 queue
-                    .run(&env, "/nonexistent/a", async {
+                    .run(&LocalEnv::new(), "/nonexistent/a", async {
                         log.lock().unwrap().push(2);
                     })
                     .await;
-            }
+            })
         };
-        tokio::join!(first, second);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if queue
+                    .lock_tails()
+                    .get("/nonexistent/a")
+                    .is_some_and(|tail| !tail.ptr_eq(&first_tail))
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(log.lock().unwrap().is_empty());
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            first.await.unwrap();
+            second.await.unwrap();
+        })
+        .await
+        .unwrap();
         assert_eq!(*log.lock().unwrap(), vec![1, 2]);
         assert_eq!(queue.pending(), 0);
     }
