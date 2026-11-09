@@ -46,6 +46,8 @@ via `release-manifest.json`.
 | macOS | mounts the `universal.dmg`, copies `UniPi.app` to `/Applications`, then clears the `com.apple.quarantine` xattr **with a printed notice** — the build is ad-hoc signed, not notarized; removing quarantine is your trust decision ([apps/unipi/BUILDING.md](../apps/unipi/BUILDING.md)). First launch may still need right-click → Open. |
 | Windows | runs the NSIS installer silently (`/S`, per-user, no admin). |
 
+Step-by-step Windows 11, WSL2 and private bridge setup: [guides/windows-wsl-setup.md](guides/windows-wsl-setup.md).
+
 ### `--host` / `-HostInstall`: the host only (no GUI)
 
 For servers, VMs and sandboxes the Unipi apps connect to. Installs the release
