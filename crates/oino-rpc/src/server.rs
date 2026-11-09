@@ -30,7 +30,6 @@ use tokio::sync::mpsc;
 use crate::jsonl::{LineReader, serialize_line};
 use crate::wire::{Connection, WireEvent, rpc_event};
 
-/// Reply queue depth.
 const REPLY_QUEUE: usize = 1024;
 /// How long queued events may still be written after shutdown.
 const FORWARD_GRACE: Duration = Duration::from_millis(500);

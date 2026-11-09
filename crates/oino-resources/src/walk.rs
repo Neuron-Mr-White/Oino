@@ -77,7 +77,6 @@ impl IgnoreMatcher {
         }
     }
 
-    /// A d d   I g n o r e   R u l e s ( i g ,   d i r ,   r o o t ).
     pub(crate) fn add_rules(&mut self, dir: &Path) {
         let relative = posix_relative(&self.root, dir);
         let prefix = if relative.is_empty() {
@@ -123,7 +122,6 @@ impl IgnoreMatcher {
     }
 }
 
-/// P r e f i x   I g n o r e   P a t t e r n.
 fn prefix_ignore_pattern(line: &str, prefix: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() || (trimmed.starts_with('#') && !trimmed.starts_with("\\#")) {

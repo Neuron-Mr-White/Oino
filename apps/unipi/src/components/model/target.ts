@@ -26,7 +26,6 @@ export function openModelPicker(next: ModelPickerTarget): void {
   );
 }
 
-/** Closes it. */
 export function closeModelPicker(): void {
   setTarget(undefined);
 }

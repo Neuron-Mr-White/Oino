@@ -107,23 +107,14 @@ impl PairingStore {
         PairingStore { path: path.into() }
     }
 
-    fn load(&self) -> anyhow::Result<Option<PairingState>> {
-        crate::data_dir::read_json(&self.path)
-    }
-
-    fn save(&self, state: &PairingState) -> anyhow::Result<()> {
-        crate::data_dir::write_json(&self.path, state)
-    }
-
     /// Starts a new pairing attempt, overwriting any previous one.
     /// Returns the generated code.
     pub fn start(&self, now: u64) -> anyhow::Result<PairingState> {
         let state = PairingState::new(now);
-        self.save(&state)?;
+        crate::data_dir::write_json(&self.path, &state)?;
         Ok(state)
     }
 
-    /// Clears any in-flight pairing attempt.
     pub fn clear(&self) -> anyhow::Result<()> {
         crate::data_dir::remove_optional(&self.path)?;
         Ok(())
@@ -133,7 +124,7 @@ impl PairingStore {
     /// (constant-time comparison), updating `attempts`/`used` on
     /// disk as a side effect.
     pub fn verify(&self, candidate: &str, now: u64) -> anyhow::Result<VerifyOutcome> {
-        let Some(mut state) = self.load()? else {
+        let Some(mut state) = crate::data_dir::read_json::<PairingState>(&self.path)? else {
             return Ok(VerifyOutcome::NoPendingAttempt);
         };
 
@@ -150,11 +141,11 @@ impl PairingStore {
         let matches = constant_time_eq_str(&state.code, candidate);
         if matches {
             state.used = true;
-            self.save(&state)?;
+            crate::data_dir::write_json(&self.path, &state)?;
             Ok(VerifyOutcome::Accepted)
         } else {
             state.attempts += 1;
-            self.save(&state)?;
+            crate::data_dir::write_json(&self.path, &state)?;
             if state.is_locked_out() {
                 Ok(VerifyOutcome::LockedOut)
             } else {
@@ -166,7 +157,7 @@ impl PairingStore {
     /// Returns the current attempt, if any (for `unipi-host pair`
     /// to redisplay / inspect without mutating state).
     pub fn current(&self) -> anyhow::Result<Option<PairingState>> {
-        self.load()
+        crate::data_dir::read_json(&self.path)
     }
 }
 
@@ -180,7 +171,6 @@ fn constant_time_eq_str(a: &str, b: &str) -> bool {
     a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
-/// Resolves the pairing.json path for a data directory.
 pub fn pairing_path(data_dir: &Path) -> PathBuf {
     data_dir.join("pairing.json")
 }

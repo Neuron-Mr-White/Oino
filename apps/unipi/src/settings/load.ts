@@ -105,7 +105,6 @@ export function validateSettings(raw: unknown): { settings: SettingsV1; resetKey
   return { settings, resetKeys };
 }
 
-/** Loads settings from an adapter: read -> migrate -> validate with fallback. */
 export function loadSettings(rawPersisted: unknown): LoadSettingsResult {
   // The toolbar-default upgrade only applies to real stored blobs, so
   // a missing blob still reads as "not migrated".

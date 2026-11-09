@@ -802,12 +802,7 @@ pub(super) fn dialog_is_modal(app: &App) -> bool {
     })
 }
 
-fn countdown(
-    app: &App,
-    timeout: Option<u64>,
-    opened: Option<std::time::Instant>,
-) -> Option<String> {
-    let _ = app;
+fn countdown(timeout: Option<u64>, opened: Option<std::time::Instant>) -> Option<String> {
     let (timeout, opened) = (timeout?, opened?);
     let left = timeout
         .saturating_sub(u64::try_from(opened.elapsed().as_millis()).unwrap_or(u64::MAX))
@@ -870,7 +865,7 @@ pub(super) fn dialog_block(app: &App, width: usize, max_height: usize) -> Block 
         Some(DialogUi::List { opened, .. } | DialogUi::Input { opened, .. }) => Some(*opened),
         _ => None,
     };
-    let timer = countdown(app, dialog.timeout_ms, opened).unwrap_or_default();
+    let timer = countdown(dialog.timeout_ms, opened).unwrap_or_default();
     let title = |t: &str| {
         Line::from(vec![
             Span::styled(format!(" {t}"), bold),

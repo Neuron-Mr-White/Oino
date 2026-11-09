@@ -139,7 +139,6 @@ impl OutputAccumulator {
         }
     }
 
-    /// A p p e n d.
     pub(crate) fn append(&mut self, data: &[u8]) {
         if self.finished {
             return;
@@ -155,7 +154,6 @@ impl OutputAccumulator {
         }
     }
 
-    /// F i n i s h.
     pub(crate) fn finish(&mut self) {
         if self.finished {
             return;
@@ -168,7 +166,6 @@ impl OutputAccumulator {
         }
     }
 
-    /// S n a p s h o t ( { p e r s i s t   I f   T r u n c a t e d } ).
     pub(crate) fn snapshot(&mut self, persist_if_truncated: bool) -> OutputSnapshot {
         let tail = truncate_tail(
             self.snapshot_text(),
@@ -212,7 +209,6 @@ impl OutputAccumulator {
         }
     }
 
-    /// C l o s e   T e m p   F i l e.
     pub(crate) fn close_temp_file(&mut self) -> Result<(), FsError> {
         if let Some(mut file) = self.temp_file.take()
             && let Err(error) = file.flush()

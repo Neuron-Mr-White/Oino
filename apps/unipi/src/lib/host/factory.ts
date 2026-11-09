@@ -47,12 +47,10 @@ export function appClient(): HostClient {
   return hostClient(APP_HOST);
 }
 
-/** `hostClient(hostId).request(op, args)` parsed with `schema`, as a Result. */
 export function hostCall<T>(hostId: string, op: string, args: Record<string, unknown> | undefined, schema: z.ZodType<T>): Promise<HostResult<T>> {
   return requestParsed(hostClient(hostId), op, args, schema);
 }
 
-/** An app-level op parsed with `schema`, as a Result. */
 export function appCall<T>(op: string, args: Record<string, unknown> | undefined, schema: z.ZodType<T>): Promise<HostResult<T>> {
   return requestParsed(appClient(), op, args, schema);
 }

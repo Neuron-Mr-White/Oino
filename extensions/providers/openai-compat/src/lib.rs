@@ -22,6 +22,7 @@ use oino_extension::prelude::*;
 use oino_extension::provider::{Provider, ProviderStream};
 use oino_provider_kit::catalog::Catalog;
 use oino_provider_kit::guest::{self, StreamOptions};
+use oino_provider_kit::providers::GITHUB_COPILOT;
 
 const CATALOG: &str = include_str!("../catalog.json");
 
@@ -67,7 +68,7 @@ impl Provider for OpenAiCompat {
 
     fn oauth_login(&'static self, provider_id: String) -> LocalBoxFuture<'static, Result<Value>> {
         Box::pin(async move {
-            if provider_id != "github-copilot" {
+            if provider_id != GITHUB_COPILOT {
                 return Err(Error::msg(format!(
                     "OAuth is not supported for {provider_id}"
                 )));
@@ -82,7 +83,7 @@ impl Provider for OpenAiCompat {
         credential: Value,
     ) -> LocalBoxFuture<'static, Result<Value>> {
         Box::pin(async move {
-            if provider_id != "github-copilot" {
+            if provider_id != GITHUB_COPILOT {
                 return Err(Error::msg(format!(
                     "OAuth is not supported for {provider_id}"
                 )));

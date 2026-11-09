@@ -702,7 +702,7 @@ fn build_params(
                 json!({"effort": effort_value, "summary": summary.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "auto".to_owned())}),
             );
             params.insert("include".into(), json!(["reasoning.encrypted_content"]));
-        } else if model.provider != "github-copilot"
+        } else if model.provider != providers::GITHUB_COPILOT
             && mapped_level(model, ThinkingLevel::Off) != MapEntry::Null
         {
             let off = match mapped_level(model, ThinkingLevel::Off) {
