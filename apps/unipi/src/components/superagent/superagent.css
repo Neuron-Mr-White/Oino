@@ -221,9 +221,10 @@ html[data-shell=phone] .sa-approval .autonomy-command .dock-queue-icon { min-wid
 .ph-shell .sa-review-capsule button::before { content:''; position:absolute; inset:-7px 0; }
 .ph-shell .sa-review-capsule button > svg { display:block; }
 .ph-shell .sa-capsule-label { display:none; }
-.ph-shell .sa-review-sheet .board-sheet-body { display:flex; flex-direction:column; overflow:hidden; padding:0; }
-.ph-shell .sa-review-controls { padding:10px; }
-.ph-shell .sa-review-list-pane { width:100%; border:0; }
-.ph-shell .sa-review-detail { display:none; }
-.ph-shell .sa-review-body[data-detail] .sa-review-list-pane { display:none; }
-.ph-shell .sa-review-body[data-detail] .sa-review-detail { display:flex; }
+html[data-shell=phone] .sa-review-sheet .board-sheet-body { display:flex; flex-direction:column; overflow:hidden; padding:0; }
+html[data-shell=phone] .sa-review-controls { padding:10px; }
+html[data-shell=phone] .sa-review-list-pane { width:100%; border:0; }
+html[data-shell=phone] .sa-review-detail { display:none; }
+html[data-shell=phone] .sa-review-body[data-detail] .sa-review-list-pane { display:none; }
+html[data-shell=phone] .sa-review-body[data-detail] .sa-review-detail { display:flex; }
+html[data-shell=desktop] .sa-review-task-mount .board-page.task-page[data-embedded] { left:auto; }
