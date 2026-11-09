@@ -1,9 +1,8 @@
 import { createSignal, Show } from 'solid-js';
-import { Minus, Plus, RefreshCw, SlidersHorizontal } from 'lucide-solid';
+import { RefreshCw, SlidersHorizontal } from 'lucide-solid';
 import { AnchoredMenu } from '../board/AnchoredMenu';
 import { Segmented } from '../phone';
 import { layout } from '../../lib/layout';
-import { CAP_MAX, CAP_MIN } from './api';
 import { countNeeds } from './needs';
 import type { SuperagentState } from './state';
 import { Toggle } from './parts';
@@ -22,17 +21,9 @@ export function needsCount(sa: SuperagentState): number {
 
 function Settings(props: { sa: SuperagentState; onManage: () => void }) {
   const s = () => props.sa.status()!;
-  const cap = () => s().concurrencyCap;
-  const step = (d: number) => void props.sa.configure(s().enabled, Math.min(CAP_MAX, Math.max(CAP_MIN, cap() + d)));
   return <div class="sa-settings" data-testid="sa-settings">
     <div class="sa-set-row"><div><strong>Auto-start</strong><p>Master switch. Each project also needs its own.</p></div>
-      <Toggle label="Auto-start" checked={s().enabled} disabled={props.sa.isBusy('configure')} onChange={(v) => void props.sa.configure(v, cap())} /></div>
-    <div class="sa-set-row"><strong>Max leads</strong>
-      <span class="sa-stepper" role="group" aria-label="Max leads">
-        <button type="button" class="sa-icon-btn" aria-label="Decrease max leads" disabled={cap() <= CAP_MIN || props.sa.isBusy('configure')} onClick={() => step(-1)}><Minus size={16} /></button>
-        <output aria-live="polite">{cap()}</output>
-        <button type="button" class="sa-icon-btn" aria-label="Increase max leads" disabled={cap() >= CAP_MAX || props.sa.isBusy('configure')} onClick={() => step(1)}><Plus size={16} /></button>
-      </span></div>
+      <Toggle label="Auto-start" checked={s().enabled} disabled={props.sa.isBusy('configure')} onChange={(v) => void props.sa.configure(v)} /></div>
     <Show when={props.sa.presets().supported}><button type="button" class="sa-btn" data-block onClick={props.onManage}>Manage presets</button></Show>
   </div>;
 }
@@ -43,7 +34,7 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
   const [managing, setManaging] = createSignal(false);
   const phone = () => !layout().desktop();
   const show = (tab: PaneTab) => !phone() || props.tab === tab;
-  const summary = () => { const s = sa.status(); return s ? (s.enabled ? `Auto-start on · up to ${s.concurrencyCap} ${s.concurrencyCap === 1 ? 'lead' : 'leads'}` : 'Auto-start off') : 'Superagent'; };
+  const summary = () => { const s = sa.status(); return s ? (s.enabled ? 'Auto-start on' : 'Auto-start off') : 'Superagent'; };
   const tabs = () => [
     { value: 'needs' as const, label: `Needs you · ${needsCount(sa)}` },
     { value: 'leads' as const, label: `Leads · ${sa.running().length}` },

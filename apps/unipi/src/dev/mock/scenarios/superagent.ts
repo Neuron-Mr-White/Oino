@@ -14,7 +14,6 @@ const capture = typeof location === 'undefined' ? '' : new URLSearchParams(locat
 if (capture === 'empty') { chat.snapshot.entries = []; chat.snapshot.leaf_id = null; }
 const worker = genSession('worker-14', { seed: 3, turns: 1, toolsPerTurn: 1, cwd: '/home/you/projects/oino' });
 let enabled = true;
-let concurrencyCap = 2;
 let stopped = false;
 export const superagent: MockScenario = {
   name: 'superagent',
@@ -25,8 +24,8 @@ export const superagent: MockScenario = {
       { sessionId: 'superagent-review', title: 'Start OIN-14 and tell me what needs review', createdAt: 1793869920000, updatedAt: 1793869920000, path: '/mock/superagent-review' },
       { sessionId: 'superagent-old', title: 'Superagent · 2026-11-08 09:03', createdAt: 1794128580000, updatedAt: 1794128580000, path: '/mock/superagent-old' },
     ],
-    'superagent.status': () => ({ enabled, concurrencyCap, workers: stopped ? [] : [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'medium', step: 'Running focused UI tests', tool: 'bash', startedAt: new Date(Date.now() - 420000).toISOString(), cost: 0.42 }], needsYou: [...(capture === 'approval' ? [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked', workerSessionId: 'worker-14', requestId: 'demo-approval', sessionId: 'worker-14', tool: 'bash', command: 'git push origin feature', summary: 'Push the feature branch', risk: 'high', ceiling: 'medium', reason: 'needs Autonomy High' }] : []), { projectId: 'oino', taskId: 'OIN-12', status: 'in_review', question: null }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Should the staging deployment use the existing domain, or should I create a separate preview domain?' }] }),
-    'superagent.configure': (args) => { enabled = args.enabled as boolean; concurrencyCap = args.concurrencyCap as number; return { enabled, concurrencyCap }; },
+    'superagent.status': () => ({ enabled, workers: stopped ? [] : [{ projectId: 'oino', taskId: 'OIN-14', sessionId: 'worker-14', autonomy: 'medium', step: 'Running focused UI tests', tool: 'bash', startedAt: new Date(Date.now() - 420000).toISOString(), cost: 0.42 }], needsYou: [...(capture === 'approval' ? [{ projectId: 'oino', taskId: 'OIN-14', status: 'blocked', workerSessionId: 'worker-14', requestId: 'demo-approval', sessionId: 'worker-14', tool: 'bash', command: 'git push origin feature', summary: 'Push the feature branch', risk: 'high', ceiling: 'medium', reason: 'needs Autonomy High' }] : []), { projectId: 'oino', taskId: 'OIN-12', status: 'in_review', question: null }, { projectId: 'website', taskId: 'WEB-8', status: 'blocked', question: 'Should the staging deployment use the existing domain, or should I create a separate preview domain?' }] }),
+    'superagent.configure': (args) => { enabled = args.enabled as boolean; return { enabled }; },
     'superagent.stop': () => { stopped = true; return { stopped: true }; },
     'superagent.start': () => { stopped = false; return { sessionId: 'worker-14' }; },
     'superagent.relay': () => ({ delivered: true, commentId: 'comment-demo', sessionId: 'worker-14' }),

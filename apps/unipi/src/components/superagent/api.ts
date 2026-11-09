@@ -7,8 +7,6 @@ export const AutonomySchema = z.enum(['low', 'medium', 'high']);
 export const MODES = ['none', 'goal', 'ralph', 'swarm', 'graph'] as const;
 export type LeadMode = (typeof MODES)[number];
 export const REVIEWS = ['none', 'light', 'full'] as const;
-export const CAP_MIN = 1;
-export const CAP_MAX = 3;
 
 const ProgressSchema = z.object({ running: z.number(), queued: z.number(), done: z.number() });
 const LeadSchema = z.object({
@@ -49,7 +47,7 @@ const ProjectSchema = z.object({
 });
 
 const RawStatusSchema = z.object({
-  enabled: z.boolean(), concurrencyCap: z.number().int().min(1),
+  enabled: z.boolean(),
   leads: z.array(LeadSchema).optional(), workers: z.array(WorkerSchema).optional(),
   needsYou: z.array(NeedsSchema).default([]), review: z.array(ReviewSchema).optional(), projects: z.array(ProjectSchema).optional(),
 });
@@ -61,7 +59,7 @@ export type ReviewItem = z.infer<typeof ReviewSchema>;
 /** `blockers` / `registered` are always set on parsed rows; optional here so a row built by hand (an older host's shape) still type-checks. */
 export type ProjectRow = Omit<z.infer<typeof ProjectSchema>, 'blockers' | 'registered'> & { blockers?: Blocker[]; registered?: boolean };
 export type SuperagentStatus = {
-  enabled: boolean; concurrencyCap: number; leads: Lead[]; needsYou: NeedsItem[]; review: ReviewItem[];
+  enabled: boolean; leads: Lead[]; needsYou: NeedsItem[]; review: ReviewItem[];
   /** null: the host predates per-project controls. */
   projects: ProjectRow[] | null;
   /** The host still reports one worker per ticket. */
@@ -82,7 +80,7 @@ export function normalizeStatus(raw: z.infer<typeof RawStatusSchema>): Superagen
   }));
   const oldReview = raw.needsYou.filter((n) => n.status === 'in_review').map((n) => ({ projectId: n.projectId, taskId: n.taskId, status: n.status }));
   return {
-    enabled: raw.enabled, concurrencyCap: raw.concurrencyCap, leads, legacy,
+    enabled: raw.enabled, leads, legacy,
     needsYou: raw.needsYou.filter((n) => n.status !== 'in_review'),
     review: raw.review ?? oldReview,
     projects: raw.projects ?? null,
@@ -90,8 +88,8 @@ export function normalizeStatus(raw: z.infer<typeof RawStatusSchema>): Superagen
 }
 export const StatusSchema = RawStatusSchema.transform(normalizeStatus);
 
-export const ConfigSchema = z.object({ enabled: z.boolean(), concurrencyCap: z.number().int().min(CAP_MIN).max(CAP_MAX) });
-const ConfigReplySchema = z.object({ enabled: z.boolean(), concurrencyCap: z.number().int().min(1) });
+export const ConfigSchema = z.object({ enabled: z.boolean() });
+const ConfigReplySchema = z.object({ enabled: z.boolean() });
 export const RelayTextSchema = z.string().trim().min(1, 'Enter a message to relay.');
 export const SuperagentSessionSchema = z.object({ sessionId: z.string(), title: z.string(), createdAt: z.union([z.string(), z.number()]), updatedAt: z.union([z.string(), z.number()]), path: z.string(), project: z.string().nullish(), state: z.object({ kind: z.string() }).nullish(), pendingWork: z.string().nullish() });
 export type SuperagentSession = z.infer<typeof SuperagentSessionSchema>;
@@ -113,13 +111,6 @@ export function startRefusal(error: { code?: unknown; detail?: unknown }): 'not_
   if (codes.includes('E_PROJECT_NOT_REGISTERED')) return 'not_registered';
   if (codes.includes('E_PROJECT_ARCHIVED')) return 'archived';
   return null;
-}
-
-export const WORKER_CAP_MESSAGE = 'Worker cap reached — waiting for a slot';
-/** Host errors may be wrapped by the board adapter in detail. */
-export function isWorkerCap(error: { code?: unknown; detail?: unknown }): boolean {
-  const detail = error.detail && typeof error.detail === 'object' ? (error.detail as { code?: unknown }).code : undefined;
-  return error.code === 'E_WORKER_CAP' || detail === 'E_WORKER_CAP';
 }
 
 export type RelayDelivery = 'queue' | 'steer';

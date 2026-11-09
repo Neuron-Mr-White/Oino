@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from
 import { toAppError } from '@unipi/protocol';
 import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
-import { ConfigSchema, RelayTextSchema, WORKER_CAP_MESSAGE, isWorkerCap, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
+import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
 import { superagentSessionId } from './chatActivity';
 import { runningSessions, type RunningSession } from './runningSessions';
 import { sessions } from '../../lib/session/store';
@@ -123,10 +123,9 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     projectName: (id: string) => status()?.projects?.find((p) => p.projectId === id)?.name || id,
     presetLabel: (id: string | null | undefined) => (id ? presets().list.find((p) => p.id === id)?.label ?? id : null),
     meta: (project: string, task: string) => titles()[ticketKey(project, task)],
-    configure(enabled: boolean, concurrencyCap: number) {
-      const parsed = ConfigSchema.safeParse({ enabled, concurrencyCap });
-      if (!parsed.success) { setError('Max leads must be 1 to 3.'); return Promise.resolve(false); }
-      return run('configure', () => superagentApi.configure(hostId(), parsed.data), (v) => { patchStatus((s) => ({ ...s, enabled: v.enabled, concurrencyCap: v.concurrencyCap })); });
+    configure(enabled: boolean) {
+      const parsed = ConfigSchema.parse({ enabled });
+      return run('configure', () => superagentApi.configure(hostId(), parsed), (v) => { patchStatus((s) => ({ ...s, enabled: v.enabled })); });
     },
     async setAutoStart(projectId: string, autoStart: boolean) {
       const before = status()?.projects?.find((p) => p.projectId === projectId)?.autoStart;
@@ -162,10 +161,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       }, () => { setHistory((rows) => rows.map((r) => r.sessionId === row.sessionId ? { ...r, state: { kind: 'idle' }, pendingWork: null } : r)); });
     },
     /** `handled` sees a refusal first: return true to keep it out of the pane's error line (the caller shows it). */
-    start: (projectId: string, taskIds: string[], presetId: string | null, handled?: (error: RunError) => boolean) => run(`start:${projectId}`, async () => {
-      const result = await superagentApi.start(hostId(), projectId, taskIds, presetId);
-      return !result.ok && isWorkerCap(result.error) ? { ...result, error: { ...result.error, message: WORKER_CAP_MESSAGE } } : result;
-    }, async () => { flash(taskIds.length === 1 ? 'Started 1 ticket.' : `Started ${taskIds.length} tickets.`); await refresh(); }, handled),
+    start: (projectId: string, taskIds: string[], presetId: string | null, handled?: (error: RunError) => boolean) => run(`start:${projectId}`, () => superagentApi.start(hostId(), projectId, taskIds, presetId), async () => { flash(taskIds.length === 1 ? 'Started 1 ticket.' : `Started ${taskIds.length} tickets.`); await refresh(); }, handled),
     /** Clears one blocker (register, unarchive, Auto on) and refreshes. The caller shows a failure inline; nothing goes to the pane's error line. */
     async enable(input: EnableInput): Promise<EnableResult> {
       const key = `enable:${input.projectId ?? input.path ?? input.action}`;

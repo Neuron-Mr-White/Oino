@@ -72,7 +72,6 @@ let presets = [
 let defaultPresetId = 'quick-fix';
 // `?saCapture=globalOff` opens with the master Auto-start switch off.
 let enabled = !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('saCapture') === 'globalOff');
-let concurrencyCap = 2;
 
 export const superagentLeads: MockScenario = {
   name: 'superagent-leads',
@@ -82,8 +81,8 @@ export const superagentLeads: MockScenario = {
     sessions: { 'superagent-chat': chat, 'lead-hp': genSession('lead-hp', { seed: 5, turns: 1, toolsPerTurn: 1, cwd: '/home/you/projects/heartpick' }), 'lead-oino': genSession('lead-oino', { seed: 6, turns: 1, toolsPerTurn: 1, cwd: '/home/you/projects/oino' }) },
     ops: {
       ...base.ops,
-      'superagent.status': () => ({ enabled, concurrencyCap, leads, needsYou, review, projects: rows() }),
-      'superagent.configure': (a) => { enabled = a.enabled as boolean; concurrencyCap = a.concurrencyCap as number; return { enabled, concurrencyCap }; },
+      'superagent.status': () => ({ enabled, leads, needsYou, review, projects: rows() }),
+      'superagent.configure': (a) => { enabled = a.enabled as boolean; return { enabled }; },
       'superagent.configure_project': (a) => { const p = projects.find((x) => x.projectId === a.projectId); if (p) p.autoStart = a.autoStart as boolean; return { projectId: a.projectId, autoStart: a.autoStart }; },
       'superagent.set_mode': (a) => { const l = leads.find((x) => x.projectId === a.projectId); if (l) l.mode = a.mode as string; return { sessionId: l?.sessionId ?? null, mode: a.mode }; },
       'superagent.start': (a) => {

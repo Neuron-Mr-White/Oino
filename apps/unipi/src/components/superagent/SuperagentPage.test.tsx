@@ -8,10 +8,9 @@ import { createMockHost } from '../../dev/mock/host';
 import { superagent } from '../../dev/mock/scenarios/superagent';
 import { superagentLeads } from '../../dev/mock/scenarios/superagent-leads';
 import { superagentConcurrent } from '../../dev/mock/scenarios/superagent-concurrent';
-import { superagentCap } from '../../dev/mock/scenarios/superagent-cap';
 import { createSuperagentState } from './state';
 import { SuperagentPane, type PaneTab } from './SuperagentPane';
-import { ConfigSchema, StatusSchema } from './api';
+import { StatusSchema } from './api';
 import { confirmSheet } from '../phone/Sheet';
 import { createSignal } from 'solid-js';
 import { buildTurns, messageAuthor } from '../../lib/session/turns';
@@ -179,7 +178,7 @@ describe('v3 Superagent leads', () => {
     vi.spyOn(superagentApi, 'configureProject').mockResolvedValue(ok({ projectId: 'billing', autoStart: true }));
     const value = raw();
     mount({ ...value, projects: value.projects.map((p) => p.projectId === 'billing' ? { ...p, ready: 3 } : p) });
-    await screen.findByText('No lead · 3 ready');
+    await screen.findByText('Waiting to start · reason not reported · 3 ready');
     fireEvent.click(screen.getByRole('switch', { name: 'Auto-start Billing' }));
     await screen.findByText('Starting a lead for 3 ready tickets');
   });
@@ -189,19 +188,14 @@ describe('v3 Superagent leads', () => {
     fireEvent.click(await screen.findByRole('switch', { name: 'Auto-start Billing' }));
     await screen.findByText('Auto-start is off globally — turn it on in Superagent settings to start leads');
   });
-  it('watcher_and_relay: master switch and cap live in the settings popover', async () => {
+  it('configures the master auto-start switch without a worker limit', async () => {
     const configure = vi.spyOn(superagentApi, 'configure').mockImplementation(async (_h, c) => ok(c));
     mount();
     await screen.findByTestId('sa-leads');
     fireEvent.click(screen.getByLabelText('Auto-start settings'));
     fireEvent.click(await screen.findByRole('switch', { name: 'Auto-start' }));
-    await waitFor(() => expect(configure.mock.calls).toEqual([['pc-coffee', { enabled: false, concurrencyCap: 2 }]]));
-    await waitFor(() => expect((screen.getByLabelText('Increase max leads') as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByLabelText('Increase max leads'));
-    await waitFor(() => expect(configure).toHaveBeenCalledWith('pc-coffee', { enabled: false, concurrencyCap: 3 }));
-    await waitFor(() => expect((screen.getByLabelText('Increase max leads') as HTMLButtonElement).disabled).toBe(true));
-    expect(ConfigSchema.safeParse({ enabled: true, concurrencyCap: 4 }).success).toBe(false);
-    expect(ConfigSchema.safeParse({ enabled: true, concurrencyCap: 0 }).success).toBe(false);
+    await waitFor(() => expect(configure).toHaveBeenCalledWith('pc-coffee', { enabled: false }));
+    expect(screen.queryByText('Max leads')).toBeNull();
   });
   it('starts ready tickets with the default preset', async () => {
     const start = vi.spyOn(superagentApi, 'start').mockResolvedValue(ok({ sessionId: 'lead-new' }));
@@ -360,32 +354,16 @@ describe('v3 Superagent shared', () => {
     fireEvent.click(screen.getByLabelText('Superagent history'));
     expect(await screen.findByText(/Running now/)).toBeTruthy();
   });
-  it('explains a full worker cap and updates occupancy as slots change', async () => {
-    const world = createMockHost(superagentCap);
-    setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
-    const capStatus = superagentCap.hosts![0]!.ops!['superagent.status']!({}, {} as never);
-    let value = StatusSchema.parse(capStatus);
-    vi.spyOn(superagentApi, 'status').mockImplementation(async () => ok(value));
-    vi.spyOn(superagentApi, 'start').mockResolvedValue({ ok: false, error: { code: 'E_BOARD_REJECTED', detail: { code: 'E_WORKER_CAP' }, message: 'cap', retryable: false } });
-    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
-    render(() => <Root />);
-    expect((await screen.findByTestId('sa-occupancy')).textContent).toContain('Workers 2/2');
-    expect(await screen.findByText('Worker cap reached — waiting for a slot')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Superagent history'));
-    expect(within(screen.getByLabelText('Superagent history list')).getByText(/Running now.*Workers 2\/2/)).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Superagent history'));
-    fireEvent.click(screen.getByLabelText('Start cloud-agent'));
-    fireEvent.click(await screen.findByText('Start 8 tickets'));
-    await screen.findByRole('alert', { name: '' });
-    expect(within(screen.getByTestId('sa-start')).getByRole('alert').textContent).toContain('Worker cap reached — waiting for a slot');
-    value = { ...value, leads: value.leads.slice(0, 1) };
-    fireEvent.click(screen.getByLabelText('Refresh'));
-    await waitFor(() => expect(screen.getByTestId('sa-occupancy').textContent).toContain('Workers 1/2'));
-    expect(screen.getByRole('switch', { name: 'Auto-start cloud-agent' }).closest('li')?.textContent).not.toContain('Worker cap reached');
-    value = { ...value, leads: [...value.leads, { projectId: 'cloud-agent', sessionId: 'lead-cloud', autonomy: 'high', ticketIds: ['CLD-1'] }], projects: value.projects!.map((p) => p.projectId === 'cloud-agent' ? { ...p, lead: 'lead-cloud' } : p) };
-    fireEvent.click(screen.getByLabelText('Refresh'));
-    await waitFor(() => expect(screen.getByTestId('sa-occupancy').textContent).toContain('Workers 2/2'));
+  it('shows three leads and honest reasons for projects waiting without a lead', async () => {
+    mount(raw({ leads: [lead(), lead({ projectId: 'oino', sessionId: 'lead-oino' }), lead({ projectId: 'cloud-agent', sessionId: 'lead-cloud' })], projects: [
+      { projectId: 'cloud-agent', name: 'cloud-agent', autoStart: true, ready: 0, lead: 'lead-cloud' },
+      { projectId: 'waiting', name: 'Waiting', autoStart: false, ready: 8, lead: null, blockers: [{ code: 'project_auto_off', message: 'Auto is off', action: { kind: 'enable_project_auto', label: 'Turn on Auto' } }] },
+      { projectId: 'unknown', name: 'Unknown', autoStart: true, ready: 2, lead: null },
+    ] }));
+    await waitFor(() => expect(screen.getAllByTestId('sa-lead')).toHaveLength(3));
     expect(screen.getByRole('switch', { name: 'Auto-start cloud-agent' }).closest('li')?.textContent).toContain('Lead running');
+    expect(screen.getByText('Auto off · 8 waiting')).toBeTruthy();
+    expect(screen.getByText(/Waiting to start · reason not reported/)).toBeTruthy();
   });
   it('keeps all concurrent runs visible across menu toggles, switching, and stopping a lead', async () => {
     const world = createMockHost(superagentConcurrent);

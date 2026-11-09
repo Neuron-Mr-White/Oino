@@ -3,7 +3,7 @@ import { Play } from 'lucide-solid';
 import { SheetFrame } from '../phone/Sheet';
 import { api as boardApi, PRIORITY_RANK, type Task } from '../../lib/board/api';
 import { displayTitle } from '../../lib/board/api';
-import { isHardBlocker, isWorkerCap, startRefusal, WORKER_CAP_MESSAGE, type Blocker, type ProjectRow } from './api';
+import { isHardBlocker, startRefusal, type Blocker, type ProjectRow } from './api';
 import { prettyModelId } from '../../lib/model/displayName';
 import type { SuperagentState } from './state';
 import { Limited, SectionHead, Toggle } from './parts';
@@ -45,7 +45,6 @@ function StartSheet(props: { hostId: string; sa: SuperagentState; project: Proje
   const toggle = (id: string) => setPicked((old) => (old.includes(id) ? old.filter((x) => x !== id) : [...old, id]));
   const busy = () => props.sa.isBusy(`start:${props.project.projectId}`);
   const [asking, setAsking] = createSignal<BlockedRequest>();
-  const [startError, setStartError] = createSignal('');
   const ask = (blocker: Blocker) => setAsking({
     projectId: props.project.projectId, name: name(), path: props.project.path, blocker, startCount: picked().length,
     // Same tickets and preset; `register` hands back the new project id.
@@ -58,11 +57,9 @@ function StartSheet(props: { hostId: string; sa: SuperagentState; project: Proje
   });
   const hard = () => { const b = firstBlocker(props.sa.status()?.projects?.find((x) => x.projectId === props.project.projectId) ?? props.project); return isHardBlocker(b) ? b : undefined; };
   async function start() {
-    setStartError('');
     const blocked = hard();
     if (blocked) return ask(blocked);
     const handled = (e: { message: string; code?: unknown; detail?: unknown }) => {
-      if (isWorkerCap(e)) { setStartError(WORKER_CAP_MESSAGE); return true; }
       const kind = startRefusal(e);
       if (kind) ask(refusalBlocker(kind, e.message));
       return !!kind;
@@ -73,7 +70,6 @@ function StartSheet(props: { hostId: string; sa: SuperagentState; project: Proje
     footer={<button type="button" class="sa-btn" data-tone="primary" data-block disabled={!picked().length || busy()} onClick={() => void start()}>{picked().length === 1 ? 'Start 1 ticket' : `Start ${picked().length} tickets`}</button>}>
     <div class="sa-start" data-testid="sa-start">
       <Show when={hard()}>{(b) => <p class="sa-message sa-start-blocked" role="status">{b().message}</p>}</Show>
-      <Show when={startError()}><p class="sa-message" role="alert">{startError()}</p></Show>
       <div class="sa-start-preset"><span>Preset</span><PresetSelect sa={props.sa} value={preset()} onChange={setPreset} /><button type="button" class="sa-link-quiet" onClick={props.onManage}>Manage</button></div>
       <Show when={!tickets.loading} fallback={<div class="sa-loading" aria-busy="true" aria-label="Loading tickets"><span /><span /></div>}>
         <Show when={tickets.error}><p class="sa-message" role="alert">Could not load tickets. {String((tickets.error as Error)?.message ?? '')}</p></Show>
@@ -95,10 +91,6 @@ export function ProjectsSection(props: { hostId: string; sa: SuperagentState; on
   const askFor = (p: ProjectRow, blocker: Blocker) => setAsking({ projectId: p.projectId, name: props.sa.projectName(p.projectId), path: p.path, blocker, ready: p.ready });
   const projects = () => props.sa.status()?.projects;
   const paused = (p: ProjectRow) => p.autoStart && props.sa.status()?.enabled === false;
-  const capReached = (p: ProjectRow) => {
-    const status = props.sa.status();
-    return !!status && status.enabled && p.autoStart && p.ready > 0 && !p.lead && !firstBlocker(p) && status.leads.length >= status.concurrencyCap;
-  };
   return <section class="sa-sec" aria-label="Projects" data-testid="sa-projects">
     <SectionHead title="Projects" count={projects()?.length} />
     <Show when={projects()} fallback={<p class="sa-empty">This host has no per-project controls. Update it to use auto-start.</p>}>
@@ -106,7 +98,7 @@ export function ProjectsSection(props: { hostId: string; sa: SuperagentState; on
         <ul class="sa-projects">
           <Limited items={list()} limit={4}>{(p) => <li class="sa-project-row">
             <div class="sa-project-main"><strong title={p.registered === false ? (p.path ?? props.sa.projectName(p.projectId)) : props.sa.projectName(p.projectId)}>{props.sa.projectName(p.projectId)}</strong>
-              <span class="sa-sub">{p.lead ? <><span class="sa-live-dot" aria-hidden="true" /> Lead running</> : capReached(p) ? <span class="sa-cap-hint">{WORKER_CAP_MESSAGE}</span> : <Show when={firstBlocker(p)} fallback={<>{paused(p) ? 'Auto-start paused' : 'No lead'}{p.ready > 0 ? ` · ${p.ready} ready` : ''}</>}>{(b) => <span class="sa-hint" title={b().message}>
+              <span class="sa-sub">{p.lead ? <><span class="sa-live-dot" aria-hidden="true" /> Lead running</> : <Show when={firstBlocker(p)} fallback={<>{paused(p) ? 'Auto-start paused' : p.ready > 0 ? 'Waiting to start · reason not reported' : 'No lead'}{p.ready > 0 ? ` · ${p.ready} ready` : ''}</>}>{(b) => <span class="sa-hint" title={b().message}>
                 <span class="sa-hint-text" aria-hidden="true">{hintText(p, b())}</span><span class="sr-only">{b().message}</span>
                 <Show when={p.ready > 0 && !isHardBlocker(b())}><button type="button" class="sa-hint-btn" aria-label={`${b().action.label} for ${props.sa.projectName(p.projectId)}`} onClick={() => askFor(p, b())}>Enable</button></Show>
               </span>}</Show>}{p.leadModel ? <span title={`Lead model ${p.leadModel}${p.leadThinking ? ` · ${p.leadThinking}` : ''}`}> · {prettyModelId(p.leadModel)}</span> : null}</span></div>
