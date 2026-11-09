@@ -1,9 +1,9 @@
-import { Show } from 'solid-js';
+import { For, Show } from 'solid-js';
 import { confirmSheet } from '../phone';
 import { MODES, type Lead, type LeadMode } from './api';
 import { autonomyLabel, elapsed, modeLabel, money, progressText, shortModel, MODE_LABEL } from './format';
 import type { SuperagentState } from './state';
-import { ChipSelect, Limited, SectionHead } from './parts';
+import { ChipSelect, SectionHead } from './parts';
 
 function Progress(props: { lead: Lead }) {
   const p = () => props.lead.progress;
@@ -56,17 +56,23 @@ function LeadCard(props: { sa: SuperagentState; lead: Lead; onOpen: (id: string)
     <p class="sa-lead-count"><Show when={progressText(lead())}>{progressText(lead())} · </Show>{tickets()} {tickets() === 1 ? 'ticket' : 'tickets'}</p>
     <div class="sa-actions">
       <button type="button" class="sa-btn" onClick={() => props.onOpen(lead().sessionId)}>Open</button>
-      <button type="button" class="sa-btn" data-tone="danger" disabled={props.sa.isBusy(`stop:${lead().projectId}`) || tickets() === 0} onClick={() => void stop()}>Stop</button>
+      <button type="button" class="sa-btn" data-tone="danger" disabled={props.sa.isBusy(`stop:${lead().projectId}`)} onClick={() => void stop()}>Stop</button>
     </div>
   </article>;
 }
 
 export function LeadsSection(props: { sa: SuperagentState; onOpen: (id: string) => void }) {
-  const leads = () => props.sa.status()?.leads ?? [];
+  const rows = () => props.sa.running();
+  const leads = () => rows().flatMap((row) => row.lead ? [row.lead] : []);
   return <section class="sa-sec" aria-label="Leads" data-testid="sa-leads">
-    <SectionHead title="Leads" count={leads().length} />
-    <Show when={leads().length} fallback={<p class="sa-empty">No lead is running. Start one from a project, or ask Superagent.</p>}>
-      <Limited items={leads()} limit={3}>{(lead) => <LeadCard sa={props.sa} lead={lead} onOpen={props.onOpen} />}</Limited>
+    <SectionHead title="Leads" count={rows().length} />
+    <Show when={rows().length} fallback={<p class="sa-empty">No lead is running. Start one from a project, or ask Superagent.</p>}>
+      <For each={leads()}>{(lead) => <LeadCard sa={props.sa} lead={lead} onOpen={props.onOpen} />}</For>
+      <For each={rows().filter((row) => !row.lead)}>{(row) => <article class="sa-lead" data-testid="sa-manual-run">
+        <div class="sa-lead-top"><span class="sa-live-dot" /><strong class="sa-lead-name">{row.title}</strong></div>
+        <p class="sa-lead-meta">{row.project ?? 'No project'} · {elapsed(row.startedAt == null ? null : new Date(row.startedAt).toISOString(), props.sa.now()) ?? 'Elapsed unavailable'}</p>
+        <div class="sa-actions"><button type="button" class="sa-btn" onClick={() => props.onOpen(row.sessionId)}>Open</button><button type="button" class="sa-btn" data-tone="danger" onClick={() => void props.sa.stopSession(row)}>Stop</button></div>
+      </article>}</For>
     </Show>
   </section>;
 }

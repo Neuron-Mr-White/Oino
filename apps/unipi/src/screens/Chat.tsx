@@ -28,9 +28,17 @@ import { hostStatus, useSelectedHost } from '../components/shell/HostSwitcher';
 import { ActionSheet, Button, ListGroup, ListRow, PageScaffold, confirmSheet, type ActionItem } from '../components/phone';
 import { archiveWithUndo, ChatsList, projectName, shortTime } from '../components/phone/ChatsList';
 import { haptic } from '../components/phone/services';
+import { useRailStatus } from '../components/superagent/railStatus';
 import './chat.css';
 
 /** The needs-you button of the Chats top bar: the crab with the unread count (replaces the floating crab, PH-12). */
+function SuperagentEntry() {
+  const navigate = useNavigate();
+  const selected = useSelectedHost();
+  const status = useRailStatus(() => selected()?.id);
+  return <button type="button" class="ph-icon-btn ph-needs-you" aria-label={`Superagent · ${status()?.leads ?? 0} running`} onClick={() => navigate('/superagent')}><Bot size={22} /><Show when={status()?.leads}><span class="ph-badge">{status()!.leads}</span></Show></button>;
+}
+
 function NeedsYouButton() {
   const hosts = useHostsOptional();
   const live = mascotLive(() => hosts?.hosts() ?? []);
@@ -123,7 +131,7 @@ export default function Chat() {
             }
           >
             <Show when={can('hosts')}>
-              <button type="button" class="ph-icon-btn" aria-label="Superagent" onClick={() => navigate('/superagent')}><Bot size={22} /></button>
+              <SuperagentEntry />
               <NeedsYouButton />
             </Show>
             <button type="button" class="ph-icon-btn" aria-label="More options" data-testid="chats-menu" onClick={() => setMenu(true)}>

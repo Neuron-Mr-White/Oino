@@ -2,6 +2,7 @@ import { createEffect, createSignal, on, onCleanup } from 'solid-js';
 import { can } from '../../lib/platform';
 import { superagentApi } from './api';
 import { countNeeds } from './needs';
+import { runningSessions } from './runningSessions';
 
 /** What the sidebar rail shows for Superagent. */
 export type RailSummary = { needs: number; leads: number };
@@ -32,7 +33,11 @@ function start(next: string | undefined) {
     try {
       const result = await superagentApi.status(next);
       if (gen !== generation) return;
-      if (result.ok) { setSummary({ needs: countNeeds(result.value.needsYou), leads: result.value.leads.length }); return; }
+      if (result.ok) {
+        const history = await superagentApi.sessions(next).catch(() => undefined);
+        if (gen !== generation) return;
+        setSummary({ needs: countNeeds(result.value.needsYou), leads: runningSessions(result.value, history?.ok ? history.value : []).length }); return;
+      }
       setSummary(undefined);
       // An older host without Superagent: nothing to show, nothing to poll.
       if (String(result.error.code) === 'E_UNKNOWN_OP' && timer !== undefined) { clearInterval(timer); timer = undefined; }

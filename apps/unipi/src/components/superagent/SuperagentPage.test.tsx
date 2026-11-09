@@ -7,6 +7,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createMockHost } from '../../dev/mock/host';
 import { superagent } from '../../dev/mock/scenarios/superagent';
 import { superagentLeads } from '../../dev/mock/scenarios/superagent-leads';
+import { superagentConcurrent } from '../../dev/mock/scenarios/superagent-concurrent';
 import { createSuperagentState } from './state';
 import { SuperagentPane, type PaneTab } from './SuperagentPane';
 import { ConfigSchema, StatusSchema } from './api';
@@ -356,7 +357,34 @@ describe('v3 Superagent shared', () => {
     expect(spinner.parentElement).toBe(badge.parentElement);
     expect(badge.classList.contains('rail-count')).toBe(true);
     fireEvent.click(screen.getByLabelText('Superagent history'));
-    expect(await screen.findByTestId('sa-history-working')).toBeTruthy();
+    expect(await screen.findByText('Running now')).toBeTruthy();
+  });
+  it('keeps all concurrent runs visible across menu toggles, switching, and stopping a lead', async () => {
+    const world = createMockHost(superagentConcurrent);
+    setHostClientFactory(world.client); setPlatformOverride('tauri-desktop'); setDesktopOverride(true);
+    let value = StatusSchema.parse(raw());
+    vi.spyOn(superagentApi, 'status').mockImplementation(async () => ok(value));
+    vi.spyOn(superagentApi, 'stop').mockImplementation(async () => { value = { ...value, leads: value.leads.filter((l) => l.sessionId !== 'lead-oino') }; return ok({ stopped: true }); });
+    location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
+    render(() => <Root />);
+    const clock = await screen.findByLabelText('Superagent history');
+    await waitFor(() => expect(clock.getAttribute('title')).toContain('3 running'));
+    expect(await screen.findByTestId('sa-manual-run')).toBeTruthy();
+    fireEvent.click(clock);
+    let list = screen.getByLabelText('Superagent history list');
+    expect(within(list).getByText('Running now')).toBeTruthy();
+    expect(within(list).getByRole('button', { name: /Manual investigation/ }).getAttribute('aria-current')).toBe('true');
+    fireEvent.click(clock); fireEvent.click(clock);
+    expect(clock.getAttribute('title')).toContain('3 running');
+    list = screen.getByLabelText('Superagent history list');
+    fireEvent.click(within(list).getByRole('button', { name: /Lead · Oino/ }));
+    await waitFor(() => expect(location.hash).toContain('session=lead-oino'));
+    fireEvent.click(clock);
+    expect(within(screen.getByLabelText('Superagent history list')).getByRole('button', { name: /Lead · Oino/ }).getAttribute('aria-current')).toBe('true');
+    await waitFor(() => expect(screen.getByTestId('sa-current').textContent).toContain('Lead · Oino'));
+    fireEvent.click(within(screen.getByTestId('sa-current')).getByText('Stop'));
+    await waitFor(() => expect(clock.getAttribute('title')).toContain('2 running'));
+    expect(within(screen.getByLabelText('Superagent history list')).queryByRole('button', { name: /Lead · Oino/ })).toBeNull();
   });
   it('reuses an empty history session after switching away', async () => {
     const empty = structuredClone(superagent.hosts[0]!.sessions!['superagent-chat']!);
@@ -378,7 +406,7 @@ describe('v3 Superagent shared', () => {
     location.hash = '#/superagent?session=superagent-chat&host=pc-coffee';
     render(() => <Root />);
     fireEvent.click(await screen.findByLabelText('Superagent history'));
-    fireEvent.click(await screen.findByText('Superagent conversation'));
+    fireEvent.click(await within(screen.getByLabelText('Superagent history list')).findByText('Superagent conversation')); 
     expect(location.hash).toContain('session=superagent-chat');
     fireEvent.click(screen.getByLabelText('New superagent chat'));
     await waitFor(() => expect(world.log.some((r) => r.kind === 'open' && (r.args as { kind?: string } | undefined)?.kind === 'superagent')).toBe(true));
@@ -395,8 +423,8 @@ describe('v3 Superagent shared', () => {
     const titles = [...list.querySelectorAll('button > span')].map((el) => el.textContent ?? '');
     expect(titles.length).toBeGreaterThanOrEqual(4);
     expect(new Set(titles).size).toBe(titles.length);
-    expect(titles).toContain('What is running and what needs my attention?');
-    expect(titles).toContain('Superagent conversation');
+    expect(titles.some((title) => title.includes('What is running and what needs my attention?'))).toBe(true);
+    expect(titles.some((title) => title.includes('Superagent conversation'))).toBe(true);
   });
   it('routes superagent attention to the restricted page', async () => {
     const world = createMockHost(superagent); setHostClientFactory(world.client);

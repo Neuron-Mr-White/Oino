@@ -40,14 +40,15 @@ describe('SuperagentRailIndicator', () => {
     expect(pill.textContent).toBe('2');
     expect(pill.getAttribute('aria-label')).toBe('2 waiting for you');
     expect(pill.getAttribute('title')).toBe('2 waiting for you');
-    expect(screen.queryByTestId('rail-superagent-live')).toBeNull();
+    expect(screen.getByTestId('rail-superagent-live').textContent).toBe('1');
   });
 
-  it('shows a pulsing dot while leads run and nothing waits', async () => {
+  it('shows a running count while leads run and nothing waits', async () => {
     mockStatus(status([lead(1), lead(2)], []));
     render(() => <SuperagentRailIndicator />);
     const dot = await screen.findByTestId('rail-superagent-live');
-    expect(dot.getAttribute('title')).toBe('2 leads running');
+    expect(dot.getAttribute('title')).toBe('2 running');
+    expect(dot.textContent).toBe('2');
     expect(screen.queryByTestId('rail-superagent-needs')).toBeNull();
   });
 

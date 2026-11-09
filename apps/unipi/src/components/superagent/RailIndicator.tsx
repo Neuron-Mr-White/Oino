@@ -1,5 +1,5 @@
 import { LoaderCircle } from 'lucide-solid';
-import { Match, Show, Switch } from 'solid-js';
+import { Show } from 'solid-js';
 import { useSelectedHost } from '../shell/HostSwitcher';
 import { useSuperagentChatWorking } from './chatActivity';
 import { useRailStatus } from './railStatus';
@@ -23,14 +23,8 @@ export function SuperagentRailIndicator() {
           <LoaderCircle size={14} class="srow-spin" />
         </span>
       </Show>
-      <Switch>
-        <Match when={needs() > 0}>
-          <span class="rail-count" role="img" aria-label={`${needs()} waiting for you`} title={`${needs()} waiting for you`} data-testid="rail-superagent-needs">{needs() > 9 ? '9+' : needs()}</span>
-        </Match>
-        <Match when={leads() > 0 && !working()}>
-          <span class="rail-live" role="img" aria-label={`${leads()} ${leads() === 1 ? 'lead' : 'leads'} running`} title={`${leads()} ${leads() === 1 ? 'lead' : 'leads'} running`} data-testid="rail-superagent-live" />
-        </Match>
-      </Switch>
+      <Show when={leads() > 0}><span class="rail-count" role="img" aria-label={`${leads()} running`} title={`${leads()} running`} data-testid="rail-superagent-live">{leads() > 9 ? '9+' : leads()}</span></Show>
+      <Show when={needs() > 0}><span class="rail-count" role="img" aria-label={`${needs()} waiting for you`} title={`${needs()} waiting for you`} data-testid="rail-superagent-needs">{needs() > 9 ? '9+' : needs()}</span></Show>
     </span>
   );
 }

@@ -46,7 +46,7 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
   const summary = () => { const s = sa.status(); return s ? (s.enabled ? `Auto-start on · up to ${s.concurrencyCap} ${s.concurrencyCap === 1 ? 'lead' : 'leads'}` : 'Auto-start off') : 'Superagent'; };
   const tabs = () => [
     { value: 'needs' as const, label: `Needs you · ${needsCount(sa)}` },
-    { value: 'leads' as const, label: `Leads · ${sa.status()?.leads.length ?? 0}` },
+    { value: 'leads' as const, label: `Leads · ${sa.running().length}` },
     { value: 'projects' as const, label: 'Projects' },
   ];
   return <div class="sa-pane" aria-label="Needs you, leads and projects">

@@ -4,7 +4,8 @@ import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
 import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
 import { superagentSessionId } from './chatActivity';
-import { runningSessions } from './runningSessions';
+import { runningSessions, type RunningSession } from './runningSessions';
+import { sessions } from '../../lib/session/store';
 
 /** A mutation's failure, as far as the pane cares. */
 export type RunError = { message: string; code?: unknown; detail?: unknown };
@@ -144,7 +145,22 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       return ok;
     },
     setMode: (projectId: string, mode: LeadMode) => run(`mode:${projectId}`, () => superagentApi.setMode(hostId(), projectId, mode), async () => { flash(`Mode will switch at the next step.`); await refresh(); }),
-    stopLead: (lead: Lead) => run(`stop:${lead.projectId}`, () => superagentApi.stop(hostId(), lead.projectId, lead.ticketIds[0] ?? ''), async (v) => { flash(v.stopped ? 'Lead stopped.' : 'That lead is no longer running.'); await refresh(); }),
+    stopLead: (lead: Lead) => run(`stop:${lead.projectId}`, () => superagentApi.stop(hostId(), lead.projectId, lead.ticketIds[0] ?? ''), async (v) => { setHistory((rows) => rows.map((r) => r.sessionId === lead.sessionId ? { ...r, state: { kind: 'idle' }, pendingWork: null } : r)); patchStatus((s) => ({ ...s, leads: s.leads.filter((l) => l.sessionId !== lead.sessionId) })); flash(v.stopped ? 'Lead stopped.' : 'That lead is no longer running.'); await refresh(); }),
+    async stopSession(row: RunningSession) {
+      if (row.lead) {
+        return run(`stop:${row.lead.projectId}`, () => superagentApi.stop(hostId(), row.lead!.projectId, row.lead!.ticketIds[0] ?? ''), async () => {
+          setHistory((rows) => rows.map((r) => r.sessionId === row.sessionId ? { ...r, state: { kind: 'idle' }, pendingWork: null } : r));
+          patchStatus((s) => ({ ...s, leads: s.leads.filter((l) => l.sessionId !== row.sessionId) }));
+          await refresh();
+        });
+      }
+      return run(`stop-session:${row.sessionId}`, async () => {
+        const handle = sessions().ensure(hostId(), row.sessionId);
+        const release = handle.acquire();
+        try { await handle.abort(); return { ok: true as const, value: undefined }; }
+        finally { release(); }
+      }, () => { setHistory((rows) => rows.map((r) => r.sessionId === row.sessionId ? { ...r, state: { kind: 'idle' }, pendingWork: null } : r)); });
+    },
     /** `handled` sees a refusal first: return true to keep it out of the pane's error line (the caller shows it). */
     start: (projectId: string, taskIds: string[], presetId: string | null, handled?: (error: RunError) => boolean) => run(`start:${projectId}`, () => superagentApi.start(hostId(), projectId, taskIds, presetId), async () => { flash(taskIds.length === 1 ? 'Started 1 ticket.' : `Started ${taskIds.length} tickets.`); await refresh(); }, handled),
     /** Clears one blocker (register, unarchive, Auto on) and refreshes. The caller shows a failure inline; nothing goes to the pane's error line. */
