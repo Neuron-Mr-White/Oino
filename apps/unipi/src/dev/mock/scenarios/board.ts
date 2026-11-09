@@ -15,6 +15,7 @@ import type { MockBoardProject } from '../board';
 import { genCards } from '../gen';
 import type { Task } from '../../../lib/board/api';
 import { boardUi } from '../../../lib/board/ui';
+import { oin20Report, stressReport } from '../report-fixtures';
 
 const HOST = 'this-pc';
 const SLUG = 'unipi-7c1';
@@ -51,6 +52,8 @@ const REVIEW_BODY = [
 const BLOCKED_BODY = ['Need a product decision:', '', '- keep the relay fallback or', '- gate it behind `--relay` only'].join('\n');
 
 const TASKS: Task[] = [
+  task({ id: 'OIN-20', title: 'Superagent provider report', status: 'in_review', statusReport: { kind: 'review', text: oin20Report, actor: 'agent', at: iso(120) } }),
+  task({ id: 'OIN-49', title: 'Report layout stress test', status: 'in_review', statusReport: { kind: 'review', text: stressReport, actor: 'agent', at: iso(120) } }),
   task({
     id: 'U-3',
     title: 'Board: live refresh from the watcher',

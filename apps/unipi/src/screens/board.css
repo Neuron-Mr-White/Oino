@@ -558,7 +558,9 @@
 /* reader + image viewer */
 .reader-title { margin: 0; font-size: calc(16px * var(--ui-font-scale)); font-weight: 600; }
 .reader-meta { margin: 0; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); }
-.reader-body { padding: 8px 20px calc(28px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); font-size: calc(16px * var(--ui-font-scale)); line-height: calc(25px * var(--ui-font-scale)); }
+.reader-body { padding: 8px 20px calc(28px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))); overflow-x: hidden; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(25px * var(--ui-font-scale)); }
+.reader-body > .md-reader { max-width: 760px; margin: 0 auto; overflow-wrap: anywhere; }
+.reader-body .md-reader .cb:not(.wrapped) pre code { white-space: pre; overflow-wrap: normal; }
 .reader-pre { margin: 0; color: var(--color-text); font-family: var(--font-mono); font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .image-viewer { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; box-sizing: border-box; padding-top: max(env(safe-area-inset-top), var(--inset-top, 0px)); padding-bottom: max(env(safe-area-inset-bottom), var(--inset-bottom, 0px)); background: rgb(0 0 0 / var(--viewer-bg, 1)); color: var(--color-text); animation: viewer-in 160ms ease-out both; }
 @keyframes viewer-in { from { opacity: 0; } }
