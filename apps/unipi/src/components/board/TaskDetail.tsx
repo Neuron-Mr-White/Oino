@@ -19,12 +19,14 @@
  */
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
-import { ArrowLeft, BookOpen, Check, ChevronDown, CircleSlash, EllipsisVertical, Link2, Lock, Paperclip, Pencil, Plus, RotateCcw, Tag, X } from 'lucide-solid';
+import { ArrowLeft, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleSlash, EllipsisVertical, Link2, Lock, Paperclip, Pencil, Plus, RotateCcw, Tag, X } from 'lucide-solid';
 import { displayTitle, laneLabel, PRIORITY_LABEL, type Attachment, type Task } from '../../lib/board/api';
 import { attKind, relativeTime } from '../../lib/board/markdown';
 import { formatBytes } from '../../lib/board/attach';
 import { boardStore } from '../../lib/board/store';
 import { boardUi } from '../../lib/board/ui';
+import { advanceQueue, queueView, stepQueue, taskOrigin, taskOriginSwitching } from '../../lib/board/taskOrigin';
+import { taskBackTarget } from '../../lib/board/taskQueue';
 import { elapsed, hue } from '../../lib/board/view';
 import { claimNote, claimState, dependentsOf, statusMoves, statusReport } from '../../lib/board/report';
 import {
@@ -126,12 +128,15 @@ function TaskPage(props: { id: string }) {
       const id = props.id; // read before popTask unmounts this page
       ui.popTask();
       // Back on the board: show where this task sits (lane page + flash).
-      if (last) highlightTask(id, true);
+      // Opened from a Superagent queue: the page underneath is the destination.
+      if (last && !taskOrigin()) highlightTask(id, true);
       return;
     }
     setConfirmDiscard(true);
   }
   onMount(() => onCleanup(pushBack(requestBack)));
+  const queue = queueView(() => props.id);
+  const backLabel = () => (ui.detail().length > 1 ? 'Back to the previous task' : taskBackTarget(taskOrigin()?.from) === '/superagent' ? 'Back to Superagent' : 'Back to the board');
   // The title's height follows its width: re-fit when the pane/window is resized
   // (desktop splitter, crossing the 900px shell breakpoint, rotating a phone).
   let titleObserver: ResizeObserver | undefined;
@@ -182,8 +187,10 @@ function TaskPage(props: { id: string }) {
               </header>
               <div class="board-state">
                 <CircleSlash size={40} class="text-text-dim" />
-                <h2>{props.id} isn't on this board</h2>
-                <p>It may have been archived or removed on the PC.</p>
+                <Show when={!taskOriginSwitching()} fallback={<><span class="spinner" aria-label="Loading task" /><h2>Opening {props.id}…</h2></>}>
+                  <h2>{props.id} isn't on this board</h2>
+                  <p>It may have been archived or removed on the PC.</p>
+                </Show>
               </div>
             </>
           }
@@ -191,7 +198,7 @@ function TaskPage(props: { id: string }) {
           {(current) => (
             <>
               <header class="task-head">
-                <button type="button" class="ghost-icon-button" aria-label={ui.detail().length > 1 ? 'Back to the previous task' : 'Back to the board'} onClick={requestBack}>
+                <button type="button" class="ghost-icon-button" aria-label={backLabel()} onClick={requestBack}>
                   <ArrowLeft size={22} />
                 </button>
                 <button type="button" class="task-crumb" aria-label={`Copy ${current().id}`} onClick={() => void copyToClipboard(current().id, current().id)}>
@@ -200,6 +207,19 @@ function TaskPage(props: { id: string }) {
                   <span class="task-crumb-lane">{laneLabel(current().status)}</span>
                 </button>
                 <span class="flex-1" />
+                <Show when={queue.position()}>
+                  {(pos) => (
+                    <div class="task-queue" role="group" aria-label={queue.queue() === 'review' ? 'Review queue' : 'Needs-you queue'} data-testid="task-queue">
+                      <button type="button" class="ghost-icon-button" aria-label="Previous task" disabled={!queue.hasPrev()} onClick={() => void stepQueue(-1)}>
+                        <ChevronLeft size={20} />
+                      </button>
+                      <span class="task-queue-pos" aria-live="polite">{pos().index} of {pos().total}</span>
+                      <button type="button" class="ghost-icon-button" aria-label="Next task" disabled={!queue.hasNext()} onClick={() => void stepQueue(1)}>
+                        <ChevronRight size={20} />
+                      </button>
+                    </div>
+                  )}
+                </Show>
                 <button type="button" class="ghost-icon-button" aria-label="Task actions" aria-expanded={menu()?.kind === 'more'} onClick={openMenu('more')}>
                   <EllipsisVertical size={20} />
                 </button>
@@ -454,6 +474,10 @@ function ReportCard(props: { task: Task }) {
   const ui = boardUi();
   const report = () => statusReport(props.task);
   const moves = () => statusMoves(store.state.rules, props.task);
+  /** Opened from a Superagent queue: after the move the next item opens in place. */
+  const leave = () => {
+    void advanceQueue(props.task.id);
+  };
   return (
     <Show when={report()}>
       {(current) => (
@@ -485,17 +509,17 @@ function ReportCard(props: { task: Task }) {
           <Show when={props.task.status === current().kind || (props.task.status === 'in_review' && current().kind === 'review')}>
             <div class="report-actions">
               <Show when={props.task.status === 'in_review' && moves().includes('done')}>
-                <button type="button" class="report-button primary" onClick={() => void moveTask(props.task, 'done', undefined, { confirmed: true })}>
+                <button type="button" class="report-button primary" onClick={() => void moveTask(props.task, 'done', undefined, { confirmed: true, after: leave })}>
                   <Check size={17} /> Mark done
                 </button>
               </Show>
               <Show when={props.task.status === 'in_review' && moves().includes('todo')}>
-                <button type="button" class="report-button" onClick={() => ui.setComment({ task: props.task, to: 'todo', hint: '', optional: true })}>
+                <button type="button" class="report-button" onClick={() => ui.setComment({ task: props.task, to: 'todo', hint: '', optional: true, after: leave })}>
                   <RotateCcw size={16} /> Rework…
                 </button>
               </Show>
               <Show when={props.task.status === 'blocked' && moves().includes('todo')}>
-                <button type="button" class="report-button primary" onClick={() => ui.setComment({ task: props.task, to: 'todo', hint: '', optional: true })}>
+                <button type="button" class="report-button primary" onClick={() => ui.setComment({ task: props.task, to: 'todo', hint: '', optional: true, after: leave })}>
                   <RotateCcw size={16} /> Answer & move to Todo
                 </button>
               </Show>

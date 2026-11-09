@@ -22,6 +22,7 @@ import { resetHubs } from '../../lib/session/hub';
 import { resetLayout, setDesktopOverride } from '../../lib/layout';
 import { setPlatformOverride } from '../../lib/platform';
 import { openArgs } from '../../lib/host/tauri';
+import { setReviewAll, setReviewOpen } from './reviewUi';
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri')), transformCallback: () => 0 }));
@@ -29,7 +30,7 @@ vi.mock('../phone/Sheet', () => ({
   confirmSheet: vi.fn(async () => true),
   SheetFrame: (props: { open: boolean; children: unknown; footer: unknown }) => <Show when={props.open}><div>{props.children as never}{props.footer as never}</div></Show>,
 }));
-afterEach(() => { cleanup(); vi.restoreAllMocks(); setHostClientFactory(undefined); resetSessions(); resetHubs(); resetLayout(); setDesktopOverride(undefined); setPlatformOverride(undefined); });
+afterEach(() => { setReviewOpen(false); setReviewAll(false); cleanup(); vi.restoreAllMocks(); setHostClientFactory(undefined); resetSessions(); resetHubs(); resetLayout(); setDesktopOverride(undefined); setPlatformOverride(undefined); });
 
 const lead = (over: object = {}) => ({ projectId: 'heartpick', sessionId: 'lead-hp', presetId: 'bug-batch', model: 'anthropic/claude-sonnet-4-5', thinking: 'high', autonomy: 'high', mode: 'swarm', ticketIds: ['HP-1', 'HP-4'], step: 'Fixing the sync race', tool: 'edit', startedAt: new Date(Date.now() - 18 * 60_000).toISOString(), cost: 0.84, progress: { running: 2, queued: 1, done: 3 }, ...over });
 const approval = (n: number, project = 'heartpick', session = 'lead-hp') => ({ projectId: project, taskId: `T-${n}`, status: 'blocked', workerSessionId: session, requestId: `req-${n}`, sessionId: session, tool: 'bash', command: `git push origin branch-${n}`, summary: `Push ${n}`, risk: 'high', ceiling: 'medium', reason: 'needs Autonomy High' });
@@ -95,7 +96,7 @@ describe('v3 Superagent leads', () => {
     expect(screen.queryByText('HP-3', { exact: false })).toBeNull();
     fireEvent.click(screen.getByText('Review'));
     await screen.findByLabelText('Open HP-3');
-    fireEvent.click(screen.getByLabelText('Open HP-3')); expect(onTicket).toHaveBeenCalledWith('heartpick', 'HP-3');
+    fireEvent.click(screen.getByLabelText('Open HP-3')); expect(onTicket).toHaveBeenCalledWith('heartpick', 'HP-3', 'review');
   });
   it('steps through approvals and answers the current one', async () => {
     const respond = vi.spyOn(superagentApi, 'approvalResponse').mockResolvedValue(ok({ accepted: true as const }));

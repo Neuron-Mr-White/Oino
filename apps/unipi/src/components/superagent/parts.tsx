@@ -10,8 +10,10 @@ export function SectionHead(props: { title: string; count?: number; aside?: JSX.
 }
 
 /** Shows the first `limit` rows; "Show N more" reveals the rest. */
-export function Limited<T>(props: { items: readonly T[]; limit: number; children: (item: T, index: () => number) => JSX.Element }) {
-  const [all, setAll] = createSignal(false);
+export function Limited<T>(props: { items: readonly T[]; limit: number; expanded?: { get: () => boolean; set: (value: boolean) => void }; children: (item: T, index: () => number) => JSX.Element }) {
+  const [local, setLocal] = createSignal(false);
+  const all = () => props.expanded ? props.expanded.get() : local();
+  const setAll = (value: boolean) => props.expanded ? props.expanded.set(value) : setLocal(value);
   const shown = () => (all() ? props.items : props.items.slice(0, props.limit));
   const hidden = () => props.items.length - props.limit;
   return <>

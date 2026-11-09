@@ -5,6 +5,8 @@
  * Package A owns this table; B and C ask for additions.
  */
 
+import { taskBackTarget } from './board/taskQueue';
+
 export type PhoneTab = 'chat' | 'board' | 'cron' | 'files' | 'settings';
 
 export const PHONE_TABS: readonly PhoneTab[] = ['chat', 'board', 'cron', 'files', 'settings'];
@@ -73,7 +75,7 @@ export function phoneParent(pathname: string, search = ''): string | undefined {
   if (pathname === '/chat' || pathname === '/') return undefined;
   if (pathname.startsWith('/chat/')) return '/chat';
   if (pathname.startsWith('/s/') || pathname.startsWith('/new/')) return '/chat';
-  if (pathname.startsWith('/board/')) return '/board';
+  if (pathname.startsWith('/board/')) return taskBackTarget(params(search).get('from') ?? undefined);
   if (pathname.startsWith('/cron/')) return '/cron';
   if (pathname === '/files/edit') {
     const from = params(search).get('from') ?? (filesPath(search) ? parentFolder(filesPath(search)!) : undefined);

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, Bot, History, LayoutDashboard, LoaderCircle, Plus, Users } from 'lucide-solid';
 import { toAppError } from '@unipi/protocol';
@@ -9,13 +9,15 @@ import { HostChip, useSelectedHost } from '../shell/HostSwitcher';
 import { layout } from '../../lib/layout';
 import { sessions } from '../../lib/session/store';
 import { buildTurns } from '../../lib/session/turns';
-import { boardUi, rememberLast } from '../../lib/board/ui';
-import { boardStore } from '../../lib/board/store';
+import { boardUi } from '../../lib/board/ui';
+import { endQueue, openFromSuperagent, pruneQueue, taskOrigin, type QueueKind, type QueueRef } from '../../lib/board/taskOrigin';
 import { sessionHref } from '../shell/Sidebar';
 import { isEmptySuperagentSession, openSuperagentSession, superagentApi } from './api';
 import { createSuperagentState } from './state';
 import { readSavedSuperagentSession, rememberSuperagentSession, superagentChatBusy } from './chatActivity';
 import { needsCount, SuperagentPane, type PaneTab } from './SuperagentPane';
+import { ReviewTaskLayer } from './ReviewTaskLayer';
+import { restorePaneScroll, savePaneScroll } from './reviewUi';
 import './superagent.css';
 
 export default function SuperagentPage() {
@@ -85,19 +87,40 @@ export default function SuperagentPage() {
     finally { setCreating(false); }
   }
   createEffect(() => { const s = current(); if (s) setParams({ session: s.id, host: s.host }, { replace: true }); });
-  async function openTicket(project: string, task: string) {
-    const host = hostId(); if (!host) return;
-    try {
-      rememberLast(host, project);
-      await boardStore().open(host, project);
-      boardUi().openTask(task);
-      navigate('/board');
-    } catch (e) { setOpeningError(toAppError(e).message); }
+  /** The queue as the owner sees it right now: Review rows, or the tickets waiting in Needs you. */
+  function queueOf(queue: QueueKind): QueueRef[] {
+    const status = sa.status();
+    if (!status) return [];
+    return queue === 'review'
+      ? status.review.map((r) => ({ project: r.projectId, task: r.taskId }))
+      : status.needsYou.filter((n) => n.taskId).map((n) => ({ project: n.projectId, task: n.taskId }));
   }
-  const pane = () => <Show when={hostId()}>{(host) => <SuperagentPane hostId={host()} sa={sa} tab={tab()} onTab={setTab} onOpen={(id) => { setPaneOpen(false); navigate(sessionHref(host(), id)); }} onTicket={(project, task) => { setPaneOpen(false); void openTicket(project, task); }} />}</Show>;
+  /** Opens the ticket over this page (no route change): Back returns here, state untouched. */
+  async function openTicket(project: string, task: string, queue: QueueKind) {
+    const host = hostId(); if (!host) return;
+    savePaneScroll();
+    try { await openFromSuperagent(host, queue, queueOf(queue), { project, task }); }
+    catch (e) { endQueue(); setOpeningError(toAppError(e).message); }
+  }
+  // Items the lead or another device moved on their own leave the open queue.
+  createEffect(() => {
+    const o = taskOrigin();
+    if (!o || !sa.status()) return;
+    pruneQueue(queueOf(o.queue));
+  });
+  // The ticket closed (Back, or the queue ran out): the phone's pane sheet comes back where it was.
+  createEffect(on(() => boardUi().openedTask(), (now, prev) => {
+    if (now !== undefined || prev === undefined || !taskOrigin()) return;
+    endQueue();
+    void sa.refresh(); // the tickets reviewed meanwhile leave the Review list
+    // The desktop pane never unmounted; the phone's sheet did, so it reopens on the queue's tab.
+    if (!layout().desktop()) { setTab('needs'); setPaneOpen(true); restorePaneScroll(); }
+  }));
+  onCleanup(() => { if (taskOrigin()) { boardUi().closeTask(); endQueue(); } });
+  const pane = () => <Show when={hostId()}>{(host) => <SuperagentPane hostId={host()} sa={sa} tab={tab()} onTab={setTab} onOpen={(id) => { setPaneOpen(false); navigate(sessionHref(host(), id)); }} onTicket={(project, task, queue) => { setPaneOpen(false); void openTicket(project, task, queue); }} />}</Show>;
   return <div class="sa-page" data-testid="superagent-page"><div class="sa-center"><header class="sa-header"><Show when={!layout().desktop()}><button class="shell-icon-btn" aria-label="Back to chats" onClick={() => navigate('/chat')}><ArrowLeft size={18} /></button></Show><Bot size={19} /><h1>Superagent</h1><HostChip /><button class="shell-icon-btn" aria-label="Kanboard dashboard" title="Kanboard dashboard" onClick={() => { boardUi().setOverview(true); navigate('/board'); }}><LayoutDashboard size={19} /></button><button class="shell-icon-btn" aria-label="New superagent chat" title="New superagent chat" disabled={creating() || !hostId()} onClick={() => void newChat()}><Plus size={19} /></button><button class="shell-icon-btn" aria-label="Superagent history" title="Superagent history" aria-expanded={historyOpen()} onClick={() => { setHistoryOpen(!historyOpen()); if (historyOpen()) void refreshHistory(); }}><History size={19} /></button><Show when={!layout().desktop()}><IconButton icon={Users} label={needs() ? `Needs you · ${needs()}` : 'Needs you, leads and projects'} badge={needs()} testId="sa-sheet-open" onClick={() => { if (needs()) setTab('needs'); setPaneOpen(true); }} /></Show></header>
     <Show when={historyOpen()}><div class="sa-history" aria-label="Superagent history list"><Show when={!history.loading} fallback={<div class="sa-loading" aria-label="Loading history" aria-busy="true"><span /></div>}><Show when={history()?.length} fallback={<p class="sa-empty">No past superagent chats.</p>}><For each={history()}>{(item) => <button onClick={() => { const host = hostId(); if (host) selectSession(host, item.sessionId); }}><span>{item.title || 'Superagent'}</span><Show when={superagentChatBusy(hostId(), item.sessionId)}><LoaderCircle size={14} class="srow-spin" aria-label="Working" data-testid="sa-history-working" /></Show><small>{typeof item.updatedAt === 'number' ? new Date(item.updatedAt).toLocaleDateString() : item.updatedAt}</small></button>}</For></Show></Show></div></Show>
     <Show when={openingError()}><div role="alert" class="sa-message">{openingError()} <button onClick={() => setRetry((v) => v + 1)}>Retry</button></div></Show>
     <Show when={hostId()} fallback={<p class="sa-empty">Connect a computer to use Superagent.</p>}><Show when={current()} fallback={<div class="sa-loading" aria-busy="true" aria-label="Opening Superagent"><span /><span /></div>}>{(s) => <Conversation hostId={s().host} sessionId={s().id} superagent />}</Show></Show>
-  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side">{pane()}</aside></Show></div>;
+  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side">{pane()}</aside></Show><ReviewTaskLayer /></div>;
 }

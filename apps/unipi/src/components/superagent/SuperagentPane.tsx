@@ -12,6 +12,7 @@ import { LeadsSection } from './Leads';
 import { ProjectsSection } from './Projects';
 import { ReviewSection } from './Review';
 import { PresetManager } from './Presets';
+import type { QueueKind } from '../../lib/board/taskOrigin';
 
 export type PaneTab = 'needs' | 'leads' | 'projects';
 
@@ -37,7 +38,7 @@ function Settings(props: { sa: SuperagentState; onManage: () => void }) {
   </div>;
 }
 
-export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab: PaneTab; onTab: (tab: PaneTab) => void; onOpen: (id: string) => void; onTicket: (project: string, task: string) => void }) {
+export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab: PaneTab; onTab: (tab: PaneTab) => void; onOpen: (id: string) => void; onTicket: (project: string, task: string, queue: QueueKind) => void }) {
   const sa = props.sa;
   const [menu, setMenu] = createSignal<DOMRect>();
   const [managing, setManaging] = createSignal(false);
@@ -60,11 +61,11 @@ export function SuperagentPane(props: { hostId: string; sa: SuperagentState; tab
     <Show when={sa.error()}><div class="sa-message" role="alert">{sa.error()} <button type="button" onClick={() => { sa.clearError(); void sa.refresh(); }}>Retry</button></div></Show>
     <Show when={sa.notice()}><p class="sa-message" role="status">{sa.notice()}</p></Show>
     <Show when={sa.status()} fallback={<Show when={!sa.error()}><div class="sa-loading" aria-label="Loading Superagent" aria-busy="true"><span /><span /><span /></div></Show>}>
-      <Show when={show('needs')}><NeedsYouSection hostId={props.hostId} sa={sa} onOpen={props.onOpen} onTicket={props.onTicket} /></Show>
+      <Show when={show('needs')}><NeedsYouSection hostId={props.hostId} sa={sa} onOpen={props.onOpen} onTicket={(project, task) => props.onTicket(project, task, 'needs')} /></Show>
       <Show when={show('leads')}><LeadsSection sa={sa} onOpen={props.onOpen} /></Show>
       <Show when={show('projects')}><ProjectsSection hostId={props.hostId} sa={sa} onManage={() => setManaging(true)} /></Show>
       {/* Review follows Needs you on the phone's first tab; on desktop it closes the pane. */}
-      <Show when={show('needs')}><ReviewSection sa={sa} onTicket={props.onTicket} /></Show>
+      <Show when={show('needs')}><ReviewSection sa={sa} onTicket={(project, task) => props.onTicket(project, task, 'review')} /></Show>
     </Show>
     <Show when={menu()}>{(rect) => <AnchoredMenu anchor={rect()} onDismiss={() => setMenu(undefined)} label="Auto-start settings" title="Settings" width={300}><Settings sa={sa} onManage={() => { setMenu(undefined); setManaging(true); }} /></AnchoredMenu>}</Show>
     <PresetManager sa={sa} open={managing()} onClose={() => setManaging(false)} />
