@@ -271,11 +271,42 @@ fn git(args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
+/// Describes the local changes a remote build will NOT see: the remote gets only the
+/// committed `HEAD`, so modified/staged tracked files and untracked files are left out.
+/// `status` is `git status --porcelain --untracked-files=all` output.
+fn unsynced_warning(head: &str, status: &str) -> Option<String> {
+    let (untracked, changed): (Vec<&str>, Vec<&str>) = status
+        .lines()
+        .filter(|l| l.len() > 3)
+        .partition(|l| l.starts_with("??"));
+    if untracked.is_empty() && changed.is_empty() {
+        return None;
+    }
+    let list = |lines: &[&str]| {
+        let mut names: Vec<&str> = lines.iter().take(5).map(|l| &l[3..]).collect();
+        if lines.len() > 5 {
+            names.push("…");
+        }
+        names.join(", ")
+    };
+    let mut parts = Vec::new();
+    if !changed.is_empty() {
+        parts.push(format!("{} uncommitted change(s) ({})", changed.len(), list(&changed)));
+    }
+    if !untracked.is_empty() {
+        parts.push(format!("{} untracked file(s) ({})", untracked.len(), list(&untracked)));
+    }
+    Some(format!(
+        "warning: the remote builds only committed HEAD {head:.10}; not synced: {}",
+        parts.join("; ")
+    ))
+}
+
 pub(crate) fn sync(remote: &Remote, dir: &str) -> Result<()> {
     let head = git(&["rev-parse", "HEAD"])?;
-    let dirty = git(&["status", "--porcelain", "--untracked-files=no"])?;
-    if !dirty.is_empty() {
-        println!("warning: uncommitted changes are not synced (only HEAD {head:.10} is)");
+    let status = git(&["status", "--porcelain", "--untracked-files=all"])?;
+    if let Some(warning) = unsynced_warning(&head, &status) {
+        println!("{warning}");
     }
     let remote_head = remote
         .bash(
@@ -524,4 +555,36 @@ pub fn remote_build(args: &[String]) -> Result<()> {
     let dirs = fetch(&remote, &opts.dir)?;
     summarize(&dirs);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unsynced_warning;
+
+    #[test]
+    fn clean_tree_has_no_warning() {
+        assert_eq!(unsynced_warning("0123456789abcdef", ""), None);
+    }
+
+    #[test]
+    fn warning_names_uncommitted_and_untracked_files() {
+        let status = " M crates/a.rs\nA  crates/b.rs\n?? scratch/new.txt\n";
+        let w = unsynced_warning("0123456789abcdef", status).unwrap();
+        assert!(w.contains("HEAD 0123456789"), "{w}");
+        assert!(w.contains("2 uncommitted change(s) (crates/a.rs, crates/b.rs)"), "{w}");
+        assert!(w.contains("1 untracked file(s) (scratch/new.txt)"), "{w}");
+    }
+
+    #[test]
+    fn untracked_only_is_reported() {
+        let w = unsynced_warning("abc", "?? new.rs\n").unwrap();
+        assert!(w.contains("untracked") && !w.contains("uncommitted"), "{w}");
+    }
+
+    #[test]
+    fn long_lists_are_truncated() {
+        let status: String = (0..8).map(|i| format!("?? f{i}\n")).collect();
+        let w = unsynced_warning("abc", &status).unwrap();
+        assert!(w.contains("8 untracked file(s) (f0, f1, f2, f3, f4, …)"), "{w}");
+    }
 }
