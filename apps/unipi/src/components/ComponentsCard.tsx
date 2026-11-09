@@ -11,12 +11,24 @@ import { Cpu, Download, Monitor, Puzzle, Server, TriangleAlert } from 'lucide-so
 import { ABOUT_ANCHORS } from '../screens/settings/anchors';
 import { componentsState, refreshComponents, type Components } from '../lib/about';
 import { openExternal } from '../lib/board/share';
+import { getVersion } from '@tauri-apps/api/app';
+import { createResource } from 'solid-js';
+import { refreshThisComputer, thisComputer } from '../lib/thisComputer';
+
+export function installedVersionLabel(app?: string, runningHost?: string): string {
+  if (!app) return 'App unavailable';
+  if (!runningHost) return `App ${app} · Host unavailable`;
+  return `App ${app} · Host ${runningHost}${app !== runningHost ? ' (restart host to update)' : ''}`;
+}
 
 /** Where a broken install gets a fresh copy. */
 export const RELEASES_URL = 'https://github.com/Neuron-Mr-White/Oino/releases/latest';
 
 export function ComponentsCard() {
-  onMount(() => void refreshComponents());
+  onMount(() => { void refreshComponents(); void refreshThisComputer(); });
+  const [appVersion] = createResource(async () => {
+    try { return await getVersion(); } catch { return undefined; }
+  });
   const info = (): Components | undefined => {
     const s = componentsState();
     return s.kind === 'ready' ? s.info : undefined;
@@ -50,8 +62,8 @@ export function ComponentsCard() {
           </div>
         )}
       </For>
-      <Item id={ABOUT_ANCHORS.components} icon={<Monitor size={18} />} label="Unipi app" testId="about-version" value={version(info()?.app)} />
-      <Item icon={<Server size={18} />} label="Agent host" description={info()?.host.path} testId="components-host" value={version(info()?.host.version)} />
+      <Item id={ABOUT_ANCHORS.components} icon={<Monitor size={18} />} label="Version" testId="about-version" value={installedVersionLabel(appVersion(), thisComputer().kind === 'ready' ? (thisComputer() as { kind: 'ready'; info: { version: string } }).info.version : undefined)} />
+      <Item icon={<Server size={18} />} label="Bundled agent host" description={info()?.host.path} testId="components-host" value={version(info()?.host.version)} />
       <Item icon={<Cpu size={18} />} label="oino engine" description={info()?.oino.path} testId="components-oino" value={version(info()?.oino.version)} />
       <Item
         icon={<Puzzle size={18} />}
