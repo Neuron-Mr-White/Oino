@@ -425,6 +425,11 @@ impl AgentSession {
                 })
                 .next_back();
             if let Some(recorded) = recorded {
+                // Old Superagent sessions persisted dotted tool declarations. Replace them
+                // only when the renamed implementation exists, preserving other frozen tools.
+                let recorded = migrate_superagent_declarations(recorded, |name| {
+                    state.registry.contains_key(name)
+                });
                 state.declared = recorded
                     .into_iter()
                     .map(|decl| {
@@ -976,6 +981,54 @@ impl AgentSession {
     /// Clears pending (not yet registered) restored tools.
     pub(crate) fn clear_pending_tools(&self) {
         lock(&self.inner.tools).pending.clear();
+    }
+}
+
+fn migrate_superagent_declarations(
+    declarations: Vec<oino_ai::ToolDecl>,
+    registered: impl Fn(&str) -> bool,
+) -> Vec<oino_ai::ToolDecl> {
+    declarations
+        .into_iter()
+        .filter(|decl| {
+            let replacement = match decl.name.as_str() {
+                "superagent.start" => "superagent_start",
+                "superagent.stop" => "superagent_stop",
+                "superagent.relay" => "superagent_relay",
+                "superagent.set_mode" => "superagent_set_mode",
+                _ => return true,
+            };
+            !registered(replacement)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod declaration_migration_tests {
+    use super::migrate_superagent_declarations;
+    use oino_ai::ToolDecl;
+    use serde_json::json;
+
+    #[test]
+    fn stale_superagent_aliases_are_dropped_only_when_replacement_registered() {
+        let decl = |name: &str| ToolDecl {
+            name: name.into(),
+            description: "old".into(),
+            parameters: json!({}),
+            constrained_sampling: None,
+        };
+        let tools = migrate_superagent_declarations(
+            vec![
+                decl("superagent.start"),
+                decl("superagent.relay"),
+                decl("other.tool"),
+            ],
+            |name| name == "superagent_start",
+        );
+        assert_eq!(
+            tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            ["superagent.relay", "other.tool"]
+        );
     }
 }
 
