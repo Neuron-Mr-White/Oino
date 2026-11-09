@@ -14,6 +14,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use indexmap::IndexMap;
 use oino_ai::JsonValue;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 /// Topic of the core's git summary of the session cwd (`{branch, head, dirty, changed}`).
 pub const GIT_TOPIC: &str = "oino:git";
@@ -80,6 +81,7 @@ pub(crate) fn visible_to(value: &TopicValue, session_id: &str) -> bool {
 #[derive(Debug, Default)]
 pub struct TopicStore {
     sticky: Mutex<IndexMap<String, TopicValue>>,
+    subagent_sources: Mutex<IndexMap<(String, String), Vec<JsonValue>>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -115,6 +117,16 @@ impl TopicStore {
             map.insert(key, value.clone());
         }
         Some(value)
+    }
+
+    /// Updates one session's contribution and returns the root's combined list.
+    pub(crate) fn publish_subagents(&self, root: &str, source: &str, publisher: &str, data: &JsonValue) -> Option<TopicValue> {
+        let records = data.get("records")?.as_array()?.clone();
+        let mut sources = lock(&self.subagent_sources);
+        sources.insert((root.to_owned(), source.to_owned()), records);
+        let records: Vec<JsonValue> = sources.iter().filter(|((owner, _), _)| owner == root)
+            .flat_map(|(_, records)| records.iter().cloned()).collect();
+        self.publish(publisher, SUBAGENTS_LIST, json!({"parentSessionId": root, "records": records}), true)
     }
 
     /// Last sticky value of `topic`.

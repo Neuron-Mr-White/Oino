@@ -447,6 +447,20 @@ impl HostApi for HostRouter {
                     }
                 }
             }
+            if let HostOp::BusPublish { topic, data, .. } = &op
+                && extension == "unipi.subagents" && topic == "unipi:subagents:list"
+            {
+                // The payload identifies the registry contribution, which can differ from
+                // the ambient call context during graph reconciliation.
+                let source = data.get("parentSessionId").and_then(JsonValue::as_str)
+                    .filter(|id| !id.is_empty()).ok_or_else(|| HostError::Invalid("missing subagent session".into()))?;
+                let session = self.session(source).ok_or_else(|| HostError::StaleContext("subagent session ended".into()))?;
+                let root = AgentSession::from_inner(crate::agents::root_of(&session.inner)).session_id();
+                if let Some(value) = self.topics.publish_subagents(&root, source, extension, data) {
+                    for session in self.root_sessions() { session.offer_topic(&value); }
+                }
+                return Ok(JsonValue::Null);
+            }
             if op.is_bus_op() {
                 return self.bus_call(extension, op);
             }

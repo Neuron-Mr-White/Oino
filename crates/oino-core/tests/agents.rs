@@ -809,6 +809,28 @@ async fn nested_subagent_completion_wakes_root_and_close_stops_children() {
     let nested = grandchild.session().unwrap();
     let header = services.host.call("unipi.subagents", &cx(&nested, CallKind::Tool), HostOp::SessionRead(SessionQuery::Header)).await.unwrap();
     assert_eq!(header["rootSessionId"], a.session_id());
+    let topic = "unipi:subagents:list";
+    a.subscribe_topics(&[topic.into()], &[]).await;
+    b.subscribe_topics(&[topic.into()], &[]).await;
+    let mut feed_a = a.subscribe();
+    let mut feed_b = b.subscribe();
+    for (s, id) in [(&a, "child"), (&child_session, "grandchild")] {
+        services.host.call("unipi.subagents", &cx(s, CallKind::Tool), HostOp::BusPublish {
+            topic: topic.into(), data: json!({"parentSessionId":s.session_id(), "records":[{"id":id}]}), sticky:true,
+        }).await.unwrap();
+    }
+    let snapshot = a.subscribe_topics(&[topic.into()], &[]).await;
+    assert_eq!(snapshot[0].data["records"].as_array().unwrap().len(), 2);
+    assert!(b.subscribe_topics(&[topic.into()], &[]).await.is_empty());
+    let seen = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(ClientEvent::Oino(OinoEvent::Topic { data, .. })) = feed_a.next().await {
+                if data["records"].to_string().contains("grandchild") { break; }
+            }
+        }
+    }).await;
+    assert!(seen.is_ok());
+    assert!(tokio::time::timeout(Duration::from_millis(100), feed_b.next()).await.is_err());
     services.host.call("unipi.subagents", &cx(&nested, CallKind::Tool), HostOp::SendMessage {
         message: CustomMessageDraft { custom_type: "subagent-completion".into(), content: oino_ai::UserContentField::Text("child finished".into()), display: true, details: None },
         trigger_turn: true, deliver_as: Some(Delivery::FollowUp),
