@@ -10,7 +10,7 @@
  */
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Archive, ArchiveRestore, ArrowDownAZ, Bot, CheckSquare, Clock, Ellipsis, MessageSquare, SquarePen, Trash2, WifiOff } from 'lucide-solid';
+import { Archive, ArchiveRestore, ArrowDownAZ, CheckSquare, Clock, Ellipsis, MessageSquare, Settings as SettingsIcon, SquarePen, Trash2, WifiOff } from 'lucide-solid';
 import { can } from '../lib/platform';
 import { useHostsOptional } from '../hosts/context';
 import { hubs } from '../lib/session/hub';
@@ -28,16 +28,7 @@ import { hostStatus, useSelectedHost } from '../components/shell/HostSwitcher';
 import { ActionSheet, Button, ListGroup, ListRow, PageScaffold, confirmSheet, type ActionItem } from '../components/phone';
 import { archiveWithUndo, ChatsList, projectName, shortTime } from '../components/phone/ChatsList';
 import { haptic } from '../components/phone/services';
-import { useRailStatus } from '../components/superagent/railStatus';
 import './chat.css';
-
-/** The needs-you button of the Chats top bar: the crab with the unread count (replaces the floating crab, PH-12). */
-function SuperagentEntry() {
-  const navigate = useNavigate();
-  const selected = useSelectedHost();
-  const status = useRailStatus(() => selected()?.id);
-  return <button type="button" class="ph-icon-btn ph-needs-you" aria-label={`Superagent · ${status()?.leads ?? 0} running`} onClick={() => navigate('/superagent')}><Bot size={22} /><Show when={status()?.leads}><span class="ph-badge">{status()!.leads}</span></Show></button>;
-}
 
 function NeedsYouButton() {
   const hosts = useHostsOptional();
@@ -131,13 +122,22 @@ export default function Chat() {
             }
           >
             <Show when={can('hosts')}>
-              <SuperagentEntry />
               <NeedsYouButton />
             </Show>
-            <button type="button" class="ph-icon-btn" aria-label="More options" data-testid="chats-menu" onClick={() => setMenu(true)}>
-              <Ellipsis size={24} />
+            <button type="button" class="ph-icon-btn" aria-label="Settings" data-testid="chats-settings" onClick={() => navigate('/settings')}>
+              <SettingsIcon size={24} />
             </button>
           </Show>
+        }
+        titleSlot={
+          <div class="ph-chats-title">
+            <h1 class="ph-large-title">Chats</h1>
+            <Show when={!selecting()}>
+              <button type="button" class="ph-icon-btn" aria-label="More options" data-testid="chats-menu" onClick={() => setMenu(true)}>
+                <Ellipsis size={24} />
+              </button>
+            </Show>
+          </div>
         }
         search={!noHosts() && total() > 0 ? { value: query(), onInput: setQuery, placeholder: 'Search chats' } : undefined}
         fab={!noHosts() && !selecting() ? { icon: SquarePen, label: 'New chat', onClick: newChat } : undefined}

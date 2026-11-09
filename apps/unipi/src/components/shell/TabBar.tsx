@@ -1,6 +1,7 @@
 /**
- * The phone's bottom tab bar (phone spec §1.1): Chats · Board · Cron · Files ·
- * Settings, fixed order, no "More". Board shows while its owner extension is
+ * The phone's bottom tab bar (phone spec §1.1): Chats · Board · Superagent ·
+ * Automations · Files, fixed order, no "More". Superagent is the centred accent
+ * circle; Settings is the gear in the Chats header (owner, OIN-65). Board shows while its owner extension is
  * on (`unipi.kanboard/board` reserved gate, live); Files while the platform
  * can browse files. Tapping a tab restores that tab's last location; tapping
  * the active tab pops it to its root, or scrolls to top when already there.
@@ -9,10 +10,13 @@
  */
 import { createEffect, For, on, Show, type Component } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
-import { CalendarClock, Folder, MessagesSquare, Settings as SettingsIcon, SquareKanban } from 'lucide-solid';
+import { Bot, CalendarClock, Folder, LoaderCircle, MessagesSquare, SquareKanban } from 'lucide-solid';
 import { reservedGate } from '../../ui/slots/reserved';
 import { can } from '../../lib/platform';
 import { isTabRoot, TAB_ROOT, tabOf, type PhoneTab } from '../../lib/phoneNav';
+import { useSelectedHost } from './HostSwitcher';
+import { useRailStatus } from '../superagent/railStatus';
+import { useSuperagentChatWorking } from '../superagent/chatActivity';
 import { needsYou } from '../../lib/needsYou';
 import { haptic } from '../phone/services';
 
@@ -21,9 +25,9 @@ type TabDef = { id: PhoneTab; label: string; icon: Component<{ size?: number; st
 export const TABS: readonly TabDef[] = [
   { id: 'chat', label: 'Chats', icon: MessagesSquare },
   { id: 'board', label: 'Board', icon: SquareKanban, when: () => reservedGate('unipi.kanboard/board') },
+  { id: 'superagent', label: 'Superagent', icon: Bot, when: () => can('hosts') },
   { id: 'cron', label: 'Automations', icon: CalendarClock },
   { id: 'files', label: 'Files', icon: Folder, when: () => can('files') },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 /** Each tab's last location (pathname + search), restored when the tab is tapped. */
@@ -56,6 +60,10 @@ export function TabBar() {
   );
   const active = () => tabOf(location.pathname);
   const count = () => needsYou().unreadCount();
+  const selected = useSelectedHost();
+  const sa = useRailStatus(() => (can('hosts') ? selected()?.id : undefined));
+  const saWorking = useSuperagentChatWorking(() => selected()?.id);
+  const leads = () => sa()?.leads ?? 0;
   const go = (tab: PhoneTab) => {
     const target = tabTarget(tab, `${location.pathname}${location.search}`, lastLocation.get(tab));
     if (target === 'top') return scrollToTop();
@@ -71,7 +79,9 @@ export function TabBar() {
           return (
             <a
               href={`#${TAB_ROOT[tab.id]}`}
+              class={tab.id === 'superagent' ? 'ph-tab-hero' : undefined}
               aria-current={active() === tab.id ? 'page' : undefined}
+              aria-label={tab.id === 'superagent' ? `Superagent${leads() > 0 ? `, ${leads()} running` : ''}${saWorking() ? ', working' : ''}` : undefined}
               data-testid={`tab-${tab.id}`}
               onClick={(e) => {
                 e.preventDefault();
@@ -83,6 +93,16 @@ export function TabBar() {
                 <Show when={tab.id === 'chat' && count() > 0}>
                   <span class="ph-tab-badge" aria-label={`${count()} need you`}>
                     {count() > 9 ? '9+' : count()}
+                  </span>
+                </Show>
+                <Show when={tab.id === 'superagent' && saWorking()}>
+                  <span class="ph-tab-working" aria-hidden="true" data-testid="tab-superagent-working">
+                    <LoaderCircle size={14} class="ph-spin" />
+                  </span>
+                </Show>
+                <Show when={tab.id === 'superagent' && leads() > 0}>
+                  <span class="ph-tab-badge" aria-hidden="true" data-testid="tab-superagent-count">
+                    {leads() > 9 ? '9+' : leads()}
                   </span>
                 </Show>
               </span>

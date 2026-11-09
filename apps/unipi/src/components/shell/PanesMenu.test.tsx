@@ -70,10 +70,14 @@ afterEach(() => {
 });
 
 describe('phone tab bar (phone spec §1.1)', () => {
-  it('shows Chats · Cron · Files · Settings on a tab page, hidden in a chat', async () => {
+  it('shows Chats · Superagent · Automations · Files on a tab page (Settings in the Chats header), hidden in a chat', async () => {
     boot('#/chat');
     await waitFor(() => expect(screen.getByTestId('tab-bar')).toBeTruthy());
-    for (const tab of ['tab-chat', 'tab-cron', 'tab-files', 'tab-settings']) expect(screen.getByTestId(tab)).toBeTruthy();
+    for (const tab of ['tab-chat', 'tab-superagent', 'tab-cron', 'tab-files']) expect(screen.getByTestId(tab)).toBeTruthy();
+    expect(screen.queryByTestId('tab-settings')).toBeNull();
+    const order = [...screen.getByTestId('tab-bar').querySelectorAll('a')].map((a) => a.dataset.testid);
+    expect(order.indexOf('tab-superagent')).toBe(order.indexOf('tab-cron') - 1);
+    expect(screen.getByTestId('chats-settings')).toBeTruthy();
     location.hash = `#/s/pc-coffee/${SESSION}`;
     await waitFor(() => expect(screen.queryByTestId('tab-bar')).toBeNull());
   });

@@ -7,14 +7,17 @@
 
 import { taskBackTarget } from './board/taskQueue';
 
-export type PhoneTab = 'chat' | 'board' | 'cron' | 'files' | 'settings';
+/** `settings` is not in the bar (its gear sits in the Chats header) but still owns its routes. */
+export type PhoneTab = 'chat' | 'board' | 'superagent' | 'cron' | 'files' | 'settings';
 
-export const PHONE_TABS: readonly PhoneTab[] = ['chat', 'board', 'cron', 'files', 'settings'];
+/** The bottom bar, left to right: Superagent is the centred circle. */
+export const PHONE_TABS: readonly PhoneTab[] = ['chat', 'board', 'superagent', 'cron', 'files'];
 
 /** Tab roots. */
 export const TAB_ROOT: Record<PhoneTab, string> = {
   chat: '/chat',
   board: '/board',
+  superagent: '/superagent',
   cron: '/cron',
   files: '/files',
   settings: '/settings',
@@ -22,7 +25,8 @@ export const TAB_ROOT: Record<PhoneTab, string> = {
 
 /** Pure: which tab a route belongs to (undefined: none, e.g. `/`). */
 export function tabOf(pathname: string): PhoneTab | undefined {
-  if (pathname === '/superagent' || pathname === '/chat' || pathname.startsWith('/chat/') || pathname.startsWith('/s/') || pathname.startsWith('/new/')) return 'chat';
+  if (pathname === '/superagent') return 'superagent';
+  if (pathname === '/chat' || pathname.startsWith('/chat/') || pathname.startsWith('/s/') || pathname.startsWith('/new/')) return 'chat';
   if (pathname === '/board' || pathname.startsWith('/board/')) return 'board';
   if (pathname === '/cron' || pathname.startsWith('/cron/')) return 'cron';
   if (pathname === '/files' || pathname.startsWith('/files/')) return 'files';

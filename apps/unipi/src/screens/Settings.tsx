@@ -342,7 +342,7 @@ export default function Settings() {
       <Show
         when={phoneSection()}
         fallback={
-          <PageScaffold title="Settings" testId="settings-page">
+          <PageScaffold title="Settings" back="/chat" testId="settings-page">
             <div class="settings-page settings-phone" ref={pageEl}>
               <PhoneSettingsRoot pcName={pc()?.name} pcId={pc()?.id} search={() => <SettingsSearch onPick={onSearchPick} />} />
             </div>

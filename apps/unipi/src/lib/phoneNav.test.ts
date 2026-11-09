@@ -41,6 +41,7 @@ describe('phoneParent (phone spec §1.2 / §1.3)', () => {
 
   it('tabs, roots, workspaces', () => {
     expect(tabOf('/s/h/1')).toBe('chat');
+    expect(tabOf('/superagent')).toBe('superagent');
     expect(tabOf('/settings/ports')).toBe('settings');
     expect(tabOf('/x/a')).toBe('settings');
     expect(isTabRoot('/cron')).toBe(true);

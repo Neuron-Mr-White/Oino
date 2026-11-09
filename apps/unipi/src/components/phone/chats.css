@@ -29,3 +29,7 @@
 .ph-skel-lines span { display: block; height: 12px; border-radius: 6px; background: var(--color-surface-2); width: 70%; animation: ph-skel 1.2s ease-in-out infinite alternate; }
 .ph-skel-lines span + span { width: 45%; height: 10px; }
 @keyframes ph-skel { from { opacity: .55; } to { opacity: 1; } }
+
+/* Chats large title with the list menu at its right end (OIN-65: Settings took the top-right slot). */
+.ph-chats-title { display: flex; align-items: center; justify-content: space-between; gap: var(--ph-2); }
+.ph-chats-title .ph-icon-btn { margin-right: calc(var(--ph-1) - var(--ph-gutter)); }

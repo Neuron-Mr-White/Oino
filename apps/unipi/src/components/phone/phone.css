@@ -340,6 +340,26 @@ html[data-shell=phone] .ph-tabbar a[aria-current=page] svg { color: var(--color-
   border-radius: 9999px; background: var(--color-shell); color: #fff; font-size: 11px; line-height: 16px; font-weight: 700; text-align: center;
   box-shadow: 0 0 0 2px var(--color-bg);
 }
+/* Superagent: the centred accent circle (OIN-65). Same 48px slot height as the other tabs; the
+   circle rises above the bar top so the bar itself keeps its height. */
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero { position: relative; gap: 4px; }
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero .ph-tab-icon {
+  width: 52px; height: 52px; margin-top: -22px; border-radius: 9999px; align-items: center; justify-content: center;
+  background: var(--color-shell); box-shadow: 0 0 0 4px var(--color-bg), 0 6px 16px rgb(0 0 0 / 35%);
+  transition: transform 120ms ease-out, background-color 120ms ease-out;
+}
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero svg,
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero[aria-current=page] svg { padding: 0; width: 26px; height: 26px; background: none; color: var(--color-face); }
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero[aria-current=page] .ph-tab-icon { background: var(--color-shell-hi); box-shadow: 0 0 0 4px var(--color-bg), 0 0 0 6px var(--color-shell), 0 6px 16px rgb(0 0 0 / 35%); }
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero:active .ph-tab-icon { transform: scale(.94); }
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero .ph-tab-badge { top: -4px; right: -6px; background: var(--color-text); color: var(--color-bg); }
+.ph-tab-working {
+  position: absolute; bottom: -4px; right: -6px; display: grid; place-items: center; width: 20px; height: 20px;
+  border-radius: 9999px; background: var(--color-bg); color: var(--color-shell);
+}
+html[data-shell=phone] .ph-tabbar a.ph-tab-hero .ph-tab-working svg { width: 14px; height: 14px; color: var(--color-shell); }
+@media (prefers-reduced-motion: reduce) { .ph-tab-working .ph-spin { animation: none; } }
+html[data-shell=phone][data-short] .ph-tabbar a.ph-tab-hero .ph-tab-icon { width: 40px; height: 40px; margin-top: -8px; }
 html[data-shell=phone][data-size=medium] .ph-tabbar { justify-content: center; }
 html[data-shell=phone][data-size=medium] .ph-tabbar a { max-width: 120px; }
 html[data-shell=phone][data-short] .ph-tabbar { height: calc(48px + var(--safe-bottom)); }
