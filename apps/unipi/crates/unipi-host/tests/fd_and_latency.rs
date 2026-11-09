@@ -316,6 +316,7 @@ fn synthetic_session(sessions_root: &Path, cwd: &Path, count: usize) -> String {
             ),
             kind: EntryKind::Message {
                 message: AgentMessage::User(UserMessage {
+                    author: None,
                     content: format!("synthetic message {index}").into(),
                     timestamp: index as i64,
                 }),

@@ -11,6 +11,7 @@ use serde_json::json;
 
 fn user(text: &str) -> AgentMessage {
     AgentMessage::User(UserMessage {
+        author: None,
         content: UserContentField::Text(text.into()),
         timestamp: 1,
     })

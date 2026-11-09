@@ -26,6 +26,7 @@ const CWD: &str = "/work/project";
 
 fn user(text: &str) -> AgentMessage {
     AgentMessage::User(UserMessage {
+        author: None,
         content: UserContentField::Text(text.into()),
         timestamp: 1,
     })
@@ -357,6 +358,7 @@ fn listing_find_fork_and_continue() {
     .unwrap();
     second
         .append_message(AgentMessage::User(UserMessage {
+            author: None,
             content: UserContentField::Text("second".into()),
             timestamp: 9_999_999_999_999,
         }))

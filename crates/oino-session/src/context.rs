@@ -414,6 +414,7 @@ pub fn entry_to_context_messages(
             )]
         }
         EntryKind::CompactionState(state) => vec![AgentMessage::User(oino_ai::UserMessage {
+            author: None,
             content: UserContentField::Text(state.injected_text()),
             timestamp,
         })],

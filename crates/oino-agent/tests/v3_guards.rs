@@ -130,6 +130,7 @@ fn setup_tools(
             .iter()
             .filter_map(|message| match message {
                 AgentMessage::Custom(custom) => Some(oino_ai::Message::User(UserMessage {
+                    author: None,
                     content: custom.content.clone(),
                     timestamp: custom.timestamp,
                 })),
@@ -364,6 +365,7 @@ async fn steering() {
         text("steered"),
     ]);
     agent.follow_up(AgentMessage::User(UserMessage {
+        author: None,
         content: "also do this".into(),
         timestamp: 0,
     }));

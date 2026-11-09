@@ -142,6 +142,7 @@ export type Turn = {
   stopped: boolean;
   error?: string;
   source: TurnSource;
+  harnessCount?: number;
   /** `/command …` echo (Z-35: `/compact` → `hidden`, the compaction marker shows instead). */
   command?: TurnCommand;
 };
@@ -874,4 +875,19 @@ export function createTurnsIndex(): TurnsIndex {
       return mode;
     },
   };
+}
+
+/** Collapse adjacent standalone attributed notifications without hiding turn content. */
+export function collapseHarnessTurns(turns: readonly Turn[]): Turn[] {
+  const result: Turn[] = [];
+  for (const turn of turns) {
+    const prev = result.at(-1);
+    const author = messageAuthor(turn.user?.message);
+    const plain = (t: Turn) => !t.live && !t.command && t.segments.every((s) => !s.steer && !s.work.length && !s.answer);
+    if (author && prev && plain(turn) && plain(prev) && author === messageAuthor(prev.user?.message) &&
+        textOf(turn.user?.message?.content as string | ModelPart[] | undefined) === textOf(prev.user?.message?.content as string | ModelPart[] | undefined)) {
+      result[result.length - 1] = { ...prev, harnessCount: (prev.harnessCount ?? 1) + 1 };
+    } else result.push(turn);
+  }
+  return result;
 }

@@ -71,6 +71,7 @@ fn user_text(message: &AgentMessage) -> Option<String> {
 fn user_images(message: &AgentMessage) -> Vec<ImageContent> {
     match message {
         AgentMessage::User(UserMessage {
+            author: None,
             content: UserContentField::Blocks(blocks),
             ..
         }) => blocks
@@ -229,6 +230,7 @@ impl AgentSession {
         if self.is_streaming() {
             let message = message.unwrap_or_else(|| {
                 AgentMessage::User(UserMessage {
+                    author: None,
                     content: UserContentField::Blocks(vec![UserContent::text(text.clone())]),
                     timestamp: oino_agent::now_ms(),
                 })
@@ -261,6 +263,7 @@ mod tests {
 
     fn user(text: &str) -> AgentMessage {
         AgentMessage::User(UserMessage {
+            author: None,
             content: UserContentField::Blocks(vec![UserContent::text(text.to_owned())]),
             timestamp: 0,
         })

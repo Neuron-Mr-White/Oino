@@ -983,6 +983,7 @@ mod tests {
     fn streaming_reply_with_tool() {
         let mut t = Transcript::new();
         let user = AgentMessage::User(UserMessage {
+            author: None,
             content: UserContentField::Text("hello".into()),
             timestamp: 0,
         });

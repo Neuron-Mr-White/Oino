@@ -453,6 +453,7 @@ mod tests {
         manager.append_model_change("p", "opus").unwrap();
         manager
             .append_message(AgentMessage::User(oino_ai::UserMessage {
+                author: None,
                 content: oino_ai::UserContentField::Text("go".into()),
                 timestamp: 1,
             }))

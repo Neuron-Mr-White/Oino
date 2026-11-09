@@ -27,6 +27,7 @@ const CWD: &str = "/work/wp-c2";
 
 fn user(text: &str) -> AgentMessage {
     AgentMessage::User(UserMessage {
+        author: None,
         content: UserContentField::Text(text.into()),
         timestamp: 1,
     })

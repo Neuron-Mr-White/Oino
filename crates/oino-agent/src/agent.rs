@@ -635,6 +635,7 @@ impl Agent {
         let mut content = vec![UserContent::text(text)];
         content.extend(images.into_iter().map(UserContent::Image));
         self.prompt(vec![AgentMessage::User(UserMessage {
+            author: None,
             content: UserContentField::Blocks(content),
             timestamp: now_ms(),
         })])

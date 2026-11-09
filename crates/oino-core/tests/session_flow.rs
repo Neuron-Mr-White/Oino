@@ -840,3 +840,19 @@ async fn abort_forces_a_wedged_run_idle_within_the_bound() {
     );
     assert!(session.is_idle(), "the wedged run was forced idle");
 }
+
+#[tokio::test]
+async fn message_origin_is_persisted_for_extensions_only() {
+    let provider = FauxProvider::new(vec![FauxResponse::Text("one".into()), FauxResponse::Text("two".into())]);
+    let session = TestSession::default().build(Arc::clone(&provider)).await;
+    run(&session, "human").await;
+    session.send_user_message("extension prompt".into(), None, false).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), session.wait_for_idle()).await.unwrap();
+    let users: Vec<_> = session.entries().iter().filter_map(|entry| match entry.message() {
+        Some(AgentMessage::User(user)) => Some(serde_json::to_value(user).unwrap()),
+        _ => None,
+    }).collect();
+    assert!(users[0].get("author").is_none());
+    assert_eq!(users[1]["author"], "extension");
+    assert!(provider.requests()[1]["context"]["messages"].as_array().unwrap().iter().all(|m| m.get("author").is_none()));
+}

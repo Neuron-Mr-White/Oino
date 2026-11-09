@@ -47,7 +47,7 @@ import { actionNotice } from '../../lib/timeline/actions';
 import { FindBar } from '../command/FindBar';
 import { activateFindMark, applyFindHighlights, clearFindHighlights } from '../../lib/find/highlight';
 import { buildFindIndex, closeFind, findState, locateMatch, setFindAdapter, type FindIndex } from '../../lib/find';
-import type { Turn } from '../../lib/session/turns';
+import { collapseHarnessTurns, type Turn } from '../../lib/session/turns';
 import { LOADED_MAX } from '../../lib/session/store';
 import { blankReason, healBudget, HEAL_AFTER_MS } from '../../lib/timeline/chatHealth';
 import type { TimelineCtx } from './context';
@@ -107,7 +107,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
 
   // ── open phase: last-known turns / skeleton until the tail chunk is whole ──────
   const [ready, setReady] = createSignal(false);
-  const turns = createMemo(() => (ready() ? liveTurns() : (cachedTurns() ?? [])));
+  const turns = createMemo(() => collapseHarnessTurns(ready() ? liveTurns() : (cachedTurns() ?? [])));
   createEffect(() => {
     if (!ready()) return;
     const live = liveTurns();

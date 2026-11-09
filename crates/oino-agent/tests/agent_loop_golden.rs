@@ -145,6 +145,7 @@ struct ScriptedTool {
 
 fn user(text: &str) -> AgentMessage {
     AgentMessage::User(UserMessage {
+        author: None,
         content: UserContentField::Blocks(vec![UserContent::text(text)]),
         timestamp: 0,
     })

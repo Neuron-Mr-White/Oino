@@ -41,6 +41,7 @@ fn interrupted_file(dir: &Path, sessions: &Path) -> PathBuf {
         SessionManager::create(dir, sessions, oino_session::CreateOptions::default()).unwrap();
     manager
         .append_message(oino_ai::AgentMessage::User(oino_ai::UserMessage {
+            author: None,
             content: oino_ai::UserContentField::Text("run probe".into()),
             timestamp: 1,
         }))

@@ -203,6 +203,7 @@ pub fn collapse_system_messages(context: Context) -> Context {
                 let text = render_system_message_update(&system);
                 if !text.is_empty() {
                     rest.push(Message::User(crate::message::UserMessage {
+                        author: None,
                         content: crate::content::UserContentField::Text(format!(
                             "<system-reminder>\n{}\n</system-reminder>",
                             escape_reminder_tags(&text)

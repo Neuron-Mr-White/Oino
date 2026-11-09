@@ -148,6 +148,7 @@ fn conversation_file(dir: &Path) -> (PathBuf, String) {
     manager.append_thinking_level_change("off").unwrap();
     manager
         .append_message(AgentMessage::User(oino_ai::UserMessage {
+            author: None,
             content: oino_ai::UserContentField::Text("seed question".into()),
             timestamp: 1,
         }))
@@ -170,6 +171,7 @@ fn interrupted_file(dir: &Path) -> (PathBuf, String) {
     let mut manager = SessionManager::create(dir, &sessions, CreateOptions::default()).unwrap();
     manager
         .append_message(AgentMessage::User(oino_ai::UserMessage {
+            author: None,
             content: oino_ai::UserContentField::Text("run probe".into()),
             timestamp: 1,
         }))
@@ -687,6 +689,7 @@ async fn services_cap_never_retires_a_session_it_just_woke() {
     manager.append_model_change("faux", "faux-1").unwrap();
     manager
         .append_message(AgentMessage::User(oino_ai::UserMessage {
+            author: None,
             content: oino_ai::UserContentField::Text("seed".into()),
             timestamp: 1,
         }))

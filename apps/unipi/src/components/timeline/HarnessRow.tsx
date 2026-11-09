@@ -29,6 +29,13 @@ function tagOf(source: string | undefined, title: string | undefined): string | 
   return source || title || undefined;
 }
 
+export function notificationLabel(text: string): string {
+  if (/^Agent (graph|goal|ralph|swarm)\b/i.test(text) || / checkpoint:/i.test(text)) return 'Graph';
+  if (/memory/i.test(text)) return 'Memory';
+  if (/wake|watchdog/i.test(text)) return 'Wake';
+  return 'System';
+}
+
 export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
   // By message, not by component: virtualizer slots are reused across turns.
   const fk = () => `harness:${props.turn.user?.id ?? props.turn.turnId}`;
@@ -50,8 +57,9 @@ export function HarnessRow(props: { turn: Turn; ctx: TimelineCtx }) {
   return (
     <Show when={echo()} fallback={
       <div class="tl-notification" data-testid="tl-harness">
-        <span class="tl-notification-label">{tag() ?? 'System'}</span>
+        <span class="tl-notification-label">{typeof m()?.author === 'string' && messageAuthor(m()) ? notificationLabel(sent()) : (tag() ?? 'System')}</span>
         <span>{sent()}</span>
+        <Show when={(props.turn.harnessCount ?? 1) > 1}><span>×{props.turn.harnessCount}</span></Show>
       </div>
     }>
     <div class="chat-user tl-user tl-harness" data-testid="tl-harness">

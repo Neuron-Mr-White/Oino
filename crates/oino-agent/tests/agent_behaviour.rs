@@ -128,6 +128,7 @@ async fn busy_and_continue_errors() {
     assert_eq!(agent.continue_run().await, Err(AgentError::CannotContinue));
     // A queued follow-up lets `continue` run after an assistant message.
     agent.follow_up(AgentMessage::User(oino_ai::UserMessage {
+        author: None,
         content: "more".into(),
         timestamp: 0,
     }));
@@ -168,6 +169,7 @@ async fn tool_changes_are_declared_before_next_request() {
     agent.prompt_text("one", Vec::new()).await.unwrap();
     agent.set_tools(vec![slow_tool("slow"), slow_tool("other")]);
     agent.follow_up(AgentMessage::User(oino_ai::UserMessage {
+        author: None,
         content: "two".into(),
         timestamp: 0,
     }));

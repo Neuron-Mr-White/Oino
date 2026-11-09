@@ -183,6 +183,7 @@ pub fn summarization_context(prompt_text: &str) -> Context {
     let system =
         initial_system_message(super::prompts::BRANCH_SYSTEM_PROMPT, &[]).map(Message::System);
     let user = Message::User(UserMessage {
+        author: None,
         content: UserContentField::Blocks(vec![UserContent::text(prompt_text)]),
         timestamp: now_ms(),
     });

@@ -100,14 +100,16 @@ pub(crate) enum Trigger {
     User {
         prompt: String,
         images: Vec<ImageContent>,
+        author: Option<String>,
     },
     Custom(CustomMessage),
 }
 
-fn user_message(text: String, images: Vec<ImageContent>) -> AgentMessage {
+fn user_message(text: String, images: Vec<ImageContent>, author: Option<String>) -> AgentMessage {
     let mut content = vec![UserContent::text(text)];
     content.extend(images.into_iter().map(UserContent::Image));
     AgentMessage::User(UserMessage {
+        author,
         content: UserContentField::Blocks(content),
         timestamp: oino_agent::now_ms(),
     })
@@ -187,13 +189,14 @@ impl AgentSession {
             let behavior = options
                 .streaming_behavior
                 .ok_or(SessionOpError::StreamingWithoutBehavior)?;
-            self.queue_input(behavior, expanded, images);
+            self.queue_input(behavior, expanded, images, options.source);
             return Ok(PromptDisposition::Queued);
         }
         self.validate_model_and_auth()?;
         self.start_run(Trigger::User {
             prompt: expanded,
             images,
+            author: (options.source == InputSource::Extension).then(|| "extension".into()),
         })
         .await?;
         Ok(PromptDisposition::Started)
@@ -250,11 +253,11 @@ impl AgentSession {
             return Ok(PromptDisposition::Handled);
         };
         let expanded = self.expand_templates(&text);
-        self.queue_input(behavior, expanded, images);
+        self.queue_input(behavior, expanded, images, source);
         Ok(PromptDisposition::Queued)
     }
 
-    fn queue_input(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>) {
+    fn queue_input(&self, behavior: StreamingBehavior, text: String, images: Vec<ImageContent>, source: InputSource) {
         {
             let mut book = lock(&self.inner.book);
             match behavior {
@@ -263,7 +266,7 @@ impl AgentSession {
             }
         }
         self.emit_queue_update();
-        let message = user_message(text, images);
+        let message = user_message(text, images, (source == InputSource::Extension).then(|| "extension".into()));
         match behavior {
             StreamingBehavior::Steer => self.inner.agent.steer(message),
             StreamingBehavior::FollowUp => self.inner.agent.follow_up(message),
@@ -686,7 +689,7 @@ impl AgentSession {
         let runner = self.runner();
         let mut trigger_json = serde_json::Map::new();
         match &trigger {
-            Trigger::User { prompt, images } => {
+            Trigger::User { prompt, images, .. } => {
                 trigger_json.insert("messageType".into(), json!("user"));
                 trigger_json.insert("prompt".into(), json!(prompt));
                 if !images.is_empty() {
@@ -717,7 +720,7 @@ impl AgentSession {
         let mut messages = Vec::new();
         match trigger {
             Trigger::Custom(message) => messages.push(AgentMessage::Custom(message)),
-            Trigger::User { prompt, images } => messages.push(user_message(prompt, images)),
+            Trigger::User { prompt, images, author } => messages.push(user_message(prompt, images, author)),
         }
         let next_turn = std::mem::take(&mut lock(&self.inner.book).pending_next_turn);
         messages.extend(next_turn.into_iter().map(AgentMessage::Custom));

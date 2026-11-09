@@ -353,3 +353,20 @@ describe('turns: repeated errors', () => {
     expect(newestErrorKey([])).toBeUndefined();
   });
 });
+
+it('collapses only consecutive identical attributed notifications, including on reload', async () => {
+  const { collapseHarnessTurns } = await import('./turns');
+  const s = session();
+  s.user('Agent graph checkpoint: ready', { author: 'extension' });
+  for (let i = 0; i < 3; i++) s.user('Loop warning', { author: 'extension' });
+  s.user('Memory reminder', { author: 'extension' });
+  s.user('Host wake', { author: 'extension' });
+  s.user('do work');
+  s.round([['read', {}]]);
+  const steer = s.user('genuine steer');
+  const render = (entries: SessionEntry[]) => collapseHarnessTurns(buildTurns(input(entries)));
+  const turns = render(s.entries);
+  expect(turns.map(t => t.harnessCount ?? 1)).toEqual([1, 3, 1, 1, 1]);
+  expect(turns.at(-1)?.segments.at(-1)?.steer?.id).toBe(steer.id);
+  expect(render(JSON.parse(JSON.stringify(s.entries)))).toEqual(turns);
+});

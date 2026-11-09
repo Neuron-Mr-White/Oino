@@ -115,6 +115,9 @@ pub struct SystemMessage {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserMessage {
+    /// Origin of a persisted message, omitted from provider requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
     /// String or blocks.
     #[serde(default)]
     pub content: UserContentField,
@@ -515,7 +518,11 @@ impl AgentMessage {
     pub fn as_llm(&self) -> Option<Message> {
         match self {
             Self::System(m) => Some(Message::System(m.clone())),
-            Self::User(m) => Some(Message::User(m.clone())),
+            Self::User(m) => {
+                let mut message = m.clone();
+                message.author = None;
+                Some(Message::User(message))
+            },
             Self::Assistant(m) => Some(Message::Assistant(m.clone())),
             Self::ToolResult(m) => Some(Message::ToolResult(m.clone())),
             _ => None,
@@ -623,5 +630,21 @@ mod tests {
         assert!(matches!(config, Some(ConstrainedSampling::Config(_))));
         assert_eq!(serde_json::to_value(config).ok(), Some(raw));
         assert!(serde_json::from_value::<FalseLiteral>(json!(true)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    #[test]
+    fn origin_old_message_and_provider_boundary() {
+        let old: AgentMessage = serde_json::from_str(r#"{"role":"user","content":"old","timestamp":1}"#).unwrap();
+        assert!(serde_json::to_value(&old).unwrap().get("author").is_none());
+        let mut user = match old { AgentMessage::User(user) => user, _ => unreachable!() };
+        user.author = Some("extension".into());
+        let message = AgentMessage::User(user);
+        assert_eq!(serde_json::to_value(&message).unwrap()["author"], "extension");
+        assert!(serde_json::to_value(message.as_llm().unwrap()).unwrap().get("author").is_none());
     }
 }

@@ -85,6 +85,7 @@ pub fn custom_message(
 
 fn user_text(text: String, timestamp: TimestampMs) -> Message {
     Message::User(UserMessage {
+        author: None,
         content: UserContentField::Blocks(vec![UserContent::text(text)]),
         timestamp,
     })
@@ -97,6 +98,7 @@ pub fn to_llm(message: &AgentMessage) -> Option<Message> {
         AgentMessage::BashExecution(bash) => (bash.exclude_from_context != Some(true))
             .then(|| user_text(bash_execution_to_text(bash), bash.timestamp)),
         AgentMessage::Custom(custom) => Some(Message::User(UserMessage {
+            author: None,
             content: UserContentField::Blocks(custom.content.clone().into_blocks()),
             timestamp: custom.timestamp,
         })),
