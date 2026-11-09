@@ -12,6 +12,8 @@ import {
   type Layout,
   lhCodeText,
   newestFirst,
+  graphProgress,
+  nodeCategory,
   parseHistory,
   parseSnapshot,
   progressSegments,
@@ -178,5 +180,17 @@ describe('elk layout', () => {
   it('lays out 40 independent nodes and an empty graph', async () => {
     expect((await layoutGraphElk(Array.from({ length: 40 }, (_, i) => w(`s${i}`, 'queued')))).nodes).toHaveLength(40);
     expect((await layoutGraphElk([])).nodes).toHaveLength(0);
+  });
+});
+
+describe('whole graph progress', () => {
+  it('separates stopped, replaced and blocked and handles active orphans', () => {
+    const work = [ ...Array.from({ length: 5 }, () => ({ ...w("x", "queued"), status: 'stopped' as const })), { ...w("x", "queued"), status: 'superseded' as const }, { ...w("x", "queued"), status: 'blocked' as const } ];
+    const p = graphProgress({ work, counts: countWork(work), hasCounts: true });
+    expect(p).toMatchObject({ done: 0, stopped: 5, replaced: 1, blocked: 1, total: 7, denom: 1, finished: true });
+    expect(p.done + p.stopped + p.replaced + p.blocked + p.errored + p.failed + p.active).toBe(7);
+    const mixed = [...work, { ...w("x", "queued"), status: 'completed' as const }, { ...w("x", "queued"), status: 'running' as const, orphaned: true }];
+    expect(graphProgress({ work: mixed, counts: countWork(mixed), hasCounts: true })).toMatchObject({ done: 1, denom: 3, active: 1, finished: false });
+    expect(nodeCategory(mixed[mixed.length - 1]!)).toBe('active');
   });
 });

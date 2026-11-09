@@ -7,23 +7,24 @@
  * service falls back to the old `/visualize-progress` inspector (`LhGraph`).
  */
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
-import { ArrowLeft, Eye, EyeOff, History, ListTree, Network, RefreshCw, Rows3 } from 'lucide-solid';
+import { ArrowLeft, History, ListTree, Network, RefreshCw, Rows3 } from 'lucide-solid';
 import type { SessionHandle } from '../../lib/session/store';
 import { serviceCall } from '../session/modalData';
 import { openSubagentTab } from '../panes/tabs/sessionTabs';
 import { fetchAgents } from '../panes/tabs/SubagentTab';
 import { useClock } from '../../lib/clock';
 import { LH_EXTENSION_ID } from '../../lib/status/lh';
-import { showErrors, setShowErrors } from '../../lib/status/lhPrefs';
 import {
   ERROR_STATUSES,
-  countTotal,
+  graphProgress,
+  matchesNodeFilter,
+  FILTERS,
+  type NodeCategory,
   graphTimeline,
   newestFirst,
   parseHistory,
   parseSnapshot,
   refusalText,
-  visibleWork,
   type LhGraphCounts,
   type LhGraphSnap,
   type LhHistoryRow,
@@ -144,14 +145,27 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
   const workerOf = (w: LhWork) => (agents.latest ?? []).find((a) => workOfAgent(a.label ?? '') === w.workId);
 
   const g = () => snap.latest;
-  const hide = () => !showErrors();
-  const visible = createMemo(() => visibleWork(g()?.work ?? [], showErrors()));
+  const [filters, setFilters] = createSignal<NodeCategory[]>([]);
+  createEffect(on(() => g()?.graphId, (id) => {
+    let saved: unknown;
+    try { saved = id ? JSON.parse(localStorage.getItem(`lh-filters:${id}`) ?? '[]') : []; } catch { saved = []; }
+    setFilters(Array.isArray(saved) ? saved.filter((v): v is NodeCategory => FILTERS.includes(v)) : []);
+  }));
+  const toggleFilter = (category: NodeCategory) => {
+    const next = filters().includes(category) ? filters().filter((v) => v !== category) : [...filters(), category];
+    setFilters(next);
+    try { if (g()) localStorage.setItem(`lh-filters:${g()!.graphId}`, JSON.stringify(next)); } catch { /* private mode */ }
+  };
+  const clearFilters = () => {
+    setFilters([]);
+    try { if (g()) localStorage.removeItem(`lh-filters:${g()!.graphId}`); } catch { /* private mode */ }
+  };
+  const visible = createMemo(() => (g()?.work ?? []).filter((w) => matchesNodeFilter(w, filters())));
   const ordered = createMemo(() => newestFirst(visible()));
-  const counts = createMemo(() => countsWithout(g()?.counts ?? ({} as LhGraphCounts), hide()));
-  const hiddenCount = () => (hide() ? (g()?.work ?? []).length - visible().length : 0);
-  const timeline = createMemo(() => (g() ? graphTimeline(g()!, showErrors()) : []));
-  const total = () => (g() ? countTotal(counts()) : 0);
-  const doneCount = () => counts().completed ?? 0;
+  const counts = createMemo(() => g()?.counts ?? ({} as LhGraphCounts));
+  const progress = createMemo(() => g() ? graphProgress(g()!) : undefined);
+  const hiddenCount = () => (g()?.work.length ?? 0) - visible().length;
+  const timeline = createMemo(() => (g() ? graphTimeline({ ...g()!, work: visible() }) : []));
 
   const retry = async (w: LhWork) => {
     if (retrying()) return;
@@ -249,9 +263,9 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
                     <Show when={gr().finishReason ?? gr().abandoned}>{(r) => <span class="lh-head-reason" title={r()}>{r()}</span>}</Show>
                   </div>
                   <div class="lh-head-count" data-testid="lh-counts">
-                    <strong>{doneCount()}/{total()}</strong> done
-                    <For each={['running', 'queued', 'blocked', 'errored', 'failed'] as const}>
-                      {(st) => <Show when={counts()[st] > 0}><span class="lh-count" data-status={st}>{counts()[st]} {st === 'errored' ? 'error' : st}</span></Show>}
+                    <strong>{progress()?.finished ? 'Finished' : `${progress()?.done}/${progress()?.denom}`}</strong>
+                    <For each={['done', 'stopped', 'replaced', 'blocked', 'errored', 'failed', 'active'] as const}>
+                      {(key) => <Show when={key === 'done' || (progress()?.[key] ?? 0) > 0}><span class="lh-count" data-status={key}>{progress()?.[key]} {key === 'errored' ? 'error' : key === 'active' ? 'still running' : key}</span></Show>}
                     </For>
                   </div>
                   <LhBar counts={counts()} label="Graph progress" />
@@ -264,26 +278,15 @@ export function LhView(props: { s: SessionHandle; counts: string; onToast?: (tex
                     <button type="button" role="tab" aria-selected={tab() === 'timeline'} class="lh-seg-btn" onClick={() => setTab('timeline')} data-testid="lh-tab-timeline"><ListTree size={12} /> Timeline</button>
                   </div>
                   <span class="flex-1" />
-                  <button
-                    type="button"
-                    class="lh-toggle"
-                    role="switch"
-                    aria-checked={showErrors()}
-                    onClick={() => setShowErrors(!showErrors())}
-                    data-testid="lh-show-errors"
-                    title="Show errored, failed and replaced steps"
-                  >
-                    <Show when={showErrors()} fallback={<EyeOff size={12} />}><Eye size={12} /></Show>
-                    <span class="lh-toggle-label">Errors</span>
-                    <span class="lh-toggle-track" aria-hidden="true"><span /></span>
-                  </button>
+                  <For each={FILTERS}>{(category) => <button type="button" class="lh-toggle" aria-pressed={filters().includes(category)} data-testid={`lh-filter-${category}`} onClick={() => toggleFilter(category)}>{category[0]!.toUpperCase() + category.slice(1)}</button>}</For>
+                  <Show when={filters().length}><button type="button" class="lh-toggle" onClick={clearFilters}>Clear all</button></Show>
                   <Show when={live()}>
                     <button type="button" class="lh-icon-btn lh-refresh" aria-label="Refresh the graph" title="Refresh" onClick={() => (setNonce((n) => n + 1), void refetchSnap())}><RefreshCw size={13} /></button>
                   </Show>
                   <button type="button" class="lh-icon-btn" aria-label="History" title="History — earlier graphs" onClick={() => (setPage('history'), setNonce((n) => n + 1))} data-testid="lh-history"><History size={14} /></button>
                 </div>
                 <Show when={hiddenCount() > 0}>
-                  <p class="lh-hidden-note" data-testid="lh-hidden-note">{hiddenCount()} errored / failed / replaced step{hiddenCount() === 1 ? '' : 's'} hidden</p>
+                  <p class="lh-hidden-note" data-testid="lh-hidden-note">{hiddenCount()} step{hiddenCount() === 1 ? '' : 's'} hidden</p>
                 </Show>
 
                 <Show when={tab() === 'list'}>

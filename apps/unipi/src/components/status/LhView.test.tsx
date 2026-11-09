@@ -68,16 +68,25 @@ describe('LhView', () => {
     await waitFor(() => expect(screen.getAllByTestId('lh-tl-item').some((i) => i.textContent?.includes('Continued by user'))).toBe(true));
   });
 
-  it('Show errors off hides errored / failed / superseded everywhere and persists', async () => {
+  it('filters list and diagram, and persists per graph', async () => {
     await boot('lh-graph-big');
-    mount();
+    const view = mount();
     await waitFor(() => expect(screen.getAllByTestId('lh-node').length).toBeGreaterThan(30));
-    fireEvent.click(screen.getByTestId('lh-show-errors'));
-    await waitFor(() => expect(screen.getAllByTestId('lh-node').every((r) => !['errored', 'failed', 'superseded'].includes(r.dataset.status!))).toBe(true));
-    expect(screen.queryByTestId('lh-bar-errored')).toBeNull();
-    expect(screen.queryByTestId('lh-bar-failed')).toBeNull();
-    expect(screen.getByTestId('lh-hidden-note').textContent).toContain('3');
-    expect(window.localStorage.getItem('unipi.lh.showErrors')).toBe('off');
+    const header = screen.getByTestId('lh-counts').textContent;
+    fireEvent.click(screen.getByTestId('lh-filter-active'));
+    expect(screen.getAllByTestId('lh-node').every((r) => ['running', 'queued'].includes(r.dataset.status!))).toBe(true);
+    expect(screen.getByTestId('lh-counts').textContent).toBe(header);
+    view.unmount();
+    mount();
+    await waitFor(() => expect(screen.getByTestId('lh-filter-active').getAttribute('aria-pressed')).toBe('true'));
+    fireEvent.click(screen.getByTestId('lh-filter-active'));
+    fireEvent.click(screen.getByTestId('lh-filter-stopped'));
+    expect(screen.queryAllByTestId('lh-node').every((r) => ['stopped', 'cancelled'].includes(r.dataset.status!))).toBe(true);
+    fireEvent.click(screen.getByTestId('lh-tab-diagram'));
+    expect(document.querySelectorAll('.lh-dia-node:not([data-status="stopped"]):not([data-status="cancelled"])')).toHaveLength(0);
+    fireEvent.click(screen.getByTestId('lh-filter-stopped'));
+    fireEvent.click(screen.getByTestId('lh-filter-errors'));
+    expect(Array.from(document.querySelectorAll('.lh-dia-node')).every((n) => ['errored', 'failed'].includes(n.getAttribute('data-status')!))).toBe(true);
   });
 
   it('History lists earlier graphs; a row opens a read-only snapshot with no Retry', async () => {

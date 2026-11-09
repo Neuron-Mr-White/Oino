@@ -93,9 +93,10 @@ export type LhGraphSnap = {
   finishAt?: number;
   abandoned?: string;
   omittedWork: number;
+  hasCounts: boolean;
 };
 
-export type LhHistoryRow = Omit<LhGraphSnap, 'events' | 'eventsDropped' | 'work' | 'omittedWork'>;
+export type LhHistoryRow = Omit<LhGraphSnap, 'events' | 'eventsDropped' | 'work' | 'omittedWork' | 'hasCounts'>;
 
 const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -192,7 +193,7 @@ export function parseSnapshot(reply: unknown): LhGraphSnap | undefined {
     if (eo && ts !== undefined && kind) events.push({ ts, kind, by: by(eo.by), ...(str(eo.detail) ? { detail: str(eo.detail) } : {}) });
   }
   const work = (Array.isArray(g.work) ? g.work.slice(0, 120) : []).map(parseWork).filter((w): w is LhWork => !!w);
-  return { ...head, events, eventsDropped: num(g.eventsDropped) ?? 0, work, omittedWork: num(g.omittedWork) ?? 0 };
+  return { ...head, events, eventsDropped: num(g.eventsDropped) ?? 0, work, omittedWork: num(g.omittedWork) ?? 0, hasCounts: !!obj(g.counts) };
 }
 
 /** A `history` reply → rows, newest first as sent (≤ 21). Pure. */
@@ -284,6 +285,29 @@ export function newestFirst(work: readonly LhWork[]): LhWork[] {
 /** The "Show errors" filter: off hides errored / failed / superseded. Pure. */
 export function visibleWork(work: readonly LhWork[], showErrors: boolean): LhWork[] {
   return showErrors ? [...work] : work.filter((w) => !ERROR_STATUSES.includes(w.status));
+}
+
+export type NodeCategory = 'stopped' | 'replaced' | 'blocked' | 'done' | 'active' | 'errors';
+export const FILTERS: readonly NodeCategory[] = ['stopped', 'replaced', 'blocked', 'done', 'active', 'errors'];
+export function nodeCategory(node: Pick<LhWork, 'status'>): NodeCategory {
+  switch (node.status) {
+    case 'stopped': case 'cancelled': return 'stopped';
+    case 'superseded': return 'replaced';
+    case 'blocked': return 'blocked';
+    case 'completed': return 'done';
+    case 'errored': case 'failed': return 'errors';
+    default: return 'active';
+  }
+}
+export function matchesNodeFilter(node: Pick<LhWork, 'status'>, filters: readonly NodeCategory[]): boolean {
+  return filters.length === 0 || filters.includes(nodeCategory(node));
+}
+export function graphProgress(graph: Pick<LhGraphSnap, 'work' | 'counts' | 'hasCounts'>) {
+  const c = graph.hasCounts ? graph.counts : countWork(graph.work);
+  const done = c.completed, stopped = c.stopped + c.cancelled, replaced = c.superseded;
+  const blocked = c.blocked, errored = c.errored, failed = c.failed, active = c.running + c.queued;
+  const total = done + stopped + replaced + blocked + errored + failed + active;
+  return { done, stopped, replaced, blocked, errored, failed, active, total, denom: total - stopped - replaced, finished: active === 0 };
 }
 
 export type LhSegment = { status: LhStatus; count: number; pct: number };

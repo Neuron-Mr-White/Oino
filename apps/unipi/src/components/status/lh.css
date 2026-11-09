@@ -187,3 +187,6 @@ html[data-shell=phone] .lh-seg-btn { padding: 0 10px; }
 html[data-shell=phone] .lh-icon-btn { width: 40px; }
 .lh-view { overflow-x: clip; }
 html[data-shell=phone] .lh-refresh { display: none; }
+
+.lh-toggle[aria-pressed='true'] { background: var(--color-surface-2); color: var(--color-text); outline: 1px solid var(--color-text-dim); }
+.lh-toolbar { flex-wrap: wrap; }
