@@ -10,6 +10,7 @@
 mod auth;
 mod state;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -142,6 +143,7 @@ pub struct RegistryDiagnostic {
 
 struct Inner {
     state: RwLock<State>,
+    list_errors: RwLock<HashMap<String, String>>,
     auth: Arc<AuthStorage>,
     env: Arc<dyn EnvSource>,
     models_json_path: Option<PathBuf>,
@@ -175,6 +177,7 @@ impl ModelRegistry {
         Self {
             inner: Arc::new(Inner {
                 state: RwLock::new(state),
+                list_errors: RwLock::new(HashMap::new()),
                 auth,
                 env: options.env,
                 models_json_path: options.models_json_path,
@@ -209,6 +212,42 @@ impl ModelRegistry {
             .state
             .write()
             .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Records or clears the last dynamic list-models failure for a provider.
+    pub fn set_last_list_error(&self, provider: &str, error: Option<String>) {
+        let mut errors = self
+            .inner
+            .list_errors
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(error) = error {
+            errors.insert(provider.to_owned(), error);
+        } else {
+            errors.remove(provider);
+        }
+    }
+
+    /// The last dynamic list-models failure, if any.
+    #[must_use]
+    pub fn last_list_error(&self, provider: &str) -> Option<String> {
+        self.inner
+            .list_errors
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(provider)
+            .cloned()
+    }
+
+    /// Appends a provider's list-models failure to a model selection message.
+    #[must_use]
+    pub fn with_list_error(&self, message: String, provider: Option<&str>) -> String {
+        match provider.and_then(|p| self.last_list_error(p).map(|error| (p, error))) {
+            Some((provider, error)) => {
+                format!("{message} list-models for {provider} failed: {error}")
+            }
+            None => message,
+        }
     }
 
     /// The credential store.

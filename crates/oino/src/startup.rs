@@ -292,7 +292,14 @@ fn choose_model(
                 choice.model = Some(resolved.model);
             }
             Ok(None) => {}
-            Err(error) => diagnostics.push(Diagnostic::error(error.0)),
+            Err(error) => {
+                let provider = args.provider.as_deref().or_else(|| {
+                    args.model
+                        .as_deref()
+                        .and_then(|model| model.split_once('/').map(|(provider, _)| provider))
+                });
+                diagnostics.push(Diagnostic::error(models.with_list_error(error.0, provider)));
+            }
         }
     }
     let patterns = args.models.clone().or_else(|| settings.enabled_models());

@@ -919,14 +919,19 @@ pub async fn refresh_provider_models(
     .await
     {
         Ok(Ok(list)) => {
+            models.set_last_list_error(provider_id, None);
             if let Err(error) = models.set_provider_models(provider_id, &list) {
                 tracing::warn!(provider = %provider_id, "storing models failed: {error}");
             }
         }
         Ok(Err(error)) => {
+            models.set_last_list_error(provider_id, Some(error.message.clone()));
             tracing::warn!(provider = %provider_id, "list-models failed: {}", error.message);
         }
-        Err(_) => tracing::warn!(provider = %provider_id, "list-models timed out"),
+        Err(_) => {
+            models.set_last_list_error(provider_id, Some("timed out".to_owned()));
+            tracing::warn!(provider = %provider_id, "list-models timed out");
+        }
     }
 }
 
@@ -963,8 +968,7 @@ fn spawn_model_refresh(extensions: Arc<ExtensionSet>, models: ModelRegistry) {
 }
 
 /// Fetches the model lists of `models: "dynamic"` providers concurrently. Providers that need
-/// an API key and have none configured are skipped (their models would be unavailable anyway);
-/// keyless providers (local servers) are probed with a short timeout.
+/// host credentials are skipped only for built-in components; other extensions may hold their own.
 async fn refresh_dynamic_models(extensions: &ExtensionSet, models: &ModelRegistry) {
     let mut calls = Vec::new();
     for provider_id in models.registered_providers() {
@@ -984,7 +988,12 @@ async fn refresh_dynamic_models(extensions: &ExtensionSet, models: &ModelRegistr
         };
         let key = models.get_api_key(&provider_id).await;
         let needs_key = !registration.auth_env.is_empty() || registration.oauth;
-        if needs_key && key.is_none() && !models.has_configured_auth(&provider_id) {
+        if !should_probe(
+            component.instance.id(),
+            needs_key,
+            key.is_some(),
+            models.has_configured_auth(&provider_id),
+        ) {
             continue;
         }
         let credential = key.map(|key| json!({"type": "api_key", "key": key}));
@@ -1001,14 +1010,53 @@ async fn refresh_dynamic_models(extensions: &ExtensionSet, models: &ModelRegistr
     for (provider_id, result) in futures::future::join_all(calls).await.into_iter().flatten() {
         match result {
             Ok(Ok(list)) => {
+                models.set_last_list_error(&provider_id, None);
                 if let Err(error) = models.set_provider_models(&provider_id, &list) {
                     tracing::warn!(provider = %provider_id, "storing models failed: {error}");
                 }
             }
             Ok(Err(error)) => {
+                models.set_last_list_error(&provider_id, Some(error.message.clone()));
                 tracing::warn!(provider = %provider_id, "list-models failed: {}", error.message);
             }
-            Err(_) => tracing::warn!(provider = %provider_id, "list-models timed out"),
+            Err(_) => {
+                models.set_last_list_error(&provider_id, Some("timed out".to_owned()));
+                tracing::warn!(provider = %provider_id, "list-models timed out");
+            }
         }
+    }
+}
+
+// Extension instances have no origin flag; `oino.` identifies built-in providers.
+fn should_probe(extension_id: &str, needs_key: bool, has_key: bool, configured: bool) -> bool {
+    !extension_id.starts_with("oino.") || !needs_key || has_key || configured
+}
+
+#[cfg(test)]
+mod dynamic_probe_tests {
+    use super::should_probe;
+
+    #[test]
+    fn dynamic_probe_respects_extension_credentials() {
+        assert!(should_probe("omniroute.bridge", true, false, false));
+        assert!(!should_probe("oino.openai", true, false, false));
+        assert!(should_probe("oino.openai", true, true, false));
+        assert!(should_probe("oino.openai", true, false, true));
+        assert!(should_probe("oino.local", false, false, false));
+    }
+
+    #[test]
+    fn dynamic_probe_error_is_reported_and_cleared() {
+        let models = oino_models::ModelRegistry::in_memory(std::sync::Arc::new(
+            oino_models::env::ProcessEnv,
+        ));
+        let clone = models.clone();
+        models.set_last_list_error("omniroute", Some("connection refused".into()));
+        assert_eq!(
+            clone.with_list_error("Model not found.".into(), Some("omniroute")),
+            "Model not found. list-models for omniroute failed: connection refused"
+        );
+        models.set_last_list_error("omniroute", None);
+        assert_eq!(clone.last_list_error("omniroute"), None);
     }
 }
