@@ -113,8 +113,22 @@ export function startRefusal(error: { code?: unknown; detail?: unknown }): 'not_
   return null;
 }
 
+/** One agent on the fleet canvas (`superagent.fleet`): a lead, a graph/swarm worker or a subagent. */
+export const FleetNodeSchema = z.object({
+  id: z.string(), parentId: z.string().nullish(), project: z.string().nullable().default(null), projectId: z.string().nullish(),
+  title: z.string().default(''),
+  mode: z.enum(['plain', 'graph', 'swarm']).catch('plain'),
+  role: z.enum(['lead', 'worker', 'subagent']).catch('subagent'),
+  status: z.enum(['working', 'waiting', 'idle', 'ended']).catch('idle'),
+  model: z.string().nullable().default(null), startedAt: z.number().nullable().default(null), endedAt: z.number().nullable().default(null),
+});
+export const FleetSchema = z.object({ nodes: z.array(FleetNodeSchema).default([]), edges: z.array(z.object({ from: z.string(), to: z.string() })).default([]) });
+export type FleetNode = z.infer<typeof FleetNodeSchema>;
+export type Fleet = z.infer<typeof FleetSchema>;
+
 export type RelayDelivery = 'queue' | 'steer';
 export const superagentApi = {
+  fleet: (host: string) => hostCall(host, 'superagent.fleet', {}, FleetSchema),
   sessions: (host: string) => hostCall(host, 'superagent.sessions', {}, SessionsSchema),
   status: (host: string) => hostCall(host, 'superagent.status', {}, StatusSchema),
   configure: (host: string, config: z.infer<typeof ConfigSchema>) => hostCall(host, 'superagent.configure', ConfigSchema.parse(config), ConfigReplySchema),

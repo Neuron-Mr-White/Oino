@@ -824,6 +824,10 @@ where
             let data = hub.superagent_sessions().await.map_err(hub_error)?;
             write_control(write, &Control::Ok { data: Some(data) }).await
         }
+        Request::SuperagentFleet => {
+            let data = hub.superagent_fleet().await.map_err(hub_error)?;
+            write_control(write, &Control::Ok { data: Some(data) }).await
+        }
         Request::SuperagentSession => {
             let session = hub.create_superagent().await.map_err(hub_error)?;
             open_stream(service, Arc::new(session), None, read, write).await

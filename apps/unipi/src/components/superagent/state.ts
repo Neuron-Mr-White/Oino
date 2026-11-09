@@ -2,9 +2,10 @@ import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from
 import { toAppError } from '@unipi/protocol';
 import { within } from '../../lib/host/within';
 import { api as boardApi } from '../../lib/board/api';
-import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
+import { ConfigSchema, RelayTextSchema, superagentApi, type EnableAction, type Fleet, type Lead, type LeadMode, type Preset, type RelayDelivery, type SuperagentSession, type SuperagentStatus } from './api';
 import { superagentSessionId } from './chatActivity';
 import { runningSessions, type RunningSession } from './runningSessions';
+import { fallbackFleet } from './fleet';
 import { sessions } from '../../lib/session/store';
 
 /** A mutation's failure, as far as the pane cares. */
@@ -24,6 +25,10 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
   const [status, setStatus] = createSignal<SuperagentStatus>();
   const [history, setHistory] = createSignal<SuperagentSession[]>([]);
   const running = createMemo(() => runningSessions(status(), history(), superagentSessionId(hostId())));
+  /** The host's fleet; `fallback` means it has none (older host) and the canvas derives it from status + history. */
+  const [hostFleet, setHostFleet] = createSignal<Fleet>();
+  const [fleetFallback, setFleetFallback] = createSignal(false);
+  const fleet = createMemo<Fleet>(() => hostFleet() ?? (fleetFallback() ? fallbackFleet(status(), history()) : { nodes: [], edges: [] }));
   const [error, setError] = createSignal('');
   const [notice, setNotice] = createSignal('');
   const [busy, setBusy] = createSignal<readonly string[]>([]);
@@ -32,6 +37,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
   const [now, setNow] = createSignal(Date.now());
   let generation = 0;
   let loading = false;
+  let fleetSupported = true;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   const requested = new Set<string>();
 
@@ -84,6 +90,13 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
       void within(superagentApi.sessions(hostId()), () => undefined).then((sessions) => {
         if (gen === generation && sessions?.ok) setHistory(sessions.value);
       }).catch(() => { /* History is optional on older hosts. */ });
+      if (fleetSupported) void within(superagentApi.fleet(hostId()), () => undefined).then((fleet) => {
+        if (gen !== generation || !fleet) return;
+        if (fleet.ok) { setHostFleet(fleet.value); setFleetFallback(false); return; }
+        if (String(fleet.error.code) === 'E_UNKNOWN_OP') fleetSupported = false;
+        // An older host has no fleet; any other failure keeps the last one, or derives one until the next poll.
+        if (!hostFleet()) setFleetFallback(true);
+      }).catch(() => { if (gen === generation && !hostFleet()) setFleetFallback(true); });
       setError('');
       void ensureTitles(result.value.needsYou);
     } catch (e) { if (gen === generation) setError(toAppError(e).message); }
@@ -104,7 +117,9 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
     hostId();
     generation++;
     loading = false;
+    fleetSupported = true;
     requested.clear();
+    setHostFleet(undefined); setFleetFallback(false);
     setStatus(undefined); setHistory([]); setError(''); setNotice(''); setTitles({}); setBusy([]);
     setPresets({ list: [], defaultId: null, supported: true });
     if (!hostId()) return;
@@ -117,7 +132,7 @@ export function createSuperagentState(hostOrNone: Accessor<string | undefined>) 
   const patchStatus = (patch: (s: SuperagentStatus) => SuperagentStatus) => setStatus((old) => old && patch(old));
 
   return {
-    status, history, running, error, notice, titles, presets, now, isBusy, refresh, ensureTitles, loadPresets,
+    status, history, running, fleet, error, notice, titles, presets, now, isBusy, refresh, ensureTitles, loadPresets,
     clearError: () => setError(''),
     flash,
     projectName: (id: string) => status()?.projects?.find((p) => p.projectId === id)?.name || id,

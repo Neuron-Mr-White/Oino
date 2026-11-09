@@ -904,6 +904,86 @@ impl Dispatcher {
     }
 }
 
+/// A dispatcher timestamp (RFC 3339 string) or session time (ms) as epoch ms.
+fn epoch_ms_of(value: &Value) -> Option<u64> {
+    value.as_u64().or_else(|| {
+        chrono::DateTime::parse_from_rfc3339(value.as_str()?).ok().and_then(|t| u64::try_from(t.timestamp_millis()).ok())
+    })
+}
+
+/// Merge independently collected snapshots without changing dispatcher or session state.
+pub(crate) fn merge_fleet(
+    sessions: &Value,
+    status: &Value,
+    trees: &[(String, Vec<oino_core::agents::AgentInfo>)],
+    now: u64,
+) -> Value {
+    use std::collections::{HashMap, HashSet};
+    let rows = |value: &Value| value.as_array().cloned().unwrap_or_default();
+    let projects = rows(&status["projects"]);
+    let project = |id: Option<&str>| -> (Value, Value) {
+        let Some(id) = id else { return (Value::Null, Value::Null) };
+        let found = projects.iter().find(|p| p["projectId"].as_str() == Some(id) || p["name"].as_str() == Some(id));
+        let slug = found.and_then(|p| p["projectId"].as_str()).unwrap_or(id);
+        let name = found.and_then(|p| p["name"].as_str()).unwrap_or(slug);
+        (json!(name), json!(slug))
+    };
+    let leads = rows(&status["leads"]);
+    let workers = rows(&status["workers"]);
+    let waiting: HashSet<String> = rows(&status["needsYou"]).iter()
+        .flat_map(|entry| [entry["workerSessionId"].as_str(), entry["sessionId"].as_str()])
+        .flatten().map(str::to_owned).collect();
+    let live_leads: HashSet<&str> = leads.iter().filter_map(|v| v["sessionId"].as_str()).collect();
+    let mut nodes: HashMap<String, Value> = HashMap::new();
+    for row in rows(sessions) {
+        let Some(id) = row["sessionId"].as_str() else { continue };
+        let live = row["live"].as_bool().unwrap_or(false) || live_leads.contains(id);
+        let updated = row["updatedAt"].as_u64();
+        if !live && updated.is_none_or(|t| now.saturating_sub(t) > 24 * 60 * 60 * 1000) { continue; }
+        let state = if waiting.contains(id) { "waiting" } else if row["state"]["kind"] == "working" || !row["pendingWork"].is_null() { "working" } else if live { "idle" } else { "ended" };
+        let (name, slug) = project(row["project"].as_str());
+        nodes.insert(id.to_owned(), json!({"id":id,"parentId":null,"project":name,"projectId":slug,"title":row["title"],"mode":"plain","role":"lead","status":state,"model":null,"startedAt":epoch_ms_of(&row["createdAt"]),"endedAt":if state == "ended" { json!(epoch_ms_of(&row["updatedAt"])) } else { Value::Null }}));
+    }
+    // Legacy worker rows can overlap lead rows; apply leads last.
+    for (items, role) in [(&workers, "worker"), (&leads, "lead")] {
+        for row in items {
+            let Some(id) = row["sessionId"].as_str() else { continue };
+            let (name, slug) = project(row["projectId"].as_str());
+            let node = nodes.entry(id.to_owned()).or_insert_with(|| json!({"id":id,"parentId":null,"title":id,"mode":"plain","role":role,"status":"working","model":null,"startedAt":null,"endedAt":null,"project":null,"projectId":null}));
+            node["project"] = name;
+            node["projectId"] = slug;
+            node["role"] = json!(role);
+            if waiting.contains(id) { node["status"] = json!("waiting"); }
+            if role == "lead" {
+                node["mode"] = json!(match row["mode"].as_str() { Some("graph") => "graph", Some("swarm") => "swarm", _ => "plain" });
+                node["model"] = row["model"].clone();
+                if let Some(ms) = epoch_ms_of(&row["startedAt"]) { node["startedAt"] = json!(ms); }
+                if node["status"] == "ended" { node["status"] = json!("idle"); node["endedAt"] = Value::Null; }
+            }
+        }
+    }
+    for (root, tree) in trees {
+        let Some(parent) = nodes.get(root) else { continue };
+        let (name, slug, mode) = (parent["project"].clone(), parent["projectId"].clone(), parent["mode"].clone());
+        for child in tree {
+            let state = match child.state {
+                oino_core::agents::AgentRunState::Running => "working",
+                oino_core::agents::AgentRunState::Idle | oino_core::agents::AgentRunState::Hibernated => "idle",
+                oino_core::agents::AgentRunState::Closed => "ended",
+            };
+            nodes.entry(child.id.clone()).or_insert_with(|| json!({"id":child.id,"parentId":child.parent_id.as_deref().unwrap_or(root),"project":name,"projectId":slug,"title":child.label,"mode":mode,"role":"subagent","status":state,"model":null,"startedAt":null,"endedAt":null}));
+        }
+    }
+    let mut nodes: Vec<Value> = nodes.into_values().collect();
+    nodes.sort_by(|a, b| a["project"].as_str().cmp(&b["project"].as_str()).then_with(|| a["startedAt"].as_u64().cmp(&b["startedAt"].as_u64())).then_with(|| a["id"].as_str().cmp(&b["id"].as_str())));
+    let ids: HashSet<&str> = nodes.iter().filter_map(|n| n["id"].as_str()).collect();
+    let edges: Vec<Value> = nodes.iter().filter_map(|n| {
+        let parent = n["parentId"].as_str()?;
+        ids.contains(parent).then(|| json!({"from":parent,"to":n["id"]}))
+    }).collect();
+    json!({"nodes":nodes,"edges":edges})
+}
+
 async fn apply_mode(session: &oino_core::session::AgentSession, mode: &str) -> std::result::Result<(), String> {
     use oino_core::extensions::{api::CallKind, host::HostOp};
     if mode == "none" && session.runner().command("lh-mode").is_none() { return Ok(()); }
@@ -1351,5 +1431,59 @@ pub async fn request(req: unipi_proto::Request) -> Result<Value> {
             Ok(json!({"accepted":true}))
         }
         _ => Err(fail("E_SCHEMA", "Unknown superagent operation")),
+    }
+}
+
+#[cfg(test)]
+mod fleet_tests {
+    use super::*;
+    use oino_core::agents::{AgentInfo, AgentRunState};
+
+    fn child(id: &str, parent: Option<&str>, state: AgentRunState) -> AgentInfo {
+        AgentInfo { id: id.into(), parent_id: parent.map(str::to_owned), label: id.into(), owner: "test".into(), role: None, state, depth: 1, session_file: None }
+    }
+
+    #[test]
+    fn merges_sources_and_preserves_tree_relationships() {
+        let now = 100_000_000;
+        let sessions = json!([
+            {"sessionId":"lead","title":"Chat","project":"slug","createdAt":1,"updatedAt":now,"live":true,"state":{"kind":"idle"},"pendingWork":null},
+            {"sessionId":"old","title":"Old","createdAt":1,"updatedAt":1,"live":false,"state":{"kind":"idle"},"pendingWork":null}
+        ]);
+        let status = json!({"projects":[{"projectId":"slug","name":"Display"}],"leads":[{"sessionId":"lead","projectId":"slug","mode":"graph","model":"m","startedAt":2}],"workers":[{"sessionId":"lead","projectId":"slug"}],"needsYou":[{"workerSessionId":"lead"}]});
+        let tree = vec![("lead".into(), vec![child("child", None, AgentRunState::Running), child("closed", Some("child"), AgentRunState::Closed), child("orphan", Some("missing"), AgentRunState::Idle)])];
+        let fleet = merge_fleet(&sessions, &status, &tree, now);
+        let nodes = fleet["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 4);
+        let get = |id| nodes.iter().find(|n| n["id"] == id).unwrap();
+        assert_eq!(get("lead")["role"], "lead");
+        assert_eq!(get("lead")["status"], "waiting");
+        assert_eq!(get("lead")["model"], "m");
+        assert_eq!(get("child")["project"], "Display");
+        assert_eq!(get("child")["projectId"], "slug");
+        assert_eq!(get("child")["mode"], "graph");
+        assert_eq!(get("closed")["status"], "ended");
+        assert_eq!(get("orphan")["parentId"], "missing");
+        let edges = fleet["edges"].as_array().unwrap();
+        assert!(edges.contains(&json!({"from":"lead","to":"child"})));
+        assert!(edges.contains(&json!({"from":"child","to":"closed"})));
+        assert!(!edges.iter().any(|e| e["to"] == "orphan"));
+    }
+
+    #[test]
+    fn maps_modes_and_session_lifecycle_without_dispatcher() {
+        for (mode, expected) in [("graph", "graph"), ("swarm", "swarm"), ("goal", "plain"), ("ralph", "plain"), ("none", "plain")] {
+            let result = merge_fleet(&json!([]), &json!({"leads":[{"sessionId":"x","mode":mode}]}), &[], 100);
+            assert_eq!(result["nodes"][0]["mode"], expected);
+        }
+        let result = merge_fleet(&json!([
+            {"sessionId":"live","title":"Live","live":true,"state":{"kind":"idle"},"pendingWork":"queued","updatedAt":10},
+            {"sessionId":"ended","title":"Ended","live":false,"state":{"kind":"idle"},"pendingWork":null,"updatedAt":20}
+        ]), &Value::Null, &[], 100);
+        let nodes = result["nodes"].as_array().unwrap();
+        assert_eq!(nodes.iter().find(|n| n["id"] == "live").unwrap()["status"], "working");
+        let ended = nodes.iter().find(|n| n["id"] == "ended").unwrap();
+        assert_eq!(ended["status"], "ended");
+        assert_eq!(ended["endedAt"], 20);
     }
 }

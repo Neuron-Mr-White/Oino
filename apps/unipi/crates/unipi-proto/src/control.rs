@@ -600,6 +600,8 @@ pub enum Request {
     SuperagentSession,
     #[serde(rename = "superagent.sessions")]
     SuperagentSessions,
+    #[serde(rename = "superagent.fleet")]
+    SuperagentFleet,
     #[serde(rename = "superagent.configure", rename_all = "camelCase")]
     SuperagentConfigure { enabled: bool, #[serde(default)] concurrency_cap: Option<usize> },
     #[serde(rename = "superagent.start", rename_all = "camelCase")]
@@ -1109,6 +1111,7 @@ mod tests {
             serde_json::json!({"op":"superagent.enable","action":"register","path":"/tmp/project"}),
             serde_json::json!({"op":"superagent.configure_project_lead","projectId":"p","model":"faux/example","thinking":"high"}),
             serde_json::json!({"op":"superagent.relay","projectId":"p","taskIds":["T-1"],"text":"urgent","delivery":"steer","priority":true}),
+            serde_json::json!({"op":"superagent.fleet"}),
             serde_json::json!({"op":"superagent.presets.list"}),
             serde_json::json!({"op":"superagent.presets.save","preset":{"id":"x"}}),
             serde_json::json!({"op":"superagent.presets.delete","presetId":"x"}),

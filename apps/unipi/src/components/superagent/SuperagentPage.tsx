@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, Bot, History, LayoutDashboard, Plus, Users } from 'lucide-solid';
+import { ArrowLeft, Bot, ChevronLeft, ChevronRight, History, LayoutDashboard, Network, Plus, Users } from 'lucide-solid';
 import { toAppError } from '@unipi/protocol';
 import { Conversation } from '../conversation/Conversation';
 import { IconButton } from '../phone';
@@ -18,6 +18,8 @@ import { elapsed } from './format';
 import { needsCount, SuperagentPane, type PaneTab } from './SuperagentPane';
 import { ReviewTaskLayer } from './ReviewTaskLayer';
 import { ReviewWorkspace } from './ReviewWorkspace';
+import { CanvasView } from './CanvasView';
+import { canvasReturn, readRailCollapsed, setCanvasReturn, writeRailCollapsed } from './canvasStore';
 import { restorePaneScroll, savePaneScroll } from './reviewUi';
 import './superagent.css';
 
@@ -31,6 +33,13 @@ export default function SuperagentPage() {
   const [retry, setRetry] = createSignal(0);
   const [historyOpen, setHistoryOpen] = createSignal(false);
   const [creating, setCreating] = createSignal(false);
+  const [collapsed, setCollapsed] = createSignal(readRailCollapsed());
+  const toggleRail = () => { const next = !collapsed(); setCollapsed(next); writeRailCollapsed(next); };
+  const canvasOpen = () => params.canvas === '1';
+  /** A session was opened from the canvas: the way back replaces the entry button. */
+  const returning = () => canvasReturn() && !canvasOpen();
+  const openCanvas = () => { setCanvasReturn(false); setParams({ canvas: '1' }, { replace: true }); };
+  const closeCanvas = () => setParams({ canvas: undefined }, { replace: true });
   const hostId = () => selected()?.id;
   const sa = createSuperagentState(hostId);
   const needs = () => needsCount(sa);
@@ -65,6 +74,13 @@ export default function SuperagentPage() {
     rememberSuperagentSession(host, id);
     setHistoryOpen(false);
     setRetry((v) => v + 1);
+  }
+  /** A canvas node was picked: the canvas closes, the page shows that session, and the header offers the way back. */
+  function openFromCanvas(id: string) {
+    const host = hostId(); if (!host) return;
+    setCanvasReturn(true);
+    closeCanvas();
+    selectSession(host, id);
   }
   async function newChat() {
     const host = hostId();
@@ -121,10 +137,13 @@ export default function SuperagentPage() {
   }));
   onCleanup(() => { if (taskOrigin()) { boardUi().closeTask(); endQueue(); } });
   const pane = () => <Show when={hostId()}>{(host) => <SuperagentPane hostId={host()} sa={sa} tab={tab()} onTab={setTab} onOpen={(id) => { setPaneOpen(false); selectSession(host(), id); }} onTicket={(project, task, queue) => { setPaneOpen(false); void openTicket(project, task, queue); }} />}</Show>;
-  return <div class="sa-page" data-testid="superagent-page"><div class="sa-center"><header class="sa-header"><Show when={!layout().desktop()}><button class="shell-icon-btn" aria-label="Back to chats" onClick={() => navigate('/chat')}><ArrowLeft size={18} /></button></Show><Bot size={19} /><h1>Superagent</h1><HostChip /><ReviewWorkspace sa={sa} hostId={hostId} /><button class="shell-icon-btn" aria-label="Kanboard dashboard" title="Kanboard dashboard" onClick={() => { boardUi().setOverview(true); navigate('/board'); }}><LayoutDashboard size={19} /></button><button class="shell-icon-btn sa-count-control" aria-label="New superagent chat" title={`New superagent chat · ${sa.running().length} running`} disabled={creating() || !hostId()} onClick={() => void newChat()}><Plus size={19} /><Show when={sa.running().length}><span>{sa.running().length}</span></Show></button><button class="shell-icon-btn sa-count-control" aria-label="Superagent history" title={`Superagent history · ${sa.running().length} running`} aria-expanded={historyOpen()} onClick={() => { setHistoryOpen(!historyOpen()); if (historyOpen()) void sa.refresh(); }}><History size={19} /><Show when={sa.running().length}><span>{sa.running().length}</span></Show></button><Show when={!layout().desktop()}><IconButton icon={Users} label={needs() ? `Needs you · ${needs()}` : 'Needs you, leads and projects'} badge={needs()} testId="sa-sheet-open" onClick={() => { if (needs()) setTab('needs'); setPaneOpen(true); }} /></Show></header>
+  return <div class="sa-page" data-testid="superagent-page"><div class="sa-center"><header class="sa-header" classList={{ 'sa-header-returning': returning() }}><Show when={!layout().desktop()}><button class="shell-icon-btn" aria-label="Back to chats" onClick={() => navigate('/chat')}><ArrowLeft size={18} /></button></Show><Bot size={19} /><h1>Superagent</h1><HostChip /><Show when={returning()}><button type="button" class="sa-back-canvas" aria-label="Back to canvas" title="Back to canvas" onClick={openCanvas}><Network size={14} aria-hidden="true" /><span class="sa-back-label">Back to canvas</span></button></Show><ReviewWorkspace sa={sa} hostId={hostId} /><Show when={!returning()}><button class="shell-icon-btn" aria-label="Agent canvas" title="Agent canvas" onClick={openCanvas}><Network size={19} /></button></Show><button class="shell-icon-btn" aria-label="Kanboard dashboard" title="Kanboard dashboard" onClick={() => { boardUi().setOverview(true); navigate('/board'); }}><LayoutDashboard size={19} /></button><button class="shell-icon-btn sa-count-control" aria-label="New superagent chat" title={`New superagent chat · ${sa.running().length} running`} disabled={creating() || !hostId()} onClick={() => void newChat()}><Plus size={19} /><Show when={sa.running().length}><span>{sa.running().length}</span></Show></button><button class="shell-icon-btn sa-count-control" aria-label="Superagent history" title={`Superagent history · ${sa.running().length} running`} aria-expanded={historyOpen()} onClick={() => { setHistoryOpen(!historyOpen()); if (historyOpen()) void sa.refresh(); }}><History size={19} /><Show when={sa.running().length}><span>{sa.running().length}</span></Show></button><Show when={!layout().desktop()}><IconButton icon={Users} label={needs() ? `Needs you · ${needs()}` : 'Needs you, leads and projects'} badge={needs()} testId="sa-sheet-open" onClick={() => { if (needs()) setTab('needs'); setPaneOpen(true); }} /></Show><Show when={layout().desktop()}><button type="button" class="shell-icon-btn sa-rail-toggle" aria-label={collapsed() ? 'Expand panel' : 'Collapse panel'} title={collapsed() ? 'Expand panel' : 'Collapse panel'} aria-expanded={!collapsed()} onClick={toggleRail}>{collapsed() ? <ChevronLeft size={19} /> : <ChevronRight size={19} />}</button></Show></header>
     <Show when={current()}><div class="sa-current" data-testid="sa-current"><span classList={{ 'sa-live-dot': !!currentRun(), 'sa-idle-dot': !currentRun() }} /><strong>{currentRun()?.title ?? currentRecord()?.title ?? 'Superagent'}</strong><span>{currentRun()?.project ?? currentRecord()?.project ?? 'No project'}</span><Show when={currentRun()}>{(row) => <><span>{duration(row().startedAt, sa.now())}</span><button type="button" onClick={() => void sa.stopSession(row())}>Stop</button></>}</Show></div></Show>
     <Show when={historyOpen()}><div class="sa-history" aria-label="Superagent history list"><h2>Running now · {sa.running().length}</h2><Show when={sa.running().length} fallback={<p class="sa-empty">No sessions running.</p>}><For each={sa.running()}>{(row) => <button classList={{ 'sa-history-selected': row.open }} aria-current={row.open ? 'true' : undefined} onClick={() => { const host = hostId(); if (host) selectSession(host, row.sessionId); }}><span class="sa-live-dot" /><span>{row.title}<small>{row.project ?? 'No project'} · {duration(row.startedAt, sa.now())}</small></span></button>}</For></Show><h2>Recent</h2><For each={sa.history().filter((item) => !sa.running().some((row) => row.sessionId === item.sessionId))}>{(item) => <button class="sa-history-recent" onClick={() => { const host = hostId(); if (host) selectSession(host, item.sessionId); }}><span>{item.title || 'Superagent'}<small>Ended {new Date(item.updatedAt).toLocaleString()} · {duration(item.createdAt, new Date(item.updatedAt).getTime())}</small></span></button>}</For></div></Show>
     <Show when={openingError()}><div role="alert" class="sa-message">{openingError()} <button onClick={() => setRetry((v) => v + 1)}>Retry</button></div></Show>
     <Show when={hostId()} fallback={<p class="sa-empty">Connect a computer to use Superagent.</p>}><Show when={current()} fallback={<div class="sa-loading" aria-busy="true" aria-label="Opening Superagent"><span /><span /></div>}>{(s) => <Conversation hostId={s().host} sessionId={s().id} superagent />}</Show></Show>
-  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side">{pane()}</aside></Show><Show when={!params.review}><ReviewTaskLayer /></Show></div>;
+  </div><Show when={layout().desktop()} fallback={<SheetFrame open={paneOpen()} onClose={() => setPaneOpen(false)} label="Superagent overview" title="Superagent" detents={['full']}>{pane()}</SheetFrame>}><aside class="sa-side" data-collapsed={collapsed() ? '' : undefined} data-testid="sa-side">
+    <Show when={collapsed()}><div class="sa-slim"><button type="button" class="sa-icon-btn" tabIndex={-1} aria-hidden="true" title="Expand panel" onClick={toggleRail}><ChevronLeft size={18} /></button><Show when={needs()}><span class="sa-badge sa-slim-badge" data-testid="sa-slim-needs" title={`Needs you · ${needs()}`}>{needs()}</span></Show></div></Show>
+    <div class="sa-side-body" ref={(el) => createEffect(() => el.toggleAttribute('inert', collapsed()))}>{pane()}</div>
+  </aside></Show><Show when={!params.review}><ReviewTaskLayer /></Show><Show when={canvasOpen()}><CanvasView sa={sa} onOpen={openFromCanvas} onClose={closeCanvas} /></Show></div>;
 }

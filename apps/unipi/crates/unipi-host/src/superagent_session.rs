@@ -571,6 +571,11 @@ pub fn register(runtime: Arc<AgentSessionRuntime>) {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(runtime.session().session_id(), runtime);
 }
+pub fn runtimes() -> Vec<Arc<AgentSessionRuntime>> {
+    RUNTIMES.get_or_init(Default::default).lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .values().cloned().collect()
+}
 pub fn runtime(id: &str) -> Option<Arc<AgentSessionRuntime>> {
     let runtimes = RUNTIMES
         .get_or_init(Default::default)

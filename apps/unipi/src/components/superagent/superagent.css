@@ -21,12 +21,23 @@
 .sa-count-control > span { position:absolute; top:0; right:0; border-radius:8px; background:var(--color-surface-3); font-size:10px; line-height:14px; min-width:14px; }
 .ph-shell .sa-current { padding:6px 12px; }
 .ph-shell .sa-header { gap:0; }
-.ph-shell .sa-header > svg { display:block; flex:0 0 auto; }
+/* The Agent canvas button needed the room: the title is hidden on the phone and the strip below names the page. */
+.ph-shell .sa-header > svg { display:none; }
 .ph-shell .sa-header h1 { display:none; }
 .ph-shell .sa-header > .hs-chip { display:none; }
-.ph-shell .sa-header > .shell-icon-btn { min-width:36px; }
+.ph-shell .sa-header > .shell-icon-btn { min-width:36px; width:36px; padding:0; }
 .sa-center > .conv-tl { flex:1; min-height:0; }
-.sa-side { width:360px; flex-shrink:0; border-left:1px solid var(--color-line); min-height:0; overflow-y:auto; scrollbar-width:thin; background:var(--color-surface-1); }
+.sa-side { position:relative; width:360px; flex-shrink:0; border-left:1px solid var(--color-line); min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; background:var(--color-surface-1); transition:width 200ms ease; }
+.sa-side-body { width:359px; }
+.sa-side[data-collapsed] { width:48px; overflow:hidden; }
+.sa-side[data-collapsed] .sa-side-body { visibility:hidden; transition:visibility 0s 200ms; }
+.sa-slim { position:absolute; inset:0 0 auto 0; display:flex; flex-direction:column; align-items:center; gap:10px; padding-top:12px; }
+.sa-slim .sa-slim-badge { color:var(--color-bg); background:var(--color-claw); font-weight:700; }
+.sa-back-canvas { display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; min-height:28px; padding:0 10px; color:var(--color-text); background:var(--color-surface-3); border:1px solid var(--color-line); border-radius:9999px; font:inherit; font-size:calc(12px * var(--ui-font-scale)); font-weight:550; white-space:nowrap; }
+.ph-shell .sa-back-canvas { padding:0 9px; margin:0 2px; }
+.ph-shell .sa-back-label { display:none; }
+.sa-back-canvas:hover { background:var(--color-surface-2); border-color:var(--color-text-dim); }
+@media (prefers-reduced-motion: reduce) { .sa-side, .sa-side[data-collapsed] .sa-side-body { transition:none; } }
 .sa-pane { padding:12px 16px 28px; min-width:0; font-size:calc(13px * var(--ui-font-scale)); }
 .sa-pane h2 { font-size:calc(13px * var(--ui-font-scale)); font-weight:600; margin:0; }
 .sa-pane button, .sa-pane select, .sa-pane input, .sa-pane textarea { font:inherit; }
@@ -184,7 +195,7 @@
 .sa-tabs .ph-segmented { width:100%; }
 .sa-tabs .ph-seg { min-height:44px; flex:1; min-width:0; padding:0 4px; font-size:calc(13px * var(--ui-font-scale)); white-space:nowrap; }
 [data-shell=phone] .sa-page, .ph-shell .sa-page { height:100%; }
-.ph-shell .sa-header { padding:0 12px; gap:2px; }
+.ph-shell .sa-header { padding:0 6px; gap:2px; }
 .ph-shell .sa-header h1 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ph-shell .sa-header > .hs-chip { flex:0 0 40px; justify-content:center; padding:0; }
 .ph-shell .sa-header > .hs-chip .truncate, .ph-shell .sa-header > .hs-chip svg { display:none; }

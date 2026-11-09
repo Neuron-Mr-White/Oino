@@ -722,6 +722,29 @@ impl SessionHub {
         Ok(serde_json::json!({"sessions": sessions}))
     }
 
+    /// Read-only fleet snapshot, combining session cards with dispatcher and agent trees.
+    pub async fn superagent_fleet(&self) -> Result<serde_json::Value, HubError> {
+        let mut listing = self.superagent_sessions().await?;
+        let runtimes = crate::superagent_session::runtimes();
+        let trees: Vec<_> = runtimes.iter().map(|runtime| {
+            let session = runtime.session();
+            (session.session_id(), session.agent_tree())
+        }).collect();
+        if let Some(rows) = listing["sessions"].as_array_mut() {
+            for row in rows {
+                if let Some(id) = row["sessionId"].as_str() {
+                    let live = self.inner.core.is_live(id).await || trees.iter().any(|(root, _)| root == id);
+                    row["live"] = serde_json::json!(live);
+                }
+            }
+        }
+        let status = match crate::superagent::current() {
+            Ok(dispatcher) => dispatcher.status().await.unwrap_or_default(),
+            Err(_) => serde_json::Value::Null,
+        };
+        Ok(crate::superagent::merge_fleet(&listing["sessions"], &status, &trees, epoch_ms(SystemTime::now())))
+    }
+
     /// Background pass over the sessions the card index only sampled (big files: head +
     /// tail): reads them whole once, niced on the blocking pool, and re-announces every
     /// card whose name, folder or count changed (`SessionChanged`). One pass at a time;

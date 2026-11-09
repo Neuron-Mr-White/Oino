@@ -23,7 +23,7 @@ describe('Superagent on the phone', () => {
     const button = await screen.findByTestId('sa-sheet-open');
     const header = button.closest('.sa-header');
     expect(header?.querySelector('h1')?.textContent).toBe('Superagent');
-    expect(header?.querySelectorAll(':scope > button')).toHaveLength(6);
+    expect(header?.querySelectorAll(':scope > button')).toHaveLength(7);
     // The pane is closed: the badge comes from the page-level status poll.
     await waitFor(() => expect(button.getAttribute('aria-label')).toBe('Needs you · 5'));
     expect(button.textContent).toContain('5');

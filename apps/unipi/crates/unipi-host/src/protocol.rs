@@ -1175,6 +1175,7 @@ impl Handler {
             // path) says so instead of silently succeeding.
             Request::SuperagentSession
             | Request::SuperagentSessions
+            | Request::SuperagentFleet
             | Request::SessionsList { .. }
             | Request::SessionSearch { .. }
             | Request::MemoryBrowse { .. }
