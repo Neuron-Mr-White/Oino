@@ -74,3 +74,16 @@ All paths are repository-relative. Work from the current tree, confirm each exac
 Remaining ranges are exactly those in the table, excluding foundation #41 if successfully removed. Each is either retained as a legitimate external/compatibility constraint or covered by the tickets above: durable/failure policy; compatibility/capability policy; timing/lifecycle; contract and public-boundary policy; and environment-dependent integration coverage. In particular OAuth device polling (`inv-ext-sdk` #51) and standalone WIT packaging are external constraints; disposable-cache retry (`inv-oino-foundation` #50) and watcher fallback (`inv-unipi-lib-app` #37) remain intentionally unchanged pending owner policy. Do not infer that every remaining case is a defect or that a ticket authorizes a behavior change.
 
 Verification for this decision: inputs and cited clean candidates inspected statically; no builds or tests run, and no source changed. The broad ticket clusters are triage, not a complete spot-check of every underlying finding. The implementation gates above are required future work.
+
+## E. Outcome (OIN-47 run)
+
+Commits: 018274bf (skill), d1a474a5 (inventories + this log), 97a41ed3, bcac1c06, 11721d17, 4e764008.
+
+Done:
+- Surplus removed: unused `options`/`declared` inputs to `insert_default_sections` (oino-resources); duplicate cron `host_op` + `self`-free `list_value` (now one module-level owner) and unused `ext` param of `file_op` (unipi-cron); `useClock` pass-through wrappers in LhSection/RunningTab; `PairingStore::load/save` pass-throughs (unipi-host); unused `app` param of TUI `countdown`.
+- Hidden link removed: `"github-copilot"` literal copies in provider-kit responses.rs and openai-compat now use `providers::GITHUB_COPILOT`.
+- Comments: 31 garbled spaced-letter doc comments on private items plus ~12 restating comments removed; public items keep their docs (missing_docs lint), `parse_args` got a real doc.
+- Tests: `same_file_runs_in_order` uses a handshake instead of 30 ms/5 ms sleeps (one timing special case removed). No can't-fail tests found in the swept crates.
+- Owner-decision clusters filed as OIN-66..OIN-73 instead of implemented.
+
+Special cases: 196 inventoried (grouped, overlapping); 1 removed; 195 remain, all either external constraints (OAuth device polling, packaged WIT copies) or under OIN-66..73.
