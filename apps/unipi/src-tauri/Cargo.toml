@@ -1,6 +1,6 @@
 [package]
 name = "unipi-mobile"
-version = "1.0.4"
+version = "1.0.5"
 description = "Unipi App — Tauri core"
 authors = ["Unipi"]
 edition = "2021"

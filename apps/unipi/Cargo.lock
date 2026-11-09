@@ -6303,7 +6303,7 @@ dependencies = [
 
 [[package]]
 name = "unipi-host"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "aes 0.9.3",
  "aes-gcm 0.11.1",

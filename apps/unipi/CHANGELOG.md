@@ -4,6 +4,14 @@ What changed in each Unipi app release (desktop and phone), newest first.
 
 ## Unreleased
 
+## 1.0.5 — 2026-11-10
+
+- A paused graph left by an old chat no longer blocks graphs in other chats. Starting a new graph closes it, `/graph clear` and `/graph resume` work from any chat, and when a graph really is running elsewhere the message names that chat.
+- A queued steer stays visible after you switch chats and come back. Stopping the run keeps it queued as Held instead of sending it on its own.
+- Provider extensions that keep their own API key (such as private gateway bridges) now get their model list at startup. When that fails, the CLI says why instead of only "No models available".
+- Superagent: a lead whose graph is paused shows a `Graph paused` badge with a Resume button.
+- Remote builds name the uncommitted and untracked files they leave out.
+
 ## 1.0.4 — 2026-11-09
 
 - Superagent canvas: a collapsible right rail and a full-screen live agent canvas, a floating capsule with a one-at-a-time workbench, and a leads-only pane.
