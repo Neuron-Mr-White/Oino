@@ -44,8 +44,8 @@ pub fn all() -> Vec<(&'static str, &'static str, String, Value)> {
             "todos": {"type": "array", "description": "The complete task list snapshot (replaces the previous list).", "items": {"type": "object", "properties": {
                 "content": {"type": "string", "description": "Brief description of the task"},
                 "status": {"type": "string", "description": "Current status: pending, in_progress, completed, cancelled"},
-                "priority": {"type": "string", "description": "Priority: high, medium, low"},
-            }, "required": ["content", "status", "priority"]}},
+                "priority": {"type": "string", "description": "Optional: high, medium or low. Omit unless this item is genuinely more or less urgent than the rest."},
+            }, "required": ["content", "status"]}},
         }, "required": ["todos"]})),
         ("update_agent_graph", "Update Agent Graph", "Adjust the durable agent graph. operation=add_work schedules work (the host runs it as subagents; dependencies via input_ids), operation=continue resumes ERRORED work on its own operator session (same work id, history intact), operation=fail marks work failed when you give up on it, operation=stop stops obsolete work, operation=finish closes the graph with the selected committed result ids. The first add_work opens a graph.\n\nErrored is not failed: work that stopped on a provider, network or upstream error, a crash or a restart is `errored` (it keeps its session and partial output; dependents wait). The host already auto-continued it within its budget. Prefer continue (add a note when something should change); fail it only when you give up, and replace it (replaces=<id>) only when the instruction itself was wrong.".into(), json!({"type": "object", "properties": {
             "operation": {"anyOf": [{"type": "string", "const": "add_work"}, {"type": "string", "const": "continue"}, {"type": "string", "const": "fail"}, {"type": "string", "const": "stop"}, {"type": "string", "const": "finish"}], "description": "Always set it. Inferred from the one of add_work / continue / fail / stop / finish you set when omitted."},

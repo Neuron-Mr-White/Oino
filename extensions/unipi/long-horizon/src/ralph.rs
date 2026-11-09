@@ -182,8 +182,10 @@ pub struct Todo {
     pub content: String,
     /// `pending | in_progress | completed | cancelled`.
     pub status: String,
-    /// `high | medium | low`.
-    pub priority: String,
+    /// `high | medium | low`, only when the model set one (no default: the UI shows a badge
+    /// only for an explicit priority).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<String>,
 }
 
 /// unipi `MAX_TODO_ITEMS`.
@@ -213,11 +215,11 @@ pub fn validate_todos(raw: &Value) -> Result<Vec<Todo>, String> {
             .get("priority")
             .and_then(Value::as_str)
             .filter(|p| matches!(*p, "high" | "medium" | "low"))
-            .unwrap_or("medium");
+            .map(str::to_owned);
         out.push(Todo {
             content: content.chars().take(200).collect(),
             status: status.into(),
-            priority: priority.into(),
+            priority,
         });
     }
     if out.len() > MAX_TODO_ITEMS {
@@ -495,7 +497,11 @@ mod tests {
     #[test]
     fn todos() {
         let ok = validate_todos(&json!([{"content": " a ", "status": "in_progress"}, {"content": "b", "status": "completed", "priority": "high"}])).unwrap();
-        assert_eq!(ok[0].priority, "medium");
+        assert_eq!(ok[0].priority, None);
+        assert_eq!(ok[1].priority.as_deref(), Some("high"));
+        assert!(!serde_json::to_string(&ok[0]).unwrap().contains("priority"));
+        let old: Todo = serde_json::from_value(json!({"content": "a", "status": "pending", "priority": "medium"})).unwrap();
+        assert_eq!(old.priority.as_deref(), Some("medium"));
         assert_eq!(todo_line(&ok), "1/2 · ▶ a");
         assert_eq!(validate_todos(&json!([{"content": "a", "status": "in_progress"}, {"content": "b", "status": "in_progress"}])).unwrap_err(), "at most one item may be in_progress");
         assert!(validate_todos(&json!([{"content": "", "status": "pending"}])).is_err());
