@@ -97,6 +97,12 @@ pub enum CancelledBy {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {
+    /// Root session that owns the run, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
+    /// Tool call that launched the run, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_tool_call_id: Option<String>,
     /// Agent id (8 hex).
     pub id: String,
     /// Title.

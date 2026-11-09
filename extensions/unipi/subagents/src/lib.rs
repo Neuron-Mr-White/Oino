@@ -489,8 +489,14 @@ impl Subagents {
     }
 
     fn restore(&self, sid: &str) {
-        let list: Vec<Record> =
+        let mut list: Vec<Record> =
             unipi_kit::paths::read_json(&session_dir(sid).join("index.json")).unwrap_or_default();
+        let root = session::header().ok().and_then(|h| h.get("rootSessionId").and_then(Value::as_str).map(ToOwned::to_owned));
+        for record in &mut list {
+            if record.parent_session_id.is_none() {
+                record.parent_session_id = root.clone();
+            }
+        }
         self.sessions.with(sid, |s| {
             s.records = record::restore(list, |host| {
                 // Cold-resume hint only when the child session file still exists.
@@ -515,6 +521,7 @@ impl Subagents {
         background: bool,
         resume: Option<&str>,
         graph: bool,
+        parent_tool_call_id: Option<&str>,
     ) -> std::result::Result<(Record, Rc<Run>), String> {
         let sid = sid.to_owned();
         let cfg = self.config();
@@ -578,6 +585,12 @@ impl Subagents {
         );
         let now = timers::now_ms();
         let rec = Record {
+            parent_session_id: if _cx.is_child() {
+                session::header().ok().and_then(|h| h.get("rootSessionId").and_then(Value::as_str).map(ToOwned::to_owned))
+            } else {
+                Some(sid.clone())
+            },
+            parent_tool_call_id: prev.as_ref().and_then(|p| p.parent_tool_call_id.clone()).or_else(|| parent_tool_call_id.map(ToOwned::to_owned)),
             id: id.clone(),
             title: if title.is_empty() {
                 prev.as_ref()
@@ -1104,6 +1117,7 @@ impl Subagents {
                 background,
                 resume.as_deref(),
                 false,
+                Some(&cx.tool_call_id),
             )
             .await
         {
@@ -1963,6 +1977,7 @@ impl Subagents {
                 true,
                 resume.as_deref(),
                 true,
+                payload.get("parentToolCallId").and_then(Value::as_str),
             )
             .await
         {

@@ -30,7 +30,7 @@ use oino_agent::StreamFn;
 
 pub use child::ChildAgent;
 pub use feed::{AgentInfo, AgentRunState};
-pub(crate) use feed::{changes_state, forward_to_root};
+pub(crate) use feed::{changes_state, forward_to_root, root_of};
 pub use spec::{
     AgentSpec, ExtensionPolicy, Persistence, Seed, SystemPromptSpec, ToolPolicy, UiPolicy,
 };

@@ -792,3 +792,35 @@ async fn command_contexts_replace_sessions_and_request_shutdown() {
         .unwrap();
     assert!(*shutdown.borrow());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nested_subagent_completion_wakes_root_and_close_stops_children() {
+    use oino_core::extensions::host::{CustomMessageDraft, Delivery, SessionQuery};
+    let dir = tempfile::tempdir().unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("done".into())]);
+    let services = services(dir.path(), provider, vec![], JsonObject::new()).await;
+    let a_rt = runtime(&services, SessionSource::InMemory).await;
+    let b_rt = runtime(&services, SessionSource::InMemory).await;
+    let a = a_rt.session();
+    let b = b_rt.session();
+    let child = services.host.spawn_agent("test", &cx(&a, CallKind::Tool), json!({"label":"child"})).await.unwrap();
+    let child_session = child.session().unwrap();
+    let grandchild = services.host.spawn_agent("test", &cx(&child_session, CallKind::Tool), json!({"label":"nested"})).await.unwrap();
+    let nested = grandchild.session().unwrap();
+    let header = services.host.call("unipi.subagents", &cx(&nested, CallKind::Tool), HostOp::SessionRead(SessionQuery::Header)).await.unwrap();
+    assert_eq!(header["rootSessionId"], a.session_id());
+    services.host.call("unipi.subagents", &cx(&nested, CallKind::Tool), HostOp::SendMessage {
+        message: CustomMessageDraft { custom_type: "subagent-completion".into(), content: oino_ai::UserContentField::Text("child finished".into()), display: true, details: None },
+        trigger_turn: true, deliver_as: Some(Delivery::FollowUp),
+    }).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if format!("{:?}", a.messages()).contains("child finished") { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap();
+    assert!(!format!("{:?}", b.messages()).contains("child finished"));
+    a.dispose().await;
+    assert!(child.is_closed());
+    assert!(grandchild.is_closed());
+}

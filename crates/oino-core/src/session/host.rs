@@ -298,7 +298,11 @@ impl AgentSession {
                 trigger_turn,
                 deliver_as,
             } => {
-                let session = self.clone();
+                let session = if extension == "unipi.subagents" && message.custom_type == "subagent-completion" {
+                    AgentSession::from_inner(crate::agents::root_of(&self.inner))
+                } else {
+                    self.clone()
+                };
                 tokio::spawn(async move {
                     if let Err(error) = session
                         .send_custom_message(message, trigger_turn, deliver_as)
@@ -876,9 +880,18 @@ impl AgentSession {
     }
 
     fn session_read(&self, query: &SessionQuery) -> Result<JsonValue, HostError> {
+        if matches!(query, SessionQuery::Header) {
+            let root = AgentSession::from_inner(crate::agents::root_of(&self.inner));
+            let root_id = root.session_id();
+            let mut header = to_json(lock(&self.inner.manager).header())?;
+            if let Some(object) = header.as_object_mut() {
+                object.insert("rootSessionId".into(), json!(root_id));
+            }
+            return Ok(header);
+        }
         let manager = lock(&self.inner.manager);
         match query {
-            SessionQuery::Header => to_json(manager.header()),
+            SessionQuery::Header => unreachable!(),
             SessionQuery::Entries => to_json(manager.entries()),
             SessionQuery::Branch => to_json(manager.branch(None)),
             SessionQuery::Entry { id } => to_json(manager.entry(&EntryId::new(id.clone()))),
