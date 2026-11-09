@@ -63,7 +63,8 @@ button.status-empty { padding: 0; border: 0; background: none; text-align: left;
 .todo-item[data-status='in_progress'] .todo-glyph { color: var(--color-claw); }
 .todo-item[data-status='cancelled'] .todo-glyph { color: var(--color-text-dim); }
 .todo-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.todo-priority { flex: none; height: 16px; padding: 0 6px; border-radius: 9999px; font-size: calc(10.5px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 600; background: rgb(240 60 50 / 14%); color: #f3b3ad; }
+.todo-priority { flex: none; height: 16px; padding: 0 6px; border-radius: 9999px; font-size: calc(10.5px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 600; background: var(--color-surface-3); color: var(--color-text-muted); }
+.todo-priority[data-priority='high'] { background: rgb(240 60 50 / 14%); color: #f3b3ad; }
 .todo-pulse { width: 8px; height: 8px; border-radius: 9999px; background: var(--color-claw); animation: status-pulse 1.4s ease-in-out infinite; }
 
 /* The composer capsule + its checklist drawer (desktop, above the composer) */

@@ -23,7 +23,7 @@ const TODO_GLYPH: Record<Exclude<TodoItem['status'], 'in_progress'>, typeof Chec
   cancelled: CircleX,
 };
 
-/** One checklist: hollow circle · pulsing accent dot (in progress) · check (done, struck) · x (cancelled). */
+/** One checklist (a priority badge only for an item that carries one): hollow circle · pulsing accent dot (in progress) · check (done, struck) · x (cancelled). */
 export function TodoList(props: { todos: readonly TodoItem[] }) {
   return (
     <ul class="todo-list" data-testid="todo-list">
@@ -36,8 +36,8 @@ export function TodoList(props: { todos: readonly TodoItem[] }) {
                 {Glyph ? <Glyph size={13} /> : <span class="todo-pulse" />}
               </span>
               <span class="todo-text">{todo.content}</span>
-              <Show when={todo.priority === 'high'}>
-                <span class="todo-priority">high</span>
+              <Show when={todo.priority}>
+                {(priority) => <span class="todo-priority" data-priority={priority()} data-testid="todo-priority">{priority()}</span>}
               </Show>
             </li>
           );
