@@ -52,6 +52,7 @@ export const SCENARIOS: Record<string, MockScenario> = {
   autonomy,
   superagent,
   'superagent-leads': superagentLeads,
+  'superagent-concurrent': superagentConcurrent,
   'superagent-review': superagentReview,
   empty,
   'turn-files': turnFiles,
