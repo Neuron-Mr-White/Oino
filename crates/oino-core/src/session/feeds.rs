@@ -166,7 +166,7 @@ impl AgentSession {
         self.inner
             .agents
             .router()
-            .map(|router| router.topics().snapshot(&patterns))
+            .map(|router| router.topics().snapshot_for(&patterns, &self.session_id()))
             .unwrap_or_default()
     }
 
@@ -182,12 +182,14 @@ impl AgentSession {
         self.inner
             .agents
             .router()
-            .and_then(|router| router.topics().get(topic))
+            .and_then(|router| router.topics().get_for(topic, &self.session_id()))
     }
 
     /// Publishes `value` to this session's frontends when it matches the subscription.
     pub(crate) fn offer_topic(&self, value: &TopicValue) {
-        if topics::any_matches(&lock(&self.inner.frontend.topics), &value.topic) {
+        if topics::visible_to(value, &self.session_id())
+            && topics::any_matches(&lock(&self.inner.frontend.topics), &value.topic)
+        {
             self.inner.hub.publish(OinoEvent::from(value.clone()));
         }
     }

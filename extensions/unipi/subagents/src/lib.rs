@@ -382,7 +382,7 @@ impl Subagents {
 
     fn publish(&self, sid: &str) {
         let records = self.sessions.with(sid, |s| s.records.clone());
-        unipi_kit::bus::emit_raw(topics::SUBAGENTS_LIST, &json!({"records": records}));
+        unipi_kit::bus::emit_raw(topics::SUBAGENTS_LIST, &json!({"parentSessionId": sid, "records": records}));
         unipi_kit::bus::emit_raw(topics::WORK_TRAY_CHANGED, &json!({"tab": view::TAB}));
     }
 

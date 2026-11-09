@@ -61,6 +61,21 @@ pub fn any_matches(patterns: &[String], topic: &str) -> bool {
     patterns.iter().any(|p| topic_matches(p, topic))
 }
 
+/// Subagent lists are owned by the root session named in their payload.
+const SUBAGENTS_LIST: &str = "unipi:subagents:list";
+
+fn owner(value: &TopicValue) -> Option<&str> {
+    (value.topic == SUBAGENTS_LIST)
+        .then(|| value.data.get("parentSessionId").and_then(JsonValue::as_str))
+        .flatten()
+        .filter(|id| !id.is_empty())
+}
+
+/// Whether a frontend may receive this topic value.
+pub(crate) fn visible_to(value: &TopicValue, session_id: &str) -> bool {
+    value.topic != SUBAGENTS_LIST || owner(value) == Some(session_id)
+}
+
 /// Last values of sticky topics.
 #[derive(Debug, Default)]
 pub struct TopicStore {
@@ -87,12 +102,17 @@ impl TopicStore {
             sticky,
             publisher: publisher.to_owned(),
         };
+        let key = if topic == SUBAGENTS_LIST {
+            format!("{topic}:{}", owner(&value)?)
+        } else {
+            topic.to_owned()
+        };
         if sticky {
             let mut map = lock(&self.sticky);
-            if map.get(topic).is_some_and(|old| old.data == value.data) {
+            if map.get(&key).is_some_and(|old| old.data == value.data) {
                 return None;
             }
-            map.insert(topic.to_owned(), value.clone());
+            map.insert(key, value.clone());
         }
         Some(value)
     }
@@ -103,6 +123,16 @@ impl TopicStore {
         lock(&self.sticky).get(topic).cloned()
     }
 
+    /// Last value visible to a particular session.
+    pub(crate) fn get_for(&self, topic: &str, session_id: &str) -> Option<TopicValue> {
+        let key = if topic == SUBAGENTS_LIST {
+            format!("{topic}:{session_id}")
+        } else {
+            topic.to_owned()
+        };
+        lock(&self.sticky).get(&key).cloned()
+    }
+
     /// Sticky values matching any of `patterns`, in first-publish order.
     #[must_use]
     pub fn snapshot(&self, patterns: &[String]) -> Vec<TopicValue> {
@@ -111,6 +141,10 @@ impl TopicStore {
             .filter(|v| any_matches(patterns, &v.topic))
             .cloned()
             .collect()
+    }
+
+    pub(crate) fn snapshot_for(&self, patterns: &[String], session_id: &str) -> Vec<TopicValue> {
+        self.snapshot(patterns).into_iter().filter(|v| visible_to(v, session_id)).collect()
     }
 }
 
@@ -196,6 +230,23 @@ mod tests {
         assert_eq!(store.get("a:x").unwrap().data, json!(2));
         assert!(store.get("b:once").is_none());
         assert_eq!(store.snapshot(&["b:*".into()]), Vec::new());
+    }
+
+    #[test]
+    fn subagent_lists_are_scoped_for_snapshots_and_live_delivery() {
+        let store = TopicStore::default();
+        let a = store.publish("unipi.subagents", SUBAGENTS_LIST,
+            json!({"parentSessionId": "A", "records": [{"id": 1}, {"id": 2}, {"id": 3}]}), true).unwrap();
+        assert!(visible_to(&a, "A"));
+        assert!(!visible_to(&a, "B"));
+        let patterns = vec![SUBAGENTS_LIST.to_owned()];
+        assert_eq!(store.snapshot_for(&patterns, "A")[0].data["records"].as_array().unwrap().len(), 3);
+        assert!(store.snapshot_for(&patterns, "B").is_empty());
+        store.publish("unipi.subagents", SUBAGENTS_LIST,
+            json!({"parentSessionId": "B", "records": []}), true).unwrap();
+        assert_eq!(store.snapshot_for(&patterns, "A")[0].data["records"].as_array().unwrap().len(), 3);
+        assert!(store.get_for(SUBAGENTS_LIST, "B").unwrap().data["records"].as_array().unwrap().is_empty());
+        assert!(store.publish("unipi.subagents", SUBAGENTS_LIST, json!({"records": [1]}), true).is_none());
     }
 
     #[test]
