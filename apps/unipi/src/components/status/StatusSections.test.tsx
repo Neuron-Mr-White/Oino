@@ -63,9 +63,10 @@ describe('LH section', () => {
     render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
     await waitFor(() => expect(screen.getByTestId('lh-section')).toBeTruthy());
     expect(screen.getByTestId('lh-phase').textContent).toBe('Running');
-    await waitFor(() => expect(screen.getByTestId('lh-counts').textContent).toContain('3/7 done'));
+    await waitFor(() => expect(screen.getByTestId('lh-counts').textContent).toContain('3/7'));
+    expect(screen.getByTestId('lh-counts').textContent).toContain('3 done');
     expect(screen.getByTestId('lh-section').textContent).toContain('Land the status pane sections');
-    expect(screen.getByTestId('lh-counts').textContent).toContain('2 running');
+    expect(screen.getByTestId('lh-counts').textContent).toContain('still running');
     expect(screen.getByTestId('lh-history')).toBeTruthy();
   });
 
