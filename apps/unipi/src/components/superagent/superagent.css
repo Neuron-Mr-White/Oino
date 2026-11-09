@@ -21,7 +21,8 @@
 .sa-count-control > span { position:absolute; top:0; right:0; border-radius:8px; background:var(--color-surface-3); font-size:10px; line-height:14px; min-width:14px; }
 .ph-shell .sa-current { padding:6px 12px; }
 .ph-shell .sa-header { gap:0; }
-.ph-shell .sa-header > svg { display:none; }
+.ph-shell .sa-header > svg { display:block; flex:0 0 auto; }
+.ph-shell .sa-header h1 { display:none; }
 .ph-shell .sa-header > .hs-chip { display:none; }
 .ph-shell .sa-header > .shell-icon-btn { min-width:36px; }
 .sa-center > .conv-tl { flex:1; min-height:0; }
