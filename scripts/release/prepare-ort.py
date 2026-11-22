@@ -29,8 +29,13 @@ TARGETS = {
 
 
 def digest(path):
+    # Chunked read instead of hashlib.file_digest: release runners include
+    # Ubuntu 22.04, whose Python 3.10 lacks it.
+    sha = hashlib.sha256()
     with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
 
 
 def package(cache, key):
