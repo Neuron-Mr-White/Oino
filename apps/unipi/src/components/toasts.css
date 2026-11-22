@@ -1,0 +1,153 @@
+/* App-wide toasts (WP-A19, Z-85): compact cards (≤ 360 px, auto width, 13 px
+   text), stacked bottom-right of the conversation area above the composer so
+   nothing covers the input. Exit fade ≤ 200 ms, none under reduced motion. */
+.app-toasts {
+  position: fixed;
+  right: var(--toast-right, 16px);
+  bottom: var(--toast-bottom, 96px);
+  left: auto;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(360px, calc(100vw - 24px));
+  pointer-events: none;
+}
+[data-shell='phone'] .app-toasts {
+  right: var(--toast-right, 12px);
+  bottom: var(--toast-bottom, calc(76px + max(env(safe-area-inset-bottom), var(--inset-bottom, 0px))));
+}
+/* P2-04: a phone bottom sheet is open — the stack sits at the top, under the safe area, above the sheet. */
+.app-toasts[data-pos='top'] {
+  top: calc(max(env(safe-area-inset-top), var(--inset-top, 0px)) + 10px);
+  bottom: auto;
+  left: 12px;
+  right: 12px;
+  align-items: center;
+  max-width: none;
+  z-index: 80;
+}
+.app-toasts[data-pos='top'] .app-toast { animation-name: app-toast-in-top; }
+@keyframes app-toast-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.app-toast {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  max-width: min(360px, calc(100vw - 24px));
+  min-height: 34px;
+  padding: 6px 8px 6px 10px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-line);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  font-size: calc(13px * var(--ui-font-scale));
+  line-height: calc(18px * var(--ui-font-scale));
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+  animation: app-toast-in 160ms ease-out both;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+.app-toast:hover {
+  border-color: rgb(110 101 93 / 55%);
+}
+.app-toast[data-leaving] {
+  animation: app-toast-out 180ms ease-out both;
+  pointer-events: none;
+}
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes app-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.app-toast-icon {
+  flex: 0 0 auto;
+}
+.app-toast[data-kind='success'] .app-toast-icon {
+  color: var(--color-wm-green);
+}
+.app-toast[data-kind='warning'] .app-toast-icon {
+  color: var(--color-amber);
+}
+.app-toast[data-kind='error'] .app-toast-icon {
+  color: var(--color-wm-red);
+}
+.app-toast[data-kind='info'] .app-toast-icon {
+  color: var(--color-wm-cyan);
+}
+.app-toast-msg {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: break-word;
+}
+.app-toast-count {
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.app-toast-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
+  color: var(--color-gold);
+  font-weight: 600;
+  background: rgb(240 192 48 / 10%);
+}
+.app-toast-action:hover {
+  background: rgb(240 192 48 / 18%);
+}
+.app-toast-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--color-text-dim);
+  background: transparent;
+}
+.app-toast-close:hover {
+  color: var(--color-text);
+  background: rgb(255 255 255 / 7%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast,
+  .app-toast[data-leaving] {
+    animation: none;
+  }
+  .app-toast[data-leaving] {
+    opacity: 0;
+  }
+}
+
+/* Phone spec §2.9: one toast at a time, bottom-centre, full width minus the gutters (max 420), 48 px. */
+html[data-shell='phone'] .app-toasts:not([data-pos='top']) { left: 16px; right: 16px; align-items: center; max-width: none; }
+html[data-shell='phone'] .app-toasts { z-index: var(--z-toast, 70); }
+html[data-shell='phone'] .app-toast { width: 100%; max-width: 420px; min-height: 48px; padding: 4px 4px 4px 14px; border-radius: 12px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); gap: 10px; }
+html[data-shell='phone'] .app-toast:not(:last-child) { display: none; }
+html[data-shell='phone'] .app-toast-action { height: 40px; min-height: 40px; padding: 0 14px; border-radius: 9999px; font-size: calc(14px * var(--ui-font-scale)); }
+html[data-shell='phone'] .app-toast-close { width: 40px; height: 40px; min-height: 40px; border-radius: 9999px; }

@@ -1,0 +1,142 @@
+{
+ "name": "l_no_finish",
+ "model": {
+  "id": "gemini-2.5-flash",
+  "name": "Gemini 2.5 Flash",
+  "api": "google-vertex",
+  "provider": "google-vertex",
+  "baseUrl": "https://{location}-aiplatform.googleapis.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.3,
+   "output": 2.5,
+   "cacheRead": 0.03,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "vertex-key",
+ "status": 200,
+ "sse": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"x\"}],\"role\":\"model\"}}]}\r\n\r\n",
+ "request": {
+  "url": "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+  "headers": {
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1",
+   "x-goog-api-key": "vertex-key"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "hi"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "thinkingBudget": 0
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "x"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "x"
+  },
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "api": "google-vertex",
+    "provider": "google-vertex",
+    "model": "gemini-2.5-flash",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "Google Vertex stream ended without a finish reason",
+    "durationMs": 0
+   }
+  }
+ ]
+}

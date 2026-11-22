@@ -1,0 +1,71 @@
+//! `unipi-browser`: the host browser service (browser-control.md §3–§10, WP2).
+//!
+//! # Boundary
+//!
+//! Mechanism only: it launches Chromium-family browsers (system Chrome / Chromium / Edge /
+//! Brave, Playwright's Chromium, or an installed `CloakBrowser`), talks CDP over
+//! `--remote-debugging-pipe` (Unix) or a loopback WebSocket (Windows), keeps a logical tab
+//! registry scoped by `(profile, workspace, session)`, and implements the host-internal
+//! [`BrowserHost`] ([`host`]; v2 ext-abi §7.3 — an embedding host registers it as the
+//! `"browser"` host service). The model-facing tools live in the bundled
+//! `unipi.browser` extension; frontends attach screencast views.
+//!
+//! # API map
+//!
+//! | Item | Use |
+//! |---|---|
+//! | [`BrowserService`] | process-wide service: `execute` (agent commands), `status`, `subscribe`, `attach_view`, `frontend`, `shutdown` |
+//! | [`BrowserOptions`] | root dir, [`BrowserSettings`], ephemeral mode |
+//! | [`BrowserSettings`] | `settings.json` `browser.*` (§12) |
+//! | [`engine`] | engine resolution (§4.1) |
+//! | [`Attach`] | attached mode: the embedding host runs the browser, the service connects |
+//!
+//! Internals: `cdp` (client + transports), `launch` (flags, process group), `display` (Xvfb),
+//! `profile` (per-profile runtime + CDP event pump), `tab` (state, rings, residency),
+//! `snapshot` (AX → text + refs), `page` (actionability, input, eval, screenshots), `keys`,
+//! `policy` (URL policy, sensitive heuristic, gate), `screenshot` (compression ladder),
+//! `permissions` (site grants), `profiles` (dirs), `commands` (agent ops), `frontend` (viewers).
+//!
+//! Every browser process runs in its own process group and is killed with the service; with
+//! the pipe transport a crashed Oino also ends the browser (the pipe closes).
+
+#![forbid(unsafe_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )
+)]
+
+pub mod attach;
+mod cdp;
+mod commands;
+pub mod config;
+mod display;
+pub mod engine;
+mod frontend;
+pub mod host;
+mod hub;
+mod keys;
+mod launch;
+mod page;
+mod permissions;
+mod policy;
+mod profile;
+pub mod profile_store;
+mod profiles;
+mod screenshot;
+mod service;
+pub(crate) mod session_profiles;
+mod snapshot;
+mod tab;
+
+pub use attach::{Attach, AttachError, Attached, AttachedDisplay};
+pub use config::BrowserSettings;
+pub use host::{Approval, BrowserHost, BrowserRequest, ViewStream};
+pub use profile_store::{LocalStore, ProfileStore, StoredProfile};
+pub use service::{BrowserOptions, BrowserService, session_profile_of};
+pub use unipi_browser_protocol as protocol;

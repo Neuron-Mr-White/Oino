@@ -1,0 +1,1395 @@
+//! [`WasmInstance`]: one component instance per extension, driven by an actor task that owns
+//! the wasmtime `Store` inside `run_concurrent`, so many guest calls are in flight at once
+//! (D6). A trap poisons the actor; a deliberate [`ExtensionInstance::shutdown`] (the hub
+//! disposing an idle services set, E-LAZY) hibernates it. The next call starts a fresh
+//! store lazily and replays `init` plus the `session_start` of every session the instance
+//! was serving (`reason: "reload"`), so per-session state an extension rebuilds there
+//! (profiles, records, graph state reloaded from disk/kv) is back before the call runs.
+//! Only real traps count toward the disable limit (max 3 per 10 minutes); waking from
+//! hibernation never disables an extension.
+
+use std::collections::VecDeque;
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use futures::future::BoxFuture;
+use futures::stream::{FuturesUnordered, StreamExt};
+use oino_ai::{Model, ProviderEvent};
+use oino_extension_api::{
+    BoxFut, CallContext, CallKind, CancellationToken, CompletionItem, EventKind, ExtensionError,
+    ExtensionId, ExtensionInstance, InitInput, Manifest, ProviderEventStream, ProviderInstance,
+    RawJson, Registration, ToolInvocation,
+};
+use tokio::sync::{mpsc, oneshot};
+use wasmtime::Store;
+use wasmtime::component::{
+    Accessor, ComponentNamedList, InstancePre, Lift, Lower, ResourceTable, TypedFunc,
+};
+
+use crate::bindings::exports::oino::extension::{guest as wg, provider as wpv};
+use crate::convert;
+use crate::engine::EngineShared;
+use crate::resources::CancelToken;
+use crate::state::{CallTable, ExtShared, HostState, lock};
+use crate::streams::{ChannelConsumer, receiver_stream};
+
+/// Loaded exports of one live instance.
+pub(crate) struct Exports {
+    guest: wg::Guest,
+    provider: Option<wpv::Guest>,
+}
+
+const ACTOR_CAPACITY: usize = 32;
+const MAX_IN_FLIGHT: usize = 8;
+
+#[derive(Clone)]
+struct Actor {
+    tx: mpsc::Sender<Job>,
+    cancel: CancellationToken,
+}
+impl Actor {
+    fn is_closed(&self) -> bool {
+        self.tx.is_closed() || self.cancel.is_cancelled()
+    }
+    fn same_channel(&self, other: &Self) -> bool {
+        self.tx.same_channel(&other.tx)
+    }
+}
+
+// A dropped caller must stop its work, including CPU-bound wasm at the next epoch.
+// Cancel the store as a unit: concurrent tasks share guest state and cannot safely
+// continue after an interrupted export. The next call uses the existing replay path.
+struct CancelOnDrop(Option<CancellationToken>);
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if let Some(token) = self.0.take() {
+            token.cancel();
+        }
+    }
+}
+
+struct ActiveCall(Arc<AtomicUsize>);
+impl ActiveCall {
+    fn new(count: Arc<AtomicUsize>) -> Self {
+        count.fetch_add(1, Ordering::AcqRel);
+        Self(count)
+    }
+}
+impl Drop for ActiveCall {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+type Job =
+    Box<dyn for<'a> FnOnce(&'a Accessor<HostState>, &'a Exports) -> BoxFuture<'a, ()> + Send>;
+
+/// The message prefix of a handler that missed its deadline (the core bridge maps it to
+/// a timed-out call, perf-fix #7).
+pub(crate) const HANDLER_TIMEOUT: &str = "handler timed out after";
+
+const MAX_RESTARTS: usize = 3;
+const RESTART_WINDOW: Duration = Duration::from_secs(600);
+/// Sessions whose `session_start` an instance keeps for the wake replay. A session leaves
+/// on its `session_shutdown`; past the cap the oldest goes (bounded, perf: no unbounded
+/// per-instance list).
+const MAX_REPLAY_SESSIONS: usize = 32;
+
+/// Why an instance has no running actor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Stopped {
+    /// Never started, or running.
+    No,
+    /// Deliberately shut down (services set disposed / evicted): a later call wakes it.
+    Hibernated,
+    /// A caller abandoned or timed out; replay without charging the trap budget.
+    Cancelled,
+    /// The guest trapped (or the store failed): a later call restarts it, counted.
+    Trapped,
+}
+
+/// One `session_start` to replay on wake (the original call context).
+#[derive(Clone)]
+struct SessionSeen {
+    payload: RawJson,
+    cx: CallContext,
+}
+
+/// A loaded extension component.
+pub struct WasmInstance {
+    pub(crate) shared: Arc<ExtShared>,
+    engine: Arc<EngineShared>,
+    pre: InstancePre<HostState>,
+    actor: Mutex<Option<Actor>>,
+    restarts: Mutex<VecDeque<Instant>>,
+    started_once: AtomicBool,
+    init_replay: Mutex<Option<(InitInput, CallContext)>>,
+    /// Sessions served (their `session_start`), oldest first, at most [`MAX_REPLAY_SESSIONS`].
+    sessions_seen: Mutex<VecDeque<(String, SessionSeen)>>,
+    stopped: Mutex<Stopped>,
+    /// Serialises (re)starts so two concurrent first calls start one store.
+    starting: tokio::sync::Mutex<()>,
+    disabled: AtomicBool,
+    has_provider: bool,
+    in_flight: Arc<AtomicUsize>,
+    pub(crate) hub: std::sync::OnceLock<std::sync::Weak<crate::hub::LocalServices>>,
+}
+
+/// Calls `f` with the call context registered for the guest task it creates.
+pub(crate) async fn invoke<P, R>(
+    acc: &Accessor<HostState>,
+    f: TypedFunc<P, R>,
+    params: P,
+    cx: Option<&CallContext>,
+) -> wasmtime::Result<R>
+where
+    P: ComponentNamedList + Lower + Send + Sync + 'static,
+    R: ComponentNamedList + Lift + Send + Sync + 'static,
+{
+    let call = acc.with(|mut store| -> wasmtime::Result<_> {
+        let call = f.start_call_concurrent(&mut store, params)?;
+        if let Some(cx) = cx {
+            let state = store.data_mut();
+            state.calls.insert(call.task(), cx.clone());
+            *lock(&state.ext.last_cx) = cx.clone();
+        }
+        Ok(call)
+    })?;
+    f.finish_call_concurrent(acc, call).await
+}
+
+impl WasmInstance {
+    pub(crate) fn new(
+        shared: Arc<ExtShared>,
+        engine: Arc<EngineShared>,
+        pre: InstancePre<HostState>,
+        has_provider: bool,
+    ) -> Self {
+        Self {
+            shared,
+            engine,
+            pre,
+            actor: Mutex::new(None),
+            restarts: Mutex::new(VecDeque::new()),
+            started_once: AtomicBool::new(false),
+            init_replay: Mutex::new(None),
+            sessions_seen: Mutex::new(VecDeque::new()),
+            stopped: Mutex::new(Stopped::No),
+            starting: tokio::sync::Mutex::new(()),
+            disabled: AtomicBool::new(false),
+            has_provider,
+            in_flight: Arc::new(AtomicUsize::new(0)),
+            hub: std::sync::OnceLock::new(),
+        }
+    }
+
+    fn err(&self, call: &str, message: impl Into<String>) -> ExtensionError {
+        ExtensionError::new(self.shared.id.as_str(), call, message)
+    }
+
+    fn trap(&self, call: &str, message: impl Into<String>) -> ExtensionError {
+        ExtensionError::trap(self.shared.id.as_str(), call, message)
+    }
+
+    /// Builds a store, instantiates, and spawns the actor.
+    async fn start_actor(&self) -> Result<Actor, ExtensionError> {
+        let state = HostState {
+            wasi: crate::wasi::build(&self.shared)
+                .map_err(|e| self.err("instantiate", e.to_string()))?,
+            table: ResourceTable::new(),
+            limits: crate::state::GuestLimits::new(
+                EngineShared::limits(&self.shared.manifest),
+                &self.shared.id,
+            ),
+            ext: Arc::clone(&self.shared),
+            calls: CallTable::default(),
+        };
+        let mut store = Store::new(&self.engine.engine, state);
+        store.limiter(|s| &mut s.limits);
+        let cancel = CancellationToken::new();
+        let epoch_cancel = cancel.clone();
+        store.set_epoch_deadline(1);
+        store.epoch_deadline_callback(move |_| {
+            if epoch_cancel.is_cancelled() {
+                Err(wasmtime::Error::msg("component call cancelled"))
+            } else {
+                Ok(wasmtime::UpdateDeadline::Yield(1))
+            }
+        });
+        let pre = self.pre.clone();
+        let (mut store, instance) = self
+            .engine
+            .executor
+            .handle()
+            .spawn(async move {
+                let instance = pre.instantiate_async(&mut store).await?;
+                Ok::<_, wasmtime::Error>((store, instance))
+            })
+            .await
+            .map_err(|e| self.err("instantiate", e.to_string()))?
+            .map_err(|e| self.err("instantiate", format!("{e:#}")))?;
+        let guest = wg::GuestIndices::new(&self.pre)
+            .and_then(|i| i.load(&mut store, &instance))
+            .map_err(|e| self.err("instantiate", format!("{e:#}")))?;
+        let provider = if self.has_provider {
+            wpv::GuestIndices::new(&self.pre)
+                .and_then(|i| i.load(&mut store, &instance))
+                .ok()
+        } else {
+            None
+        };
+        let exports = Exports { guest, provider };
+        let (tx, mut rx) = mpsc::channel::<Job>(ACTOR_CAPACITY);
+        let actor = Actor {
+            tx,
+            cancel: cancel.clone(),
+        };
+        let id = self.shared.id.clone();
+        self.engine.executor.handle().spawn(async move {
+            let execution = store
+                .run_concurrent(async move |acc| {
+                    let exports = exports;
+                    let mut running = FuturesUnordered::new();
+                    loop {
+                        tokio::select! {
+                            job = rx.recv(), if running.len() < MAX_IN_FLIGHT => match job {
+                                Some(job) => running.push(job(acc, &exports)),
+                                None => break,
+                            },
+                            Some(()) = running.next(), if !running.is_empty() => {}
+                        }
+                    }
+                    // All senders disappearing means shutdown, not a request to drain
+                    // arbitrary background work forever.
+                });
+            let result = tokio::select! {
+                result = execution => result,
+                () = cancel.cancelled() => Ok(()),
+            };
+            if let Err(e) = result {
+                tracing::warn!(extension = %id, error = %format!("{e:#}"), "component instance stopped");
+            }
+        });
+        Ok(actor)
+    }
+
+    /// Whether the instance was deliberately shut down and has not been called since
+    /// (the hub routes cross-set calls to awake loads first).
+    pub(crate) fn hibernated(&self) -> bool {
+        lock(&self.actor).is_none() && *lock(&self.stopped) == Stopped::Hibernated
+    }
+
+    /// The live actor, (re)starting it when needed.
+    async fn actor(&self) -> Result<Actor, ExtensionError> {
+        if let Some(tx) = self.live_actor()? {
+            return Ok(tx);
+        }
+        let _starting = self.starting.lock().await;
+        // Another caller may have (re)started it while this one waited.
+        if let Some(tx) = self.live_actor()? {
+            return Ok(tx);
+        }
+        let restart = self.started_once.swap(true, Ordering::SeqCst);
+        // A closed channel still in the slot = the store died under us (a trap that ended
+        // `run_concurrent`); an empty slot carries the reason it was emptied.
+        let cause = {
+            let mut actor = lock(&self.actor);
+            let mut stopped = lock(&self.stopped);
+            if let Some(actor) = actor.take() {
+                *stopped = if actor.cancel.is_cancelled() {
+                    Stopped::Cancelled
+                } else {
+                    Stopped::Trapped
+                };
+            }
+            *stopped
+        };
+        if restart && cause == Stopped::Trapped {
+            let mut restarts = lock(&self.restarts);
+            let now = Instant::now();
+            restarts.retain(|t| now.duration_since(*t) < RESTART_WINDOW);
+            if restarts.len() >= MAX_RESTARTS {
+                self.disabled.store(true, Ordering::SeqCst);
+                tracing::warn!(extension = %self.shared.id, "extension disabled after repeated traps");
+                return Err(self.err("call", "extension disabled after repeated traps"));
+            }
+            restarts.push_back(now);
+        }
+        let tx = self.start_actor().await?;
+        *lock(&self.actor) = Some(tx.clone());
+        *lock(&self.stopped) = Stopped::No;
+        if restart {
+            self.replay(&tx, cause).await;
+        }
+        Ok(tx)
+    }
+
+    /// The running actor, if any (`Err` once disabled).
+    fn live_actor(&self) -> Result<Option<Actor>, ExtensionError> {
+        if self.disabled.load(Ordering::SeqCst) {
+            return Err(self.err("call", "extension disabled after repeated traps"));
+        }
+        Ok(lock(&self.actor)
+            .as_ref()
+            .filter(|tx| !tx.is_closed())
+            .cloned())
+    }
+
+    /// Restores a fresh store to where the old one was: `init`, then the `session_start`
+    /// of every session it served (`reason: "reload"`, pi's re-bind semantics: the
+    /// extension rebuilds per-session state from the session, its kv and its files).
+    async fn replay(&self, tx: &Actor, cause: Stopped) {
+        let Some((input, cx)) = lock(&self.init_replay).clone() else {
+            return;
+        };
+        let sessions: Vec<(String, SessionSeen)> =
+            lock(&self.sessions_seen).iter().cloned().collect();
+        let what = if cause == Stopped::Trapped {
+            "restarted after trap"
+        } else {
+            "woke from hibernation"
+        };
+        if cause == Stopped::Trapped {
+            tracing::warn!(extension = %self.shared.id, sessions = sessions.len(), "{what}; replaying init and session_start");
+        } else {
+            tracing::info!(extension = %self.shared.id, sessions = sessions.len(), "{what}; replaying init and session_start");
+        }
+        // Replay is bounded independently, including init's host imports.
+        let deadline =
+            Duration::from_millis(self.shared.manifest.limits.hook_timeout_ms.max(60_000));
+        let init = self.send(tx, "init", move |acc, ex| {
+            Box::pin(async move {
+                let f = ex.guest.func_init();
+                invoke(
+                    acc,
+                    f,
+                    (init_input(&input), convert::call_context(&cx)),
+                    Some(&cx),
+                )
+                .await
+                .map(|_| ())
+            })
+        });
+        match tokio::time::timeout(deadline, init).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(extension = %self.shared.id, error = %e.message, "{what}: init replay failed");
+                return;
+            }
+            Err(_) => {
+                tracing::warn!(extension = %self.shared.id, "{what}: init replay timed out");
+                return;
+            }
+        }
+        for (session, seen) in sessions {
+            let payload = reload_payload(&seen.payload);
+            let cx = seen.cx.with_kind(CallKind::Event);
+            let call = self.send(tx, "on-event:session_start", move |acc, ex| {
+                Box::pin(async move {
+                    let f = ex.guest.func_on_event();
+                    let params = (
+                        convert::event_to_wit(EventKind::SessionStart),
+                        payload.into_string(),
+                        convert::call_context(&cx),
+                    );
+                    invoke(acc, f, params, Some(&cx)).await.map(|_| ())
+                })
+            });
+            match tokio::time::timeout(deadline, call).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::warn!(extension = %self.shared.id, session = %session, error = %e.message, "{what}: session_start replay failed");
+                }
+                Err(_) => {
+                    tracing::warn!(extension = %self.shared.id, session = %session, "{what}: session_start replay timed out");
+                }
+            }
+        }
+    }
+
+    /// Keeps (or drops) the session a `session_start` / `session_shutdown` speaks for.
+    fn note_session(&self, kind: EventKind, payload: &RawJson, cx: &CallContext) {
+        if cx.session_id.is_empty() {
+            return;
+        }
+        let mut seen = lock(&self.sessions_seen);
+        match kind {
+            EventKind::SessionStart => {
+                seen.retain(|(id, _)| *id != cx.session_id);
+                if seen.len() >= MAX_REPLAY_SESSIONS {
+                    seen.pop_front();
+                }
+                seen.push_back((
+                    cx.session_id.clone(),
+                    SessionSeen {
+                        payload: payload.clone(),
+                        cx: cx.clone(),
+                    },
+                ));
+            }
+            EventKind::SessionShutdown => seen.retain(|(id, _)| *id != cx.session_id),
+            _ => {}
+        }
+    }
+
+    /// The actor behind `tx` failed (a trap or a dead store): empties the slot when `tx`
+    /// is still the live actor, so the next call restarts (counted). A deliberate shutdown
+    /// that already emptied the slot keeps its hibernation reason.
+    fn poison(&self, tx: &Actor) -> bool {
+        let mut actor = lock(&self.actor);
+        let live = actor.as_ref().is_some_and(|cur| cur.same_channel(tx));
+        if live {
+            actor.take();
+            tx.cancel.cancel();
+            *lock(&self.stopped) = Stopped::Trapped;
+        }
+        live
+    }
+
+    /// The error of a call whose actor went away under it: a trap, unless the instance
+    /// was deliberately hibernated meanwhile (a plain error then — core disables an
+    /// extension for the session on a trap, X-TRAP, and a hibernation race is not one).
+    fn stopped_err(&self, tx: &Actor, call: &str) -> ExtensionError {
+        if tx.cancel.is_cancelled() {
+            let mut actor = lock(&self.actor);
+            if actor.as_ref().is_some_and(|cur| cur.same_channel(tx)) {
+                actor.take();
+                *lock(&self.stopped) = Stopped::Cancelled;
+            }
+            return self.err(call, "component call cancelled");
+        }
+        let trapped = self.poison(tx) || *lock(&self.stopped) == Stopped::Trapped;
+        if trapped {
+            self.trap(call, "component instance stopped")
+        } else {
+            self.err(
+                call,
+                "component instance hibernated while the call was in flight",
+            )
+        }
+    }
+
+    /// Sends one job to `tx` and awaits its result.
+    async fn send<R, F>(&self, tx: &Actor, call: &str, f: F) -> Result<R, ExtensionError>
+    where
+        R: Send + 'static,
+        F: for<'a> FnOnce(
+                &'a Accessor<HostState>,
+                &'a Exports,
+            ) -> BoxFuture<'a, wasmtime::Result<R>>
+            + Send
+            + 'static,
+    {
+        // Count queued and executing jobs, including imports awaiting host replies.
+        let active = ActiveCall::new(Arc::clone(&self.in_flight));
+        let (reply_tx, reply_rx) = oneshot::channel();
+        #[cfg(feature = "core")]
+        let hook_context = oino_core::extensions::runner::HookContext::capture();
+        let job: Job = Box::new(move |acc, ex| {
+            Box::pin(async move {
+                let _active = active;
+                if reply_tx.is_closed() {
+                    return;
+                }
+                // Imports can call back into the core runner from this actor task.
+                #[cfg(feature = "core")]
+                let result = hook_context.scope(f(acc, ex)).await;
+                #[cfg(not(feature = "core"))]
+                let result = f(acc, ex).await;
+                let _ = reply_tx.send(result);
+            })
+        });
+        // Cancel also while admission is blocked: shutdown must not retain a sender
+        // waiting on a full inbox after its caller has disappeared.
+        let mut cancel_on_drop = CancelOnDrop(Some(tx.cancel.clone()));
+        if tx.tx.send(job).await.is_err() {
+            cancel_on_drop.0 = None;
+            return Err(self.stopped_err(tx, call));
+        }
+        let reply = reply_rx.await;
+        cancel_on_drop.0 = None;
+        match reply {
+            Ok(Ok(r)) => Ok(r),
+            Ok(Err(e)) => {
+                let _ = self.poison(tx);
+                Err(self.trap(call, format!("{e:#}")))
+            }
+            Err(_) => Err(self.stopped_err(tx, call)),
+        }
+    }
+
+    async fn call<R, F>(&self, call: &str, f: F) -> Result<R, ExtensionError>
+    where
+        R: Send + 'static,
+        F: for<'a> FnOnce(
+                &'a Accessor<HostState>,
+                &'a Exports,
+            ) -> BoxFuture<'a, wasmtime::Result<R>>
+            + Send
+            + 'static,
+    {
+        let tx = self.actor().await?;
+        self.send(&tx, call, f).await
+    }
+
+    /// Blocking variant for the synchronous exports (`prepare-*`, `render`, …). Requires the
+    /// caller to wait; guest execution never uses the caller's runtime.
+    fn call_blocking<R, F>(&self, call: &str, f: F) -> Result<R, ExtensionError>
+    where
+        R: Send + 'static,
+        F: for<'a> FnOnce(
+                &'a Accessor<HostState>,
+                &'a Exports,
+            ) -> BoxFuture<'a, wasmtime::Result<R>>
+            + Send
+            + 'static,
+    {
+        // The actor and its imports run on the engine's dedicated executor. Do not
+        // re-enter (or expand) the application's Tokio worker pool here.
+        crate::executor::block(self.call(call, f))
+    }
+
+    fn guest_err(&self, call: &str, r: Result<String, ExtensionError>) -> ExtensionError {
+        match r {
+            Ok(message) => self.err(call, message),
+            Err(e) => e,
+        }
+    }
+}
+
+/// `fut` with `deadline`, paused while `waiting()` (a dialog is open); after the dialog
+/// closes the handler gets a fresh deadline (GA-42). `None` when it expired.
+///
+/// `waited_ms` is the running total of time the handler spent blocked synchronously on the user (a process
+/// approval): when it grew while the timer ran, that time is not the handler's and the deadline restarts.
+async fn pausable_timeout<T>(
+    fut: impl Future<Output = T>,
+    deadline: Duration,
+    waiting: impl Fn() -> bool,
+    waited_ms: impl Fn() -> u64,
+) -> Option<T> {
+    const RECHECK: Duration = Duration::from_millis(200);
+    let mut fut = std::pin::pin!(fut);
+    let mut seen = waited_ms();
+    loop {
+        if let Ok(value) = tokio::time::timeout(deadline, &mut fut).await {
+            return Some(value);
+        }
+        let now = waited_ms();
+        if now > seen {
+            seen = now;
+            continue;
+        }
+        if !waiting() {
+            return None;
+        }
+        loop {
+            if let Ok(value) = tokio::time::timeout(RECHECK, &mut fut).await {
+                return Some(value);
+            }
+            if !waiting() {
+                break;
+            }
+        }
+    }
+}
+
+/// A recorded `session_start` payload re-sent on wake: same fields, `reason: "reload"`
+/// (startup-only effects such as a splash do not repeat), `wake: true`.
+fn reload_payload(original: &RawJson) -> RawJson {
+    let mut value = original.to_value();
+    if !value.is_object() {
+        value = serde_json::json!({"type": "session_start"});
+    }
+    value["reason"] = serde_json::json!("reload");
+    value["wake"] = serde_json::json!(true);
+    RawJson::from(value)
+}
+
+fn init_input(input: &InitInput) -> wg::InitInput {
+    wg::InitInput {
+        manifest: input.manifest.as_str().to_owned(),
+        settings: input.settings.as_str().to_owned(),
+        flags: input.flags.as_str().to_owned(),
+    }
+}
+
+/// Runs `f` with a fresh cancel-token resource that is deleted afterwards.
+async fn with_token<R, Fut>(
+    acc: &Accessor<HostState>,
+    token: CancellationToken,
+    f: impl FnOnce(wasmtime::component::Resource<CancelToken>) -> Fut,
+) -> wasmtime::Result<R>
+where
+    Fut: Future<Output = wasmtime::Result<R>>,
+{
+    let res = acc.with(|mut s| s.data_mut().table.push(CancelToken(token)))?;
+    let rep = res.rep();
+    let out = f(wasmtime::component::Resource::new_borrow(rep)).await;
+    acc.with(|mut s| s.data_mut().table.delete(res).map(|_| ()))?;
+    out
+}
+
+impl ExtensionInstance for WasmInstance {
+    fn id(&self) -> &ExtensionId {
+        &self.shared.id
+    }
+
+    fn manifest(&self) -> &Manifest {
+        &self.shared.manifest
+    }
+
+    fn init(
+        &self,
+        input: InitInput,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<Registration, ExtensionError>> {
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Init);
+            *lock(&self.init_replay) = Some((input.clone(), cx.clone()));
+            let r = self
+                .call("init", move |acc, ex| {
+                    Box::pin(async move {
+                        let f = ex.guest.func_init();
+                        invoke(
+                            acc,
+                            f,
+                            (init_input(&input), convert::call_context(&cx)),
+                            Some(&cx),
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            match r {
+                Ok(reg) => {
+                    let mut reg =
+                        convert::registration(reg).map_err(|e| self.err("init", e.to_string()))?;
+                    add_manifest_settings(&self.shared.manifest, &mut reg);
+                    if let Some(hub) = self.hub.get().and_then(std::sync::Weak::upgrade) {
+                        hub.note_registration(&self.shared.id, &reg);
+                    }
+                    Ok(reg)
+                }
+                Err(message) => Err(self.err("init", message)),
+            }
+        })
+    }
+
+    fn prepare_event(&self) -> BoxFut<'_, Result<(), ExtensionError>> {
+        Box::pin(async { self.actor().await.map(|_| ()) })
+    }
+
+    fn on_event(
+        &self,
+        kind: EventKind,
+        payload: RawJson,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<Option<RawJson>, ExtensionError>> {
+        Box::pin(async move {
+            let limits = self.shared.manifest.limits;
+            let deadline = Duration::from_millis(if kind == EventKind::ToolCall {
+                limits.tool_call_hook_timeout_ms
+            } else if matches!(
+                kind,
+                EventKind::SessionBeforeSwitch
+                    | EventKind::SessionBeforeFork
+                    | EventKind::SessionBeforeCompact
+                    | EventKind::SessionBeforeTree
+            ) {
+                limits.hook_timeout_ms.max(60_000)
+            } else {
+                limits.hook_timeout_ms
+            });
+            // Timers are cancelled when an instance hibernates; a fire that raced the
+            // shutdown is stale and must not wake it.
+            if kind == EventKind::OinoTimer && self.hibernated() {
+                return Ok(None);
+            }
+            // Wake and replay are lifecycle work, not time spent in this handler.
+            let tx = self.actor().await?;
+            self.note_session(kind, &payload, &cx);
+            let call_name = format!("on-event:{kind}");
+            let wait_cx = cx.clone();
+            let fut = self.send(&tx, &call_name, move |acc, ex| {
+                Box::pin(async move {
+                    let f = ex.guest.func_on_event();
+                    let params = (
+                        convert::event_to_wit(kind),
+                        payload.into_string(),
+                        convert::call_context(&cx),
+                    );
+                    invoke(acc, f, params, Some(&cx)).await.map(|(r,)| r)
+                })
+            });
+            let open = &self.shared.dialogs_open;
+            let waited = &self.shared.approval_wait_ms;
+            let r = pausable_timeout(
+                fut,
+                deadline,
+                || open.load(Ordering::SeqCst) > 0 || self.shared.host.approval_pending(&wait_cx),
+                || waited.load(Ordering::SeqCst),
+            )
+            .await
+            .ok_or_else(|| {
+                self.err(
+                    &call_name,
+                    format!("{HANDLER_TIMEOUT} {} ms", deadline.as_millis()),
+                )
+            })??;
+            match r {
+                Ok(result) => Ok(result.map(convert::json_lossy)),
+                Err(message) => Err(self.err(&call_name, message)),
+            }
+        })
+    }
+
+    fn run_tool(
+        &self,
+        inv: ToolInvocation,
+        cancel: CancellationToken,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+        Box::pin(async move {
+            let call_name = format!("run-tool:{}", inv.name);
+            let mut cx = cx.with_kind(CallKind::Tool);
+            cx.tool_call_id = Some(inv.tool_call_id.clone());
+            let r = self
+                .call(&call_name, move |acc, ex| {
+                    Box::pin(async move {
+                        let f = ex.guest.func_run_tool();
+                        let wit_inv = wg::ToolInvocation {
+                            tool_call_id: inv.tool_call_id,
+                            name: inv.name,
+                            args: inv.args.into_string(),
+                            parent_tool_call_id: inv.parent_tool_call_id,
+                        };
+                        with_token(acc, cancel, |tok| async move {
+                            invoke(
+                                acc,
+                                f,
+                                (wit_inv, tok, convert::call_context(&cx)),
+                                Some(&cx),
+                            )
+                            .await
+                            .map(|(r,)| r)
+                        })
+                        .await
+                    })
+                })
+                .await?;
+            r.map(convert::json_lossy)
+                .map_err(|m| self.err(&call_name, m))
+        })
+    }
+
+    fn prepare_arguments(&self, tool: &str, raw: RawJson) -> Result<RawJson, ExtensionError> {
+        let tool = tool.to_owned();
+        let out = self.call_blocking("prepare-arguments", move |acc, ex| {
+            Box::pin(async move {
+                invoke(
+                    acc,
+                    ex.guest.func_prepare_arguments(),
+                    (tool, raw.into_string()),
+                    None,
+                )
+                .await
+                .map(|(r,)| r)
+            })
+        })?;
+        Ok(convert::json_lossy(out))
+    }
+
+    fn prepare_loadout(
+        &self,
+        tool: &str,
+        loadout: RawJson,
+    ) -> Result<Option<RawJson>, ExtensionError> {
+        let tool = tool.to_owned();
+        let out = self.call_blocking("prepare-loadout", move |acc, ex| {
+            Box::pin(async move {
+                invoke(
+                    acc,
+                    ex.guest.func_prepare_loadout(),
+                    (tool, loadout.into_string()),
+                    None,
+                )
+                .await
+                .map(|(r,)| r)
+            })
+        })?;
+        Ok(out.map(convert::json_lossy))
+    }
+
+    fn reaches_tools(&self, tool: &str, input: RawJson) -> Result<RawJson, ExtensionError> {
+        let tool = tool.to_owned();
+        let out = self.call_blocking("reaches-tools", move |acc, ex| {
+            Box::pin(async move {
+                invoke(
+                    acc,
+                    ex.guest.func_reaches_tools(),
+                    (tool, input.into_string()),
+                    None,
+                )
+                .await
+                .map(|(r,)| r)
+            })
+        })?;
+        Ok(convert::json_lossy(out))
+    }
+
+    fn run_command(
+        &self,
+        name: &str,
+        args: &str,
+        cancel: CancellationToken,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<Option<RawJson>, ExtensionError>> {
+        let (name, args) = (name.to_owned(), args.to_owned());
+        Box::pin(async move {
+            let call_name = format!("run-command:{name}");
+            let cx = cx.with_kind(CallKind::Command);
+            let r = self
+                .call(&call_name, move |acc, ex| {
+                    Box::pin(async move {
+                        let f = ex.guest.func_run_command();
+                        with_token(acc, cancel, |tok| async move {
+                            invoke(
+                                acc,
+                                f,
+                                (name, args, tok, convert::call_context(&cx)),
+                                Some(&cx),
+                            )
+                            .await
+                            .map(|(r,)| r)
+                        })
+                        .await
+                    })
+                })
+                .await?;
+            r.map(|o| o.map(convert::json_lossy))
+                .map_err(|m| self.err(&call_name, m))
+        })
+    }
+
+    fn complete_command(
+        &self,
+        name: &str,
+        prefix: &str,
+        cx: CallContext,
+    ) -> BoxFut<'_, Vec<CompletionItem>> {
+        let (name, prefix) = (name.to_owned(), prefix.to_owned());
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Command);
+            self.call("complete-command", move |acc, ex| {
+                Box::pin(async move {
+                    invoke(
+                        acc,
+                        ex.guest.func_complete_command(),
+                        (name, prefix, convert::call_context(&cx)),
+                        Some(&cx),
+                    )
+                    .await
+                    .map(|(r,)| r)
+                })
+            })
+            .await
+            .map(|items| items.into_iter().map(convert::completion_item).collect())
+            .unwrap_or_default()
+        })
+    }
+
+    fn run_shortcut(&self, id: &str, cx: CallContext) -> BoxFut<'_, Result<(), ExtensionError>> {
+        let id = id.to_owned();
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Shortcut);
+            let r = self
+                .call("run-shortcut", move |acc, ex| {
+                    Box::pin(async move {
+                        invoke(
+                            acc,
+                            ex.guest.func_run_shortcut(),
+                            (id, convert::call_context(&cx)),
+                            Some(&cx),
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await;
+            r.and_then(|inner| inner.map_err(|m| self.guest_err("run-shortcut", Ok(m))))
+        })
+    }
+
+    fn handle_service(
+        &self,
+        name: &str,
+        payload: RawJson,
+        caller: &ExtensionId,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+        let (name, caller) = (name.to_owned(), caller.to_string());
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Service);
+            let r = self
+                .call("handle-service", move |acc, ex| {
+                    Box::pin(async move {
+                        invoke(
+                            acc,
+                            ex.guest.func_handle_service(),
+                            (
+                                name,
+                                payload.into_string(),
+                                caller,
+                                convert::call_context(&cx),
+                            ),
+                            Some(&cx),
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            r.map(convert::json_lossy)
+                .map_err(|m| self.err("handle-service", m))
+        })
+    }
+
+    fn propose_nudge(&self, cx: CallContext) -> BoxFut<'_, Option<RawJson>> {
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Nudge);
+            self.call("propose-nudge", move |acc, ex| {
+                Box::pin(async move {
+                    invoke(
+                        acc,
+                        ex.guest.func_propose_nudge(),
+                        (convert::call_context(&cx),),
+                        Some(&cx),
+                    )
+                    .await
+                    .map(|(r,)| r)
+                })
+            })
+            .await
+            .ok()
+            .flatten()
+            .map(convert::json_lossy)
+        })
+    }
+
+    fn nudge_delivered(&self, id: &str, cx: CallContext) {
+        let id = id.to_owned();
+        let cx = cx.with_kind(CallKind::Nudge);
+        let _ = self.call_blocking("nudge-delivered", move |acc, ex| {
+            Box::pin(async move {
+                invoke(
+                    acc,
+                    ex.guest.func_nudge_delivered(),
+                    (id, convert::call_context(&cx)),
+                    Some(&cx),
+                )
+                .await
+            })
+        });
+    }
+
+    fn wait_reason(&self, cx: CallContext) -> BoxFut<'_, Option<String>> {
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Nudge);
+            self.call("wait-reason", move |acc, ex| {
+                Box::pin(async move {
+                    invoke(
+                        acc,
+                        ex.guest.func_wait_reason(),
+                        (convert::call_context(&cx),),
+                        Some(&cx),
+                    )
+                    .await
+                    .map(|(r,)| r)
+                })
+            })
+            .await
+            .ok()
+            .flatten()
+        })
+    }
+
+    fn render(&self, request: RawJson, cx: CallContext) -> Option<RawJson> {
+        let cx = cx.with_kind(CallKind::Render);
+        self.call_blocking("render", move |acc, ex| {
+            Box::pin(async move {
+                invoke(
+                    acc,
+                    ex.guest.func_render(),
+                    (request.into_string(), convert::call_context(&cx)),
+                    Some(&cx),
+                )
+                .await
+                .map(|(r,)| r)
+            })
+        })
+        .ok()
+        .flatten()
+        .map(convert::json_lossy)
+    }
+
+    fn route_model(
+        &self,
+        request: RawJson,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+        Box::pin(async move {
+            let cx = cx.with_kind(CallKind::Route);
+            let r = self
+                .call("route-model", move |acc, ex| {
+                    Box::pin(async move {
+                        invoke(
+                            acc,
+                            ex.guest.func_route_model(),
+                            (request.into_string(), convert::call_context(&cx)),
+                            Some(&cx),
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            r.map(convert::json_lossy)
+                .map_err(|m| self.err("route-model", m))
+        })
+    }
+
+    fn complete_input(&self, request: RawJson, cx: CallContext) -> BoxFut<'_, Option<RawJson>> {
+        Box::pin(async move {
+            self.call("complete-input", move |acc, ex| {
+                Box::pin(async move {
+                    invoke(
+                        acc,
+                        ex.guest.func_complete_input(),
+                        (request.into_string(), convert::call_context(&cx)),
+                        Some(&cx),
+                    )
+                    .await
+                    .map(|(r,)| r)
+                })
+            })
+            .await
+            .ok()
+            .flatten()
+            .map(convert::json_lossy)
+        })
+    }
+
+    fn provider(&self) -> Option<&dyn ProviderInstance> {
+        if self.has_provider { Some(self) } else { None }
+    }
+
+    fn has_background_work(&self) -> bool {
+        self.shared.timers.is_active()
+            || self.shared.processes.is_active()
+            || self
+                .hub
+                .get()
+                .and_then(std::sync::Weak::upgrade)
+                .is_some_and(|hub| hub.tasks().running_for(self.shared.id.as_str()))
+    }
+
+    fn has_keepalive_work(&self) -> bool {
+        self.in_flight.load(Ordering::Acquire) > 0
+            || self.shared.processes.is_active()
+            || self
+                .hub
+                .get()
+                .and_then(std::sync::Weak::upgrade)
+                .is_some_and(|hub| hub.tasks().running_for(self.shared.id.as_str()))
+    }
+
+    fn shutdown(&self, reason: &str) -> BoxFut<'_, ()> {
+        let reason = reason.to_owned();
+        let reason_note = reason.clone();
+        Box::pin(async move {
+            let running = lock(&self.actor).as_ref().is_some_and(|tx| !tx.is_closed());
+            if running {
+                let call = self.call("shutdown", move |acc, ex| {
+                    Box::pin(
+                        async move { invoke(acc, ex.guest.func_shutdown(), (reason,), None).await },
+                    )
+                });
+                let _ = tokio::time::timeout(Duration::from_secs(5), call).await;
+            }
+            self.shared.timers.cancel_all();
+            self.shared.processes.kill_all();
+            if let Some(actor) = lock(&self.actor).take() {
+                actor.cancel.cancel();
+                *lock(&self.stopped) = Stopped::Hibernated;
+                tracing::debug!(extension = %self.shared.id, reason = %reason_note, "instance hibernated");
+            }
+        })
+    }
+}
+
+fn no_provider(id: &ExtensionId, call: &str) -> ExtensionError {
+    ExtensionError::new(
+        id.as_str(),
+        call,
+        "component does not export oino:extension/provider",
+    )
+}
+
+impl ProviderInstance for WasmInstance {
+    fn stream(&self, request: RawJson) -> BoxFut<'_, Result<ProviderEventStream, ExtensionError>> {
+        Box::pin(async move {
+            let id = self.shared.id.clone();
+            let (tx, rx) = mpsc::unbounded_channel::<String>();
+            let cx = lock(&self.shared.last_cx)
+                .clone()
+                .with_kind(CallKind::Provider);
+            let started = self
+                .call("provider.stream", move |acc, ex| {
+                    Box::pin(async move {
+                        let Some(provider) = &ex.provider else {
+                            return Ok(Err("no provider export".to_owned()));
+                        };
+                        let (r,) = invoke(
+                            acc,
+                            provider.func_stream(),
+                            (request.into_string(),),
+                            Some(&cx),
+                        )
+                        .await?;
+                        match r {
+                            Ok(reader) => {
+                                acc.with(|mut s| reader.pipe(&mut s, ChannelConsumer::new(tx)))?;
+                                Ok(Ok(()))
+                            }
+                            Err(e) => Ok(Err(e)),
+                        }
+                    })
+                })
+                .await?;
+            started.map_err(|m| self.err("provider.stream", m))?;
+            let call_id = id.clone();
+            let events = receiver_stream(rx).map(move |item| {
+                serde_json::from_str::<ProviderEvent>(&item).map_err(|e| {
+                    ExtensionError::new(
+                        call_id.as_str(),
+                        "provider.stream",
+                        format!("invalid provider event: {e}: {item}"),
+                    )
+                })
+            });
+            Ok(Box::pin(events) as ProviderEventStream)
+        })
+    }
+
+    fn list_models(
+        &self,
+        provider_id: &str,
+        credential: Option<RawJson>,
+    ) -> BoxFut<'_, Result<Vec<Model>, ExtensionError>> {
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            let r = self
+                .call("provider.list-models", move |acc, ex| {
+                    Box::pin(async move {
+                        let Some(provider) = &ex.provider else {
+                            return Ok(Err("no provider export".to_owned()));
+                        };
+                        invoke(
+                            acc,
+                            provider.func_list_models(),
+                            (provider_id, credential.map(RawJson::into_string)),
+                            None,
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            let text = r.map_err(|m| self.err("provider.list-models", m))?;
+            serde_json::from_str(&text)
+                .map_err(|e| self.err("provider.list-models", format!("invalid models: {e}")))
+        })
+    }
+
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+        let provider_id = provider_id.to_owned();
+        let cx = cx.with_kind(CallKind::Provider);
+        Box::pin(async move {
+            let r = self
+                .call("provider.oauth-login", move |acc, ex| {
+                    Box::pin(async move {
+                        let Some(provider) = &ex.provider else {
+                            return Ok(Err("no provider export".to_owned()));
+                        };
+                        invoke(acc, provider.func_oauth_login(), (provider_id,), Some(&cx))
+                            .await
+                            .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            r.map(convert::json_lossy)
+                .map_err(|m| self.err("provider.oauth-login", m))
+        })
+    }
+
+    fn oauth_refresh(
+        &self,
+        provider_id: &str,
+        credential: RawJson,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            if !self.has_provider {
+                return Err(no_provider(&self.shared.id, "provider.oauth-refresh"));
+            }
+            let r = self
+                .call("provider.oauth-refresh", move |acc, ex| {
+                    Box::pin(async move {
+                        let Some(provider) = &ex.provider else {
+                            return Ok(Err("no provider export".to_owned()));
+                        };
+                        invoke(
+                            acc,
+                            provider.func_oauth_refresh(),
+                            (provider_id, credential.into_string()),
+                            None,
+                        )
+                        .await
+                        .map(|(r,)| r)
+                    })
+                })
+                .await?;
+            r.map(convert::json_lossy)
+                .map_err(|m| self.err("provider.oauth-refresh", m))
+        })
+    }
+}
+
+/// Appends a manifest's static `ui.settings` namespaces to an `init` registration
+/// (ui-protocol §9.1): the manifest path and the runtime `registry.register-settings` path are
+/// both accepted in 2.x, and a runtime declaration of the same namespace wins.
+fn add_manifest_settings(manifest: &Manifest, reg: &mut Registration) {
+    for namespace in &manifest.ui.settings {
+        let name = namespace.get("namespace");
+        if !reg
+            .settings
+            .iter()
+            .any(|s| s.to_value().get("namespace") == name)
+        {
+            reg.settings.push(RawJson::from(namespace));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn unrelated_session_approval_pauses_wasm_handler_deadline() {
+        let pending = Arc::new(AtomicBool::new(true));
+        let flag = pending.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(90)).await;
+            flag.store(false, Ordering::SeqCst);
+        });
+        let result = pausable_timeout(
+            async {
+                tokio::time::sleep(Duration::from_secs(91)).await;
+                42
+            },
+            Duration::from_secs(5),
+            || pending.load(Ordering::SeqCst),
+            || 0,
+        )
+        .await;
+        assert_eq!(result, Some(42));
+        assert_eq!(
+            pausable_timeout(
+                std::future::pending::<()>(),
+                Duration::from_secs(5),
+                || false,
+                || 0
+            )
+            .await,
+            None
+        );
+    }
+
+    /// N6: time a handler spends blocked synchronously on a process approval is not handler time.
+    #[tokio::test(start_paused = false)]
+    async fn approval_wait_does_not_count_against_the_deadline() {
+        use std::sync::atomic::AtomicU64;
+        let waited = AtomicU64::new(0);
+        let fut = async {
+            // a synchronous block longer than the deadline (check_process waiting on the user)…
+            std::thread::sleep(Duration::from_millis(150));
+            waited.fetch_add(150, Ordering::SeqCst);
+            // …then the handler continues with a real await.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            7
+        };
+        let r = pausable_timeout(
+            fut,
+            Duration::from_millis(50),
+            || false,
+            || waited.load(Ordering::SeqCst),
+        )
+        .await;
+        assert_eq!(r, Some(7));
+        // without the accounting the same handler expires
+        let fut = async {
+            std::thread::sleep(Duration::from_millis(150));
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            7
+        };
+        assert_eq!(
+            pausable_timeout(fut, Duration::from_millis(50), || false, || 0).await,
+            None
+        );
+    }
+
+    fn manifest(ui: &str) -> Manifest {
+        Manifest::parse(&format!(
+            r#"{{"apiVersion":"oino.extension/2","id":"acme.x","name":"X","version":"1.0.0"{ui}}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn manifest_settings_join_the_registration() {
+        let manifest = manifest(
+            r#","ui":{"settings":[
+                {"namespace":"acme.x","title":"X","sections":[]},
+                {"namespace":"acme.y","title":"Y","sections":[]}]}"#,
+        );
+        let mut reg = Registration::default();
+        add_manifest_settings(&manifest, &mut reg);
+        assert_eq!(reg.settings.len(), 2);
+        assert_eq!(reg.settings[1].to_value()["namespace"], "acme.y");
+    }
+
+    #[test]
+    fn runtime_settings_win_over_the_manifest() {
+        let manifest = manifest(
+            r#","ui":{"settings":[{"namespace":"acme.x","title":"Static","sections":[]}]}"#,
+        );
+        let mut reg = Registration {
+            settings: vec![RawJson::from_json_value(&serde_json::json!({
+                "namespace": "acme.x", "title": "Runtime", "sections": []
+            }))],
+            ..Registration::default()
+        };
+        add_manifest_settings(&manifest, &mut reg);
+        assert_eq!(reg.settings.len(), 1);
+        assert_eq!(reg.settings[0].to_value()["title"], "Runtime");
+    }
+}

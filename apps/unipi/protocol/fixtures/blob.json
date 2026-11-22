@@ -1,0 +1,222 @@
+[
+ {
+  "name": "blob_put basic",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 1234,
+    "mime": "image/jpeg"
+   }
+  }
+ },
+ {
+  "name": "blob_put with name and resume offset",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 1234,
+    "mime": "image/jpeg",
+    "name": "photo.jpg",
+    "offset": 512
+   }
+  }
+ },
+ {
+  "name": "blob_put size at cap",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 4294967296,
+    "mime": "application/octet-stream"
+   }
+  }
+ },
+ {
+  "name": "blob_put size over cap",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 4294967297,
+    "mime": "image/jpeg"
+   }
+  }
+ },
+ {
+  "name": "blob_put size zero",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 0,
+    "mime": "image/jpeg"
+   }
+  }
+ },
+ {
+  "name": "blob_put sha256 uppercase rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "ABAB0000000000000000000000000000000000000000000000000000000A",
+    "size": 10,
+    "mime": "image/jpeg"
+   }
+  }
+ },
+ {
+  "name": "blob_put sha256 short rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abab",
+    "size": 10,
+    "mime": "image/jpeg"
+   }
+  }
+ },
+ {
+  "name": "blob_put name with slash rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 10,
+    "mime": "image/jpeg",
+    "name": "a/b.jpg"
+   }
+  }
+ },
+ {
+  "name": "blob_put mime empty rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_put",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "size": 10,
+    "mime": ""
+   }
+  }
+ },
+ {
+  "name": "blob_get by sha256",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_get",
+    "sha256": "abababababababababababababababababababababababababababababababab"
+   }
+  }
+ },
+ {
+  "name": "blob_get by path",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_get",
+    "path": "/home/user/.unipi/app-host/blobs/abcd"
+   }
+  }
+ },
+ {
+  "name": "blob_get with range",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_get",
+    "sha256": "abababababababababababababababababababababababababababababababab",
+    "range": {"start": 0, "end": 99}
+   }
+  }
+ },
+ {
+  "name": "blob_get neither sha nor path is still schema-valid (host rejects at runtime)",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.2.0",
+   "req": {
+    "op": "blob_get"
+   }
+  }
+ },
+ {
+  "name": "blob_put ok.data have true",
+  "schema": "BlobPutData",
+  "ok": true,
+  "value": {"have": true, "path": "/home/u/.unipi/app-host/blobs/ab"}
+ },
+ {
+  "name": "blob_put ok.data missing have",
+  "schema": "BlobPutData",
+  "ok": false,
+  "value": {"path": "/x"}
+ },
+ {
+  "name": "blob_put ok.data missing path",
+  "schema": "BlobPutData",
+  "ok": false,
+  "value": {"have": false}
+ },
+ {
+  "name": "blob_get ok.data",
+  "schema": "BlobGetData",
+  "ok": true,
+  "value": {"size": 1234, "mime": "image/jpeg"}
+ },
+ {
+  "name": "blob_get ok.data negative size rejected",
+  "schema": "BlobGetData",
+  "ok": false,
+  "value": {"size": -1, "mime": "image/jpeg"}
+ }
+]

@@ -1,0 +1,140 @@
+{
+ "name": "g_usage_cache",
+ "model": {
+  "type": "chat",
+  "id": "openai/gpt-4",
+  "name": "OpenAI: GPT-4",
+  "api": "openai-completions",
+  "baseUrl": "https://openrouter.ai/api/v1",
+  "provider": "openrouter",
+  "reasoning": false,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 30,
+   "output": 60,
+   "cacheRead": 0,
+   "cacheWrite": 0
+  },
+  "contextWindow": 8191,
+  "maxTokens": 4096,
+  "compat": {
+   "thinkingFormat": "openrouter",
+   "supportsStrictMode": true,
+   "sendSessionAffinityHeaders": true
+  }
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":7,\"total_tokens\":107,\"prompt_tokens_details\":{\"cached_tokens\":60,\"cache_write_tokens\":10},\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://openrouter.ai/api/v1/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-session-id": "sess-1234",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "openai/gpt-4",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "store": false,
+   "max_completion_tokens": 4093
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "ok"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "ok"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "ok"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "openrouter",
+    "model": "openai/gpt-4",
+    "usage": {
+     "input": 30,
+     "output": 7,
+     "cacheRead": 60,
+     "cacheWrite": 10,
+     "reasoning": 0,
+     "totalTokens": 107,
+     "cost": {
+      "input": 0.0009,
+      "output": 0.00042,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00132
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "stop",
+    "durationMs": 23
+   }
+  }
+ ]
+}

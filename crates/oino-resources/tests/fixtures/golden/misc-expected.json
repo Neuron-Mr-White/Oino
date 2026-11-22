@@ -1,0 +1,1452 @@
+{
+  "parseCommandArgs": [
+    {
+      "input": "",
+      "output": []
+    },
+    {
+      "input": "   ",
+      "output": []
+    },
+    {
+      "input": "a b  c",
+      "output": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    {
+      "input": "\"a b\" c",
+      "output": [
+        "a b",
+        "c"
+      ]
+    },
+    {
+      "input": "'a \"b\" c' d",
+      "output": [
+        "a \"b\" c",
+        "d"
+      ]
+    },
+    {
+      "input": "\"\" ''",
+      "output": [
+        "",
+        ""
+      ]
+    },
+    {
+      "input": "x\"y z\"w",
+      "output": [
+        "xy zw"
+      ]
+    },
+    {
+      "input": "\"unterminated rest",
+      "output": [
+        "unterminated rest"
+      ]
+    },
+    {
+      "input": "tab\tsep\nnewline",
+      "output": [
+        "tab",
+        "sep",
+        "newline"
+      ]
+    },
+    {
+      "input": "a b",
+      "output": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "input": "  lead trail  ",
+      "output": [
+        "lead",
+        "trail"
+      ]
+    },
+    {
+      "input": "'single' \"double\"",
+      "output": [
+        "single",
+        "double"
+      ]
+    },
+    {
+      "input": "emoji 😀 \"q 😀\"",
+      "output": [
+        "emoji",
+        "😀",
+        "q 😀"
+      ]
+    },
+    {
+      "input": "a'b'c",
+      "output": [
+        "abc"
+      ]
+    },
+    {
+      "input": "--flag=\"v w\"",
+      "output": [
+        "--flag=v w"
+      ]
+    }
+  ],
+  "substituteArgs": [
+    {
+      "template": "$1 and $2",
+      "args": [],
+      "output": " and "
+    },
+    {
+      "template": "$1 and $2",
+      "args": [
+        "one"
+      ],
+      "output": "one and "
+    },
+    {
+      "template": "$1 and $2",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one and two"
+    },
+    {
+      "template": "$1 and $2",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " and b"
+    },
+    {
+      "template": "$1 and $2",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 and ${1:-x}"
+    },
+    {
+      "template": "$@",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "$@",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "$@",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two three"
+    },
+    {
+      "template": "$@",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " b"
+    },
+    {
+      "template": "$@",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@"
+    },
+    {
+      "template": "$ARGUMENTS",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "$ARGUMENTS",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "$ARGUMENTS",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two three"
+    },
+    {
+      "template": "$ARGUMENTS",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " b"
+    },
+    {
+      "template": "$ARGUMENTS",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@"
+    },
+    {
+      "template": "${1:-def}",
+      "args": [],
+      "output": "def"
+    },
+    {
+      "template": "${1:-def}",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "${1:-def}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "${1:-def}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "def"
+    },
+    {
+      "template": "${1:-def}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2"
+    },
+    {
+      "template": "${3:-def}",
+      "args": [],
+      "output": "def"
+    },
+    {
+      "template": "${3:-def}",
+      "args": [
+        "one"
+      ],
+      "output": "def"
+    },
+    {
+      "template": "${3:-def}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "three"
+    },
+    {
+      "template": "${3:-def}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "def"
+    },
+    {
+      "template": "${3:-def}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$@"
+    },
+    {
+      "template": "${@:-none}",
+      "args": [],
+      "output": "none"
+    },
+    {
+      "template": "${@:-none}",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "${@:-none}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two three"
+    },
+    {
+      "template": "${@:-none}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " b"
+    },
+    {
+      "template": "${@:-none}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@"
+    },
+    {
+      "template": "${ARGUMENTS:-none}",
+      "args": [],
+      "output": "none"
+    },
+    {
+      "template": "${ARGUMENTS:-none}",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "${ARGUMENTS:-none}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two three"
+    },
+    {
+      "template": "${ARGUMENTS:-none}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " b"
+    },
+    {
+      "template": "${ARGUMENTS:-none}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@"
+    },
+    {
+      "template": "${@:2}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${@:2}",
+      "args": [
+        "one"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:2}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "two three"
+    },
+    {
+      "template": "${@:2}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "b"
+    },
+    {
+      "template": "${@:2}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "${1:-x} $@"
+    },
+    {
+      "template": "${@:2:1}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${@:2:1}",
+      "args": [
+        "one"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:2:1}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "two"
+    },
+    {
+      "template": "${@:2:1}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "b"
+    },
+    {
+      "template": "${@:2:1}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "${1:-x}"
+    },
+    {
+      "template": "${@:0}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${@:0}",
+      "args": [
+        "one"
+      ],
+      "output": "one"
+    },
+    {
+      "template": "${@:0}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two three"
+    },
+    {
+      "template": "${@:0}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " b"
+    },
+    {
+      "template": "${@:0}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@"
+    },
+    {
+      "template": "${@:1:0}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${@:1:0}",
+      "args": [
+        "one"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:1:0}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:1:0}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:1:0}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:9}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${@:9}",
+      "args": [
+        "one"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:9}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:9}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${@:9}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": ""
+    },
+    {
+      "template": "$0 $10 $1$2",
+      "args": [],
+      "output": "  "
+    },
+    {
+      "template": "$0 $10 $1$2",
+      "args": [
+        "one"
+      ],
+      "output": "  one"
+    },
+    {
+      "template": "$0 $10 $1$2",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "  onetwo"
+    },
+    {
+      "template": "$0 $10 $1$2",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "  b"
+    },
+    {
+      "template": "$0 $10 $1$2",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "  $2${1:-x}"
+    },
+    {
+      "template": "price $5 and $",
+      "args": [],
+      "output": "price  and $"
+    },
+    {
+      "template": "price $5 and $",
+      "args": [
+        "one"
+      ],
+      "output": "price  and $"
+    },
+    {
+      "template": "price $5 and $",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "price  and $"
+    },
+    {
+      "template": "price $5 and $",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "price  and $"
+    },
+    {
+      "template": "price $5 and $",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "price  and $"
+    },
+    {
+      "template": "${unknown} ${@:x} ${1:-a}b}",
+      "args": [],
+      "output": "${unknown} ${@:x} ab}"
+    },
+    {
+      "template": "${unknown} ${@:x} ${1:-a}b}",
+      "args": [
+        "one"
+      ],
+      "output": "${unknown} ${@:x} oneb}"
+    },
+    {
+      "template": "${unknown} ${@:x} ${1:-a}b}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "${unknown} ${@:x} oneb}"
+    },
+    {
+      "template": "${unknown} ${@:x} ${1:-a}b}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "${unknown} ${@:x} ab}"
+    },
+    {
+      "template": "${unknown} ${@:x} ${1:-a}b}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "${unknown} ${@:x} $2b}"
+    },
+    {
+      "template": "$$1",
+      "args": [],
+      "output": "$"
+    },
+    {
+      "template": "$$1",
+      "args": [
+        "one"
+      ],
+      "output": "$one"
+    },
+    {
+      "template": "$$1",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "$one"
+    },
+    {
+      "template": "$$1",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "$"
+    },
+    {
+      "template": "$$1",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$$2"
+    },
+    {
+      "template": "\\$1",
+      "args": [],
+      "output": "\\"
+    },
+    {
+      "template": "\\$1",
+      "args": [
+        "one"
+      ],
+      "output": "\\one"
+    },
+    {
+      "template": "\\$1",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "\\one"
+    },
+    {
+      "template": "\\$1",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "\\"
+    },
+    {
+      "template": "\\$1",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "\\$2"
+    },
+    {
+      "template": "${@:2:}",
+      "args": [],
+      "output": "${@:2:}"
+    },
+    {
+      "template": "${@:2:}",
+      "args": [
+        "one"
+      ],
+      "output": "${@:2:}"
+    },
+    {
+      "template": "${@:2:}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "${@:2:}"
+    },
+    {
+      "template": "${@:2:}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "${@:2:}"
+    },
+    {
+      "template": "${@:2:}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "${@:2:}"
+    },
+    {
+      "template": "${2:-}",
+      "args": [],
+      "output": ""
+    },
+    {
+      "template": "${2:-}",
+      "args": [
+        "one"
+      ],
+      "output": ""
+    },
+    {
+      "template": "${2:-}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "two"
+    },
+    {
+      "template": "${2:-}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "b"
+    },
+    {
+      "template": "${2:-}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "${1:-x}"
+    },
+    {
+      "template": "$ARGUMENTSX $@@",
+      "args": [],
+      "output": "X @"
+    },
+    {
+      "template": "$ARGUMENTSX $@@",
+      "args": [
+        "one"
+      ],
+      "output": "oneX one@"
+    },
+    {
+      "template": "$ARGUMENTSX $@@",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one two threeX one two three@"
+    },
+    {
+      "template": "$ARGUMENTSX $@@",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": " bX  b@"
+    },
+    {
+      "template": "$ARGUMENTSX $@@",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2 ${1:-x} $@X $2 ${1:-x} $@@"
+    },
+    {
+      "template": "${1:-${2}}",
+      "args": [],
+      "output": "${2}"
+    },
+    {
+      "template": "${1:-${2}}",
+      "args": [
+        "one"
+      ],
+      "output": "one}"
+    },
+    {
+      "template": "${1:-${2}}",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "one}"
+    },
+    {
+      "template": "${1:-${2}}",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "${2}"
+    },
+    {
+      "template": "${1:-${2}}",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "$2}"
+    },
+    {
+      "template": "a ${@:1:2} b",
+      "args": [],
+      "output": "a  b"
+    },
+    {
+      "template": "a ${@:1:2} b",
+      "args": [
+        "one"
+      ],
+      "output": "a one b"
+    },
+    {
+      "template": "a ${@:1:2} b",
+      "args": [
+        "one",
+        "two",
+        "three"
+      ],
+      "output": "a one two b"
+    },
+    {
+      "template": "a ${@:1:2} b",
+      "args": [
+        "",
+        "b"
+      ],
+      "output": "a  b b"
+    },
+    {
+      "template": "a ${@:1:2} b",
+      "args": [
+        "$2",
+        "${1:-x}",
+        "$@"
+      ],
+      "output": "a $2 ${1:-x} b"
+    }
+  ],
+  "expandPromptTemplate": [
+    {
+      "input": "/review file.ts a b",
+      "output": "Review file.ts with a b"
+    },
+    {
+      "input": "/review",
+      "output": "Review  with "
+    },
+    {
+      "input": "/all   spaced   args  ",
+      "output": "All: spaced args"
+    },
+    {
+      "input": "/missing x",
+      "output": "/missing x"
+    },
+    {
+      "input": "review x",
+      "output": "review x"
+    },
+    {
+      "input": "/",
+      "output": "/"
+    },
+    {
+      "input": "/ review",
+      "output": "/ review"
+    },
+    {
+      "input": "/all\tx\ny",
+      "output": "All: x y"
+    },
+    {
+      "input": "/review \"a b\" 'c'",
+      "output": "Review a b with c"
+    }
+  ],
+  "formatSkills": [
+    {
+      "skills": [],
+      "reader": "read",
+      "output": ""
+    },
+    {
+      "skills": [],
+      "reader": "bash",
+      "output": ""
+    },
+    {
+      "skills": [],
+      "reader": "indirect",
+      "output": ""
+    },
+    {
+      "skills": [
+        {
+          "name": "a",
+          "description": "desc a",
+          "filePath": "/s/a/SKILL.md",
+          "baseDir": "/s/a",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        }
+      ],
+      "reader": "read",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>a</name>\n    <description>desc a</description>\n    <location>/s/a/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "a",
+          "description": "desc a",
+          "filePath": "/s/a/SKILL.md",
+          "baseDir": "/s/a",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        }
+      ],
+      "reader": "bash",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse bash to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>a</name>\n    <description>desc a</description>\n    <location>/s/a/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "a",
+          "description": "desc a",
+          "filePath": "/s/a/SKILL.md",
+          "baseDir": "/s/a",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        }
+      ],
+      "reader": "indirect",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nLoad a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>a</name>\n    <description>desc a</description>\n    <location>/s/a/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "x&y",
+          "description": "<b> 'q' \"d\"",
+          "filePath": "/s/x&y/SKILL.md",
+          "baseDir": "/s/x&y",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        },
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "read",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>x&amp;y</name>\n    <description>&lt;b&gt; &apos;q&apos; &quot;d&quot;</description>\n    <location>/s/x&amp;y/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "x&y",
+          "description": "<b> 'q' \"d\"",
+          "filePath": "/s/x&y/SKILL.md",
+          "baseDir": "/s/x&y",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        },
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "bash",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nUse bash to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>x&amp;y</name>\n    <description>&lt;b&gt; &apos;q&apos; &quot;d&quot;</description>\n    <location>/s/x&amp;y/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "x&y",
+          "description": "<b> 'q' \"d\"",
+          "filePath": "/s/x&y/SKILL.md",
+          "baseDir": "/s/x&y",
+          "sourceInfo": {},
+          "disableModelInvocation": false
+        },
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "indirect",
+      "output": "\n\nThe following skills provide specialized instructions for specific tasks.\nLoad a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>x&amp;y</name>\n    <description>&lt;b&gt; &apos;q&apos; &quot;d&quot;</description>\n    <location>/s/x&amp;y/SKILL.md</location>\n  </skill>\n</available_skills>"
+    },
+    {
+      "skills": [
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "read",
+      "output": ""
+    },
+    {
+      "skills": [
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "bash",
+      "output": ""
+    },
+    {
+      "skills": [
+        {
+          "name": "h",
+          "description": "hidden",
+          "filePath": "/s/h/SKILL.md",
+          "baseDir": "/s/h",
+          "sourceInfo": {},
+          "disableModelInvocation": true
+        }
+      ],
+      "reader": "indirect",
+      "output": ""
+    }
+  ],
+  "parseSkillBlock": [
+    {
+      "input": "<skill name=\"s\" location=\"/a/SKILL.md\">\nReferences are relative to /a.\n\nBody\n</skill>",
+      "output": {
+        "name": "s",
+        "location": "/a/SKILL.md",
+        "content": "References are relative to /a.\n\nBody"
+      }
+    },
+    {
+      "input": "<skill name=\"s\" location=\"/a/SKILL.md\">\nReferences are relative to /a.\n\nBody\n</skill>\n\n  user text  ",
+      "output": {
+        "name": "s",
+        "location": "/a/SKILL.md",
+        "content": "References are relative to /a.\n\nBody",
+        "userMessage": "user text"
+      }
+    },
+    {
+      "input": "<skill name=\"s\" location=\"/a/SKILL.md\">\nA\n</skill>\n\nB\n</skill>\n\nC",
+      "output": {
+        "name": "s",
+        "location": "/a/SKILL.md",
+        "content": "A",
+        "userMessage": "B\n</skill>\n\nC"
+      }
+    },
+    {
+      "input": "<skill name=\"s\" location=\"/a/SKILL.md\">\nBody\n</skill>\n\n   ",
+      "output": {
+        "name": "s",
+        "location": "/a/SKILL.md",
+        "content": "Body"
+      }
+    },
+    {
+      "input": "<skill name=\"s\" location=\"/a/SKILL.md\">\nBody\n</skill>\n",
+      "output": null
+    },
+    {
+      "input": "<skill name=\"\" location=\"/a\">\nB\n</skill>",
+      "output": null
+    },
+    {
+      "input": "plain",
+      "output": null
+    }
+  ],
+  "keyIdChecks": [
+    {
+      "key": "a",
+      "valid": true
+    },
+    {
+      "key": "z",
+      "valid": true
+    },
+    {
+      "key": "0",
+      "valid": true
+    },
+    {
+      "key": "A",
+      "valid": false
+    },
+    {
+      "key": "ctrl+a",
+      "valid": true
+    },
+    {
+      "key": "ctrl+shift+a",
+      "valid": true
+    },
+    {
+      "key": "shift+ctrl+o",
+      "valid": true
+    },
+    {
+      "key": "ctrl+ctrl+a",
+      "valid": false
+    },
+    {
+      "key": "ctrl+shift+alt+super+x",
+      "valid": true
+    },
+    {
+      "key": "ctrl+shift+alt+super+ctrl+x",
+      "valid": false
+    },
+    {
+      "key": "alt++",
+      "valid": true
+    },
+    {
+      "key": "ctrl+-",
+      "valid": true
+    },
+    {
+      "key": "pageUp",
+      "valid": true
+    },
+    {
+      "key": "pageup",
+      "valid": false
+    },
+    {
+      "key": "f12",
+      "valid": true
+    },
+    {
+      "key": "f13",
+      "valid": false
+    },
+    {
+      "key": "escape",
+      "valid": true
+    },
+    {
+      "key": "esc",
+      "valid": true
+    },
+    {
+      "key": "",
+      "valid": false
+    },
+    {
+      "key": "ctrl+",
+      "valid": false
+    },
+    {
+      "key": "ab",
+      "valid": false
+    },
+    {
+      "key": "ctrl+a+b",
+      "valid": false
+    },
+    {
+      "key": "super+`",
+      "valid": true
+    },
+    {
+      "key": "ctrl+\\",
+      "valid": true
+    },
+    {
+      "key": "shift+'",
+      "valid": true
+    }
+  ],
+  "keyArrayChecks": [
+    {
+      "value": [],
+      "valid": true
+    },
+    {
+      "value": [
+        "a",
+        "ctrl+b"
+      ],
+      "valid": true
+    },
+    {
+      "value": [
+        "a",
+        "bad key"
+      ],
+      "valid": false
+    },
+    {
+      "value": "x",
+      "valid": true
+    }
+  ],
+  "migrations": [
+    {
+      "input": {},
+      "output": {
+        "config": {},
+        "migrated": false
+      }
+    },
+    {
+      "input": {
+        "cursorUp": "up",
+        "app.interrupt": "escape",
+        "interrupt": "x",
+        "zeta": "a",
+        "alpha": "b",
+        "$schema": "s"
+      },
+      "output": {
+        "config": {
+          "tui.editor.cursorUp": "up",
+          "app.interrupt": "escape",
+          "$schema": "s",
+          "alpha": "b",
+          "zeta": "a"
+        },
+        "migrated": true
+      }
+    },
+    {
+      "input": {
+        "submit": "enter",
+        "tab": [
+          "tab"
+        ],
+        "tui.input.submit": "ctrl+enter"
+      },
+      "output": {
+        "config": {
+          "tui.input.submit": "ctrl+enter",
+          "tui.input.tab": [
+            "tab"
+          ]
+        },
+        "migrated": true
+      }
+    }
+  ],
+  "parseFrontmatter": [
+    {
+      "input": "no frontmatter\n",
+      "output": {
+        "frontmatter": {},
+        "body": "no frontmatter\n"
+      }
+    },
+    {
+      "input": "---\nname: x\ndescription: \"d: e\"\n---\nBody\n",
+      "output": {
+        "frontmatter": {
+          "name": "x",
+          "description": "d: e"
+        },
+        "body": "Body"
+      }
+    },
+    {
+      "input": "﻿---\r\nname: y\r\n---\r\n\r\n  Body  \r\n",
+      "output": {
+        "frontmatter": {
+          "name": "y"
+        },
+        "body": "Body"
+      }
+    },
+    {
+      "input": "---\n---\nbody",
+      "output": {
+        "frontmatter": {},
+        "body": "body"
+      }
+    },
+    {
+      "input": "---\nname: x",
+      "output": {
+        "frontmatter": {},
+        "body": "---\nname: x"
+      }
+    },
+    {
+      "input": "---\njust text\n---\nb",
+      "output": {
+        "frontmatter": "just text",
+        "body": "b"
+      }
+    },
+    {
+      "input": "---\nlist:\n  - 1\n  - two\nnested: {a: true, b: null}\n---\n",
+      "output": {
+        "frontmatter": {
+          "list": [
+            1,
+            "two"
+          ],
+          "nested": {
+            "a": true,
+            "b": null
+          }
+        },
+        "body": ""
+      }
+    },
+    {
+      "input": "---\nn: 1.5\nbig: 12345678901234\nneg: -3\nyes: yes\n---\n",
+      "output": {
+        "frontmatter": {
+          "n": 1.5,
+          "big": 12345678901234,
+          "neg": -3,
+          "yes": "yes"
+        },
+        "body": ""
+      }
+    },
+    {
+      "input": "--- \nname: z\n---\nb",
+      "output": {
+        "frontmatter": {
+          "name": "z"
+        },
+        "body": "b"
+      }
+    }
+  ]
+}

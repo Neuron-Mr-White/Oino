@@ -1,0 +1,4 @@
+/* MiddleText: the head shrinks to an ellipsis, the tail never does. */
+.mid { display: inline-flex; min-width: 0; max-width: 100%; white-space: pre; }
+.mid-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mid-tail { flex: none; }

@@ -1,0 +1,24 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.browser",
+  "name": "Browser",
+  "version": "1.0.0-alpha.5",
+  "kind": "extension",
+  "description": "Lets the agent use the in-app browser (browser_* tools); you see its tabs and can take over.",
+  "license": "MIT OR Apache-2.0",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "hostServices": [
+      "browser"
+    ],
+    "sessionControl": false
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:f82054f893f743f4dfd5225580d18cf9ca2c6fdb39374c49e9e9866666e1c211"
+  }
+}

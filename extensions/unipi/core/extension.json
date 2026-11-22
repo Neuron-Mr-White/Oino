@@ -1,0 +1,13 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.core",
+  "name": "unipi core",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "The work tray; owns the shared decision-model settings.",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "services": { "call": ["*/work-tray.tab", "*/work-tray.action"] }
+  }
+}

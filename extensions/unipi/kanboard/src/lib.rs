@@ -1,0 +1,1769 @@
+//! `unipi.kanboard` — the unipi 3.0.0 kanboard package as an Oino component (unipi-port
+//! §3.16). The board is written only by the native `unipi-kanboard` binary (crate
+//! `apps/unipi/crates/unipi-kanboard`); this component never edits task files.
+//!
+//! | unipi | here |
+//! |---|---|
+//! | `/kanboard [open\|close\|status\|show\|doctor]`, `-add` | commands on [`Kanboard`] (see [`args`] for texts and parsing) |
+//! | runners open / stop-daemon / rotate-token | hidden commands [`settings::ACTION_OPEN`] … |
+//! | bash write guard (`tool_call`) | [`guard`] + `tool_call` handler (also exports the session env, see below) |
+//! | arbiter monitor (claims 50 / autowork 40) | [`monitor`] behind `propose-nudge` |
+//! | evidence contributor, compaction context, move handler, `captureToBacklog` | services `evidence.contribute`, `compaction-context.provide`, `move.handle`, `kanboard.capture` |
+//! | R1 reminders, badges, notices, progress bar | [`reminders`], [`render`] (+ OUS renderers) |
+//! | in-chat board (message renderer) | [`render::show_node`] |
+//! | web board | [`panel`] (`sidePane`, refreshed from the daemon's SSE) |
+//! | `process.env.UNIPI_KANBOARD_*` for the agent's bash | `tool_call` prepends `export UNIPI_KANBOARD_SESSION=… PID=… PROJECT=…` to commands that call the binary |
+//! | sticky `KANBOARD_STATUS` | `unipi:kanboard:status` |
+
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )
+)]
+#![allow(
+    clippy::missing_errors_doc,
+    reason = "fallible fns return the CLI's or the contract's error, documented on the error types"
+)]
+#![allow(
+    clippy::unused_async_trait_impl,
+    reason = "`Extension::init` is async in the SDK; registration here is synchronous"
+)]
+
+pub mod args;
+pub mod cli;
+pub mod guard;
+pub mod monitor;
+pub mod panel;
+pub mod reminders;
+pub mod render;
+pub mod settings;
+pub mod shapes;
+pub mod shell;
+
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+
+use oino_extension::prelude::*;
+use oino_extension::sync::SessionMap;
+use oino_extension::wit::registry::RendererTarget;
+use unipi_kit::services::{
+    CompactionContext, EvidenceContribution, MoveReport, MoveRequest, fanout as fan, point,
+};
+use unipi_kit::settings::Store;
+use unipi_kit::topics::{self, KanboardStatus, LhOwnerChanged, LhState, ModuleReady};
+
+use crate::args::{AddCompletion, DOCTOR_CUSTOM_TYPE, HELP, HELP_CUSTOM_TYPE, SHOW_CUSTOM_TYPE};
+use crate::cli::CliError;
+use crate::guard::WriteGuard;
+use crate::monitor::{Monitor, Notice, OwnerStatus, SettleInfo};
+use crate::reminders::Tracker;
+use crate::render::{BADGE_ENTRY, NOTICE_ENTRY, PROGRESS_ENTRY};
+use crate::settings::{ACTION_OPEN, KanboardSettings, NAMESPACE};
+use crate::shapes::Task;
+
+/// Historical kanboard skill name (retained for transcript compatibility).
+pub const KANBOARD_SKILL: &str = "kanboard";
+const NO_BOARD: &str = "This project has no board. Set one up from Superagent.";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Per-session state.
+#[derive(Default)]
+struct SessionState {
+    available: bool,
+    guard: WriteGuard,
+    monitor: Monitor,
+    tracker: Tracker,
+    notices: Vec<Notice>,
+    tool_calls: u32,
+    settle: SettleInfo,
+    panel_open: bool,
+    cache: Option<(i64, Vec<Task>)>,
+}
+
+/// The extension.
+#[derive(Default)]
+pub struct Kanboard {
+    settings: Store,
+    sessions: SessionMap<SessionState>,
+    /// Absolute path the binary reported (`status.binary`).
+    binary_path: RefCell<Option<String>>,
+    /// Why the binary cannot run (`None` = fine or not probed yet).
+    unavailable: RefCell<Option<String>>,
+    /// Project slug per cwd.
+    slugs: RefCell<HashMap<String, String>>,
+    /// Running as kanboard's own child (`UNIPI_KANBOARD_CHILD`, the daemon's summarizer).
+    own_child: Cell<bool>,
+    /// This machine's host name (`status.hostname`).
+    host_name: RefCell<Option<String>>,
+    seq: Cell<u64>,
+}
+
+fn notify(text: &str, level: &str) {
+    let _ = ui::notify(text, level);
+}
+
+fn s(v: &Value, k: &str) -> String {
+    v.get(k)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// `export …` line that hands the session identity to the agent's own CLI calls.
+#[must_use]
+pub fn env_prefix(tool: &str, vars: &[(&str, String)]) -> String {
+    let quote = |v: &str| format!("'{}'", v.replace('\'', "'\\''"));
+    if tool == "powershell" {
+        let sets: Vec<String> = vars
+            .iter()
+            .map(|(k, v)| format!("$env:{k}='{}'", v.replace('\'', "''")))
+            .collect();
+        return format!("{}; ", sets.join("; "));
+    }
+    let sets: Vec<String> = vars
+        .iter()
+        .map(|(k, v)| format!("{k}={}", quote(v)))
+        .collect();
+    format!("export {}\n", sets.join(" "))
+}
+
+/// The `kanboard` tool's model-facing description (OIN-82, exact text).
+pub const TOOL_DESCRIPTION: &str = r#"Track work on this project's board. argv is the board command without the binary or global flags; your identity and the project are added for you. Commands: list [--ready|--all|--status LANE]; show ID (JSON includes attachment absolute paths); search TEXT [--all]; chain ID; next; add TITLE [--body TEXT] [--status backlog|todo] [--priority none|low|medium|high|urgent] [--after ID] [--label L]; edit ID [--title T] [--body B] [--priority P] [--labels A,B] (only tickets you created, while in backlog or todo); note ID TEXT; start ID (claim a todo ticket, or resume your blocked one); finish ID --comment SUMMARY [--attach /abs/image.png]… (in_progress → in_review; attach screenshots for visible results when available, optional when there is no visual result); move ID backlog|todo|blocked|cancelled [--comment TEXT] (blocked and cancelled need --comment; cancel backlog/todo tickets freely, in_progress/blocked ones only while your session holds them); link ID --after DEP; unlink ID --after DEP; order ID --top|--bottom|--before ID; attach ID /abs/file --note TEXT; attachments ID (lists absolute attachment paths; use read for image content on vision-capable models, otherwise image_recognize); project list|show. Examples: ["add","Fix login timeout","--status","todo"], ["start","OIN-12"], ["finish","OIN-12","--comment","Fixed; tests added"], ["move","OIN-13","cancelled","--comment","filed on the wrong board"]. Available only in projects with an active board. Set up boards from Superagent."#;
+
+/// Flags the tool fills in itself; an argv must never carry them.
+const OWNED_FLAGS: [&str; 6] = [
+    "--actor",
+    "--session",
+    "--project",
+    "--home",
+    "--gate",
+    "--origin",
+];
+/// Commands only the CLI runs (the owner, not an agent session).
+const CLI_ONLY: [&str; 5] = ["reap", "release", "duplicate", "archive-sweep", "validate"];
+/// `project` subcommands only the CLI runs.
+const CLI_ONLY_PROJECT: [&str; 3] = ["add", "archive", "unarchive"];
+
+/// The `kanboard` tool's schema (OIN-82, exact shape).
+fn tool_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "Board command and its arguments, e.g. [\"start\",\"OIN-12\"]."},
+            "project": {"type": "string", "description": "Board slug. Default: this folder's board."},
+        },
+        "required": ["argv"],
+        "additionalProperties": false,
+    })
+}
+
+/// `--json` is added by the bridge; an argv copy is dropped.
+fn strip_json(argv: Vec<String>) -> Vec<String> {
+    argv.into_iter().filter(|arg| arg != "--json").collect()
+}
+
+/// Why an argv is refused: the flags the tool sets itself, or a CLI-only command.
+fn tool_refusal(argv: &[String]) -> Option<String> {
+    if let Some(flag) = argv
+        .iter()
+        .find_map(|arg| OWNED_FLAGS.iter().find(|flag| arg.starts_with(**flag)))
+    {
+        return Some(format!(
+            "Don't pass {flag}; identity and project are set for you (use the project field for another board)."
+        ));
+    }
+    let cmd = argv.first()?.as_str();
+    let name = if cmd == "project" {
+        let sub = argv.get(1).map(String::as_str).unwrap_or_default();
+        CLI_ONLY_PROJECT
+            .contains(&sub)
+            .then(|| format!("project {sub}"))
+    } else {
+        CLI_ONLY.contains(&cmd).then(|| cmd.to_owned())
+    }?;
+    Some(format!("`{name}` is CLI-only; ask the owner to run it."))
+}
+
+/// The full argv: the tool's globals, the caller's argv, `--json` from the bridge.
+fn tool_argv(argv: &[String], project: Option<&str>, tag: &str, origin: &str) -> Vec<String> {
+    let mut out = vec![
+        "--actor".to_owned(),
+        "agent".to_owned(),
+        "--session".to_owned(),
+        tag.to_owned(),
+    ];
+    if let Some(project) = project {
+        out.push("--project".to_owned());
+        out.push(project.to_owned());
+    }
+    out.extend(["--origin".to_owned(), origin.to_owned()]);
+    out.extend(argv.iter().cloned());
+    out
+}
+
+/// The origin stamp: `chat:<sid>[:<message>]`, or `subagent:<sid>` for a child session.
+fn origin_stamp(sid: &str, child: bool, message: Option<&str>) -> String {
+    if child {
+        return format!("subagent:{sid}");
+    }
+    message.filter(|m| !m.is_empty()).map_or_else(
+        || format!("chat:{sid}"),
+        |message| format!("chat:{sid}:{message}"),
+    )
+}
+
+/// The newest user entry id on this branch — the message a chat-origin ticket names.
+fn last_user_entry_id() -> Option<String> {
+    let mut entries = session::query(&session::EntryQuery::messages(&["user"]).last(1)).ok()?;
+    entries.pop()?.get("id")?.as_str().map(ToOwned::to_owned)
+}
+
+impl Kanboard {
+    fn config(&self) -> KanboardSettings {
+        KanboardSettings::from_values(&self.settings.get(NAMESPACE))
+    }
+
+    fn session_tag(cx: &Ctx) -> String {
+        format!("oino-{}", cx.session_id())
+    }
+
+    fn is_child(&self, cx: &Ctx) -> bool {
+        cx.is_child() || self.own_child.get()
+    }
+
+    fn binary(&self) -> String {
+        if let Ok(Some(path)) = host::env("UNIPI_KANBOARD_BIN")
+            && !path.trim().is_empty()
+        {
+            return path.trim().to_owned();
+        }
+        self.binary_path
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| shell::BINARY.to_owned())
+    }
+
+    fn next_id(&self, what: &str) -> String {
+        self.seq.set(self.seq.get() + 1);
+        format!("kanboard-{what}-{}-{}", timers::now_ms(), self.seq.get())
+    }
+
+    fn base_env(&self, cx: &Ctx, slug: Option<&str>) -> Vec<(String, String)> {
+        let cfg = self.config();
+        let mut env = vec![
+            ("UNIPI_KANBOARD_SESSION".to_owned(), Self::session_tag(cx)),
+            (
+                "UNIPI_KANBOARD_CHAIN_GATE".to_owned(),
+                cfg.chain_gate.as_str().to_owned(),
+            ),
+        ];
+        if let Some(slug) = slug {
+            env.push(("UNIPI_KANBOARD_PROJECT".to_owned(), slug.to_owned()));
+        }
+        env
+    }
+
+    /// Runs the binary for `cx` (project + session env, cwd = session cwd).
+    async fn run(
+        &self,
+        cx: &Ctx,
+        args: &[&str],
+        slug: Option<&str>,
+        json: bool,
+    ) -> Result<Value, CliError> {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+        let env = self.base_env(cx, slug);
+        let cwd = cx.cwd().to_string_lossy().into_owned();
+        let result = cli::run(&self.binary(), &args, &env, Some(&cwd), json, None).await;
+        if let Err(e) = &result
+            && e.kind == "io"
+            && (e.message.contains("permission denied")
+                || e.message.contains("No such file")
+                || e.message.contains("not found")
+                || e.message.contains("failed to spawn"))
+        {
+            let info = host::info();
+            *self.unavailable.borrow_mut() =
+                Some(cli::unavailable_message(&info.platform, &info.arch));
+        }
+        result
+    }
+
+    /// The `kanboard` tool (OIN-82): runs the board command as this session, with the
+    /// project and origin filled in. No budget and no cap apply; only the tool's own
+    /// identity rules can refuse an argv.
+    async fn tool(&self, input: &Value, cx: &ToolCtx) -> ToolResult {
+        if !self.sync_scope(&cx.cx).await {
+            return ToolResult::error(NO_BOARD);
+        }
+        let argv = strip_json(
+            input
+                .get("argv")
+                .and_then(Value::as_array)
+                .map(|list| {
+                    list.iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        );
+        if let Some(reason) = tool_refusal(&argv) {
+            return ToolResult::error(reason);
+        }
+        let origin = if cx.cx.is_child() {
+            origin_stamp(cx.session_id(), true, None)
+        } else {
+            origin_stamp(cx.session_id(), false, last_user_entry_id().as_deref())
+        };
+        let project = input
+            .get("project")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|project| !project.is_empty());
+        if let Some(project) = project {
+            let target = self
+                .run(&cx.cx, &["project", "show"], Some(project), true)
+                .await;
+            if !matches!(target, Ok(ref v) if v.get("project").is_some_and(|p| p.get("archived").and_then(Value::as_bool) != Some(true)))
+            {
+                return ToolResult::error(NO_BOARD);
+            }
+        }
+        let slug = self.slug(&cx.cx);
+        let full = tool_argv(
+            &argv,
+            project.or(slug.as_deref()),
+            &Self::session_tag(&cx.cx),
+            &origin,
+        );
+        let mut env = self.base_env(&cx.cx, None);
+        env.push((
+            "UNIPI_KANBOARD_PID".to_owned(),
+            process::self_pid().to_string(),
+        ));
+        let cwd = cx.cx.cwd().to_string_lossy().into_owned();
+        match cli::run(&self.binary(), &full, &env, Some(&cwd), true, None).await {
+            Ok(v) => {
+                let body = serde_json::to_string(&v).unwrap_or_default();
+                let text = v
+                    .get("boardCreated")
+                    .filter(|created| created.is_object())
+                    .map_or_else(
+                        || body.clone(),
+                        |created| {
+                            format!(
+                                "Board created for {} ({}).\n{body}",
+                                s(created, "name"),
+                                s(created, "slug")
+                            )
+                        },
+                    );
+                ToolResult::text(text).with_details(v)
+            }
+            Err(e) => ToolResult::error(e.message),
+        }
+    }
+
+    /// Probes the binary (`status`), caching its absolute path and the host name.
+    async fn attach(&self, cx: &Ctx) -> Result<shapes::Status, String> {
+        match self.run(cx, &["status"], None, true).await {
+            Ok(v) => {
+                let status = shapes::as_status(&v).map_err(|e| e.to_string())?;
+                if let Some(b) = &status.binary {
+                    *self.binary_path.borrow_mut() = Some(b.clone());
+                }
+                self.host_name.borrow_mut().clone_from(&status.hostname);
+                *self.unavailable.borrow_mut() = None;
+                Ok(status)
+            }
+            Err(e) => {
+                let why = self.unavailable.borrow().clone().unwrap_or(e.message);
+                Err(why)
+            }
+        }
+    }
+
+    async fn unavailable(&self, cx: &Ctx) -> Option<String> {
+        if self.binary_path.borrow().is_some() {
+            return None;
+        }
+        self.attach(cx).await.err()
+    }
+
+    /// Resolve afresh at turn boundaries: positive and negative board state can change.
+    /// Nested agents use the root chat's project even when their work cwd differs.
+    fn project_cwd(cx: &Ctx) -> String {
+        if cx.is_child()
+            && let Ok(header) = session::header()
+            && let Some(cwd) = header.get("rootCwd").and_then(Value::as_str)
+        {
+            return cwd.to_owned();
+        }
+        cx.cwd().to_string_lossy().into_owned()
+    }
+
+    async fn resolve_active_slug(&self, cx: &Ctx) -> Option<String> {
+        let configured = self
+            .settings
+            .get(NAMESPACE)
+            .get("slug")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned);
+        let cwd = Self::project_cwd(cx);
+        let v = cli::run(
+            &self.binary(),
+            &["project".into(), "show".into()],
+            &self.base_env(cx, configured.as_deref()),
+            Some(&cwd),
+            true,
+            None,
+        )
+        .await
+        .ok()?;
+        if v.get("project")?.get("archived").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
+        shapes::as_project_detail(&v).ok().map(|(p, _)| p.slug)
+    }
+
+    async fn sync_scope(&self, cx: &Ctx) -> bool {
+        let cwd = Self::project_cwd(cx);
+        let slug = self.resolve_active_slug(cx).await;
+        let available = slug.is_some() && !self.own_child.get();
+        if let Some(slug) = slug {
+            self.slugs.borrow_mut().insert(cwd.clone(), slug);
+        } else {
+            self.slugs.borrow_mut().remove(&cwd);
+        }
+        let names = ["kanboard".to_owned()];
+        let result = if available {
+            control::update_active_tools(&names, &[])
+        } else {
+            control::update_active_tools(&[], &names)
+        };
+        if let Err(error) = result {
+            host::log(
+                host::LogLevel::Error,
+                &format!("kanboard scope update failed: {error}"),
+            );
+        }
+        let close_panel = self.sessions.with(cx.session_id(), |s| {
+            let close = !available && s.panel_open;
+            if s.available != available {
+                *s = SessionState {
+                    available,
+                    ..SessionState::default()
+                };
+            }
+            close
+        });
+        if !available {
+            if close_panel {
+                self.close_board(cx);
+            }
+            unipi_kit::bus::emit(&KanboardStatus {
+                claims: Vec::new(),
+                autowork: false,
+                cli: None,
+            });
+        }
+        available
+    }
+
+    fn slug(&self, cx: &Ctx) -> Option<String> {
+        self.slugs.borrow().get(&Self::project_cwd(cx)).cloned()
+    }
+
+    fn available(&self, cx: &Ctx) -> bool {
+        self.sessions.with(cx.session_id(), |s| s.available)
+    }
+
+    async fn require_board(&self, cx: &Ctx) -> bool {
+        if self.sync_scope(cx).await {
+            return true;
+        }
+        Self::display_message("kanboard.notice", NO_BOARD.to_owned(), None).await;
+        false
+    }
+
+    fn cli_prefix(&self, cx: &Ctx) -> Option<String> {
+        let slug = self.slug(cx);
+
+        slug.map(|s| format!("{} --actor agent --project {s}", self.binary()))
+    }
+
+    async fn list(&self, cx: &Ctx, extra: &[&str]) -> Result<Vec<Task>, String> {
+        let Some(slug) = self.slug(cx) else {
+            return Ok(Vec::new());
+        };
+        let mut args = vec!["list"];
+        args.extend_from_slice(extra);
+        let v = self
+            .run(cx, &args, Some(&slug), true)
+            .await
+            .map_err(|e| e.message)?;
+        shapes::as_task_list(&v)
+            .map(|(t, _)| t)
+            .map_err(|e| e.to_string())
+    }
+
+    async fn own_claims(&self, cx: &Ctx) -> Vec<Task> {
+        let tag = Self::session_tag(cx);
+        self.list(cx, &[])
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| t.claimed_by(&tag))
+            .collect()
+    }
+
+    async fn refresh_holder(&self, cx: &Ctx) {
+        let claims: Vec<String> = self
+            .own_claims(cx)
+            .await
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        let autowork = self.sessions.with(cx.session_id(), |s| s.guard.autowork());
+        let cli = self.cli_prefix(cx);
+        unipi_kit::bus::emit(&KanboardStatus {
+            claims,
+            autowork,
+            cli,
+        });
+    }
+
+    async fn display_message(custom_type: &str, content: String, details: Option<Value>) {
+        let msg = oino_extension::session::CustomMessage {
+            custom_type: custom_type.to_owned(),
+            content: Value::String(content),
+            display: true,
+            details,
+        };
+        let _ = session::send_message(&msg, oino_extension::session::SendOptions::default()).await;
+    }
+
+    // ── commands ────────────────────────────────────────────────────────
+
+    async fn add(&self, cx: &Ctx, text: &str) {
+        if !self.require_board(cx).await {
+            return;
+        }
+        if let Some(why) = self.unavailable(cx).await {
+            notify(&format!("kanboard: {why}"), "warning");
+            return;
+        }
+        let parsed = args::parse_add_args(text);
+        if let Some(e) = parsed.error {
+            notify(
+                &format!(
+                    "kanboard: {e} — /kanboard-add [-p 1-5] [--after ID] [--status backlog|todo] <title>"
+                ),
+                "warning",
+            );
+            return;
+        }
+        if parsed.title.is_empty() && parsed.description.trim().is_empty() {
+            notify(
+                "kanboard: add needs a title or a description — /kanboard-add <title> (lines below are the description)",
+                "warning",
+            );
+            return;
+        }
+        let Some(slug) = self.slug(cx) else {
+            return;
+        };
+        match self
+            .add_task(
+                cx,
+                &slug,
+                &parsed.title,
+                &parsed.flags,
+                &parsed.description,
+                &parsed.attaches,
+            )
+            .await
+        {
+            Ok(task) => {
+                let lane = if task.status == "todo" {
+                    "Todo"
+                } else {
+                    "Backlog"
+                };
+                let n = task.attachment_count();
+                let att = if n > 0 {
+                    format!(" ({n} attachment{})", if n == 1 { "" } else { "s" })
+                } else {
+                    String::new()
+                };
+                notify(&format!("✓ {} added to {lane}{att}", task.id), "info");
+            }
+            Err(e) => {
+                Self::display_message(
+                    "kanboard.notice",
+                    format!("Could not add the task: {e}"),
+                    None,
+                )
+                .await;
+            }
+        }
+    }
+
+    /// `add` with the body passed through a temp file (no re-escaping through argv).
+    async fn add_task(
+        &self,
+        cx: &Ctx,
+        slug: &str,
+        title: &str,
+        flags: &[String],
+        body: &str,
+        attaches: &[String],
+    ) -> Result<Task, String> {
+        let mut argv: Vec<String> = vec!["add".into()];
+        if !title.is_empty() {
+            argv.push(title.to_owned());
+        }
+        argv.extend(flags.iter().cloned());
+        let mut tmp = None;
+        if !body.is_empty() {
+            let guest = unipi_kit::paths::tmp(&format!("kb-add-{}.md", self.next_id("body")));
+            let host = unipi_kit::paths::ensure_parent(&guest)
+                .ok()
+                .and_then(|()| std::fs::write(&guest, body).ok())
+                .and_then(|()| unipi_kit::paths::host_path(&guest));
+            match host {
+                Some(h) => {
+                    argv.extend(["--body-file".into(), h.to_string_lossy().into_owned()]);
+                    tmp = Some(guest);
+                }
+                None => argv.push(format!("--body={body}")),
+            }
+        }
+        for a in attaches {
+            argv.extend(["--attach-existing".into(), a.clone()]);
+        }
+        let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let result = self.run(cx, &refs, Some(slug), true).await;
+        if let Some(t) = tmp {
+            unipi_kit::paths::try_delete(&t);
+        }
+        let v = result.map_err(|e| e.message)?;
+        shapes::as_task("add", &v).map_err(|e| e.to_string())
+    }
+
+    async fn capture(&self, cx: &Ctx, payload: &Value) -> Value {
+        if !self.sync_scope(cx).await {
+            return json!({"ok": false, "reason": NO_BOARD});
+        }
+        if let Some(why) = self.unavailable(cx).await {
+            return json!({"ok": false, "reason": why});
+        }
+        let Some(slug) = self.slug(cx) else {
+            return json!({"ok": false, "reason": "kanboard is not set up here — run /kanboard"});
+        };
+        let text = payload
+            .get("text")
+            .or_else(|| payload.get("body"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_owned();
+        let title = s(payload, "title");
+        if text.is_empty() && title.trim().is_empty() {
+            return json!({"ok": false, "reason": "nothing to add"});
+        }
+        let mut flags = vec!["--status".to_owned(), "backlog".to_owned()];
+        if let Some(p) = payload
+            .get("priority")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+        {
+            flags.extend(["--priority".to_owned(), p.to_owned()]);
+        }
+        let attaches = args::detect_file_paths(&text);
+        match self
+            .add_task(cx, &slug, title.trim(), &flags, &text, &attaches)
+            .await
+        {
+            Ok(task) => json!({"ok": true, "id": task.id, "attachments": task.attachment_count()}),
+            Err(reason) => json!({"ok": false, "reason": reason}),
+        }
+    }
+
+    /// `/kanboard open` (round-5 #7): opens the native board tab — the panel
+    /// is only a marker; the pane renders the board in-process from the
+    /// library, so there is nothing to start and no URL to print.
+    async fn open(&'static self, cx: &Ctx, _rest: &str) {
+        if !self.require_board(cx).await {
+            return;
+        }
+        if let Some(why) = self.unavailable(cx).await {
+            notify(&format!("kanboard: {why}"), "warning");
+            return;
+        }
+        if cx.has_ui() {
+            self.open_panel(cx).await;
+        } else {
+            notify("kanboard: no UI here — the board tab opens in Oino", "info");
+        }
+    }
+
+    /// `/kanboard close` closes the board tab (nothing else runs anymore).
+    fn close_board(&self, cx: &Ctx) {
+        self.sessions
+            .with(cx.session_id(), |s| s.panel_open = false);
+        ui::panel_close(panel::PANEL_ID);
+    }
+
+    async fn status(&self, cx: &Ctx) {
+        let mut lines = Vec::new();
+        match self.slug(cx) {
+            Some(slug) => match self.list(cx, &["--all"]).await {
+                Ok(tasks) => {
+                    let mut counts: Vec<(String, usize)> = Vec::new();
+                    for t in &tasks {
+                        match counts.iter_mut().find(|(s, _)| *s == t.status) {
+                            Some((_, n)) => *n += 1,
+                            None => counts.push((t.status.clone(), 1)),
+                        }
+                    }
+                    let summary = if counts.is_empty() {
+                        "empty".to_owned()
+                    } else {
+                        counts
+                            .iter()
+                            .map(|(s, n)| format!("{s} {n}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    lines.push(format!(
+                        "kanboard: project {slug} · {} tasks ({summary})",
+                        tasks.len()
+                    ));
+                    if let Ok(v) = self.run(cx, &["list", "--all"], Some(&slug), true).await
+                        && let Ok((_, problems)) = shapes::as_task_list(&v)
+                        && !problems.is_empty()
+                    {
+                        lines.push(format!(
+                            "⚠ {} task file(s) need repair — unipi-kanboard validate --fix",
+                            problems.len()
+                        ));
+                    }
+                    if let Some(bar) = render::board_progress(&tasks, &slug) {
+                        let _ = session::append_entry(PROGRESS_ENTRY, Some(&bar));
+                    }
+                    let running: Vec<&Task> =
+                        tasks.iter().filter(|t| t.status == "in_progress").collect();
+                    if !running.is_empty() {
+                        lines.push("claims:".into());
+                        for t in running {
+                            let run = t.run.clone().unwrap_or_default();
+                            lines.push(format!(
+                                "  {} — session {} pid {} on {} ({})",
+                                t.id,
+                                run.session.unwrap_or_else(|| "?".into()),
+                                run.pid.map_or_else(|| "?".into(), |p| p.to_string()),
+                                run.host.unwrap_or_else(|| "?".into()),
+                                t.staleness.clone().unwrap_or_else(|| "?".into())
+                            ));
+                        }
+                    }
+                }
+                Err(_) => lines.push(format!("kanboard: project {slug} (unreadable board)")),
+            },
+            None => lines.push("project: not registered here — set one up from Superagent".into()),
+        }
+        Self::display_message("kanboard.status", lines.join("\n"), None).await;
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one check per line of the report, in unipi's order"
+    )]
+    async fn doctor(&self, cx: &Ctx) {
+        let check = |ok: Option<bool>, label: String| {
+            format!(
+                "{} {label}",
+                match ok {
+                    None => "–",
+                    Some(true) => "✓",
+                    Some(false) => "✗",
+                }
+            )
+        };
+        let mut lines = vec!["kanboard doctor".to_owned()];
+        let attached = self.attach(cx).await;
+        let source = if host::env("UNIPI_KANBOARD_BIN").ok().flatten().is_some() {
+            "env"
+        } else {
+            "install"
+        };
+        lines.push(match &attached {
+            Ok(_) => check(Some(true), format!("binary: {} ({source})", self.binary())),
+            Err(why) => check(Some(false), format!("binary: {why}")),
+        });
+        let slug = self.slug(cx);
+        match &slug {
+            None => lines.push(check(
+                Some(false),
+                "project: not registered for this folder — set one up from Superagent".into(),
+            )),
+            Some(slug) if attached.is_ok() => {
+                match self.run(cx, &["project", "show"], Some(slug), true).await {
+                    Ok(v) => {
+                        let name = v
+                            .pointer("/project/name")
+                            .and_then(Value::as_str)
+                            .unwrap_or(slug)
+                            .to_owned();
+                        let total = v
+                            .get("total")
+                            .map_or_else(|| "?".into(), ToString::to_string);
+                        lines.push(check(
+                            Some(true),
+                            format!("project: {name} ({slug}) · {total} tasks"),
+                        ));
+                    }
+                    Err(e) => lines.push(check(
+                        Some(false),
+                        format!("project: {slug} unreadable — {e}"),
+                    )),
+                }
+            }
+            Some(_) => {}
+        }
+        match self.run(cx, &["settings", "show"], None, true).await {
+            Ok(v) => {
+                let argv: Vec<String> = v
+                    .get("piCommand")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(ToOwned::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if argv.is_empty() {
+                    lines.push(check(
+                        None,
+                        "summarize via oino: not configured (open the board from Oino once)".into(),
+                    ));
+                } else {
+                    lines.push(check(
+                        Some(true),
+                        format!("summarize via oino: {}", argv.join(" ")),
+                    ));
+                    let model = s(&v, "summaryModel");
+                    if model.trim().is_empty() {
+                        lines.push(check(Some(true), "summary model: oino default".into()));
+                    } else {
+                        let listed = v
+                            .get("models")
+                            .and_then(Value::as_array)
+                            .is_some_and(|m| m.iter().any(|x| x.as_str() == Some(model.trim())));
+                        lines.push(check(
+                            Some(listed),
+                            format!(
+                                "summary model: {model}{}",
+                                if listed {
+                                    ""
+                                } else {
+                                    " — not in the reported model list"
+                                }
+                            ),
+                        ));
+                    }
+                }
+            }
+            Err(_) => lines.push(check(
+                None,
+                "summarize via oino: not configured (open the board from Oino once)".into(),
+            )),
+        }
+        if let Ok(settings) = oino_extension::control::settings() {
+            let mode = settings
+                .pointer("/extensionSettings/permission/mode")
+                .and_then(Value::as_str)
+                .unwrap_or("auto");
+            lines.push(check(Some(true), format!("permission mode: {mode}")));
+        }
+        if let (Some(slug), true) = (&slug, attached.is_ok()) {
+            match self.run(cx, &["reap", "--dry-run"], Some(slug), true).await {
+                Ok(v) => {
+                    let ids = |k: &str| {
+                        v.get(k)
+                            .and_then(Value::as_array)
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(ToOwned::to_owned)
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default()
+                    };
+                    let (released, unknown) = (ids("released"), ids("unknown"));
+                    for id in &released {
+                        lines.push(check(
+                            Some(false),
+                            format!(
+                                "claim: {id} — dead session, will return to Todo on next claim"
+                            ),
+                        ));
+                    }
+                    for id in &unknown {
+                        lines.push(check(
+                            None,
+                            format!("claim: {id} — running on another host"),
+                        ));
+                    }
+                    if released.is_empty() && unknown.is_empty() {
+                        lines.push(check(Some(true), "claims: none stale".into()));
+                    }
+                }
+                Err(_) => lines.push(check(
+                    None,
+                    "claims: could not probe (reap --dry-run failed)".into(),
+                )),
+            }
+        }
+        Self::display_message(DOCTOR_CUSTOM_TYPE, lines.join("\n"), None).await;
+    }
+
+    async fn show(&self, cx: &Ctx, all: bool, lane: Option<&str>) {
+        if let Some(why) = self.unavailable(cx).await {
+            notify(&format!("kanboard: {why}"), "warning");
+            return;
+        }
+        let Some(slug) = self.slug(cx) else {
+            return;
+        };
+        let tasks: Vec<Task> = match self.list(cx, &["--all"]).await {
+            Ok(t) => t
+                .into_iter()
+                .filter(|t| lane.is_none_or(|l| t.status == l))
+                .collect(),
+            Err(e) => {
+                Self::display_message(
+                    "kanboard.notice",
+                    format!("Could not show the board: {e}"),
+                    None,
+                )
+                .await;
+                return;
+            }
+        };
+        let plain = render::show_plain(&slug, &tasks, all, lane);
+        let details = json!({"project": slug, "tasks": tasks, "all": all, "lane": lane});
+        Self::display_message(SHOW_CUSTOM_TYPE, plain, Some(details)).await;
+    }
+
+    async fn kanboard_command(&'static self, args: &str, cx: &Ctx) {
+        if !self.require_board(cx).await {
+            return;
+        }
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        let sub = parts.first().map(|s| s.to_lowercase()).unwrap_or_default();
+        let rest = args
+            .trim()
+            .get(parts.first().map_or(0, |p| p.len())..)
+            .unwrap_or("")
+            .trim()
+            .to_owned();
+        match sub.as_str() {
+            "" => Self::display_message(HELP_CUSTOM_TYPE, HELP.to_owned(), None).await,
+            "add" => notify(
+                "kanboard: use /kanboard-add <title> — lines below the title become the description",
+                "info",
+            ),
+            "work" => notify("kanboard: use Superagent to dispatch ready tickets", "info"),
+            "stop" => notify("kanboard: use Superagent to stop a worker", "info"),
+            "onboard" => {
+                notify("Manage boards from Superagent.", "info");
+            }
+            "close" => self.close_board(cx),
+            "status" => {
+                if let Some(why) = self.unavailable(cx).await {
+                    notify(&format!("kanboard: {why}"), "warning");
+                } else {
+                    self.status(cx).await;
+                }
+            }
+            "doctor" => self.doctor(cx).await,
+            "show" => {
+                let lane = parts
+                    .iter()
+                    .find(|p| args::SHOW_FILTERS.contains(p))
+                    .copied();
+                self.show(cx, parts.contains(&"--all"), lane).await;
+            }
+            "open" => self.open(cx, &rest).await,
+            other => notify(
+                &format!("kanboard: unknown subcommand \"{other}\" — /kanboard lists the commands"),
+                "warning",
+            ),
+        }
+    }
+
+    async fn cached_tasks(&self, cx: &Ctx) -> Vec<Task> {
+        if !self.available(cx) {
+            return Vec::new();
+        }
+        let now = timers::now_ms();
+        if let Some(tasks) = self.sessions.with(cx.session_id(), |s| {
+            s.cache
+                .as_ref()
+                .filter(|(at, _)| now - at < 5_000)
+                .map(|(_, t)| t.clone())
+        }) {
+            return tasks;
+        }
+        let tasks = self.list(cx, &["--all"]).await.unwrap_or_default();
+        self.sessions
+            .with(cx.session_id(), |s| s.cache = Some((now, tasks.clone())));
+        tasks
+    }
+
+    /// Opens the native board tab (round-5 #7): `unipi.kanboard/board` is a reserved
+    /// entry (ui-protocol §8) — the app renders the board component itself, other
+    /// frontends draw the task-list fallback the open installs.
+    async fn open_panel(&self, cx: &Ctx) {
+        let tasks = self.cached_tasks(cx).await;
+        if panel::open(&tasks).is_ok() {
+            self.sessions.with(cx.session_id(), |s| s.panel_open = true);
+        }
+    }
+
+    fn on_ui_action(&self, ev: &Event, cx: &Ctx) {
+        let panel_id = s(&ev.payload, "panelId");
+        if !panel_id.ends_with(panel::PANEL_ID) {
+            return;
+        }
+        if s(&ev.payload, "actionId") == "$close" {
+            self.sessions
+                .with(cx.session_id(), |s| s.panel_open = false);
+        }
+    }
+
+    // ── run hooks ───────────────────────────────────────────────────────
+
+    fn on_tool_call(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+        if !self.available(cx) {
+            return None;
+        }
+        self.sessions.with(cx.session_id(), |s| s.tool_calls += 1);
+        let tool = s(&ev.payload, "toolName");
+        if tool != "bash" && tool != "powershell" {
+            return None;
+        }
+        let input = ev.payload.get("input").cloned().unwrap_or(Value::Null);
+        let command = input
+            .get("command")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        if shell::invocations(&command).is_empty() {
+            return None;
+        }
+        let tag = Self::session_tag(cx);
+        let slug = self.slug(cx);
+        let reason = self
+            .sessions
+            .with(cx.session_id(), |s| s.guard.check(&command));
+        if let Some(reason) = reason {
+            return Some(json!({"block": true, "reason": reason}));
+        }
+        // The agent's own calls carry the session identity (unipi: process env).
+        let mut vars = vec![
+            ("UNIPI_KANBOARD_SESSION", tag),
+            ("UNIPI_KANBOARD_PID", process::self_pid().to_string()),
+        ];
+        if let Some(slug) = slug {
+            vars.push(("UNIPI_KANBOARD_PROJECT", slug));
+        }
+        let mut input = input;
+        input["command"] = json!(format!("{}{command}", env_prefix(&tool, &vars)));
+        Some(json!({"input": input}))
+    }
+
+    async fn on_tool_result(&self, ev: &Event, cx: &Ctx) -> Option<Value> {
+        if !self.available(cx) {
+            return None;
+        }
+        let tool = s(&ev.payload, "toolName");
+        let input = ev.payload.get("input").cloned().unwrap_or(Value::Null);
+        let is_error = ev.payload.get("isError").and_then(Value::as_bool) == Some(true);
+        let child = self.is_child(cx);
+        if !child && (tool == "bash" || tool == "powershell") {
+            if let Some(badge) = render::badge_from_tool_call(&tool, &input, is_error) {
+                let _ = session::append_entry(BADGE_ENTRY, Some(&badge.to_json()));
+            }
+            if !is_error {
+                let invs =
+                    shell::invocations(input.get("command").and_then(Value::as_str).unwrap_or(""));
+                if invs
+                    .iter()
+                    .any(|i| matches!(i.sub.as_str(), "start" | "finish" | "move"))
+                {
+                    if invs.iter().any(|i| i.sub == "start") {
+                        self.sessions.with(cx.session_id(), |s| s.monitor.arm());
+                    }
+                    self.refresh_holder(cx).await;
+                }
+            }
+        }
+        let silent = !self.config().reminders || child;
+        let candidates = self.sessions.with(cx.session_id(), |s| {
+            s.tracker.observe(&tool, &input, is_error, silent)
+        })?;
+        let tasks = self.list(cx, &[]).await.ok()?;
+        let todo = self
+            .sessions
+            .with(cx.session_id(), |s| s.tracker.remind(&candidates, &tasks))?;
+        let cli = self.cli_prefix(cx);
+        let content = ev
+            .payload
+            .get("content")
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new()));
+        let details = ev.payload.get("details").cloned().unwrap_or(Value::Null);
+        Some(reminders::r1_result(
+            &content,
+            &details,
+            &todo,
+            cli.as_deref(),
+            &self.next_id("r1"),
+        ))
+    }
+
+    async fn on_before_agent_start(&self, ev: &Event, cx: &Ctx) {
+        if !self.sync_scope(cx).await {
+            return;
+        }
+        let prompt = s(&ev.payload, "prompt");
+        self.sessions
+            .with(cx.session_id(), |s| s.tracker.on_prompt(&prompt));
+        if let Some(ids) = Monitor::prompt_ids(&prompt)
+            && let Ok(tasks) = self.list(cx, &[]).await
+        {
+            let tag = Self::session_tag(cx);
+            self.sessions.with(cx.session_id(), |s| {
+                s.monitor.on_user_prompt(&ids, &tasks, &tag);
+            });
+        }
+    }
+
+    fn on_agent_end(&self, ev: &Event, cx: &Ctx) {
+        if !self.available(cx) {
+            return;
+        }
+        let messages = ev
+            .payload
+            .get("messages")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let (text, tools) = monitor::last_assistant(&messages);
+        self.sessions.with(cx.session_id(), |s| {
+            s.monitor.on_agent_end(&messages);
+            s.settle = SettleInfo {
+                last_assistant_text: text,
+                last_assistant_had_tool_calls: tools,
+                tool_calls_this_run: s.tool_calls,
+            };
+        });
+    }
+
+    async fn on_settled(&self, cx: &Ctx) {
+        if !self.available(cx) {
+            return;
+        }
+        let notices = self
+            .sessions
+            .with(cx.session_id(), |s| std::mem::take(&mut s.notices));
+        for n in notices {
+            let _ = session::append_entry(
+                NOTICE_ENTRY,
+                Some(&json!({"text": n.text, "level": n.level})),
+            );
+            if cx.has_ui() {
+                notify(&n.text, n.level);
+            }
+        }
+        self.refresh_holder(cx).await;
+    }
+
+    async fn propose(&self, cx: &Ctx) -> Option<Value> {
+        if !self.available(cx) {
+            return None;
+        }
+        if self.is_child(cx) {
+            return None;
+        }
+        let (armed, wants_ready, info) = self.sessions.with(cx.session_id(), |s| {
+            (s.monitor.armed(), s.monitor.wants_ready(), s.settle.clone())
+        });
+        if !armed {
+            return None;
+        }
+        let owner =
+            unipi_kit::bus::get::<LhState>().map_or_else(OwnerStatus::default, |st| OwnerStatus {
+                owner_status: st.owner.map(|o| o.status),
+                last_stop: st.last_stop.map(|l| (l.kind, l.at)),
+            });
+        let tasks = self.list(cx, &[]).await;
+        let ready = if wants_ready {
+            Some(self.list(cx, &["--ready"]).await)
+        } else {
+            None
+        };
+        let cli = self.cli_prefix(cx);
+        let tag = Self::session_tag(cx);
+        let out = self.sessions.with(cx.session_id(), |s| {
+            let out = s.monitor.propose(
+                &info,
+                &tag,
+                &owner,
+                tasks.as_deref().ok(),
+                ready,
+                cli.as_deref(),
+            );
+            s.notices.extend(out.notices.iter().cloned());
+            if out.autowork_off {
+                s.guard.set_autowork(false);
+            }
+            out
+        });
+        if out.autowork_off {
+            self.refresh_holder(cx).await;
+        }
+        out.proposal.map(|p| p.to_json())
+    }
+
+    // ── lifecycle ───────────────────────────────────────────────────────
+
+    async fn on_session_start(&self, cx: &Ctx) {
+        if !self.sync_scope(cx).await {
+            return;
+        }
+        let attached = self.attach(cx).await;
+        unipi_kit::bus::emit(&ModuleReady {
+            name: "@pi-unipi/kanboard".into(),
+            version: VERSION.into(),
+            commands: vec!["kanboard".into()],
+            tools: Vec::new(),
+            load_time_ms: None,
+        });
+        if attached.is_err() {
+            return;
+        }
+        let slug = self.slug(cx);
+        if !cx.is_child()
+            && let Some(slug) = &slug
+        {
+            let _ = self.run(cx, &["reap"], Some(slug), true).await;
+        }
+        self.refresh_holder(cx).await;
+        if !cx.is_child() {
+            let tag = Self::session_tag(cx);
+            let stale: Vec<String> = self
+                .list(cx, &[])
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|t| {
+                    t.status == "todo"
+                        && t.activity.last().is_some_and(|last| {
+                            last.text.starts_with(&format!("session lost: {tag}"))
+                                || last
+                                    .text
+                                    .contains(&format!("released: session ended mid-task ({tag})"))
+                        })
+                })
+                .map(|t| t.id)
+                .collect();
+            if !stale.is_empty() {
+                notify(
+                    &format!(
+                        "kanboard: {} was released when the last run ended — ask me to re-start it",
+                        stale.join(", ")
+                    ),
+                    "info",
+                );
+            }
+        }
+        let cfg = self.config();
+        if (cfg.archive_after_days > 0 || cfg.retention_days > 0)
+            && let Some(slug) = &slug
+        {
+            let after = cfg.archive_after_days.to_string();
+            let retention = cfg.retention_days.to_string();
+            let _ = self
+                .run(
+                    cx,
+                    &[
+                        "archive-sweep",
+                        "--after-days",
+                        &after,
+                        "--retention-days",
+                        &retention,
+                    ],
+                    Some(slug),
+                    true,
+                )
+                .await;
+        }
+    }
+
+    async fn on_session_shutdown(&self, cx: &Ctx) {
+        if self.is_child(cx) {
+            return;
+        }
+        let tag = Self::session_tag(cx);
+        let claims = self.own_claims(cx).await;
+        let Some(slug) = self.slug(cx) else {
+            return;
+        };
+        if claims.is_empty() {
+            return;
+        }
+        let comment = format!("released: session ended mid-task ({tag})");
+        for task in &claims {
+            let _ = self
+                .run(
+                    cx,
+                    &[
+                        "--actor",
+                        "system",
+                        "--project",
+                        &slug,
+                        "release",
+                        &task.id,
+                        "--to",
+                        "todo",
+                        "--comment",
+                        &comment,
+                    ],
+                    Some(&slug),
+                    true,
+                )
+                .await;
+        }
+        let autowork = self.sessions.with(cx.session_id(), |s| s.guard.autowork());
+        let cli = self.cli_prefix(cx);
+        unipi_kit::bus::emit(&KanboardStatus {
+            claims: Vec::new(),
+            autowork,
+            cli,
+        });
+        self.sessions.remove(cx.session_id());
+    }
+
+    async fn move_handle(&self, cx: &Ctx, req: &MoveRequest) -> MoveReport {
+        let mut log = Vec::new();
+        let Ok(v) = self.run(cx, &["project", "list"], None, true).await else {
+            log.push("kanboard: binary unavailable — nothing to rebind".into());
+            return MoveReport { log };
+        };
+        let projects = v.as_array().cloned().unwrap_or_default();
+        let Some(project) = projects.iter().find(|p| s(p, "root") == req.old_root) else {
+            return MoveReport { log };
+        };
+        let slug = s(project, "slug");
+        log.push(format!(
+            "kanboard: project {slug}: rebind root {} → {} via unipi-kanboard project rebind",
+            req.old_root, req.new_root
+        ));
+        if req.dry_run {
+            return MoveReport { log };
+        }
+        match self
+            .run(
+                cx,
+                &["project", "rebind", &slug, "--root", &req.new_root],
+                None,
+                true,
+            )
+            .await
+        {
+            Ok(_) => {
+                self.slugs.borrow_mut().insert(req.new_root.clone(), slug);
+                log.push("kanboard: rebind ok".into());
+            }
+            Err(e) => log.push(format!("kanboard: rebind failed: {e}")),
+        }
+        MoveReport { log }
+    }
+
+    fn render(req: &Value) -> Option<Value> {
+        let data = req.get("data")?;
+        match req.get("key").and_then(Value::as_str)? {
+            SHOW_CUSTOM_TYPE => render::show_node(data.get("details")?),
+            BADGE_ENTRY => render::badge_node(data.get("data")?),
+            NOTICE_ENTRY => render::notice_node(data.get("data")?),
+            PROGRESS_ENTRY => render::progress_node(data.get("data")?),
+            _ => None,
+        }
+    }
+}
+
+/// Drops display-only messages from the LLM context.
+#[must_use]
+pub fn context_filter(messages: &[Value]) -> Option<Vec<Value>> {
+    const HIDDEN: &[&str] = &[
+        HELP_CUSTOM_TYPE,
+        DOCTOR_CUSTOM_TYPE,
+        SHOW_CUSTOM_TYPE,
+        NOTICE_ENTRY,
+    ];
+    let kept: Vec<Value> = messages
+        .iter()
+        .filter(|m| !HIDDEN.contains(&m.get("customType").and_then(Value::as_str).unwrap_or("")))
+        .cloned()
+        .collect();
+    (kept.len() != messages.len()).then_some(kept)
+}
+
+fn register_tools(cx: &mut Init<Kanboard>) {
+    cx.tool(
+        Tool::<Kanboard>::new("kanboard")
+            .label("Kanboard")
+            .description(TOOL_DESCRIPTION)
+            .parameters(&tool_schema())
+            .kind(ToolKind::Execute)
+            .run(|ext, args: Value, cx| async move { Ok(ext.tool(&args, &cx).await) }),
+    );
+}
+
+fn register_commands(cx: &mut Init<Kanboard>) {
+    cx.command(
+        Command::<Kanboard>::new("kanboard")
+            .description("Kanboard — the active project board: open, status, doctor (bare = help)")
+            .argument_hint("[open|close|status|show [--all]|doctor]")
+            .run(|ext, args, cx| async move {
+                ext.kanboard_command(&args, &cx.cx).await;
+                Ok(())
+            })
+            .complete(|_ext, prefix, _cx| async move { args::kanboard_completions(&prefix) }),
+    );
+    cx.command(
+        Command::<Kanboard>::new("kanboard-add")
+            .description("Add a board task — [-p 1-5] [--after ID] [--status backlog|todo] <title>; lines below are the description (paste file paths to attach)")
+            .argument_hint("[-p 1-5] [--after ID] [--status backlog|todo] <title>")
+            .run(|ext, args, cx| async move {
+                ext.add(&cx.cx, &args).await;
+                Ok(())
+            })
+            .complete(|ext, prefix, cx| async move {
+                match args::add_completions(&prefix) {
+                    AddCompletion::Items(items) => items,
+                    AddCompletion::Tasks(p, before) => args::task_completions(&ext.cached_tasks(&cx).await, &p, &before, true, false),
+                }
+            }),
+    );
+    cx.command(
+        Command::<Kanboard>::new(ACTION_OPEN)
+            .description("Kanboard: open the board tab")
+            .hidden()
+            .run(|ext, _args, cx| async move {
+                ext.open(&cx.cx, "").await;
+                Ok(())
+            }),
+    );
+}
+
+fn register_services(cx: &mut Init<Kanboard>) {
+    // Explicit refresh after board setup/archive; read-only and session scoped.
+    cx.service("kanboard.scope", |ext, _payload, _caller, cx| async move {
+        Ok(json!({"available": ext.sync_scope(&cx).await}))
+    });
+    cx.service(
+        fan::SKILL_CONDITION_CHECK,
+        |ext, payload, _caller, cx| async move {
+            let hidden = payload.get("skill").and_then(Value::as_str) == Some(KANBOARD_SKILL)
+                && !ext.available(&cx);
+            Ok(json!({"hidden": hidden, "reason": NO_BOARD}))
+        },
+    );
+    cx.service(
+        point::KANBOARD_CAPTURE,
+        |ext, payload, _caller, cx| async move { Ok(ext.capture(&cx, &payload).await) },
+    );
+    cx.service(fan::EVIDENCE_CONTRIBUTE, |ext, _payload, _caller, cx| async move {
+        let blocking = if !ext.available(&cx) || ext.is_child(&cx) {
+            Vec::new()
+        } else {
+            ext.own_claims(&cx)
+                .await
+                .into_iter()
+                .map(|t| format!("{} is still In Progress (claimed by this session) — finish it or move it to blocked", t.id))
+                .collect()
+        };
+        Ok(serde_json::to_value(EvidenceContribution { blocking, notes: Vec::new() })?)
+    });
+    cx.service(
+        fan::COMPACTION_CONTEXT_PROVIDE,
+        |ext, _payload, _caller, cx| async move {
+            if !ext.available(&cx) {
+                return Ok(serde_json::to_value(CompactionContext {
+                    id: "kanboard".into(),
+                    text: None,
+                })?);
+            }
+            let status = unipi_kit::bus::get::<KanboardStatus>();
+            let text = status.and_then(|st| args::claims_reminder(&st.claims, st.cli.as_deref()));
+            Ok(serde_json::to_value(CompactionContext {
+                id: "kanboard".into(),
+                text,
+            })?)
+        },
+    );
+    cx.service(fan::MOVE_HANDLE, |ext, payload, _caller, cx| async move {
+        let req: MoveRequest = serde_json::from_value(payload)?;
+        Ok(serde_json::to_value(ext.move_handle(&cx, &req).await)?)
+    });
+}
+
+fn register_events(cx: &mut Init<Kanboard>) {
+    cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
+        ext.on_session_start(&cx).await;
+        Ok(())
+    });
+    cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
+        ext.on_session_shutdown(&cx).await;
+        Ok(())
+    });
+    cx.on(EventKind::BeforeAgentStart, |ext, ev, cx| async move {
+        ext.on_before_agent_start(&ev, &cx).await;
+        Ok(())
+    });
+    cx.on(EventKind::AgentStart, |ext, _ev, cx| async move {
+        ext.sessions.with(cx.session_id(), |s| {
+            s.tracker.on_turn_start();
+            s.monitor.on_agent_start(timers::now_ms());
+            s.tool_calls = 0;
+        });
+        Ok(())
+    });
+    cx.on(EventKind::AgentEnd, |ext, ev, cx| async move {
+        ext.on_agent_end(&ev, &cx);
+        Ok(())
+    });
+    cx.on(EventKind::AgentSettled, |ext, _ev, cx| async move {
+        ext.on_settled(&cx).await;
+        Ok(())
+    });
+    cx.on(EventKind::Context, |_ext, ev, _cx| async move {
+        let messages = ev
+            .payload
+            .get("messages")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        Ok(context_filter(&messages).map(|kept| json!({"messages": kept})))
+    });
+    cx.on(EventKind::ToolCall, |ext, ev, cx| async move {
+        Ok(ext.on_tool_call(&ev, &cx))
+    });
+    cx.on(EventKind::ToolResult, |ext, ev, cx| async move {
+        Ok(ext.on_tool_result(&ev, &cx).await)
+    });
+    cx.on(EventKind::OinoUiAction, |ext, ev, cx| async move {
+        ext.on_ui_action(&ev, &cx);
+        Ok(())
+    });
+    cx.on(EventKind::OinoBus, |ext, ev, cx| async move {
+        if let Some(d) = unipi_kit::bus::Delivery::from_event(&ev)
+            && let Some(change) = d.decode::<LhOwnerChanged>()
+            && change.event == "resumed"
+        {
+            ext.sessions.with(cx.session_id(), |s| s.monitor.arm());
+        }
+        Ok(())
+    });
+    unipi_kit::bus::subscribe(&[topics::LONG_HORIZON_OWNER_CHANGED]);
+}
+
+impl Extension for Kanboard {
+    async fn init(&'static self, cx: &mut Init<Self>) -> Result<()> {
+        let ns = settings::namespace();
+        self.settings.declare(NAMESPACE, ns.defaults.clone());
+        self.settings.load(cx.settings());
+        cx.settings_namespace(&ns.to_json());
+        cx.on(EventKind::OinoSettingsChanged, |ext, ev, _cx| async move {
+            ext.settings.on_changed(&ev.payload);
+            Ok(())
+        });
+        self.own_child.set(
+            host::env("UNIPI_KANBOARD_CHILD")
+                .ok()
+                .flatten()
+                .is_some_and(|v| !v.is_empty()),
+        );
+        register_tools(cx);
+        register_commands(cx);
+        register_services(cx);
+        register_events(cx);
+        for (target, key) in [
+            (RendererTarget::CustomMessage, SHOW_CUSTOM_TYPE),
+            (RendererTarget::CustomEntry, BADGE_ENTRY),
+            (RendererTarget::CustomEntry, NOTICE_ENTRY),
+            (RendererTarget::CustomEntry, PROGRESS_ENTRY),
+        ] {
+            cx.renderer(target, key, |_ext, req, _cx| Kanboard::render(&req));
+        }
+        cx.nudge_provider(|ext, cx| async move { ext.propose(&cx).await });
+        cx.on_nudge_delivered(|ext, id, cx| {
+            ext.sessions
+                .with(cx.session_id(), |s| s.monitor.delivered(&id));
+        });
+        Ok(())
+    }
+}
+
+// Native builds (unit tests) skip the component exports.
+#[cfg(target_arch = "wasm32")]
+oino_extension::export_extension!(Kanboard);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_prefix_quotes_for_both_shells() {
+        let vars = [("A", "x'y".to_owned()), ("B", "2".to_owned())];
+        assert_eq!(env_prefix("bash", &vars), "export A='x'\\''y' B='2'\n");
+        assert_eq!(
+            env_prefix("powershell", &vars),
+            "$env:A='x''y'; $env:B='2'; "
+        );
+        // The rewritten command still parses as the same invocation.
+        let cmd = format!("{}unipi-kanboard start A-1", env_prefix("bash", &vars));
+        assert_eq!(shell::invocations(&cmd)[0].sub, "start");
+    }
+
+    #[test]
+    fn context_filter_drops_display_only_types() {
+        let msgs = [
+            json!({"role": "custom", "customType": HELP_CUSTOM_TYPE}),
+            json!({"role": "user"}),
+        ];
+        assert_eq!(
+            context_filter(&msgs).unwrap(),
+            vec![json!({"role": "user"})]
+        );
+        assert!(context_filter(&[json!({"role": "user"})]).is_none());
+    }
+
+    #[test]
+    fn render_dispatch() {
+        let req = json!({"key": BADGE_ENTRY, "data": {"data": {"kind": "finished", "id": "A-1"}}});
+        assert!(Kanboard::render(&req).is_some());
+        assert!(Kanboard::render(&json!({"key": "x", "data": {}})).is_none());
+    }
+
+    #[test]
+    fn tool_injects_identity_and_rejects_overrides() {
+        let argv = strip_json(vec![
+            "start".to_owned(),
+            "OIN-12".to_owned(),
+            "--json".to_owned(),
+        ]);
+        assert_eq!(argv, ["start", "OIN-12"]);
+        assert_eq!(
+            tool_argv(&argv, Some("oino"), "oino-s1", "chat:s1:m1"),
+            [
+                "--actor",
+                "agent",
+                "--session",
+                "oino-s1",
+                "--project",
+                "oino",
+                "--origin",
+                "chat:s1:m1",
+                "start",
+                "OIN-12",
+            ]
+        );
+        assert_eq!(
+            tool_argv(&argv, None, "oino-s1", "chat:s1"),
+            [
+                "--actor",
+                "agent",
+                "--session",
+                "oino-s1",
+                "--origin",
+                "chat:s1",
+                "start",
+                "OIN-12",
+            ]
+        );
+        for (arg, flag) in [
+            ("--actor", "--actor"),
+            ("--session=9", "--session"),
+            ("--project", "--project"),
+            ("--home", "--home"),
+            ("--gate=done", "--gate"),
+            ("--origin", "--origin"),
+        ] {
+            assert_eq!(
+                tool_refusal(&["list".to_owned(), arg.to_owned()]).unwrap(),
+                format!(
+                    "Don't pass {flag}; identity and project are set for you (use the project field for another board)."
+                ),
+                "{arg}"
+            );
+        }
+        // Origin: the message only for a parent chat that has one.
+        assert_eq!(origin_stamp("s1", false, Some("m1")), "chat:s1:m1");
+        assert_eq!(origin_stamp("s1", false, None), "chat:s1");
+        assert_eq!(origin_stamp("c1", true, Some("m1")), "subagent:c1");
+    }
+
+    #[test]
+    fn tool_unbudgeted() {
+        let mut write_guard = guard::WriteGuard::default();
+        // No budget and no cap gate the tool any more: a start, a write and a
+        // pile of adds all pass.
+        assert_eq!(
+            write_guard.check("unipi-kanboard --actor agent start A-1"),
+            None
+        );
+        assert_eq!(
+            write_guard.check("unipi-kanboard --actor agent note A-1 hi"),
+            None
+        );
+        let many = (0..30)
+            .map(|_| "unipi-kanboard --actor agent add t".to_owned())
+            .collect::<Vec<_>>()
+            .join(" && ");
+        assert_eq!(write_guard.check(&many), None);
+    }
+
+    #[test]
+    fn cli_only_commands_refused() {
+        for cmd in ["reap", "release", "duplicate", "archive-sweep", "validate"] {
+            assert_eq!(
+                tool_refusal(&[cmd.to_owned()]).unwrap(),
+                format!("`{cmd}` is CLI-only; ask the owner to run it.")
+            );
+        }
+        for sub in ["add", "archive", "unarchive"] {
+            assert_eq!(
+                tool_refusal(&["project".to_owned(), sub.to_owned()]).unwrap(),
+                format!("`project {sub}` is CLI-only; ask the owner to run it.")
+            );
+        }
+        assert_eq!(
+            tool_refusal(&["project".to_owned(), "list".to_owned()]),
+            None
+        );
+        assert_eq!(tool_refusal(&["list".to_owned(), "--all".to_owned()]), None);
+    }
+}

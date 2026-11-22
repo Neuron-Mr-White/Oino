@@ -1,0 +1,7 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+
+              [image: shot]
+  ~ 14..27=fg=rgb(7e888e)

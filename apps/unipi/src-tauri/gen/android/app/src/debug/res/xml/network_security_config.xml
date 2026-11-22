@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds load the UI from the vite dev server over cleartext
+     (`usesCleartextTraffic` is ignored once a network security config is
+     set), so allow cleartext everywhere, like before UNI-213. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

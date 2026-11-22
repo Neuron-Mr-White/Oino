@@ -1,0 +1,11 @@
+{
+ "t": "Empty",
+ "title": "No tasks",
+ "icon": "board",
+ "action": {
+  "t": "Button",
+  "label": "New task",
+  "action": "new-task",
+  "variant": "Secondary"
+ }
+}

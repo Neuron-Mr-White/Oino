@@ -1,0 +1,19 @@
+{
+ "t": "Select",
+ "key": "mode",
+ "options": [
+  {
+   "value": "fast",
+   "label": "Fast",
+   "description": "no thinking"
+  },
+  {
+   "value": "deep",
+   "label": "Deep"
+  }
+ ],
+ "value": "fast",
+ "placeholder": "pick",
+ "disabled": false,
+ "onChange": "set-mode"
+}

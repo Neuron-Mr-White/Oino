@@ -1,0 +1,162 @@
+{
+ "name": "a_adc_global",
+ "model": {
+  "id": "gemini-3.1-pro-preview",
+  "name": "Gemini 3.1 Pro Preview",
+  "api": "google-vertex",
+  "provider": "google-vertex",
+  "baseUrl": "https://{location}-aiplatform.googleapis.com",
+  "reasoning": true,
+  "thinkingLevelMap": {
+   "off": null,
+   "minimal": null,
+   "low": "low",
+   "medium": "medium",
+   "high": "high",
+   "xhigh": null,
+   "max": null
+  },
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 12,
+   "cacheRead": 0.2,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "env": {
+   "GOOGLE_CLOUD_PROJECT": "my-proj",
+   "GOOGLE_CLOUD_LOCATION": "global"
+  }
+ },
+ "apiKey": "gcp-vertex-credentials",
+ "status": 200,
+ "sse": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"He\"}],\"role\":\"model\"},\"index\":0}],\"responseId\":\"resp-g1\",\"modelVersion\":\"m\"}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"llo\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":12,\"candidatesTokenCount\":5,\"totalTokenCount\":17},\"responseId\":\"resp-g1\"}\r\n\r\n",
+ "request": {
+  "url": "https://aiplatform.googleapis.com/v1/projects/my-proj/locations/global/publishers/google/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse",
+  "headers": {
+   "authorization": "Bearer ya29.adc-token",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "hi"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "thinkingLevel": "LOW"
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "He"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "llo"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Hello"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello"
+     }
+    ],
+    "api": "google-vertex",
+    "provider": "google-vertex",
+    "model": "gemini-3.1-pro-preview",
+    "usage": {
+     "input": 12,
+     "output": 5,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 17,
+     "cost": {
+      "input": 0.000024,
+      "output": 0.00006,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00008400000000000001
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "resp-g1",
+    "rawStopReason": "STOP",
+    "durationMs": 0
+   }
+  }
+ ]
+}

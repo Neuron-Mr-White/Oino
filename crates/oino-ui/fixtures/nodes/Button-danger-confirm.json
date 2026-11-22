@@ -1,0 +1,16 @@
+{
+ "t": "Button",
+ "label": {
+  "spans": [
+   {
+    "content": "Delete",
+    "style": {
+     "fg": "error"
+    }
+   }
+  ]
+ },
+ "action": "delete",
+ "variant": "Danger",
+ "icon": "trash"
+}

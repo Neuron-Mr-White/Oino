@@ -1,0 +1,32 @@
+/* Archived sessions modal + the fixed sidebar button (owner 2026-11-05). */
+html[data-shell=desktop] .sheet.archived-modal-sheet { width: min(920px, 92vw); max-width: none; height: min(720px, 86vh); max-height: none; display: flex; flex-direction: column; }
+.archived-modal-sheet .board-sheet-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.arcm { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1 1 auto; }
+.arcm-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.arcm-search { flex: 1 1 240px; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: 10px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-line); color: var(--color-text-dim); }
+.arcm-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--color-text); font-size: calc(13.5px * var(--ui-font-scale)); }
+.arcm-select, .arcm-project-input { width: 180px; height: 34px; min-height: 34px; box-sizing: border-box; padding: 0 8px; border-radius: 10px; background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-line); font-size: calc(13px * var(--ui-font-scale)); }
+.arcm-project-picker { position: relative; }
+.arcm-project-input::placeholder { color: var(--color-text); opacity: 1; }
+.arcm-project-input:focus { outline: none; border-color: var(--color-line); box-shadow: none; }
+.arcm-project-options { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: 260px; max-height: 280px; overflow-y: auto; padding: 4px 0; border-radius: 14px; background: var(--color-surface-2); box-shadow: 0 10px 32px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); }
+.arcm-project-option { display: block; width: 100%; min-height: 36px; height: 36px; line-height: 36px; padding: 0 12px; border-radius: 0; background: transparent; color: var(--color-text); text-align: left; font-size: calc(14px * var(--ui-font-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arcm-project-option:hover, .arcm-project-option.is-active { background: var(--color-surface-3); }
+.arcm-project-option[aria-selected=true] { color: var(--color-claw); }
+html[data-shell=phone] .arcm-project-option { min-height: 44px; height: 44px; line-height: 44px; font-size: calc(15px * var(--ui-font-scale)); }
+.arcm-project-empty { padding: 8px 14px; }
+.arcm-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; min-height: 0; border-radius: 12px; background: var(--color-surface-2); }
+.arcm-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; }
+.arcm-row + .arcm-row { border-top: 1px solid rgb(46 40 37 / 60%); }
+.arcm-open { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; text-align: left; }
+.arcm-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13.5px * var(--ui-font-scale)); color: var(--color-text); }
+.arcm-dim { font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.arcm-empty { padding: 20px 4px; text-align: center; }
+.arcm-restore, .arcm-foot .settings-btn { display: inline-flex; align-items: center; gap: 6px; }
+.arcm-foot { display: flex; align-items: center; gap: 8px; width: 100%; }
+.arcm-skel { display: flex; flex-direction: column; gap: 6px; }
+.arcm-skel > span { height: 40px; border-radius: 10px; background: var(--color-surface-2); animation: usage-pulse 1.4s ease-in-out infinite; }
+.sb-archived-btn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--color-text-muted); font-size: calc(13px * var(--ui-font-scale)); }
+.sb-archived-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+.sb-archived-btn .sb-host-count { margin-left: auto; }
+html[data-shell=phone] .sb-archived-btn { min-height: 44px; font-size: calc(15px * var(--ui-font-scale)); }

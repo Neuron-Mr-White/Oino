@@ -1,0 +1,17 @@
+[package]
+name = "unipi-browser-protocol"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Browser-control wire types shared by unipi-browser, hosts, frontends and the unipi.browser guest (browser-control.md §8.1; v2 ext-abi §7)"
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true

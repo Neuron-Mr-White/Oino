@@ -1,0 +1,16 @@
+[package]
+name = "unipi-proto"
+publish = false
+version = "1.0.0"
+edition = "2021"
+description = "Wire protocol types and framing for the UniPi host and app (unipi/oino/1, proto v2)"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+serde_path_to_error = "0.1"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"

@@ -1,0 +1,27 @@
+{
+ "t": "Layout",
+ "direction": "Horizontal",
+ "constraints": [
+  3,
+  3
+ ],
+ "spacing": 2,
+ "margin": {
+  "horizontal": 1,
+  "vertical": 2
+ },
+ "flex": "SpaceBetween",
+ "collapse": 0,
+ "children": [
+  {
+   "t": "Button",
+   "label": "OK",
+   "action": "ok"
+  },
+  {
+   "t": "Button",
+   "label": "Cancel",
+   "action": "cancel"
+  }
+ ]
+}

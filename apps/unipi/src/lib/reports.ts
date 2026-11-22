@@ -1,0 +1,209 @@
+/**
+ * Command reports (P1-02): a multi-line or long extension `notify`
+ * (`/mcp-status`, `/memory status`, `/memory-search`, `/compact-stats`,
+ * `/doctor`, `/cron list`…) is a report to read, not a 3-second toast.
+ * Such a notify opens the report panel (`components/ReportSheet.tsx`) when
+ * it answers a command the user just ran in that session; otherwise it
+ * shows a one-line toast with "Show" that opens the same panel.
+ * Short one-line notices stay toasts.
+ */
+import { createSignal } from 'solid-js';
+import { toasts, type ToastKind } from './toasts';
+
+export type Report = { id: number; title: string; body: string; kind: ToastKind; at: number };
+
+/** A notify longer than this (or with a newline) is a report. */
+export const REPORT_MIN_CHARS = 160;
+/** A report arriving within this window of a command run in that session answers it. */
+export const REPORT_COMMAND_WINDOW_MS = 30_000;
+
+/** True when a notify message is a report, not a toast. Pure. */
+export function isReport(message: string): boolean {
+  const text = message.trim();
+  return text.includes('\n') || text.length > REPORT_MIN_CHARS;
+}
+
+/** E-05: a report written in Markdown (`# Heading`, `**bold**`, lists, tables, fences) is rendered; aligned plain text stays monospace. */
+export function looksMarkdown(body: string): boolean {
+  return /^\s{0,3}#{1,6}\s+\S/m.test(body) || /\*\*[^*\n]+\*\*/.test(body) || /^\s*\|.+\|\s*$/m.test(body) || /^```/m.test(body) || /^\s*[-*]\s+\S.*$/m.test(body) && /\*\*|`[^`\n]+`/.test(body);
+}
+
+const [current, setCurrent] = createSignal<Report | null>(null);
+
+/**
+ * owner5 #6: a command's report shows as a row at the bottom of the chat it
+ * ran in — not a floating card over the timeline — while that chat is on
+ * screen. A shown conversation registers itself here; its rows live in
+ * `sessionReports`. A chat that isn't shown still gets the report panel.
+ */
+const surfaces = new Map<string, number>();
+const [timelineReports, setTimelineReports] = createSignal<ReadonlyMap<string, Report[]>>(new Map());
+
+/** A conversation for `sessionKey` is on screen until the returned release runs. */
+export function showReportsInTimeline(sessionKey: string): () => void {
+  surfaces.set(sessionKey, (surfaces.get(sessionKey) ?? 0) + 1);
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    const n = (surfaces.get(sessionKey) ?? 1) - 1;
+    if (n <= 0) surfaces.delete(sessionKey);
+    else surfaces.set(sessionKey, n);
+  };
+}
+
+/** The command-report row of one chat (at most one: the newest). */
+export function sessionReports(sessionKey: string): Report[] {
+  return timelineReports().get(sessionKey) ?? [];
+}
+
+export function dismissSessionReport(sessionKey: string, id: number): void {
+  setTimelineReports((all) => {
+    const next = new Map(all);
+    const list = (next.get(sessionKey) ?? []).filter((r) => r.id !== id);
+    if (list.length) next.set(sessionKey, list);
+    else next.delete(sessionKey);
+    return next;
+  });
+}
+
+function pushSessionReport(sessionKey: string, report: Report): void {
+  setTimelineReports((all) => {
+    const next = new Map(all);
+    // N3: one compact note per chat — the newest replaces the older ones (a busy-graph refusal ×3 was 3 × 180 px of panels).
+    next.set(sessionKey, [report]);
+    return next;
+  });
+}
+const recent = new Map<string, { command: string; at: number }>();
+let seq = 0;
+
+/** The report the panel shows (null = closed). */
+export const openReport = current;
+export const closeReport = (): void => {
+  setCurrent(null);
+};
+
+/** The composer notes the `/command args` line it just ran in a session (the report's title, no `/`). */
+export function noteCommandRun(sessionKey: string, command: string, now = Date.now()): void {
+  recent.set(sessionKey, { command, at: now });
+}
+
+/** First non-empty line, trimmed at a word boundary to fit a toast. Pure. */
+export function reportHeadline(body: string): string {
+  const line = body.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  if (line.length <= 90) return line;
+  const cut = line.slice(0, 89);
+  const space = cut.lastIndexOf(' ');
+  return `${(space >= 60 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+const capMode = (m: string): string => (m ? m[0]!.toUpperCase() + m.slice(1).toLowerCase() : m);
+
+/** G-10: rewrites terse extension status strings into one clean human line. */
+export function humanCommandNotice(raw: string): string {
+  const text = raw.trim();
+  const perm = /^Permission mode:\s*(\w+)\s*\(this chat:\s*([^\s·)]+)\s*·\s*default(?:\s+for\s+new\s+chats)?:\s*([^\s)]+)\)\s*$/i.exec(text);
+  if (perm) {
+    const [, eff, chat, def] = perm;
+    const effective = capMode(eff!);
+    const defaultLabel = def && def !== '-' ? capMode(def) : undefined;
+    if (!chat || chat === '-') {
+      return defaultLabel && defaultLabel.toLowerCase() !== eff!.toLowerCase()
+        ? `Permission: ${effective} (default: ${defaultLabel})`
+        : `Permission: ${effective} (default)`;
+    }
+    return defaultLabel ? `Permission: ${effective} (this chat · default: ${defaultLabel})` : `Permission: ${effective} (this chat)`;
+  }
+  const permSet = /^Permission mode:\s*(ask|auto|full)\s*\(this chat only\)\s*$/i.exec(text);
+  if (permSet) return `Permission: ${capMode(permSet[1]!)} (this chat only)`;
+  const planOn = /^Plan mode:\s*on\s*—\s*the plan goes to\s+(\S+)(?:\s*\(.*\))?$/i.exec(text);
+  if (planOn) {
+    const base = planOn[1]!.split('/').pop() || planOn[1]!;
+    return `Plan mode: on (${base})`;
+  }
+  if (/^Plan mode:\s*off\b/i.test(text)) return 'Plan mode: off';
+  return text;
+}
+
+/** A Settings-run command (owner5 #5): its replies show on the Settings row
+ *  or sheet that ran it, never as a toast or the floating report panel. */
+export type ReplyClaim = (text: string, kind: ToastKind) => void;
+const claims = new Map<string, ReplyClaim>();
+
+/** Routes every notify / command reply of `sessionKey` to `fn` until the returned release runs. */
+export function claimReplies(sessionKey: string, fn: ReplyClaim): () => void {
+  claims.set(sessionKey, fn);
+  return () => {
+    if (claims.get(sessionKey) === fn) claims.delete(sessionKey);
+  };
+}
+
+/**
+ * Routes one notify message: a report opens the panel (answering a command)
+ * or toasts its first line with "Show"; anything else is a plain toast.
+ */
+export function routeNotify(message: string, kind: ToastKind, sessionKey?: string, now = Date.now(), opts: { inTimeline?: boolean } = {}): void {
+  const trimmed = message.trim();
+  if (!trimmed) return;
+  const claim = sessionKey ? claims.get(sessionKey) : undefined;
+  if (claim) {
+    claim(trimmed, kind);
+    return;
+  }
+  const ran = sessionKey ? recent.get(sessionKey) : undefined;
+  const answering = !!ran && now - ran.at <= REPORT_COMMAND_WINDOW_MS;
+  const shown = !!sessionKey && (surfaces.get(sessionKey) ?? 0) > 0;
+  // A reply that is already a timeline row (`unipi-response`) needs nothing more while its chat is shown.
+  if (opts.inTimeline && shown) return;
+  if (!isReport(trimmed)) {
+    const oneLine = humanCommandNotice(trimmed);
+    if (answering && oneLine.length > 72) {
+      // E-05: a long one-line command reply keeps "Show" so nothing is missed; short status lines fit whole in one toast (G-10).
+      const report: Report = { id: ++seq, title: `/${ran!.command}`, body: oneLine, kind, at: now };
+      toasts().push(reportHeadline(oneLine), kind, { label: 'Show', run: () => void setCurrent(report) });
+      return;
+    }
+    toasts().push(oneLine, kind);
+    return;
+  }
+  const headline = reportHeadline(trimmed);
+  const report: Report = {
+    id: ++seq,
+    title: answering ? `/${ran!.command}` : headline || 'Report',
+    body: trimmed,
+    kind,
+    at: now,
+  };
+  if (answering) {
+    // owner5 #6: in the chat it answers, the report is a timeline row at the bottom.
+    if (shown) pushSessionReport(sessionKey!, report);
+    else setCurrent(report);
+    return;
+  }
+  if (!headline) return;
+  toasts().push(headline, kind, { label: 'Show', run: () => void setCurrent(report) });
+}
+
+/** The text of a live `unipi-response` command reply carried by a session event (message_end / entry_appended), else undefined. */
+export function reportTextOf(event: Record<string, unknown>): string | undefined {
+  const m = (event.type === 'message_end' ? event.message : event.type === 'entry_appended' ? event.entry : undefined) as
+    | { customType?: unknown; role?: unknown; type?: unknown; content?: unknown; display?: unknown }
+    | undefined;
+  if (!m || m.customType !== 'unipi-response' || m.display === false) return undefined;
+  if (typeof m.content === 'string') return m.content.trim() || undefined;
+  if (Array.isArray(m.content)) {
+    const t = m.content.map((p) => (p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : '')).join('').trim();
+    return t || undefined;
+  }
+  return undefined;
+}
+
+/** Tests: forget everything. */
+export function resetReports(): void {
+  recent.clear();
+  claims.clear();
+  surfaces.clear();
+  setTimelineReports(new Map());
+  setCurrent(null);
+}

@@ -1,0 +1,107 @@
+/* Phone chat (phone spec §3.4–3.7, Package B). Every rule is scoped to the phone shell;
+   only §2 tokens (with fallbacks until Package A's phone.css lands) and the z scale. */
+
+/* ── Header: one 56 px row (PH-25) ─────────────────────────────────────── */
+html[data-shell=phone] .conv-head.ph-chat-head { height: 56px; gap: 0; padding: 0 4px; border-bottom: 1px solid var(--color-line); z-index: var(--z-header, 20); }
+html[data-shell=phone] .ph-chat-head-text { flex: 1 1 auto; min-width: 0; padding: 0 4px; }
+html[data-shell=phone] .ph-chat-title { margin: 0; font-size: calc(17px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text); }
+html[data-shell=phone] .ph-chat-sub { margin: 0; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-shell=phone] .ph-chat-sub[data-running] { color: var(--color-shell); font-weight: 500; }
+html[data-shell=phone][data-short] .conv-head.ph-chat-head { height: 48px; }
+html[data-shell=phone][data-short] .ph-chat-sub { display: none; }
+/* Landscape + keyboard: the header steps aside so the transcript keeps ≥ 3 lines (PH-08, PH-31). */
+html[data-shell=phone][data-short][data-kb=open] .conv-head.ph-chat-head { display: none; }
+
+/* ── Mode sheet (§3.5, PH-29) ───────────────────────────────────────────── */
+.ph-mode-list { display: flex; flex-direction: column; }
+.ph-mode-row { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 8px 4px; border: 0; background: transparent; color: var(--color-text); text-align: left; cursor: pointer; border-radius: 12px; }
+.ph-mode-row:active { background: var(--color-surface-2); }
+.ph-mode-radio { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--color-text-muted); box-sizing: border-box; }
+.ph-mode-row[aria-checked=true] .ph-mode-radio { border-color: var(--color-shell); box-shadow: inset 0 0 0 4px var(--color-surface-1), inset 0 0 0 10px var(--color-shell); }
+.ph-mode-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ph-mode-label { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-weight: 500; }
+.ph-mode-desc { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.ph-mode-switches { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgb(46 40 37 / 60%); }
+.ph-switch-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 4px; cursor: pointer; }
+
+/* ── Chat gutter (owner 2026-11-03): 12 px (medium 16) each side for the transcript, and the
+   composer dock on the same edges so its card lines up with bubbles, code blocks and tables. ── */
+html[data-shell=phone] .tl :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
+html[data-shell=phone] .tl-dock { padding-left: var(--ph-chat-gutter, 12px); padding-right: var(--ph-chat-gutter, 12px); }
+
+/* ── Nesting (OIN-64): one gutter, a thin rule per level instead of 23 px ──
+   The live tail already carries the gutter (timeline.css owner-fix-8 zeroes the turn inside it, but the
+   phone gutter rule above is more specific and put it back — a second 12–16 px on live turns). Work folds,
+   tool groups and the subagent group each indented 23 px (margin + rule + padding); on a phone that squeezed
+   the cards into ~64 % of the width, so a level is now 9 px and the cards fill the column. */
+html[data-shell=phone] .conv-tl .tl .tl-tail > .tl-turn { padding-left: 0; padding-right: 0; }
+html[data-shell=phone] .conv-tl .tl :is(.tl-fold-body, .tl-group-body, .tl-agents-body) { margin-left: 0; padding-left: 8px; }
+html[data-shell=phone] .conv-tl .tl .tl-fold-body > .tl-cardblock { margin-left: -9px; }
+html[data-shell=phone] .conv-tl .tl .tl-agent-body { margin: 0 4px 8px 14px; padding-left: 8px; }
+
+/* ── Turn chrome (§3.4, PH-26): only the last settled turn, 48 px hits ────── */
+html[data-shell=phone] .ph-turn-tail { gap: 4px; min-height: 48px; }
+html[data-shell=phone] .ph-turn-tail .tl-time { font-size: calc(12px * var(--ui-font-scale)); margin-right: 4px; }
+html[data-shell=phone] .ph-turn-tail .tl-act { width: 48px; height: 48px; min-height: 48px; color: var(--color-text-muted); }
+/* [chat-tree] A user message's row (Copy · Quote · Edit · Fork · Retry) renders only once the
+   message is tapped (UserMessageActions); 44 px hits, right-aligned under the bubble. */
+html[data-shell=phone] .tl-user-actions { gap: 2px; margin-top: 4px; }
+html[data-shell=phone] .tl-user-actions .tl-act { width: 44px; height: 44px; min-height: 44px; color: var(--color-text-muted); }
+/* Long-press opens the message sheet; "Select text" turns selection on for one message. */
+html[data-shell=phone] .tl-turn:not([data-select-text]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Prose 16/24, user bubble max 85 % with radius 20. */
+html[data-shell=phone] .tl-turn .md { font-size: calc(16px * var(--ui-font-scale)); line-height: calc(24px * var(--ui-font-scale)); }
+html[data-shell=phone] .tl-bubble { max-width: 85%; border-radius: 20px; }
+
+/* ── Error card (§3.4, PH-14 / PH-28) ──────────────────────────────────── */
+.ph-error-card { margin: 8px 0; padding: 12px 16px; border-radius: 16px; background: rgb(240 48 24 / 10%); box-shadow: inset 0 0 0 1px rgb(246 163 157 / 25%); }
+.ph-error-head { display: flex; gap: 12px; align-items: flex-start; }
+.ph-error-ic { flex: none; margin-top: 1px; color: #F6A39D; }
+.ph-error-text { min-width: 0; }
+.ph-error-title { margin: 0; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.ph-error-reason { margin: 2px 0 0; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.ph-error-attempts { display: flex; align-items: center; gap: 4px; min-height: 44px; margin: 4px 0 0 32px; padding: 0; border: 0; background: none; color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); font-weight: 500; cursor: pointer; }
+.ph-error-chev { transition: transform 150ms ease-out; }
+.ph-error-chev[data-open] { transform: rotate(90deg); }
+.ph-error-list { margin: 0 0 4px 32px; padding-left: 18px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.ph-error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* ── Tool rows (§3.7, PH-27): 40 px rows (34 inside a work fold), failures as a pill, detail in a sheet ── */
+html[data-shell=phone] .conv-tl .tl :is(.proc-head, .tool-row) { min-height: 40px; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); gap: 10px; }
+/* Rows inside a work fold sit closer together (owner 2026-11-06: the gaps were too big). */
+html[data-shell=phone] .conv-tl .tl .tl-fold-body .tool-row { min-height: 34px; }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-subject { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-dur { font-size: calc(12px * var(--ui-font-scale)); }
+html[data-shell=phone] .conv-tl .tl .tool-row .tool-status { font-size: calc(12px * var(--ui-font-scale)); padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; }
+html[data-shell=phone] .conv-tl .tl .ph-group-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+.ph-fail-pill { flex: none; padding: 2px 8px; border-radius: 9999px; background: rgb(240 48 24 / 14%); color: #F6A39D; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 500; }
+html[data-shell=phone] .conv-tl .tl :is(.tl-group, .tl-tool, .tool-body, .tl-card) { max-width: 100%; min-width: 0; box-sizing: border-box; }
+html[data-shell=phone] .conv-tl .tl pre { max-width: 100%; overflow-x: auto; }
+.ph-tool-sheet-title { display: flex; flex-direction: column; min-width: 0; }
+.ph-tool-sheet-sub { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 400; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph-tool-sheet .board-sheet-body pre { overflow-x: auto; max-width: 100%; }
+
+/* Jump to latest (§3.4): a 40 px round button (48 px hit) centred 12 px above the composer. */
+html[data-shell=phone] .tl-jump { right: auto; left: calc(50% - 20px); top: -52px; width: 40px; height: 40px; min-height: 40px; z-index: var(--z-sticky, 10); }
+html[data-shell=phone] .tl-jump::after { content: ''; position: absolute; inset: -4px; }
+
+/* Offline (PH-15): the composer waits, dimmed. */
+html[data-shell=phone] .tl-composer[data-readonly] { opacity: .75; }
+
+/* Type scale on the phone (§2.2, PH-23): inline code 14, tables 14, code-block chrome 12/14,
+   the composer chips 14 — no 11 / 13.5 / 13.76 px text. Copy on a code block is a 48 px target. */
+html[data-shell=phone] .conv-tl .md code:not(pre code) { font-size: calc(14px * var(--ui-font-scale)); }
+html[data-shell=phone] .conv-tl .md table { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
+html[data-shell=phone] .conv-tl .md .cb-lang { font-size: calc(12px * var(--ui-font-scale)); }
+html[data-shell=phone] .conv-tl .md .cb-copy { min-height: 48px; min-width: 64px; font-size: calc(14px * var(--ui-font-scale)); }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip .tb-label { font-size: calc(14px * var(--ui-font-scale)); }
+
+/* Short (landscape) by the viewport too, in case html[data-short] lags a rotation (PH-08 / PH-31). */
+@media (max-height: 479px) {
+  html[data-shell=phone] .conv-head.ph-chat-head { height: 48px; }
+  html[data-shell=phone] .ph-chat-sub { display: none; }
+  html[data-shell=phone][data-kb=open] .conv-head.ph-chat-head { display: none; }
+  html[data-shell=phone] .cmenu { max-height: 152px; }
+}
+/* A fold's failures read as the group pill, not red sentence text (PH-27). */
+html[data-shell=phone] .conv-tl .tl-fold .proc-detail[data-error] { color: var(--color-text-muted); }

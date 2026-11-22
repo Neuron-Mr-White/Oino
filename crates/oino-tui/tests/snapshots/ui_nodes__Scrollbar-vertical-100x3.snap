@@ -1,0 +1,8 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+                                                                                                   ↑
+                                                                                                   █
+  ~ 99..100=fg=rgb(9da5a9)
+                                                                                                   ↓

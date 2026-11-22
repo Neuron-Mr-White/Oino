@@ -1,0 +1,31 @@
+/* The send / stop control's chevron menu (WP-A11, Z-52). The button itself
+   reuses `.tl-composer-send` / `.tl-composer-stop` (composer.css). The root
+   is `.send-ctl`, not `.send-btn` — that name is the old chat screen's
+   38 px red circle (screens/chat.css), which painted behind this control. */
+.send-ctl { position: relative; display: flex; align-items: center; gap: 2px; }
+.send-btn-main { display: flex; align-items: center; gap: 2px; }
+.send-btn-chevron { width: 22px; height: 34px; min-height: 34px; display: grid; place-items: center; border-radius: 9px; background: transparent; color: var(--color-text-dim); }
+.send-btn-chevron:hover { color: var(--color-text); }
+.send-ctl[data-open] .send-btn-chevron { color: var(--color-claw); }
+
+/* the menu opens above the dock's composer — and above a docked approval / dialog (`.dock-region-dialog`, z 45), which it overlaps (D-3) */
+.send-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 50; min-width: 264px; padding: 6px; border-radius: 16px; background: var(--color-surface-2); box-shadow: 0 10px 34px rgb(0 0 0 / 55%), inset 0 0 0 1px var(--color-line); }
+.send-menu-heading { padding: 6px 10px 4px; font-size: calc(11px * var(--ui-font-scale)); font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-dim); }
+.send-menu-item { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; width: 100%; min-height: 42px; padding: 6px 10px; border-radius: 12px; background: transparent; text-align: left; }
+.send-menu-item:hover { background: var(--color-surface-3); }
+.send-menu-item[aria-checked='true'] { background: rgb(240 120 24 / 10%); box-shadow: inset 0 0 0 1.5px rgb(240 120 24 / 45%); }
+.send-menu-label { grid-column: 1; font-size: calc(14.5px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); white-space: nowrap; }
+.send-menu-desc { grid-column: 1; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.send-menu-key { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: calc(11px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text-dim); white-space: nowrap; }
+.send-menu-item[aria-checked='false'] .send-menu-key { opacity: .55; }
+.send-menu-sep { height: 1px; margin: 5px 8px; background: var(--color-line); }
+.send-menu-now { grid-template-columns: auto 1fr; }
+.send-menu-now .send-menu-label { grid-column: 2; grid-row: 1; color: var(--color-claw); }
+.send-menu-now svg { grid-column: 1; grid-row: 1; color: var(--color-claw); }
+
+/* "Send as note" (a mode toggle under its own separator): gold, never the brand orange used for Send. */
+.send-menu-note { grid-template-columns: auto 1fr; column-gap: 8px; }
+.send-menu-note svg { grid-column: 1; grid-row: 1 / span 2; align-self: center; color: var(--color-gold); }
+.send-menu-note .send-menu-label,
+.send-menu-note .send-menu-desc { grid-column: 2; white-space: normal; }
+.send-menu-note[aria-checked='true'] { background: color-mix(in srgb, var(--color-gold) 10%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-gold) 45%, transparent); }

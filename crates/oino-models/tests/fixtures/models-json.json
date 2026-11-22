@@ -1,0 +1,220 @@
+{
+  "cases": [
+    {
+      "name": "valid",
+      "content": "{\"providers\":{\"ollama\":{\"baseUrl\":\"http://localhost:11434/v1\",\"api\":\"openai-completions\",\"apiKey\":\"ollama\",\"models\":[{\"id\":\"qwen2.5-coder:7b\"}]}}}",
+      "error": null,
+      "providerIds": [
+        "ollama"
+      ]
+    },
+    {
+      "name": "notObject",
+      "content": "[]",
+      "error": "Invalid models.json schema:\n  - root: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "noProviders",
+      "content": "{}",
+      "error": "Invalid models.json schema:\n  - providers: must have required properties providers\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "providersArray",
+      "content": "{\"providers\":[]}",
+      "error": "Invalid models.json schema:\n  - providers: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "badBaseUrl",
+      "content": "{\"providers\":{\"a\":{\"baseUrl\":5}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.baseUrl: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "missingId",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"name\":\"x\"}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.id: must have required properties id\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "requiredAndType",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"name\":5}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.id: must have required properties id\n  - providers.a.models.0.name: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "emptyId",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"\"}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.id: must not have fewer than 1 characters\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "zeroContext",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"contextWindow\":0}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.contextWindow: must be > 0\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "badInput",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"input\":[\"audio\"]}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.input.0: must be equal to one of the allowed values\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "badOauth",
+      "content": "{\"providers\":{\"a\":{\"oauth\":\"x\"}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.oauth: must be equal to constant\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "extraFields",
+      "content": "{\"providers\":{\"a\":{\"foo\":1,\"baseUrl\":\"x\"}},\"other\":2}",
+      "error": null,
+      "providerIds": [
+        "a"
+      ]
+    },
+    {
+      "name": "multi",
+      "content": "{\"providers\":{\"a\":{\"baseUrl\":5,\"apiKey\":true,\"models\":[{\"id\":1}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.baseUrl: must be string\n  - providers.a.apiKey: must be string\n  - providers.a.models.0.id: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "partialCost",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"cost\":{\"input\":1}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.cost.output: must have required properties output, cacheRead, cacheWrite\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "headerType",
+      "content": "{\"providers\":{\"a\":{\"headers\":{\"x\":1}}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.headers.x: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "thinkingMap",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"thinkingLevelMap\":{\"high\":5,\"foo\":\"x\"}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.thinkingLevelMap.high: must be string\n  - providers.a.models.0.thinkingLevelMap.high: must be null\n  - providers.a.models.0.thinkingLevelMap.high: must match a schema in anyOf\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "overrideCost",
+      "content": "{\"providers\":{\"a\":{\"modelOverrides\":{\"m\":{\"cost\":{\"input\":\"x\"}}}}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.modelOverrides.m.cost.input: must be number\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "providerNull",
+      "content": "{\"providers\":{\"a\":null}}",
+      "error": "Invalid models.json schema:\n  - providers.a: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "compatType",
+      "content": "{\"providers\":{\"a\":{\"compat\":5}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.compat: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "integers",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"inputLimits\":{\"maxRequestBytes\":1.5,\"images\":{\"resize\":{\"jpegQuality\":101,\"maxWidth\":0}}}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.inputLimits.maxRequestBytes: must be integer\n  - providers.a.models.0.inputLimits.images.resize.maxWidth: must be >= 1\n  - providers.a.models.0.inputLimits.images.resize.jpegQuality: must be <= 100\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "modelsObject",
+      "content": "{\"providers\":{\"a\":{\"models\":{}}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models: must be array\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "promptCache",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"promptCache\":{\"short\":0,\"foo\":1}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.promptCache.short: must be > 0\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "tiers",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"cost\":{\"input\":1,\"output\":1,\"cacheRead\":1,\"cacheWrite\":1,\"tiers\":[{\"input\":1}]}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.cost.tiers.0.inputTokensAbove: must have required properties inputTokensAbove, output, cacheRead, cacheWrite\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "samplingByLevel",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"samplingParamsByThinkingLevel\":{\"high\":5,\"foo\":{}}}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.samplingParamsByThinkingLevel.high: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "schemaField",
+      "content": "{\"$schema\":5,\"providers\":{}}",
+      "error": "Invalid models.json schema:\n  - $schema: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "authHeaderType",
+      "content": "{\"providers\":{\"a\":{\"authHeader\":\"yes\"}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.authHeader: must be boolean\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "overridesArray",
+      "content": "{\"providers\":{\"a\":{\"modelOverrides\":[]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.modelOverrides: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "reasoningType",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"reasoning\":\"yes\",\"maxTokens\":-1}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.reasoning: must be boolean\n  - providers.a.models.0.maxTokens: must be > 0\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "numberString",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"contextWindow\":\"5\"}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.contextWindow: must be number\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "samplingArray",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"id\":\"m\",\"samplingParams\":[]}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.samplingParams: must be object\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "emptyName",
+      "content": "{\"providers\":{\"a\":{\"name\":\"\"}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.name: must not have fewer than 1 characters\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "twoProviders",
+      "content": "{\"providers\":{\"a\":{\"baseUrl\":1},\"b\":{\"baseUrl\":2}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.baseUrl: must be string\n  - providers.b.baseUrl: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "requiredFirst",
+      "content": "{\"providers\":{\"a\":{\"models\":[{\"baseUrl\":1}]}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.models.0.id: must have required properties id\n  - providers.a.models.0.baseUrl: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "slashKey",
+      "content": "{\"providers\":{\"a/b~c\":{\"baseUrl\":1}}}",
+      "error": "Invalid models.json schema:\n  - providers.a.b~c.baseUrl: must be string\n\nFile: <FILE>",
+      "providerIds": []
+    },
+    {
+      "name": "commentsAndTrailingCommas",
+      "content": "﻿{ // comment\n \"providers\": {\"a\": {\"baseUrl\": \"http://x // not a comment\",},},}",
+      "error": null,
+      "providerIds": [
+        "a"
+      ]
+    }
+  ]
+}

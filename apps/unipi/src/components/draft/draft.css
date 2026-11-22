@@ -1,0 +1,250 @@
+/**
+ * Draft view (Z-19, WP-A5): the `/new/:host` start screen — greeting, the
+ * chat's own composer centred under it, a faint Unicrab watermark behind.
+ * Tokens and radii from the Unicrab set (style.css / ui.css); the composer
+ * keeps its own sheet (composer/composer.css).
+ */
+
+/* The conversation's empty slot is a 760 px column; the start screen owns the pane. */
+.tl-empty[data-testid='draft-empty'] {
+  display: flex;
+  max-width: none;
+  padding: 0;
+}
+
+.draft {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 32px 20px 12vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* The watermark: large, dim, desaturated — a presence, never a highlight. */
+.draft-mark {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  user-select: none;
+  /* On the wrapper: the mascot's own sheet owns the svg's opacity. */
+  opacity: 0.04;
+  filter: saturate(0.5);
+}
+.draft-mark-crab {
+  width: min(560px, 78vw);
+  height: auto;
+  transform: translateY(-6%);
+  image-rendering: pixelated;
+}
+
+.draft-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: min(720px, 100%);
+}
+
+.draft .empty-chat[data-variant='start'] {
+  gap: 8px;
+  padding: 0 8px;
+}
+.draft .empty-chat[data-variant='start'] .empty-chat-greeting {
+  margin: 0;
+  font-size: calc(28px * var(--ui-font-scale));
+  line-height: calc(36px * var(--ui-font-scale));
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.draft .empty-chat[data-variant='start'] .empty-chat-hint {
+  color: var(--color-text-dim);
+}
+
+.draft-composer { width: 100%; text-align: left; }
+.draft-composer .tl-composer-wrap { max-width: none; }
+.draft-composer .tl-composer { width: 100%; max-width: none; margin: 0; box-sizing: border-box; }
+.draft-composer .tl-composer.tl-composer-dock {
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 90%), 0 16px 48px rgb(0 0 0 / 38%);
+}
+.draft-composer .tl-composer.tl-composer-dock:focus-within,
+.draft-composer .tl-composer.tl-composer-dock[data-drop] {
+  box-shadow:
+    inset 0 0 0 1px rgb(240 120 24 / 55%),
+    0 0 0 3px rgb(240 120 24 / 12%),
+    0 16px 48px rgb(0 0 0 / 38%);
+}
+/* A roomier first message: two lines tall before it grows. */
+.draft-composer .tl-composer .tl-composer-field { min-height: 60px; }
+
+/* ── the workspace / PC chips (inside the card, above the field) ───────── */
+.ws-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(260px, 60%);
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px 0 9px;
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text-muted);
+  font-size: calc(12.5px * var(--ui-font-scale));
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ws-chip:hover:not(:disabled),
+.ws-chip[aria-expanded='true'] { background: var(--color-surface-3); color: var(--color-text); }
+.ws-chip:disabled { opacity: 0.5; }
+.ws-chip-ic { flex: 0 0 auto; color: var(--color-claw); }
+.ws-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-chip-chev { flex: 0 0 auto; color: var(--color-text-dim); }
+
+/* ── their menus (inside an AnchoredMenu) ──────────────────────────────── */
+.ws-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+}
+.dm-search {
+  flex: none;
+  height: 34px;
+  margin: 2px 2px 4px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text);
+  font: inherit;
+  font-size: calc(13px * var(--ui-font-scale));
+  caret-color: var(--color-claw);
+}
+.dm-search:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px var(--color-claw); }
+.ws-sep { height: 1px; margin: 5px 8px; background: var(--color-line); }
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.ws-row:hover { background: var(--color-surface-3); }
+.ws-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
+.ws-row-ic { flex: 0 0 auto; color: var(--color-text-dim); }
+.ws-row[aria-checked='true'] .ws-row-ic { color: var(--color-claw); }
+.ws-row-text { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.ws-row-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); font-weight: 500; }
+.ws-row-check { flex: 0 0 auto; color: var(--color-claw); }
+
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-size: calc(12.5px * var(--ui-font-scale));
+  font-weight: 600;
+}
+.ws-btn-primary { background: var(--color-claw); color: var(--color-ink); }
+.ws-btn-primary:hover { background: var(--color-amber); }
+.ws-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* D-21: the toolbar keeps its place but paints once, final (no Off/Model → Auto/Plan/Medium/… pop). */
+.draft-composer[data-pending] .comp-bar { visibility: hidden; }
+
+.connect-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: var(--color-surface-2);
+}
+.connect-card-ic { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 9999px; background: rgb(240 120 24 / 12%); color: var(--color-claw); }
+.connect-card-text { text-align: left; display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.connect-card-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text); }
+.connect-card-body { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.connect-card-btn { flex: none; height: 36px; min-height: 36px; padding: 0 16px; font-size: calc(14px * var(--ui-font-scale)); }
+@media (max-width: 640px) { .connect-card { flex-wrap: wrap; } .connect-card-btn { width: 100%; } }
+
+.draft-error {
+  margin: 0;
+  width: 100%;
+  padding: 0 6px;
+  font-size: calc(13px * var(--ui-font-scale));
+  color: var(--color-wm-red);
+}
+.draft-error-hint {
+  display: block;
+  color: var(--color-text-dim);
+  font-size: calc(12px * var(--ui-font-scale));
+}
+
+@media (max-width: 640px) {
+  .draft { padding: 20px 12px 8vh; justify-content: flex-end; }
+  .draft-center { gap: 16px; }
+  .draft .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(22px * var(--ui-font-scale)); line-height: calc(28px * var(--ui-font-scale)); }
+}
+
+/* ── Phone (phone spec §3.6, PH-30): greeting at ~22 % with the crab watermark
+   behind it only, a "Workspace" row under it, the composer docked at the bottom
+   like in a chat (the layer sits on the keyboard by --kb). ───────────────── */
+html[data-shell=phone] .draft[data-phone] { justify-content: flex-start; align-items: stretch; height: 100%; min-height: 0; padding: 0; }
+html[data-shell=phone] .draft[data-phone] .draft-mark { inset: auto 0 auto 0; top: calc(22% - 72px); height: 200px; opacity: 0.04; }
+html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 200px; transform: none; }
+html[data-shell=phone] .draft[data-phone] .draft-center { flex: 1 1 auto; min-height: 0; width: 100%; gap: 20px; align-items: stretch; padding: 22% var(--ph-gutter, 16px) 0; box-sizing: border-box; overflow-y: auto; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(20px * var(--ui-font-scale)); line-height: calc(26px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .draft-composer { margin: auto calc(-1 * var(--ph-gutter, 16px)) 0; width: auto; padding: 8px 8px calc(8px + var(--safe-bottom, 0px)); }
+html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-composer { padding-bottom: 8px; }
+html[data-shell=phone] .draft[data-phone] .draft-composer .tl-composer .tl-composer-field { min-height: 36px; }
+html[data-shell=phone][data-kb=open][data-short] .draft[data-phone] .empty-chat { display: none; }
+html[data-shell=phone][data-kb=open] .draft[data-phone] .draft-center { padding-top: 16px; }
+
+/* The Workspace row (and the PC row with more than one PC): an inset list group of 56 px rows. */
+.ph-draft-pickers { display: flex; flex-direction: column; border-radius: var(--ph-radius-card, 16px); background: var(--color-surface-1); overflow: hidden; }
+.ph-draft-pickers > * + * { border-top: 1px solid rgb(46 40 37 / 60%); }
+html[data-shell=phone] .ph-draft-pickers .ws-chip,
+html[data-shell=phone] .ph-draft-pickers .host-chip { display: flex; align-items: center; gap: 12px; width: 100%; max-width: none; min-height: 56px; height: auto; padding: 0 12px 0 16px; border: 0; border-radius: 0; box-shadow: none; background: transparent; color: var(--color-text); font-size: calc(16px * var(--ui-font-scale)); text-align: left; }
+.ph-draft-pickers .ws-chip-ic { flex: none; width: 22px; height: 22px; color: var(--color-text-muted); }
+.ph-draft-pickers .ws-chip-key { flex: 1 1 auto; font-weight: 500; color: var(--color-text); }
+.ph-draft-pickers .ws-chip-label { flex: 0 1 auto; max-width: 55%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.ph-draft-pickers .ws-chip-chev { flex: none; color: var(--color-text-dim); }
+
+/* Owner 2026-11-05: a compact phone New chat — smaller greeting, tighter rows, less dead space. */
+html[data-shell=phone] .draft[data-phone] .draft-center { padding-top: 10%; gap: 12px; }
+html[data-shell=phone] .draft[data-phone] .draft-mark { top: calc(10% - 40px); height: 140px; }
+html[data-shell=phone] .draft[data-phone] .draft-mark-crab { width: 140px; }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-greeting { font-size: calc(17px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .empty-chat[data-variant='start'] .empty-chat-hint { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+html[data-shell=phone] .ph-draft-pickers .ws-chip,
+html[data-shell=phone] .ph-draft-pickers .host-chip { min-height: 44px; font-size: calc(14.5px * var(--ui-font-scale)); padding: 0 10px 0 12px; }
+html[data-shell=phone] .ph-draft-pickers .ws-chip-label { font-size: calc(13px * var(--ui-font-scale)); }
+html[data-shell=phone] .draft[data-phone] .draft-composer { padding: 6px 6px calc(6px + var(--safe-bottom, 0px)); }

@@ -1,0 +1,53 @@
+[package]
+name = "oino-core"
+version = "1.0.1"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Coding-agent runtime for Oino: AgentSession, extension runner, compaction, retry"
+readme = "README.md"
+keywords = ["agent", "llm", "runtime", "extensions", "compaction"]
+categories = ["asynchronous", "development-tools"]
+
+[features]
+## Test doubles: faux provider component, fake extensions, in-memory session builder.
+testing = []
+## Optional embedded CPU semantic search; default builds do not link the engine.
+zvec = ["oino-tools/zvec"]
+
+[dependencies]
+futures.workspace = true
+ignore.workspace = true
+indexmap.workspace = true
+oino-agent = { path = "../oino-agent", version = "1.0.1" }
+oino-ai = { path = "../oino-ai", version = "1.0.1" }
+oino-extension-api = { path = "../oino-extension-api", version = "1.0.1" }
+oino-models = { path = "../oino-models", version = "1.0.1" }
+oino-resources = { path = "../oino-resources", version = "1.0.0" }
+oino-session = { path = "../oino-session", version = "1.0.0" }
+oino-settings = { path = "../oino-settings", version = "1.0.1" }
+oino-tools = { path = "../oino-tools", version = "1.0.0" }
+oino-ui.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+sha2.workspace = true
+thiserror = "2"
+tokio = { workspace = true, features = ["sync", "macros", "time", "rt", "fs"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+base64.workspace = true
+hmac.workspace = true
+oino-core = { path = ".", features = ["testing"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true }
+
+[lints]
+workspace = true

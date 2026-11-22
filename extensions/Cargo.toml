@@ -1,8 +1,63 @@
 [workspace]
-members = ["crates/*"]
-resolver = "2"
+members = ["*/*"]
+exclude = ["additional", "built-in", "dist", "target"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Neuron-Mr-White/Oino"
+
+[workspace.dependencies]
+base64 = "0.22"
+hmac = "0.12"
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+oino-ai = { path = "../crates/oino-ai", version = "1.0.2" }
+oino-ui = { path = "../crates/oino-ui", version = "1.0.2" }
+oino-extension = { path = "sdk/oino-extension", version = "1.0.2" }
+oino-extension-macros = { path = "sdk/oino-extension-macros", version = "1.0.2" }
+oino-provider-kit = { path = "sdk/oino-provider-kit" }
+proc-macro2 = "1"
+quote = "1"
+ruzstd = "0.9"
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+similar = "2"
+syn = { version = "2", features = ["full"] }
+thiserror = "2"
+unipi-cron-schedule = { path = "../apps/unipi/crates/unipi-cron-schedule" }
+unipi-kit = { path = "sdk/unipi-kit" }
+# `inter-task-wakeup` (fix-frames P0): concurrent export calls (two tool calls in parallel, a
+# session shutdown during a search) that share an async `Mutex` wake each other across
+# component-model tasks. Without the feature wit-bindgen panics ("Cannot support
+# cross-component-model-task wakeup") and the instance traps on `unreachable`.
+wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream", "inter-task-wakeup"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+dbg_macro = "deny"
+
+# Build-cache size policy (scripts/target-gc.sh budget).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 opt-level = "s"
 lto = true
 strip = true
+codegen-units = 1

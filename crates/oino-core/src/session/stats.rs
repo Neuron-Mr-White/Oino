@@ -1,0 +1,496 @@
+//! Session statistics, context usage and export (`getSessionStats`, `getContextUsage`,
+//! `exportToJsonl`, `exportToHtml`).
+
+use std::path::PathBuf;
+
+use oino_ai::{AgentMessage, AssistantContent, StopReason, Usage};
+use oino_session::{EntryKind, FileLine, SessionEntry};
+use serde::{Deserialize, Serialize};
+
+use super::{AgentSession, SessionOpError, lock};
+use crate::compaction::{calculate_context_tokens, estimate_projected_context_tokens};
+
+/// The context usage record.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextUsage {
+    /// Estimated context tokens (`null` right after compaction).
+    pub tokens: Option<u64>,
+    /// Context window.
+    pub context_window: u64,
+    /// Percent of the window (`null` with unknown tokens).
+    pub percent: Option<f64>,
+}
+
+/// Token totals of [`SessionStats`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenTotals {
+    /// Input tokens.
+    pub input: u64,
+    /// Output tokens.
+    pub output: u64,
+    /// Cache read tokens.
+    pub cache_read: u64,
+    /// Cache write tokens.
+    pub cache_write: u64,
+    /// Sum of the four.
+    pub total: u64,
+}
+
+/// The session stats record.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionStats {
+    /// Session file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_file: Option<String>,
+    /// Session id.
+    pub session_id: String,
+    /// User messages.
+    pub user_messages: u64,
+    /// Assistant messages.
+    pub assistant_messages: u64,
+    /// Tool calls.
+    pub tool_calls: u64,
+    /// Tool results.
+    pub tool_results: u64,
+    /// Message entries.
+    pub total_messages: u64,
+    /// Token totals.
+    pub tokens: TokenTotals,
+    /// Total cost (USD).
+    pub cost: f64,
+    /// Tokens of replies (child runs included) whose provider reported no price (cost 0
+    /// with tokens spent): `cost` leaves them out, so a frontend shows `—` rather than `$0`
+    /// when nothing at all was priced.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unpriced_tokens: u64,
+    /// Context usage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_usage: Option<ContextUsage>,
+    /// Usage per model over the whole session file (largest first): every source the
+    /// totals count, so the rows sum to `cost` and `tokens`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<ModelStats>,
+    /// First entry time (Unix ms) of the whole session file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_at: Option<i64>,
+    /// Last entry time (Unix ms) of the whole session file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_at: Option<i64>,
+}
+
+/// One model's share of a session.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelStats {
+    /// Model id as the reply reported it.
+    pub model: String,
+    /// Main assistant replies (child runs: `childTurns`).
+    pub turns: u64,
+    /// Input tokens.
+    pub input: u64,
+    /// Output tokens.
+    pub output: u64,
+    /// Cache read tokens.
+    pub cache_read: u64,
+    /// Cache write tokens.
+    pub cache_write: u64,
+    /// Cost (USD) — every source: main replies and `childCost`.
+    pub cost: f64,
+    /// Child runs' replies on this model (subagents, graph workers, memory saves, naming:
+    /// the parent's `usage` entries), not in `turns`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub child_turns: u64,
+    /// The part of `cost` those child runs spent (USD).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub child_cost: f64,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if signature"
+)]
+fn is_zero_f64(n: &f64) -> bool {
+    *n == 0.0
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if signature"
+)]
+const fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+fn add(stats: &mut SessionStats, usage: &Usage) {
+    let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+    stats.tokens.input += usage.input;
+    stats.tokens.output += usage.output;
+    stats.tokens.cache_read += usage.cache_read;
+    stats.tokens.cache_write += usage.cache_write;
+    stats.cost += usage.cost.total;
+    if tokens > 0 && usage.cost.total <= 0.0 {
+        stats.unpriced_tokens += tokens;
+    }
+}
+
+/// The row of `model` (pushed on first use).
+fn model_row<'a>(models: &'a mut Vec<ModelStats>, model: &str) -> &'a mut ModelStats {
+    let at = models.iter().position(|m| m.model == model);
+    if let Some(i) = at {
+        &mut models[i]
+    } else {
+        models.push(ModelStats {
+            model: model.to_owned(),
+            ..ModelStats::default()
+        });
+        let last = models.len() - 1;
+        &mut models[last]
+    }
+}
+
+fn add_row(row: &mut ModelStats, usage: &Usage) {
+    row.input += usage.input;
+    row.output += usage.output;
+    row.cache_read += usage.cache_read;
+    row.cache_write += usage.cache_write;
+    row.cost += usage.cost.total;
+}
+
+/// The stats of a session's entries (no file/id/context usage). Every usage source lands in
+/// the totals **and** in a per-model row, so the rows sum to `cost`/`tokens` (owner-fix-6
+/// P1-4: rows came from main assistant replies only — $15 of rows against a $133 Cost):
+/// assistant replies by their model; `usage` entries (subagents and graph workers
+/// `child:<label>`, memory saves, session naming, cache warms) by their recorded model,
+/// also counted in the row's `childTurns`/`childCost`; compaction, branch-summary and
+/// nested-tool usage (no model recorded) by the model active at that point of the file.
+fn stats_of(entries: &[SessionEntry]) -> SessionStats {
+    let mut stats = SessionStats {
+        session_file: None,
+        session_id: String::new(),
+        user_messages: 0,
+        assistant_messages: 0,
+        tool_calls: 0,
+        tool_results: 0,
+        total_messages: 0,
+        tokens: TokenTotals::default(),
+        cost: 0.0,
+        unpriced_tokens: 0,
+        context_usage: None,
+        models: Vec::new(),
+        first_at: None,
+        last_at: None,
+    };
+    // The model a modelless usage is attributed to: the last `model_change` or reply.
+    let mut active: Option<String> = None;
+    let unattributed = |stats: &mut SessionStats, active: Option<&str>, usage: &Usage| {
+        add(stats, usage);
+        add_row(
+            model_row(&mut stats.models, active.unwrap_or("unknown")),
+            usage,
+        );
+    };
+    for entry in entries {
+        if let Some(ms) = entry.timestamp.to_ms() {
+            stats.first_at = Some(stats.first_at.map_or(ms, |t| t.min(ms)));
+            stats.last_at = Some(stats.last_at.map_or(ms, |t| t.max(ms)));
+        }
+        match &entry.kind {
+            EntryKind::ModelChange { model_id, .. } => active = Some(model_id.clone()),
+            EntryKind::Usage { model, usage, .. } => {
+                add(&mut stats, usage);
+                let row = model_row(&mut stats.models, model);
+                add_row(row, usage);
+                row.child_turns += 1;
+                row.child_cost += usage.cost.total;
+            }
+            EntryKind::BranchSummary(summary) => {
+                if let Some(usage) = &summary.usage {
+                    unattributed(&mut stats, active.as_deref(), usage);
+                }
+            }
+            EntryKind::Compaction(compaction) => {
+                if let Some(usage) = &compaction.usage {
+                    unattributed(&mut stats, active.as_deref(), usage);
+                }
+            }
+            EntryKind::Message { message } => {
+                stats.total_messages += 1;
+                match message {
+                    AgentMessage::User(_) => stats.user_messages += 1,
+                    AgentMessage::ToolResult(result) => {
+                        stats.tool_results += 1;
+                        if let Some(usage) = &result.usage {
+                            unattributed(&mut stats, active.as_deref(), usage);
+                        }
+                    }
+                    AgentMessage::Assistant(assistant) => {
+                        stats.assistant_messages += 1;
+                        stats.tool_calls += assistant
+                            .content
+                            .iter()
+                            .filter(|b| matches!(b, AssistantContent::ToolCall(_)))
+                            .count() as u64;
+                        add(&mut stats, &assistant.usage);
+                        let row = model_row(&mut stats.models, &assistant.model);
+                        row.turns += 1;
+                        add_row(row, &assistant.usage);
+                        active = Some(assistant.model.clone());
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    stats.tokens.total = stats.tokens.input
+        + stats.tokens.output
+        + stats.tokens.cache_read
+        + stats.tokens.cache_write;
+    stats
+        .models
+        .sort_by_key(|m| std::cmp::Reverse(m.input + m.output + m.cache_read + m.cache_write));
+    stats
+}
+
+impl AgentSession {
+    /// Session stats (all entries, including compacted history and `usage` entries).
+    #[must_use]
+    pub fn session_stats(&self) -> SessionStats {
+        let mut stats = stats_of(&self.entries());
+        stats.session_file = self.session_file().map(|p| p.display().to_string());
+        stats.session_id = self.session_id();
+        stats.context_usage = self.context_usage();
+        stats
+    }
+
+    /// Returns the context usage.
+    #[must_use]
+    pub fn context_usage(&self) -> Option<ContextUsage> {
+        let model = self.routed_model().or_else(|| self.model())?;
+        let context_window = model.context_window;
+        if context_window == 0 {
+            return None;
+        }
+        let manager = lock(&self.inner.manager);
+        let projection = manager.build_session_projection();
+        let branch = manager.wake_branch();
+        if let Some(compaction_index) = branch
+            .iter()
+            .rposition(|e| matches!(e.kind, EntryKind::Compaction(_)))
+        {
+            let projected: Vec<&oino_session::EntryId> = projection
+                .entries
+                .iter()
+                .filter(|entry| {
+                    entry.messages.iter().any(|m| {
+                        matches!(m, AgentMessage::Assistant(a) if !matches!(a.stop_reason, StopReason::Aborted | StopReason::Error) && calculate_context_tokens(&a.usage) > 0)
+                    })
+                })
+                .map(|entry| &entry.source_entry.id)
+                .collect();
+            let has_post = branch[compaction_index + 1..]
+                .iter()
+                .any(|e| projected.contains(&&e.id));
+            if !has_post {
+                return Some(ContextUsage {
+                    tokens: None,
+                    context_window,
+                    percent: None,
+                });
+            }
+        }
+        let estimate = estimate_projected_context_tokens(&projection, &branch);
+        #[allow(clippy::cast_precision_loss, reason = "percent is approximate")]
+        let percent = estimate.tokens as f64 / context_window as f64 * 100.0;
+        Some(ContextUsage {
+            tokens: Some(estimate.tokens),
+            context_window,
+            percent: Some(percent),
+        })
+    }
+
+    /// A fresh header plus the current branch, re-linked linearly.
+    ///
+    /// # Errors
+    ///
+    /// Serialisation or write failures.
+    pub async fn export_jsonl(&self, path: Option<PathBuf>) -> Result<PathBuf, SessionOpError> {
+        let now = oino_session::IsoTimestamp::now();
+        let lines = {
+            let manager = lock(&self.inner.manager);
+            let header = oino_session::SessionHeader {
+                version: oino_session::CURRENT_SESSION_VERSION,
+                id: manager.session_id().to_owned(),
+                timestamp: now.clone(),
+                cwd: manager.cwd().display().to_string(),
+                parent_session: None,
+            };
+            let mut lines = vec![
+                FileLine::Header(header)
+                    .to_line()
+                    .map_err(|e| SessionOpError::Failed(e.to_string()))?,
+            ];
+            let mut parent = None;
+            for entry in manager.branch(None) {
+                let mut entry = entry.clone();
+                entry.parent_id = parent.take();
+                parent = Some(entry.id.clone());
+                lines.push(
+                    FileLine::Entry(entry)
+                        .to_line()
+                        .map_err(|e| SessionOpError::Failed(e.to_string()))?,
+                );
+            }
+            lines
+        };
+        let default_name = format!("session-{}.jsonl", now.as_str().replace([':', '.'], "-"));
+        let target = match path {
+            Some(path) if path.is_absolute() => path,
+            Some(path) => self.work_cwd().join(path),
+            None => self.work_cwd().join(default_name),
+        };
+        if let Some(dir) = target.parent() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        }
+        let mut text = lines.join("\n");
+        text.push('\n');
+        tokio::fs::write(&target, text)
+            .await
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        Ok(target)
+    }
+
+    /// Exports the current branch as a self-contained HTML page (`exportToHtml`
+    /// structure: header, messages, tool calls, collapsed thinking, embedded CSS).
+    ///
+    /// # Errors
+    ///
+    /// Write failures.
+    pub async fn export_html(&self, path: Option<PathBuf>) -> Result<PathBuf, SessionOpError> {
+        let id = self.session_id();
+        let branch: Vec<SessionEntry> = lock(&self.inner.manager)
+            .branch(None)
+            .into_iter()
+            .cloned()
+            .collect();
+        let html = crate::export::render_html(&id, self.session_name().as_deref(), &branch);
+        let short: String = id.chars().take(8).collect();
+        let target =
+            path.unwrap_or_else(|| self.work_cwd().join(format!("oino-session-{short}.html")));
+        tokio::fs::write(&target, html)
+            .await
+            .map_err(|e| SessionOpError::Failed(e.to_string()))?;
+        Ok(target)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn usage(input: u64, output: u64, total: f64) -> Usage {
+        let mut usage = Usage {
+            input,
+            output,
+            ..Usage::default()
+        };
+        usage.cost.total = total;
+        usage
+    }
+
+    /// [status] a provider without a price (cost 0, tokens spent) is counted apart, so the
+    /// app reads `—` + tokens instead of `$0`; priced usage (child runs too) sums up.
+    #[test]
+    fn unpriced_tokens_are_kept_apart_from_the_cost() {
+        let mut stats = SessionStats {
+            session_file: None,
+            session_id: "s".into(),
+            user_messages: 0,
+            assistant_messages: 0,
+            tool_calls: 0,
+            tool_results: 0,
+            total_messages: 0,
+            tokens: TokenTotals::default(),
+            cost: 0.0,
+            unpriced_tokens: 0,
+            context_usage: None,
+            models: Vec::new(),
+            first_at: None,
+            last_at: None,
+        };
+        add(&mut stats, &usage(100, 20, 0.0));
+        add(&mut stats, &usage(5, 5, 1.25));
+        add(&mut stats, &usage(0, 0, 0.0));
+        assert_eq!(stats.unpriced_tokens, 120);
+        assert!((stats.cost - 1.25).abs() < 1e-9);
+        assert_eq!(stats.tokens.input, 105);
+        let value = serde_json::to_value(&stats).unwrap();
+        assert_eq!(value["unpricedTokens"], 120);
+        stats.unpriced_tokens = 0;
+        assert!(
+            serde_json::to_value(&stats)
+                .unwrap()
+                .get("unpricedTokens")
+                .is_none()
+        );
+    }
+
+    /// owner-fix-6 P1-4: Session Info's per-model rows left out subagent usage ($15 of
+    /// rows against a $133 Cost): rows come from every source the totals count, child runs
+    /// (`usage{kind:"child:…"}`) included and flagged per row, so the rows sum to Cost.
+    #[test]
+    fn model_rows_include_child_usage_and_sum_to_the_cost() {
+        let mut manager = oino_session::SessionManager::in_memory(
+            std::path::Path::new("/tmp"),
+            oino_session::CreateOptions::default(),
+            Vec::new(),
+        );
+        manager.append_model_change("p", "opus").unwrap();
+        manager
+            .append_message(AgentMessage::User(oino_ai::UserMessage {
+                author: None,
+                content: oino_ai::UserContentField::Text("go".into()),
+                timestamp: 1,
+            }))
+            .unwrap();
+        let mut reply = oino_ai::AssistantMessage::empty("p", "p", "opus", 2);
+        reply.usage = usage(100, 10, 15.0);
+        manager
+            .append_message(AgentMessage::Assistant(reply))
+            .unwrap();
+        manager
+            .append_usage("child:audit", "p", "sonnet", usage(400, 40, 100.0), None)
+            .unwrap();
+        manager
+            .append_usage("child:scan", "p", "opus", usage(50, 5, 18.0), None)
+            .unwrap();
+        let stats = stats_of(manager.entries());
+        assert!((stats.cost - 133.0).abs() < 1e-9, "{}", stats.cost);
+        let rows: f64 = stats.models.iter().map(|m| m.cost).sum();
+        assert!(
+            (rows - stats.cost).abs() < 1e-9,
+            "rows {rows} vs cost {}",
+            stats.cost
+        );
+        let tokens: u64 = stats
+            .models
+            .iter()
+            .map(|m| m.input + m.output + m.cache_read + m.cache_write)
+            .sum();
+        assert_eq!(tokens, stats.tokens.total);
+        let sonnet = stats.models.iter().find(|m| m.model == "sonnet").unwrap();
+        assert_eq!((sonnet.turns, sonnet.child_turns), (0, 1));
+        assert!((sonnet.child_cost - 100.0).abs() < 1e-9);
+        let opus = stats.models.iter().find(|m| m.model == "opus").unwrap();
+        assert_eq!((opus.turns, opus.child_turns), (1, 1));
+        assert!((opus.cost - 33.0).abs() < 1e-9 && (opus.child_cost - 18.0).abs() < 1e-9);
+        let value = serde_json::to_value(opus).unwrap();
+        assert_eq!(value["childTurns"], 1);
+        assert_eq!(value["childCost"], 18.0);
+    }
+}

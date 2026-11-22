@@ -1,0 +1,41 @@
+# Packages
+
+An extension package is a directory:
+
+```text
+my-ext/
+  extension.json      # manifest
+  component.wasm      # the component
+  skills/ prompts/ themes/ docs/   # optional resources declared in the manifest
+```
+
+Minimal manifest:
+
+```json
+{
+  "apiVersion": "oino.extension/2",
+  "id": "acme.hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "kind": "extension",
+  "description": "Says hello.",
+  "permissions": { "network": { "hosts": ["api.example.com"] } },
+  "resources": { "skills": ["skills"] }
+}
+```
+
+`kind: "provider"` packages must list `provides.apis` and export the `provider` interface.
+Fields, permissions and validation rules: [extension API](extension-api.md).
+
+## Installing
+
+Copy (or symlink) the package directory into `~/.oino/extensions/` (global) or
+`<project>/.oino/extensions/` (project; needs trust), or pass `-e <dir>` for one run.
+`cargo xtask wasm` produces ready-made packages under `extensions/dist/`.
+
+The package manager installs from a directory, an archive, an `https` archive or a
+`git+https` URL: `oino install <source> [--project] [--yes]`, `oino remove <id>`,
+`oino update <id>…` / `oino update --extensions`, `oino list`, `oino config`. `oino list`
+also shows the distribution share-dir packages (scope `dist`; `OINO_DIST_EXTENSIONS`
+overrides the dir, an empty value hides them); `remove` refuses them — they belong to the
+installer. `oino ext validate` is not available yet.

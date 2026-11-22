@@ -1,0 +1,17 @@
+{
+ "t": "Layout",
+ "children": [
+  {
+   "t": "Paragraph",
+   "text": "header"
+  },
+  {
+   "t": "Paragraph",
+   "text": "body"
+  },
+  {
+   "t": "Paragraph",
+   "text": "footer"
+  }
+ ]
+}

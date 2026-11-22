@@ -1,0 +1,212 @@
+{
+ "name": "c_thinking_adaptive",
+ "model": {
+  "id": "global.anthropic.claude-sonnet-4-6",
+  "name": "Claude Sonnet 4.6 (Global)",
+  "api": "bedrock-converse-stream",
+  "provider": "amazon-bedrock",
+  "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 3,
+   "output": 15,
+   "cacheRead": 0.3,
+   "cacheWrite": 3.75
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 128000,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "thinkingLevelMap": {
+   "max": "max"
+  },
+  "inputLimits": {
+   "images": {
+    "maxPerMessage": 20,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "reasoning": "high"
+ },
+ "apiKey": "bedrock-token",
+ "status": 200,
+ "sseBase64": "AAAAdgAAAFKW1freCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicm9sZSI6ImFzc2lzdGFudCJ9b6jFmQAAAK0AAABXGJpAGQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InJlYXNvbmluZ0NvbnRlbnQiOnsidGV4dCI6InBvbmRlciJ9fX36DHPqAAAAqgAAAFequpwJCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MCwiZGVsdGEiOnsicmVhc29uaW5nQ29udGVudCI6eyJ0ZXh0IjoiaW5nIn19fVIWODQAAACwAAAAV4DqEyoLOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJyZWFzb25pbmdDb250ZW50Ijp7InNpZ25hdHVyZSI6InNpZ0EifX19afeLtgAAAK4AAABXXzo6yQs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InJlYXNvbmluZ0NvbnRlbnQiOnsic2lnbmF0dXJlIjoiQkMifX191UjDKwAAAH0AAABW5mgP1gs6ZXZlbnQtdHlwZQcAEGNvbnRlbnRCbG9ja1N0b3ANOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MH2zLk00AAAAvgAAAFc/2q1LCzpldmVudC10eXBlBwARY29udGVudEJsb2NrRGVsdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6MSwiZGVsdGEiOnsicmVhc29uaW5nQ29udGVudCI6eyJyZWRhY3RlZENvbnRlbnQiOiJiM0JoY1hWbExURT0ifX19P1KbhQAAALYAAABXD6rmigs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjEsImRlbHRhIjp7InJlYXNvbmluZ0NvbnRlbnQiOnsicmVkYWN0ZWRDb250ZW50IjoiTFRJPSJ9fX0y/TtrAAAAfQAAAFbmaA/WCzpldmVudC10eXBlBwAQY29udGVudEJsb2NrU3RvcA06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4Ijoxfao1fHUAAACYAAAAV3Fbd+8LOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjoyLCJkZWx0YSI6eyJ0ZXh0IjoiYW5zd2VyIn19Jn+rlgAAAH0AAABW5mgP1gs6ZXZlbnQtdHlwZQcAEGNvbnRlbnRCbG9ja1N0b3ANOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJjb250ZW50QmxvY2tJbmRleCI6Mn2BGC+2AAAAegAAAFHKLEZlCzpldmVudC10eXBlBwALbWVzc2FnZVN0b3ANOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJzdG9wUmVhc29uIjoiZW5kX3R1cm4ifV+/CfwAAAEZAAAATlLqlagLOmV2ZW50LXR5cGUHAAhtZXRhZGF0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7InVzYWdlIjp7ImlucHV0VG9rZW5zIjoyMCwib3V0cHV0VG9rZW5zIjo0MCwidG90YWxUb2tlbnMiOjYwLCJjYWNoZVJlYWRJbnB1dFRva2VucyI6NSwiY2FjaGVXcml0ZUlucHV0VG9rZW5zIjo3LCJjYWNoZURldGFpbHMiOlt7InR0bCI6IjFoIiwiaW5wdXRUb2tlbnMiOjd9XX0sIm1ldHJpY3MiOnsibGF0ZW5jeU1zIjoxMH19oUZG9g==",
+ "request": {
+  "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/converse-stream",
+  "headers": {
+   "content-type": "application/json",
+   "content-length": "309",
+   "x-amz-user-agent": "aws-sdk-js/3.1126.0 pi/1.4.0",
+   "user-agent": "aws-sdk-js/3.1126.0 ua/2.1 os/linux#7.0.0-38-generic lang/js md/nodejs#24.22.1 api/bedrock-runtime#3.1126.0 m/N,E pi/1.4.0",
+   ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
+   "amz-sdk-invocation-id": "459356fb-5c26-4554-8bc9-e0a6f508c393",
+   "amz-sdk-request": "attempt=1; max=3",
+   "authorization": "Bearer bedrock-token"
+  },
+  "body": {
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": "q"
+      },
+      {
+       "cachePoint": {
+        "type": "default"
+       }
+      }
+     ]
+    }
+   ],
+   "system": [
+    {
+     "text": "Sys"
+    },
+    {
+     "cachePoint": {
+      "type": "default"
+     }
+    }
+   ],
+   "inferenceConfig": {
+    "maxTokens": 128000
+   },
+   "additionalModelRequestFields": {
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "output_config": {
+     "effort": "high"
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ponder"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "pondering"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 1,
+   "delta": "[Reasoning redacted]"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 1,
+   "content": "[Reasoning redacted]"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 2
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 2,
+   "delta": "answer"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 2,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "sigABC"
+     },
+     {
+      "type": "thinking",
+      "thinking": "[Reasoning redacted]",
+      "thinkingSignature": "b3BhcXVlLTEtMg==",
+      "redacted": true
+     },
+     {
+      "type": "text",
+      "text": "answer"
+     }
+    ],
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "global.anthropic.claude-sonnet-4-6",
+    "usage": {
+     "input": 20,
+     "output": 40,
+     "cacheRead": 5,
+     "cacheWrite": 7,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.00006,
+      "output": 0.0006000000000000001,
+      "cacheRead": 0.0000015,
+      "cacheWrite": 0.000042,
+      "total": 0.0007035000000000001
+     },
+     "cacheWrite1h": 7
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "rawStopReason": "end_turn",
+    "durationMs": 2
+   }
+  }
+ ]
+}

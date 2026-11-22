@@ -1,0 +1,63 @@
+{
+ "t": "Table",
+ "header": {
+  "cells": [
+   {
+    "content": [
+     {
+      "spans": [
+       {
+        "content": "Name",
+        "style": {
+         "addModifier": [
+          "BOLD"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "content": "Size",
+    "style": {
+     "fg": "muted"
+    }
+   }
+  ]
+ },
+ "rows": [
+  {
+   "key": "r1",
+   "cells": [
+    "notes.md",
+    "1 KB"
+   ],
+   "height": 1,
+   "bottomMargin": 0,
+   "style": {
+    "fg": "text"
+   }
+  }
+ ],
+ "footer": {
+  "cells": [
+   "total",
+   "1 KB"
+  ]
+ },
+ "widths": [
+  {
+   "Max": 24
+  },
+  {
+   "Fill": 1
+  }
+ ],
+ "columnSpacing": 2,
+ "rowHighlightStyle": {
+  "bg": "selectedBg"
+ },
+ "highlightSymbol": "> ",
+ "highlightSpacing": "WhenSelected"
+}

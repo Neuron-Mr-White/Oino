@@ -1,0 +1,81 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "UniPi Oino",
+  "mainBinaryName": "unipi-oino",
+  "version": "1.0.13",
+  "identifier": "dev.unipi.oino",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Unipi",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 360,
+        "minHeight": 560,
+        "center": true,
+        "resizable": true,
+        "dragDropEnabled": true,
+        "backgroundColor": "#0A0908"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": [
+      "binaries/unipi-oino-host"
+    ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/unipi.desktop"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "iOS": {
+      "frameworks": [
+        "SystemConfiguration"
+      ],
+      "minimumSystemVersion": "15.0"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": [
+            "unipi"
+          ],
+          "host": "pair"
+        },
+        {
+          "scheme": [
+            "unipi"
+          ],
+          "host": "chat"
+        }
+      ]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBNTcyRUJGMzZGRDlEQTAKUldTZ25mMDJ2eTVYbWdWRThrSlVWWVFhL2t4WXNPbkhwV3p6NUxkZ0VoTVVIZEVaSFVhdjhrSEgK",
+      "endpoints": [
+        "https://oino.dev/app/desktop/latest.json"
+      ]
+    }
+  }
+}

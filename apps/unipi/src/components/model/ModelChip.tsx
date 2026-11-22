@@ -1,0 +1,142 @@
+/**
+ * Model chip (WP-A14, Z-69/Z-70): the composer's one model entry point —
+ * "the model that runs" with a rolling name, opening the one model dialog
+ * (`ChatModelPicker`; `data-session` names the chat it belongs to).
+ * The chat title and the (deleted) footer tray are not entry points (Z-70);
+ * Ctrl/Cmd+M and `/model` reach the same dialog.
+ *
+ * Owner 2026-11-04: in a chat the chip lives in the **model capsule** — the
+ * context ring first, then the name, in one pill (`ModelCapsule`). The
+ * capsule is the toolbar's flexible slot: it takes the row's free width up to
+ * a cap and shrinks to a floor before the other chips fold (`Toolbar`).
+ */
+import { createEffect, Show } from 'solid-js';
+import { Brain, ChevronUp, Cpu } from 'lucide-solid';
+import { layout } from '../../lib/layout';
+import { canThink, ensureThinkingLevels, thinkingLevels } from '../../lib/model/thinking';
+import type { SessionHandle } from '../../lib/session/store';
+import { modKey } from '../../lib/shell';
+import { RollingLabel } from '../RollingLabel';
+import { modelPickerTarget, openModelPicker } from './target';
+import { modelDisplayName, modelOrigin } from '../../lib/model/displayName';
+import { activeSessionFusion, FUSION_STATUS_TOPIC, fetchFusion, fusionAvailable } from '../../lib/model/fusion';
+import { shortModelName } from '../../lib/model/picker';
+import { ContextRing } from './ContextRing';
+
+function shortFromKey(key: string): string {
+  const slash = key.indexOf('/');
+  const id = slash >= 0 ? key.slice(slash + 1) : key;
+  return shortModelName(modelDisplayName({ id }) || id);
+}
+
+/** The chip's label: the running model's display name (never a raw `router/id` path), else a neutral word. */
+export function modelChipLabel(model: SessionHandle['state']['model']): string {
+  return modelDisplayName(model) || 'Model';
+}
+
+/** The chip's tooltip: the full name, where it runs (provider · id) and the shortcut. */
+export function modelChipTitle(model: SessionHandle['state']['model']): string {
+  const origin = modelOrigin(model);
+  return `Model: ${modelChipLabel(model)}${origin ? ` (${origin})` : ''} — change it (${modKey()} M)`;
+}
+
+/**
+ * Is the chat's model known for real? A chat opened from its file shows a provisional state
+ * while its runtime wakes: the model the file names, with the id standing in for the name
+ * (the host's `provisional_state`). Until the runtime answers, that stub would read as one
+ * name ("Mock 1") and then roll to the catalogue's ("Mock") — r5 D18. So while waking, an
+ * id-as-name model is not resolved yet and the chip shows its neutral placeholder.
+ */
+export function modelResolved(state: Pick<SessionHandle['state'], 'model' | 'waking'>): boolean {
+  const m = state.model;
+  if (!m) return false;
+  return !(state.waking && (!m.name || m.name === m.id));
+}
+
+/** A thinking level above Off (the phone model chip's glyph). */
+export const thinkingOn = (level: string | undefined): boolean => !!level && level !== 'off';
+
+/** `icon={false}`: inside the capsule the context ring stands where the chip icon was. */
+export function ModelChip(props: { session: SessionHandle; disabled?: boolean; icon?: boolean }) {
+  const fusion = () => activeSessionFusion(props.session);
+  const label = () => {
+    const f = fusion();
+    if (f) {
+      const lead = f.leadName ? shortModelName(f.leadName) : shortFromKey(f.lead);
+      const side = f.sidekickName ? shortModelName(f.sidekickName) : shortFromKey(f.sidekick);
+      return `Fusion · ${lead} ◆ ${side}`;
+    }
+    return modelResolved(props.session.state) ? modelChipLabel(props.session.state.model) : 'Model';
+  };
+  const chipTitle = () => {
+    const f = fusion();
+    if (f) {
+      const lead = f.leadName ? shortModelName(f.leadName) : shortFromKey(f.lead);
+      const side = f.sidekickName ? shortModelName(f.sidekickName) : shortFromKey(f.sidekick);
+      return `Fusion: ${lead} (${f.lead.replace('/', ' · ')}) ◆ ${side} (${f.sidekick.replace('/', ' · ')}) — change it (${modKey()} M)`;
+    }
+    return modelResolved(props.session.state) ? modelChipTitle(props.session.state.model) : modelChipTitle(undefined);
+  };
+  // Subscribe to Fusion status topic + seed once when live so existing Fusion sessions show the pair immediately.
+  createEffect(() => {
+    if (props.session.state.conn === 'live') {
+      props.session.subscribeTopics?.([FUSION_STATUS_TOPIC]);
+      void fusionAvailable(props.session).then((ok) => (ok ? fetchFusion(props.session) : undefined));
+    }
+  });
+  // Phone: no Thinking chip fetches the levels — the chip's glyph needs them (§3.5).
+  createEffect(() => {
+    void props.session.state.model?.id;
+    void props.session.state.conn;
+    if (!layout().desktop()) ensureThinkingLevels(props.session as unknown as SessionHandle);
+  });
+  const open = () => openModelPicker({ hostId: props.session.hostId, sessionId: props.session.sessionId() });
+  return (
+    <button
+      type="button"
+      class="tb-chip tb-chip-model"
+      data-fusion={fusion() ? '' : undefined}
+      data-pending={!fusion() && !modelResolved(props.session.state) ? '' : undefined}
+      aria-label={`Model: ${label()}. Change model`}
+      aria-haspopup="dialog"
+      aria-expanded={(() => {
+        const t = modelPickerTarget();
+        return !!t && t.hostId === props.session.hostId && t.sessionId === props.session.sessionId();
+      })()}
+      title={chipTitle()}
+      disabled={props.disabled}
+      onClick={open}
+      data-testid="model-chip"
+      data-session={`${props.session.hostId}/${props.session.sessionId()}`}
+    >
+      <Show when={props.icon !== false}>
+        <Cpu size={15} class="tb-ic" />
+      </Show>
+      <RollingLabel class="tb-label" text={label()} testId="model-chip-label" scope={props.session.key} ready={!!fusion() || modelResolved(props.session.state)} />
+      {/* Phone (§3.5): no Thinking chip — a glyph says the model thinks above Off. */}
+      <Show when={!layout().desktop() && thinkingOn(props.session.state.thinkingLevel) && canThink(thinkingLevels(props.session as unknown as SessionHandle))}>
+        <Brain size={14} class="tb-think-glyph" aria-hidden="true" />
+      </Show>
+      <Show when={!props.disabled}>
+        <ChevronUp size={12} class="tb-chev" />
+      </Show>
+    </button>
+  );
+}
+
+/** The capsule's floor (px): ring + chevron + about twelve characters of the
+ *  name on the desktop; the phone row is tighter (ring + the thinking glyph + about four;
+ *  a short name such as "GLM 4.7" fits whole). Below the
+ *  floor the other chips fold first (`ToolbarItem.min`). */
+export const CAPSULE_MIN = 148;
+export const CAPSULE_MIN_PHONE = 100;
+
+/** The chat's model capsule: context ring · model name · chevron, one pill. */
+export function ModelCapsule(props: { session: SessionHandle; disabled?: boolean }) {
+  return (
+    <div class="tb-capsule" role="group" aria-label="Model and context" data-testid="model-capsule">
+      <ContextRing session={props.session} />
+      <ModelChip session={props.session} disabled={props.disabled} icon={false} />
+    </div>
+  );
+}

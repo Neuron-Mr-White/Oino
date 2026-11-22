@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+  A
+  ~ 0..2=fg=rgb(9da5a9),bg=rgb(213b49),mods=BOLD 2..40=bg=rgb(213b49),mods=BOLD

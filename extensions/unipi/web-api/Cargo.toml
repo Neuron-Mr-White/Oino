@@ -1,0 +1,27 @@
+[package]
+name = "unipi-web-api"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.web-api: web_search, multi_web_content_read (smart-fetch + readability → markdown) and web_llm_summarize"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dom_query = "0.28"
+dom_smoothie = "0.18"
+futures.workspace = true
+htmd = "0.5"
+oino-extension.workspace = true
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true

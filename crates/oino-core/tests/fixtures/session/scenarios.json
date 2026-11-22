@@ -1,0 +1,13 @@
+[
+  {"name": "text", "prompts": ["hi"], "responses": [{"content": [{"type": "text", "text": "hello"}], "stopReason": "stop"}]},
+  {"name": "two-prompts", "prompts": ["one", "two"], "responses": [
+    {"content": [{"type": "text", "text": "first"}], "stopReason": "stop"},
+    {"content": [{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": "second"}], "stopReason": "stop"}]},
+  {"name": "error-no-retry", "settings": {"retry": {"enabled": false}}, "prompts": ["hi"], "responses": [{"content": [], "stopReason": "error", "errorMessage": "bad request"}]},
+  {"name": "retry", "settings": {"retry": {"baseDelayMs": 1}}, "prompts": ["hi"], "responses": [
+    {"content": [], "stopReason": "error", "errorMessage": "529 overloaded"},
+    {"content": [{"type": "text", "text": "ok"}], "stopReason": "stop"}]},
+  {"name": "unknown-tool", "prompts": ["go"], "responses": [
+    {"content": [{"type": "toolCall", "id": "t1", "name": "nope", "arguments": {}}], "stopReason": "toolUse"},
+    {"content": [{"type": "text", "text": "done"}], "stopReason": "stop"}]}
+]

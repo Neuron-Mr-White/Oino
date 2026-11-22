@@ -1,0 +1,47 @@
+{
+ "t": "BarChart",
+ "data": [
+  {
+   "label": "Builds",
+   "bars": [
+    {
+     "value": 4,
+     "label": "Mon",
+     "textValue": "4",
+     "style": {
+      "fg": "c1"
+     },
+     "valueStyle": {
+      "fg": "text"
+     }
+    },
+    {
+     "value": 7,
+     "label": "Tue"
+    }
+   ]
+  },
+  {
+   "bars": [
+    {
+     "value": 2
+    }
+   ]
+  }
+ ],
+ "barWidth": 2,
+ "barGap": 1,
+ "groupGap": 1,
+ "direction": "Vertical",
+ "max": 10,
+ "barStyle": {
+  "fg": "accent"
+ },
+ "valueStyle": {
+  "fg": "text"
+ },
+ "labelStyle": {
+  "fg": "muted"
+ },
+ "onSelect": "pick-bar"
+}

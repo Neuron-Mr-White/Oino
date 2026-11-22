@@ -1,0 +1,11 @@
+/* The project-trust banner (OIN-101): a question, not an error — neutral surface, the shield in the brand tint. */
+.chat-banner.trust-banner { flex-wrap: wrap; background: var(--color-surface-2); border: 1px solid var(--color-line); color: var(--color-text); }
+.chat-banner.trust-banner > svg { color: var(--color-amber); }
+.trust-banner-text { flex: 1 1 260px; overflow-wrap: anywhere; }
+.trust-banner-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.trust-banner-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 12px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text); font-size: calc(13px * var(--ui-font-scale)); }
+.trust-banner-btn[data-primary] { background: var(--color-shell); color: #fff; font-weight: 600; }
+.trust-banner-btn:disabled { opacity: 0.55; }
+/* Phone: 44 px targets, the buttons share one row under the text. */
+html:not([data-shell=desktop]) .trust-banner-actions { width: 100%; }
+html:not([data-shell=desktop]) .trust-banner-btn { min-height: 44px; flex: 1 1 auto; justify-content: center; }

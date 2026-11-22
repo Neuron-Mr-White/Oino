@@ -1,0 +1,59 @@
+//! `oino-client`: how frontends talk to a session.
+//!
+//! Every frontend (RPC server, TUI, GPUI, ACP adapter) drives a session through
+//! [`SessionBackend`]: Oino [`RpcCommand`]s in, one ordered stream of
+//! [`oino_core::events::ClientEvent`]s out, dialog answers via
+//! [`SessionBackend::ui_respond`]. The in-process backend passes the enums without
+//! serialisation; `oino-rpc`'s `RpcBackend` serialises them over JSONL, so a frontend cannot
+//! tell the two apart.
+//!
+//! # API map
+//!
+//! | Module | Contents |
+//! |---|---|
+//! | [`protocol`] | [`RpcCommand`] ([`AgentCommand`], [`OinoCommand`]), [`RpcRequest`], [`RpcResponse`], [`RpcSessionState`] |
+//! | [`backend`] | [`SessionBackend`], [`ClientError`] |
+//! | [`frontend`] | [`FrontendApi`]: typed `_oino/*` frontend commands (completions, panel actions, shortcuts, editor intents, settings, services, sign-in, topics, agents, queue edits, checkpoints / rewind, running bash, extensions) for every backend |
+//! | [`in_process`] (feature `in-process`) | `rpc-mode.ts` `handleCommand` | [`InProcessBackend`] over `AgentSessionRuntime` |
+//! | [`fake`] | [`fake::FakeBackend`]: scripted events and replies |
+//!
+//! The protocol records live here until `oino-protocol` exists (deviations/modes.md).
+
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/png/oino-256.png",
+    html_favicon_url = "https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/docs/assets/brand/oino.ico"
+)]
+#![forbid(unsafe_code)]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        reason = "tests assert by unwrapping"
+    )
+)]
+
+pub mod backend;
+pub mod fake;
+#[cfg(feature = "in-process")]
+mod follow;
+pub mod frontend;
+#[cfg(feature = "in-process")]
+pub mod hub;
+#[cfg(feature = "in-process")]
+pub mod in_process;
+pub mod protocol;
+
+pub use backend::{ClientError, SessionBackend};
+#[cfg(feature = "in-process")]
+pub use follow::FollowStream;
+pub use frontend::{AgentTree, FrontendApi, RenderRow, RewindOptions, ShortcutInfo};
+#[cfg(feature = "in-process")]
+pub use hub::{HubOptions, HubSession, HubSessionState, SessionHub};
+#[cfg(feature = "in-process")]
+pub use in_process::{InProcessBackend, ServerInfo};
+pub use protocol::{
+    AgentCommand, OinoCommand, RejectedCommand, RpcCommand, RpcRequest, RpcResponse,
+    RpcResponseData, RpcSessionState,
+};

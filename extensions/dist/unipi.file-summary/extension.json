@@ -1,0 +1,23 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.file-summary",
+  "name": "File Summary",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Snapshots files before write/edit, summarizes the files a turn touched (+added −removed) in a turn footer, and undoes a turn or a range of turns.",
+  "license": "MIT",
+  "permissions": {
+    "fs": {
+      "project": "write"
+    }
+  },
+  "ui": {
+    "reserved": [
+      "unipi.file-summary/turn-files"
+    ]
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:4a33e52d0013f96f0c4e27da6c691cf42468c8c162da9cf3704242f023672e20"
+  }
+}

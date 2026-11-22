@@ -1,0 +1,279 @@
+{
+ "name": "c_thinking",
+ "model": {
+  "id": "gpt-5.6-luna",
+  "name": "GPT-5.6 Luna",
+  "api": "openai-codex-responses",
+  "provider": "openai-codex",
+  "baseUrl": "https://chatgpt.com/backend-api",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.2,
+   "output": 1.2,
+   "cacheRead": 0.02,
+   "cacheWrite": 0.25,
+   "tiers": [
+    {
+     "inputTokensAbove": 272000,
+     "input": 0.4,
+     "output": 1.8,
+     "cacheRead": 0.04,
+     "cacheWrite": 0.5
+    }
+   ]
+  },
+  "contextWindow": 272000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max",
+   "minimal": "low"
+  },
+  "compat": {
+   "supportsOpenAIGrammarTools": true,
+   "supportsAdditionalTools": true,
+   "supportsToolSearch": true,
+   "supportsMidConvoSystemMessages": true
+  },
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   },
+   {
+    "role": "assistant",
+    "api": "openai-codex-responses",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}"
+     },
+     {
+      "type": "text",
+      "text": "a1",
+      "textSignature": "{\"v\":1,\"id\":\"msg_prev\",\"phase\":\"final_answer\"}"
+     }
+    ],
+    "stopReason": "stop",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "timestamp": 2
+   },
+   {
+    "role": "user",
+    "content": "again",
+    "timestamp": 4
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "transport": "sse",
+  "reasoning": "high"
+ },
+ "apiKey": "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_3\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[]}}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"item_id\":\"rs_1\",\"summary_index\":0,\"delta\":\"ponder\"}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"item_id\":\"rs_1\",\"summary_index\":0,\"delta\":\"ing\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"msg_o3\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"delta\":\"an\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"delta\":\"swer\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"msg_o3\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"annotations\":[]}]}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_3\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}],\"usage\":{\"input_tokens\":20,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":40,\"output_tokens_details\":{\"reasoning_tokens\":25},\"total_tokens\":60}}}\n\n",
+ "request": {
+  "url": "https://chatgpt.com/backend-api/codex/responses",
+  "headers": {
+   "accept": "text/event-stream",
+   "authorization": "Bearer eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+   "chatgpt-account-id": "acct-123",
+   "content-encoding": "zstd",
+   "content-type": "application/json",
+   "openai-beta": "responses=experimental",
+   "originator": "pi",
+   "session-id": "sess-1234",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-client-request-id": "sess-1234"
+  },
+  "body": {
+   "model": "gpt-5.6-luna",
+   "store": false,
+   "stream": true,
+   "instructions": "Sys",
+   "input": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "q"
+      }
+     ]
+    },
+    {
+     "type": "reasoning",
+     "id": "rs_1",
+     "summary": [
+      {
+       "type": "summary_text",
+       "text": "pondering"
+      }
+     ],
+     "encrypted_content": "enc_abc"
+    },
+    {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "output_text",
+       "text": "a1",
+       "annotations": []
+      }
+     ],
+     "status": "completed",
+     "id": "msg_prev",
+     "phase": "final_answer"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "again"
+      }
+     ]
+    }
+   ],
+   "text": {
+    "verbosity": "low"
+   },
+   "include": [
+    "reasoning.encrypted_content"
+   ],
+   "prompt_cache_key": "sess-1234",
+   "tool_choice": "auto",
+   "parallel_tool_calls": true,
+   "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ponder"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "pondering"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "an"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "swer"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}"
+     },
+     {
+      "type": "text",
+      "text": "answer",
+      "textSignature": "{\"v\":1,\"id\":\"msg_o3\"}"
+     }
+    ],
+    "api": "openai-codex-responses",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "usage": {
+     "input": 20,
+     "output": 40,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 25,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.000004000000000000001,
+      "output": 0.000048,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000052000000000000004
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "resp_3",
+    "rawStopReason": "completed",
+    "durationMs": 0
+   }
+  }
+ ]
+}

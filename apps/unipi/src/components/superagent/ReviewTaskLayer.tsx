@@ -1,0 +1,32 @@
+import { TaskDetail } from '../board/TaskDetail';
+import { CommentSheet, ConfirmSheet } from '../board/MoveSheets';
+import { ImageViewer, ReportReader } from '../board/Viewers';
+import { useBoardLive } from '../../lib/board/live';
+import { boardStore } from '../../lib/board/store';
+import { taskOrigin } from '../../lib/board/taskOrigin';
+
+/**
+ * The Kanboard task detail, mounted over the Superagent page (OIN-40): a
+ * ticket opened from the Review / Needs-you queue never leaves this route, so
+ * Back lands on the queue exactly as it was. It brings what the detail needs
+ * from the Board screen — the note / confirm sheets, the report reader, the
+ * image viewer and the live board feed. Inside the Workbench the reader and
+ * the image viewer mount into its side pane (`paneMount`); the sheets
+ * (CommentSheet, ConfirmSheet, Labels, Runs after) are layered above the
+ * Workbench by superagent.css, which is why they are visible there.
+ */
+export function ReviewTaskLayer(props: { mount?: HTMLElement; readerMount?: HTMLElement; /** The desktop Workbench's side pane: reports and images show there instead of over the ticket. */ paneMount?: HTMLElement; embedded?: boolean; onBack?: () => void } = {}) {
+  const store = boardStore();
+  useBoardLive(store, () => {
+    const origin = taskOrigin();
+    const at = store.target();
+    return origin && at?.hostId === origin.hostId ? { hostId: origin.hostId, slug: at.slug ?? null } : null;
+  });
+  return <>
+    <TaskDetail mount={props.mount} embedded={props.embedded} onBack={props.onBack} />
+    <CommentSheet />
+    <ConfirmSheet />
+    <ReportReader mount={props.paneMount ?? props.readerMount} pane={!!props.paneMount} />
+    <ImageViewer mount={props.paneMount} pane={!!props.paneMount} />
+  </>;
+}

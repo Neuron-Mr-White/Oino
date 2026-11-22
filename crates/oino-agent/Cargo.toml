@@ -1,21 +1,29 @@
 [package]
 name = "oino-agent"
-version = "0.1.3"
-edition.workspace = true
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
 license.workspace = true
+repository.workspace = true
+description = "Agent loop, tool execution and a stateful agent with queues for Oino"
+readme = "README.md"
+keywords = ["agent", "llm", "ai", "tools", "asynchronous"]
+categories = ["asynchronous"]
 
 [dependencies]
-async-trait.workspace = true
 futures.workspace = true
-oino-agent-loop = { path = "../oino-agent-loop" }
-oino-types = { path = "../oino-types" }
-thiserror.workspace = true
-tokio.workspace = true
+indexmap.workspace = true
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+regex.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = "2"
+tokio = { workspace = true, features = ["sync", "macros", "time"] }
+tokio-util.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
-tokio.workspace = true
-uuid.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 
 [lints]
 workspace = true

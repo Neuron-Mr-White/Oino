@@ -1,0 +1,8 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+              Nothing here
+  ~ 14..26=mods=BOLD
+           Try adding an item.
+  ~ 11..30=fg=rgb(9da5a9)

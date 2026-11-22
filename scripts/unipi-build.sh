@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# mise unipi:build — a local RELEASE bundle of the Unipi desktop app for THIS
+# OS, using the same steps as the release workflow (.github/workflows/
+# release.yml): sidecar, staged extension dist as a bundle resource, version
+# from tauri.conf.json.
+#
+# Like unipi:dev this keeps the DEV identity (dev.unipi.app.dev / 'UniPi Dev',
+# apps/unipi/tauri.dev.conf.json): a locally built bundle can never clobber the
+# installed dev.unipi.app app. CI release builds are the only dev.unipi.app
+# builds.
+#
+# Bundles: Linux .deb + .AppImage (webkitgtk dev packages required),
+# macOS universal .dmg (Xcode CLT + both darwin targets), Windows NSIS .exe.
+# Output: apps/unipi/src-tauri/target/[<target>/]release/bundle/…
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+
+os=linux
+case "$(uname -s)" in
+  Linux*) os=linux ;;
+  Darwin*) os=macos ;;
+  MINGW*|MSYS*|CYGWIN*) os=windows ;;
+  *) echo "unsupported host: $(uname -s)" >&2; exit 1 ;;
+esac
+
+# Release builds must emit signed updater payloads. Dev bundles remain unsigned.
+updater=false
+if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then
+  : "${TAURI_SIGNING_PRIVATE_KEY:?Set TAURI_SIGNING_PRIVATE_KEY for a release build (docs/release-feeds.md)}"
+  updater=true
+fi
+
+# Rebuild the extension dist when it is missing or incomplete (a killed
+# `cargo xtask wasm` leaves checksums.json with only some packages built).
+dist_ok() {
+  [ -f extensions/dist/checksums.json ] || return 1
+  local n
+  n=$(find extensions/dist -mindepth 2 -maxdepth 2 -name extension.json | wc -l)
+  [ "$n" -ge 30 ]
+}
+if ! dist_ok; then
+  echo "==> extensions/dist missing or incomplete: cargo xtask wasm"
+  cargo xtask wasm
+  dist_ok || { echo "extensions/dist still incomplete after cargo xtask wasm" >&2; exit 1; }
+fi
+sh scripts/release/stage-dist.sh apps/unipi/target/dist-stage
+
+version=$(sh scripts/release/version.sh --check)
+stage="$root/apps/unipi/target/dist-stage/extensions"
+# The dev identity merge (tauri.dev.conf.json) plus the bundled extensions —
+# one --config, same shape as the release workflow's merge. UNIPI_RELEASE_IDENTITY=1
+# keeps the release identity (UniPi Oino / dev.unipi.oino): byte-for-byte the
+# package a user installs. Linux puts the extensions in /usr/share/oino/extensions
+# and the CLI in /usr/bin/oino (deb + AppImage `files`); macOS/Windows use resources.
+if [ "${UNIPI_RELEASE_IDENTITY:-0}" = 1 ]; then identity=''; label="Unipi $version (productName UniPi Oino), identifier dev.unipi.oino"
+else identity='"productName": "UniPi Dev", "identifier": "dev.unipi.app.dev",'; label="Unipi $version (dev: productName UniPi Dev), identifier dev.unipi.app.dev"; fi
+if [ "$os" = linux ]; then
+  if [ "${UNIPI_LOCAL_ZVEC:-${UNIPI_RELEASE_IDENTITY:-0}}" = 1 ]; then
+    arch=$(uname -m); case "$arch" in x86_64|amd64) arch=x86_64;; aarch64|arm64) arch=aarch64;; *) echo "Unsupported helper architecture: $arch" >&2; exit 1;; esac
+    target="${arch}-unknown-linux-gnu"
+    asset_dir="$root/apps/unipi/target/local-zvec"
+    mkdir -p "$asset_dir"
+    echo "==> local glibc semantic search helper"
+    bash scripts/release/build-zvec.sh "$version" "$target" "$asset_dir"
+    export OINO_ZVEC_MANIFEST="$asset_dir/zvec-manifest.json"
+    python3 - "$asset_dir/oino-zvec-$version-$target.tar.gz" "$OINO_ZVEC_MANIFEST" "$version" "$target" <<'PY'
+import hashlib, json, pathlib, sys
+asset, manifest, version, target = sys.argv[1:]
+p = pathlib.Path(asset).resolve()
+pathlib.Path(manifest).write_text(json.dumps({'version': version, 'assets': {target: {'url': p.as_uri(), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'size': p.stat().st_size}}}))
+PY
+  fi
+  echo "==> oino CLI (release)"
+  cargo build --release -p oino-cli --bin oino
+  oino="${CARGO_TARGET_DIR:-$root/target}/release/oino"
+  files="{ \"/usr/share/oino/extensions\": \"$stage\", \"/usr/bin/oino\": \"$oino\" }"
+  bundle="{ \"linux\": { \"deb\": { \"files\": $files }, \"appimage\": { \"files\": $files } } }"
+else
+  bundle="{ \"resources\": { \"$stage\": \"extensions/\" } }"
+fi
+# Add updater generation to the same bundle object as the resources.
+cat > apps/unipi/target/tauri-local.conf.json <<EOF
+{ $identity "bundle": { "createUpdaterArtifacts": $updater, ${bundle#\{} }
+EOF
+conf=target/tauri-local.conf.json
+
+case "$os" in
+  linux)
+    arch=$(uname -m); case "$arch" in x86_64|amd64) arch=x86_64;; aarch64|arm64) arch=aarch64;; esac
+    echo "==> unipi-host sidecar (static musl via zigbuild)"
+    apps/unipi/src-tauri/unipi-host-sidecar.sh "${arch}-unknown-linux-gnu"
+    args=(--config "$conf" --bundles deb,appimage)
+    out="${CARGO_TARGET_DIR:-apps/unipi/src-tauri/target}/release/bundle"
+    ;;
+  macos)
+    echo "==> universal sidecar (lipo + ad-hoc codesign)"
+    (cd apps/unipi &&
+      rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null 2>&1 || true
+      for t in aarch64-apple-darwin x86_64-apple-darwin; do
+        cargo build --release -p unipi-host --target "$t"
+      done
+      mkdir -p src-tauri/binaries
+      lipo -create \
+        target/aarch64-apple-darwin/release/unipi-host \
+        target/x86_64-apple-darwin/release/unipi-host \
+        -output src-tauri/binaries/unipi-oino-host-universal-apple-darwin
+      codesign --force -s - --identifier dev.unipi.host \
+        src-tauri/binaries/unipi-oino-host-universal-apple-darwin)
+    args=(--config "$conf" --target universal-apple-darwin --bundles app,dmg)
+    out=apps/unipi/src-tauri/target/universal-apple-darwin/release/bundle
+    ;;
+  windows)
+    echo "==> unipi-host sidecar (native MSVC)"
+    (cd apps/unipi && cargo build --release -p unipi-host)
+    mkdir -p apps/unipi/src-tauri/binaries
+    cp apps/unipi/target/release/unipi-host.exe \
+       apps/unipi/src-tauri/binaries/unipi-oino-host-x86_64-pc-windows-msvc.exe
+    args=(--config "$conf" --bundles nsis)
+    out="${CARGO_TARGET_DIR:-apps/unipi/src-tauri/target}/release/bundle"
+    ;;
+esac
+
+if [ ! -d apps/unipi/node_modules ]; then
+  echo "==> npm ci"
+  (cd apps/unipi && npm ci)
+fi
+
+echo "==> cargo tauri build ${args[*]}"
+(cd apps/unipi && cargo tauri build "${args[@]}")
+
+echo "==> bundles ($label):"
+find "$out" -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' -o -name '*-setup.exe' \) \
+  | sed 's/^/    /'
+
+# Gate: a bundle without its extensions is not a release (it opens with no providers).
+while IFS= read -r -d '' deb; do
+  n=$(dpkg-deb -c "$deb" | grep -c 'extensions/[^/]*/extension.json$' || true)
+  [ "$n" -ge 30 ] || { echo "ERROR: $deb bundles only $n extensions" >&2; exit 1; }
+  echo "    $deb: $n extensions bundled"
+done < <(find "$out" -maxdepth 2 -name '*.deb' -print0)

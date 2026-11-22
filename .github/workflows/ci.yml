@@ -1,147 +1,185 @@
 name: ci
 
+# quality.md §6. The toolchain (1.99.0 + wasm32-wasip2) comes from rust-toolchain.toml.
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: [main, v1-alpha, v2]
     tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: -D warnings
 
 jobs:
-  docs-and-install:
-    name: docs and installer
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check docs and installer syntax
-        run: scripts/docs-check.sh
-      - name: Dry-run installer
-        run: OINO_DRY_RUN=1 sh scripts/install.sh
-      - name: Smoke-test local installer
-        run: scripts/install-smoke.sh
+      - run: rustup show active-toolchain
+      - run: cargo fmt --all --check
+      - run: cargo fmt --all --check
+        working-directory: extensions
+      - run: cargo fmt --all --check
+        working-directory: apps/unipi
+
+  wasm:
+    name: extension components
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nextensions -> target\napps/unipi -> target"
+      - name: Pinned wasm-tools (checksum provenance)
+        run: cargo install wasm-tools --version 1.262.0 --locked
+      - name: Dist compiler regression tests
+        run: python3 scripts/release/test-dist-rustc.py
+      - name: Build components (extensions/dist)
+        run: cargo xtask wasm
+      - name: Checksums match the committed checksums.json
+        run: git diff --exit-code extensions/dist/checksums.json
+      - name: Clippy (wasm32-wasip2)
+        working-directory: extensions
+        run: cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - name: ui-protocol v2 gate (no OUS v1 node trees)
+        run: sh scripts/ui-v1-gate.sh
+      - name: Native extension tests
+        working-directory: extensions
+        run: cargo test --workspace -j 4
+      - name: WASM host harnesses
+        env:
+          JOBS: '2'
+        run: |
+          for h in extensions/unipi/*/harness/run.sh; do
+            echo "::group::$h"; sh "$h"; echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+
+  root:
+    name: core workspace
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Runtime acquisition regression tests
+        run: python3 scripts/release/test-prepare-ort.py
+      - name: Verified ONNX runtime (root includes the semantic helper)
+        run: python3 scripts/release/prepare-ort.py --target x86_64-unknown-linux-gnu --cache-dir "$RUNNER_TEMP/ort-cache" --destination "$RUNNER_TEMP/ort-runtime" --github-env
+      - run: cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - run: bash scripts/ci/test-root.sh -j 4
+      - run: cargo doc --workspace --no-deps
+      - run: cargo install wasm-tools --version 1.262.0 --locked && cargo xtask wit
+      - name: Install smoke
+        run: sh scripts/install-smoke.sh
+
+  unipi:
+    name: unipi workspace (apps/unipi)
+    # repo-split: the UniPi distribution crates build in their own cargo workspace;
+    # the root `core workspace` job stays oino-only. The wasm job's dist artifact
+    # supplies the staged packages for the WP-H10 host + client e2e.
+    if: github.ref_name == 'v2' || github.event_name == 'workflow_dispatch'
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - run: cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+        working-directory: apps/unipi
+      - run: cargo test --workspace -j 4
+        working-directory: apps/unipi
+      - name: Headless host + client e2e + perf gates (spec-host WP-H10)
+        env:
+          CARGO_BUILD_JOBS: '8'
+        run: cargo test -p unipi-host --test integration -- --ignored --nocapture
+        working-directory: apps/unipi
+
+  v2-host-integration-windows:
+    name: v2 host integration (Windows, secondary)
+    # The §7.4/§9 e2e on the named-pipe transport; terminal/cron scenarios are Unix-only.
+    if: github.ref_name == 'v2' || github.event_name == 'workflow_dispatch'
+    needs: wasm
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/unipi -> target"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Headless host + client e2e
+        env:
+          CARGO_BUILD_JOBS: '8'
+        run: cargo test -p unipi-host --test integration -- --ignored --nocapture
+        working-directory: apps/unipi
+
+  docs-and-installers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/docs-check.sh
+      - run: OINO_DRY_RUN=1 sh scripts/install.sh
+      - name: Installer against a fake release dir (OINO_INSTALL_BASE_URL)
+        run: sh scripts/install-test.sh
 
   windows-installer:
-    name: windows installer dry-run
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse PowerShell installer
+      - name: Parse and dry-run install.ps1
         shell: pwsh
         run: |
           $errors = $null
           $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/install.ps1), [ref]$errors)
           if ($errors) { $errors | Format-List; exit 1 }
-      - name: Dry-run PowerShell installer
-        shell: pwsh
-        run: |
           $env:OINO_DRY_RUN = '1'
           ./scripts/install.ps1
 
-  rust:
-    name: rust checks
+  release-checks:
+    # Cheap PR-side coverage of the release workflow's build steps
+    # (.github/workflows/release.yml). The tag/release jobs themselves live in
+    # release.yml (one release channel; ci.yml no longer publishes on tags).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Check
-        run: cargo check --workspace
-      - name: Test
-        run: cargo test --workspace
-
-  release-binaries:
-    name: release binary (${{ matrix.target }})
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bin: oino
-          - os: macos-14
-            target: aarch64-apple-darwin
-            bin: oino
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: oino.exe
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build release binary
-        run: cargo build --release -p oino-app --bin oino
-      - name: Stage release binary
-        shell: bash
-        run: |
-          mkdir -p dist
-          suffix=""
-          if [ "${{ matrix.bin }}" = "oino.exe" ]; then suffix=".exe"; fi
-          cp "target/release/${{ matrix.bin }}" "dist/oino-${{ matrix.target }}${suffix}"
-      - uses: actions/upload-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: oino-${{ matrix.target }}
-          path: dist/*
-
-  release-assets:
-    name: release manifest and assets
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: release-binaries
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Bundle extension packages
+          workspaces: ". -> target\napps/unipi -> target\napps/unipi/src-tauri -> target"
+      - name: actionlint (workflows)
         run: |
-          tar -czf dist/oino-extension-bundles.tar.gz extensions/built-in extensions/additional
-      - name: Generate checksums and release manifest
-        env:
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
+          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash
+          ./actionlint -shellcheck= -pyflakes=
+      - name: tauri-cli
+        run: cargo install tauri-cli --version 2.12.1 --locked
+      - name: Sidecar (unipi-host) release check
+        run: cargo check --release -p unipi-host --manifest-path apps/unipi/Cargo.toml
+      # The app bundle build with the dev identifier merge. Required since the
+      # [app-fix] wave (hosts_commands.rs pruned, WP-A5 landed): the debug
+      # no-bundle build is green again.
+      - name: cargo tauri build --debug --no-bundle (dev identifier)
         run: |
-          cd dist
-          sha256sum oino-* > checksums.txt
-          python3 - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
-          tag = os.environ['TAG']
-          repo = os.environ['REPO']
-          base = f"https://github.com/{repo}/releases/download/{tag}"
-          artifacts = []
-          for path in sorted(Path('.').glob('oino-*')):
-              if path.name == 'oino-extension-bundles.tar.gz':
-                  continue
-              target = path.name.removeprefix('oino-').removesuffix('.exe')
-              artifacts.append({
-                  'target': target,
-                  'kind': 'binary',
-                  'url': f"{base}/{path.name}",
-                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-                  'size': path.stat().st_size,
-              })
-          bundle = Path('oino-extension-bundles.tar.gz')
-          manifest = {
-              'tag': tag,
-              'version': tag.removeprefix('v'),
-              'artifacts': artifacts,
-              'source': {'url': f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"},
-              'extensions': {
-                  'url': f"{base}/{bundle.name}",
-                  'sha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
-                  'built_in_root': 'extensions/built-in',
-                  'additional_root': 'extensions/additional',
-              },
-          }
-          Path('release-manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
-          PY
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/oino-*
-            dist/checksums.txt
-            dist/release-manifest.json
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          cargo build --manifest-path apps/unipi/Cargo.toml -p unipi-host
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p apps/unipi/src-tauri/binaries
+          cp "apps/unipi/target/debug/unipi-host" "apps/unipi/src-tauri/binaries/unipi-oino-host-$triple"
+          cd apps/unipi && npm ci && cargo tauri build --debug --no-bundle --config tauri.dev.conf.json

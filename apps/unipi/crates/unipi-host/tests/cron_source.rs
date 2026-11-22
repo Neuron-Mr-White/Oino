@@ -1,0 +1,395 @@
+//! WP-A23 acceptance (app spec §3.14 "Cron source", Z-112): a session a cron run owns
+//! carries `source: "cron"` on its card — the sidebar's clock badge and the "Sent by
+//! cron" bubble label data. A run's Oino session is identified the way the scheduler
+//! records it (`exec.rs`): the run id *is* the session id, and the run record names the
+//! session file. The run records here are exactly what the scheduler writes after a
+//! fire (`store::save_run`), so this covers "Run now → the run's session appears with a
+//! `source:"cron"` card" at the hub level; the op-level fire is WP-H8's
+//! `tests/cron_ops.rs`.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use oino_client::protocol::{AgentCommand, RpcCommand};
+use oino_core::extensions::api::ExtensionMode;
+use oino_core::runtime::ToolSelection;
+use oino_core::services::{ResourceFlags, StaticLoader};
+use oino_core::testing::{FauxComponent, FauxProvider, FauxResponse};
+use oino_models::ModelRegistry;
+use unipi_cron::model::{Job, Run, RunStatus};
+use unipi_cron::{store, CronPaths};
+use unipi_host::sessions::hub::{HostHubOptions, HubSession, SessionHub};
+
+struct Fixture {
+    dir_guard: tempfile::TempDir,
+    hub: Arc<SessionHub>,
+    cron: CronPaths,
+}
+
+impl Fixture {
+    /// A fresh hub over the same dirs — the cron index starts empty (the 5 s read
+    /// cache otherwise hides a run that just landed).
+    fn fresh_hub(&self) -> Arc<SessionHub> {
+        hub_over(self.dir_guard.path())
+    }
+}
+
+/// A hub whose sessions are answered by a faux provider, over an agent dir the cron
+/// store also lives in (the same layout `serve` pins: `<data>/agent`, `<data>/sessions`).
+fn hub_over(dir: &std::path::Path) -> Arc<SessionHub> {
+    let agent_dir = dir.join("agent");
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let provider = FauxProvider::new(vec![FauxResponse::Text("digest done".into())]);
+    let loader = StaticLoader(vec![Arc::new(FauxComponent(provider))]);
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.set_runtime_api_key("faux", "test-key");
+    SessionHub::create(HostHubOptions {
+        cwd: dir.to_path_buf(),
+        agent_dir: agent_dir.clone(),
+        docs_root: None,
+        session_dir: Some(sessions),
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(loader),
+        models: Some(models),
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: None,
+    })
+    .unwrap()
+}
+
+fn hub() -> Fixture {
+    let dir = tempfile::tempdir().unwrap();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    std::fs::create_dir_all(dir.path().join("sessions")).unwrap();
+    let hub = hub_over(dir.path());
+    Fixture {
+        dir_guard: dir,
+        hub,
+        cron: CronPaths::new(agent_dir),
+    }
+}
+
+/// Creates a session, selects the faux model and prompts once so the file is
+/// written; answers `(session, file)` once the card is listed (`hub.list()` reads
+/// records, and a record exists once the first message settled — like
+/// `wait_card` in `tests/sessions_hub.rs`).
+async fn session_with_file(hub: &Arc<SessionHub>) -> (HubSession, String) {
+    let session = hub.create_session(None, None).await.unwrap();
+    session
+        .send(RpcCommand::Agent(AgentCommand::SetModel {
+            provider: "faux".into(),
+            model_id: "faux-1".into(),
+            persist: None,
+        }))
+        .await
+        .unwrap();
+    session
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
+            message: "summarize the inbox".into(),
+            images: Vec::new(),
+            streaming_behavior: None,
+        }))
+        .await
+        .unwrap();
+    let id = session.session_id();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Some(card) = hub
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|card| card.session_id == id)
+        {
+            return (session, card.file.display().to_string());
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the session never became a record"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+fn job(id: &str) -> Job {
+    Job::new(id, id, "prompt", "0 0 9 * * *", "UTC", "/tmp")
+}
+
+fn run(id: &str, job_id: &str, session_path: Option<&str>) -> Run {
+    Run {
+        id: id.to_owned(),
+        job_id: job_id.to_owned(),
+        status: RunStatus::Ok,
+        fired_at: 1,
+        started_at: Some(1),
+        ended_at: Some(2),
+        exit_code: Some(0),
+        summary: None,
+        reason: None,
+        session_path: session_path.map(str::to_owned),
+        cost_usd: None,
+        missed: false,
+        pid: None,
+        notify_errors: Vec::new(),
+        wake: None,
+    }
+}
+
+#[tokio::test]
+async fn a_run_owned_session_carries_source_cron() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+
+    // Before any run: the card has no source.
+    let plain = fixture
+        .hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(plain.source, None);
+
+    // The scheduler's record after a fire: the run id is the session id and the run
+    // names the session file.
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    store::save_run(&fixture.cron, &run(&id, "digest", Some(&file))).unwrap();
+
+    // A fresh hub (the read cache is 5 s; `serve` reads at startup like this).
+    let card = fixture
+        .fresh_hub()
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(card.source.as_deref(), Some("cron"), "by run id");
+
+    // A second session matched only through its file (a fork of the run's session, say).
+    let (other, other_file) = {
+        let s = fixture.hub.create_session(None, None).await.unwrap();
+        s.send(RpcCommand::Agent(AgentCommand::SetModel {
+            provider: "faux".into(),
+            model_id: "faux-1".into(),
+            persist: None,
+        }))
+        .await
+        .unwrap();
+        s.send(RpcCommand::Agent(AgentCommand::Prompt {
+            message: "second".into(),
+            images: Vec::new(),
+            streaming_behavior: None,
+        }))
+        .await
+        .unwrap();
+        let id = s.session_id();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if let Some(card) = fixture
+                .hub
+                .list()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|card| card.session_id == id)
+            {
+                break (s, card.file.display().to_string());
+            }
+            assert!(Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    };
+    store::save_run(
+        &fixture.cron,
+        &run("digest-0182", "digest", Some(&other_file)),
+    )
+    .unwrap();
+    let cards = fixture.fresh_hub().list().await.unwrap();
+    let by_file = cards
+        .iter()
+        .find(|card| card.session_id == other.session_id())
+        .unwrap();
+    assert_eq!(by_file.source.as_deref(), Some("cron"), "by session file");
+}
+
+#[tokio::test]
+async fn sessions_list_over_the_wire_keeps_the_source() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    store::save_run(
+        &fixture.cron,
+        &run(&session.session_id(), "digest", Some(&file)),
+    )
+    .unwrap();
+    let value = serde_json::to_value(fixture.fresh_hub().list().await.unwrap()).unwrap();
+    let card = value
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|card| card["sessionId"] == serde_json::json!(session.session_id()))
+        .unwrap();
+    assert_eq!(card["source"], serde_json::json!("cron"));
+}
+
+/// A fired run's chat is written by the `oino` subprocess (exec.rs) — nothing else emits a
+/// `SessionChanged` for it, so the sidebar only showed it after a restart. `announce_cron_run`
+/// answers a warm hub: it drops the cron cache, finds the just-landed record and emits the
+/// cron-sourced card; an unknown run (the file is not written yet) says so.
+#[tokio::test]
+async fn announce_emits_the_run_session_on_a_warm_hub() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+    let mut events = fixture.hub.subscribe();
+
+    // A run whose session file does not exist yet: no card, so `false` (poll again).
+    assert!(!fixture.hub.announce_cron_run("not-written-yet").await);
+
+    // The scheduler writes its record (what start_run does right after the start sink).
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    store::save_run(&fixture.cron, &run(&id, "digest", Some(&file))).unwrap();
+
+    // No restart, no fresh hub: the warm hub announces the run's session.
+    assert!(fixture.hub.announce_cron_run(&id).await);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let card = loop {
+        match events.try_recv() {
+            Ok(unipi_host::sessions::hub::HubEvent::SessionChanged { card })
+                if card.session_id == id =>
+            {
+                break card;
+            }
+            Ok(_) | Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {
+                assert!(Instant::now() < deadline, "no SessionChanged for the run");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(other) => panic!("event stream: {other}"),
+        }
+    };
+    assert_eq!(card.source.as_deref(), Some("cron"), "cron-sourced card");
+    assert_eq!(card.cron_job_id.as_deref(), Some("digest"));
+}
+
+/// owner-fix-6 P2-1: a cron run in flight read `idle` in the sidebar (no Working badge)
+/// while the Cron page said Running — the `oino -p` subprocess runs the turn, so the host
+/// had no live state for it. A run with `status: running` makes its card `Working`; once
+/// it ends the card reads idle again.
+#[tokio::test]
+async fn a_running_cron_run_card_reads_working() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+    drop(session);
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    let mut running = run(&id, "digest", Some(&file));
+    running.status = RunStatus::Running;
+    running.ended_at = None;
+    store::save_run(&fixture.cron, &running).unwrap();
+    let hub = fixture.fresh_hub();
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(
+        card.state,
+        unipi_host::sessions::card::HubState::Working,
+        "a running cron run is Working"
+    );
+    store::save_run(&fixture.cron, &run(&id, "digest", Some(&file))).unwrap();
+    assert!(hub.announce_cron_run(&id).await);
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(card.state, unipi_host::sessions::card::HubState::Idle);
+}
+// Regression (18131a0b follow-up): the finish sink announces the run's final card on
+// every outcome. `card_from` reads Working off the run record's status, so the
+// announcement is only the idle-clearing signal when the saved record is finished
+// (exec.rs `finish_run` handles all of them — ok, failed, timeout, cost cap; `stop`
+// kills the process, so the same pipeline records it failed; `close_stale_runs`
+// closes a run left `running` by a scheduler restart). Whatever the outcome, the
+// announce after the final save re-renders the card idle.
+#[tokio::test]
+async fn announce_clears_the_working_card_on_every_outcome() {
+    let fixture = hub();
+    let (session, file) = session_with_file(&fixture.hub).await;
+    let id = session.session_id();
+    drop(session);
+    store::save_job(&fixture.cron, &job("digest")).unwrap();
+    let hub = fixture.fresh_hub();
+    let finished = |status: RunStatus| {
+        let mut r = run(&id, "digest", Some(&file));
+        r.status = status;
+        r
+    };
+    // Each outcome: save the finished record, announce (what cron_wake's finish sink
+    // does), and the card must read Idle — never stuck Working.
+    for status in [RunStatus::Ok, RunStatus::Failed, RunStatus::Timeout] {
+        store::save_run(&fixture.cron, &finished(status)).unwrap();
+        assert!(hub.announce_cron_run(&id).await, "{status:?} announced");
+        let card = hub
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|card| card.session_id == id)
+            .unwrap();
+        assert_eq!(
+            card.state,
+            unipi_host::sessions::card::HubState::Idle,
+            "a {status:?} run's card is idle"
+        );
+        assert_eq!(card.source.as_deref(), Some("cron"));
+        // The announced card (the sidebar's update path) says the same.
+        let card = hub.card(&id).await.unwrap().expect("the card");
+        assert_eq!(
+            card.state,
+            unipi_host::sessions::card::HubState::Idle,
+            "the announced {status:?} card is idle"
+        );
+    }
+    // A run record left `running` (the scheduler died mid-run) is closed failed by
+    // the next owner's startup (`store::close_stale_runs` writes exactly this shape:
+    // failed, ended, "interrupted: …"); its announce lands the idle card too.
+    let mut stale = run(&id, "digest", Some(&file));
+    stale.reason = Some("interrupted: the scheduler stopped mid-run".to_owned());
+    store::save_run(&fixture.cron, &stale).unwrap();
+    assert!(hub.announce_cron_run(&id).await);
+    let card = hub
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|card| card.session_id == id)
+        .unwrap();
+    assert_eq!(card.state, unipi_host::sessions::card::HubState::Idle);
+}

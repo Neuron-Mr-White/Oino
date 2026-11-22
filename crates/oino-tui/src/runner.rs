@@ -1,0 +1,402 @@
+//! Terminal lifecycle and the event loop: crossterm input, backend events, ticks and the
+//! effects the [`App`] queues (commands, dialogs answers, clipboard, editor, suspend).
+
+use std::io::Write;
+use std::sync::Arc;
+use std::time::Duration;
+
+use base64::Engine;
+use crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, Event, EventStream, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
+use crossterm::execute;
+use crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
+};
+use futures::StreamExt;
+use oino_client::{FrontendApi, SessionBackend};
+use ratatui::backend::CrosstermBackend;
+use ratatui::widgets::{Paragraph, Widget};
+use ratatui::{Terminal, TerminalOptions, Viewport};
+use tokio::sync::mpsc;
+
+use crate::app::{App, AppEvent, EditPurpose, Effect, Tag, TuiOptions};
+use crate::host::TuiHost;
+use crate::{TuiError, input, render};
+
+type Term = Terminal<CrosstermBackend<std::io::Stdout>>;
+
+/// Restores the terminal on drop (also on panic via the hook installed in [`run`]).
+struct TerminalGuard {
+    mode: Mode,
+}
+
+/// Terminal setup flags.
+#[derive(Clone, Copy, Debug)]
+struct Mode {
+    /// Keyboard enhancement flags are supported.
+    enhanced: bool,
+    /// Regular layout: no alternate screen.
+    inline: bool,
+}
+
+fn setup(mode: Mode) -> std::io::Result<()> {
+    enable_raw_mode()?;
+    let mut out = std::io::stdout();
+    if !mode.inline {
+        execute!(out, EnterAlternateScreen)?;
+    }
+    execute!(out, EnableBracketedPaste)?;
+    let enhanced = mode.enhanced;
+    if enhanced {
+        execute!(
+            out,
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+            )
+        )?;
+    }
+    Ok(())
+}
+
+fn restore(mode: Mode) {
+    let mut out = std::io::stdout();
+    if mode.enhanced {
+        let _ = execute!(out, PopKeyboardEnhancementFlags);
+    }
+    let _ = execute!(out, DisableBracketedPaste);
+    if !mode.inline {
+        let _ = execute!(out, LeaveAlternateScreen);
+    }
+    let _ = disable_raw_mode();
+    let _ = execute!(out, crossterm::cursor::Show);
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        restore(self.mode);
+    }
+}
+
+/// Height of the inline viewport: room for the editor chrome, dialogs and the live turn.
+fn inline_height() -> u16 {
+    let rows = crossterm::terminal::size().map_or(24, |(_, rows)| rows);
+    (rows * 3 / 5).max(14).min(rows)
+}
+
+fn osc(sequence: &str) {
+    let mut out = std::io::stdout();
+    let _ = out.write_all(sequence.as_bytes());
+    let _ = out.flush();
+}
+
+/// Runs the interactive client until the user quits.
+///
+/// # Errors
+///
+/// Terminal setup or drawing failures.
+pub async fn run(
+    backend: Arc<dyn SessionBackend>,
+    host: Arc<dyn TuiHost>,
+    options: TuiOptions,
+) -> Result<(), TuiError> {
+    let enhanced = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+    let app = App::new(Arc::clone(&host), options);
+    let mode = Mode {
+        enhanced,
+        inline: app.inline(),
+    };
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore(mode);
+        previous(info);
+    }));
+    setup(mode)?;
+    let guard = TerminalGuard { mode };
+    let mut terminal = if mode.inline {
+        Terminal::with_options(
+            CrosstermBackend::new(std::io::stdout()),
+            TerminalOptions {
+                viewport: Viewport::Inline(inline_height()),
+            },
+        )?
+    } else {
+        Terminal::new(CrosstermBackend::new(std::io::stdout()))?
+    };
+    let result = event_loop(&mut terminal, backend.as_ref(), &backend, app, mode).await;
+    if mode.inline {
+        let _ = terminal.clear();
+    }
+    drop(guard);
+    backend.set_approval_ui(false);
+    backend.shutdown().await;
+    result
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "the select loop and its effect dispatch read best in one place"
+)]
+async fn event_loop(
+    terminal: &mut Term,
+    backend: &dyn SessionBackend,
+    shared: &Arc<dyn SessionBackend>,
+    mut app: App,
+    mode: Mode,
+) -> Result<(), TuiError> {
+    let host = app.host();
+    let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
+    let (queue_tx, mut queue_rx) =
+        mpsc::unbounded_channel::<(Tag, oino_client::protocol::RpcCommand, Option<String>)>();
+    // Ordered command queue (replies keep command order).
+    {
+        let backend = Arc::clone(shared);
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            while let Some((tag, command, id)) = queue_rx.recv().await {
+                let result = backend.send_with_id(id, command).await;
+                if tx.send(AppEvent::Reply(tag, result)).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    let mut events = backend.events();
+    let mut input_events = EventStream::new();
+    let mut tick = tokio::time::interval(Duration::from_millis(80));
+    app.start();
+    let mut dirty = true;
+    loop {
+        // Execute effects.
+        for effect in app.take_effects() {
+            match effect {
+                Effect::Send {
+                    tag,
+                    command,
+                    request_id,
+                    concurrent,
+                } => {
+                    if concurrent {
+                        let backend = Arc::clone(shared);
+                        let tx = tx.clone();
+                        tokio::spawn(async move {
+                            let result = backend.send_with_id(request_id, command).await;
+                            let _ = tx.send(AppEvent::Reply(tag, result));
+                        });
+                    } else {
+                        let _ = queue_tx.send((tag, command, request_id));
+                    }
+                }
+                Effect::Respond(response) => backend.ui_respond(response),
+                Effect::UiAction {
+                    panel_id,
+                    action_id,
+                    value,
+                    values,
+                    path,
+                } => {
+                    let backend = Arc::clone(shared);
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
+                        let command = oino_client::protocol::RpcCommand::Oino(
+                            oino_client::protocol::OinoCommand::UiAction {
+                                panel_id,
+                                action_id: action_id.clone(),
+                                value,
+                                values,
+                                path,
+                                source: Some("tui".to_owned()),
+                            },
+                        );
+                        let result = backend.send(command).await;
+                        // `$close` of an entry the backend already forgot is not an error.
+                        if let Err(error) = result
+                            && action_id != "$close"
+                        {
+                            let _ =
+                                tx.send(AppEvent::Notice(format!("Entry action failed: {error}")));
+                        }
+                    });
+                }
+                Effect::InvokeShortcut(id) => {
+                    let backend = Arc::clone(shared);
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = backend.invoke_shortcut(&id).await {
+                            let _ =
+                                tx.send(AppEvent::Notice(format!("Shortcut {id} failed: {error}")));
+                        }
+                    });
+                }
+                Effect::ListSessions(scope) => {
+                    let host = Arc::clone(&host);
+                    let tx = tx.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _ = tx.send(AppEvent::Sessions(host.list_sessions(scope)));
+                    });
+                }
+                Effect::DeleteSession(path) => {
+                    let result = host.delete_session(&path);
+                    let _ = tx.send(AppEvent::SessionDeleted(path, result));
+                }
+                Effect::ClipboardWrite(text) => {
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+                    osc(&format!("\x1b]52;c;{encoded}\x07"));
+                }
+                Effect::ClipboardImage(dialog) => {
+                    let host = Arc::clone(&host);
+                    let tx = tx.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let image = host.clipboard_image();
+                        let text = if image.is_none() && dialog.is_none() {
+                            host.clipboard_text()
+                        } else {
+                            None
+                        };
+                        let _ = tx.send(AppEvent::Clipboard {
+                            dialog,
+                            image,
+                            text,
+                        });
+                    });
+                }
+                Effect::ExternalEditor {
+                    text,
+                    extension,
+                    purpose,
+                } => {
+                    restore(mode);
+                    let edited = external_editor(&text, &extension);
+                    setup(mode)?;
+                    terminal.clear()?;
+                    match edited {
+                        Ok(edited) => app.handle(AppEvent::Edited(purpose, edited)),
+                        Err(error) => {
+                            if let EditPurpose::External(_) | EditPurpose::Dialog(_) = &purpose {
+                                app.handle(AppEvent::Edited(purpose, None));
+                            }
+                            app.handle(AppEvent::Notice(format!(
+                                "External editor failed: {error}"
+                            )));
+                        }
+                    }
+                    dirty = true;
+                }
+                Effect::OsNotify { title, body } => {
+                    osc(&format!("\x1b]777;notify;{title};{body}\x07"));
+                }
+                Effect::OpenUrl(url) => {
+                    let opener = if cfg!(target_os = "macos") {
+                        "open"
+                    } else if cfg!(windows) {
+                        "explorer"
+                    } else {
+                        "xdg-open"
+                    };
+                    let _ = std::process::Command::new(opener)
+                        .arg(&url)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+                }
+                Effect::SetTitle(title) => {
+                    let _ = execute!(std::io::stdout(), SetTitle(title));
+                }
+                Effect::Suspend => {
+                    restore(mode);
+                    suspend();
+                    setup(mode)?;
+                    terminal.clear()?;
+                    dirty = true;
+                }
+                Effect::Quit => {}
+            }
+        }
+        if app.should_quit() {
+            break;
+        }
+        if dirty {
+            if mode.inline {
+                let width = terminal.size()?.width;
+                let lines = render::take_scrollback(&mut app, width);
+                if !lines.is_empty() {
+                    let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+                    terminal.insert_before(height, |buffer| {
+                        Paragraph::new(lines).render(buffer.area, buffer);
+                    })?;
+                }
+            }
+            terminal.draw(|frame| render::draw(frame, &mut app))?;
+            dirty = false;
+        }
+        tokio::select! {
+            maybe = input_events.next() => match maybe {
+                Some(Ok(Event::Key(key))) => {
+                    if let Some(id) = input::key_id(&key) {
+                        app.handle(AppEvent::Key(id));
+                    }
+                }
+                Some(Ok(Event::Paste(text))) => app.handle(AppEvent::Paste(text)),
+                Some(Ok(Event::Resize(_, _))) => app.handle(AppEvent::Resize),
+                Some(Ok(_)) => {}
+                Some(Err(error)) => return Err(TuiError::Io(error)),
+                None => break,
+            },
+            maybe = events.next() => if let Some(event) = maybe { app.handle(AppEvent::Client(Box::new(event))) } else {
+                app.handle(AppEvent::Notice("Session closed".into()));
+                events = Box::pin(futures::stream::pending());
+            },
+            Some(event) = rx.recv() => app.handle(event),
+            _ = tick.tick() => {
+                app.handle(AppEvent::Tick);
+                // Only redraw on ticks when something animates.
+                if !app.animating() {
+                    continue;
+                }
+            }
+        }
+        dirty = true;
+    }
+    Ok(())
+}
+
+/// External editor: `externalEditor` setting, `$VISUAL`, `$EDITOR`, Notepad, `nano`.
+fn external_editor(text: &str, extension: &str) -> std::io::Result<Option<String>> {
+    let editor = std::env::var("VISUAL")
+        .ok()
+        .filter(|e| !e.is_empty())
+        .or_else(|| std::env::var("EDITOR").ok().filter(|e| !e.is_empty()))
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "notepad".into()
+            } else {
+                "nano".into()
+            }
+        });
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("oino-edit-{}.{extension}", std::process::id()));
+    std::fs::write(&path, text)?;
+    let mut parts = editor.split_whitespace();
+    let program = parts.next().unwrap_or("nano");
+    let status = std::process::Command::new(program)
+        .args(parts)
+        .arg(&path)
+        .status()?;
+    let result = if status.success() {
+        Some(std::fs::read_to_string(&path)?)
+    } else {
+        None
+    };
+    let _ = std::fs::remove_file(&path);
+    Ok(result)
+}
+
+#[cfg(unix)]
+fn suspend() {
+    let _ = nix::sys::signal::raise(nix::sys::signal::Signal::SIGTSTP);
+}
+
+#[cfg(not(unix))]
+fn suspend() {}

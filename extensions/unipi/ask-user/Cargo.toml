@@ -1,0 +1,21 @@
+[package]
+name = "unipi-ask-user"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.ask-user: the ask_user tool (1-4 multiple-choice questions in one form dialog) with workflow handoffs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+                   hey
+  ~ 19..22=fg=rgb(a798d7),mods=ITALIC

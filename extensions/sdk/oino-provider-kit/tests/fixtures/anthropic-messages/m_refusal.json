@@ -1,0 +1,155 @@
+{
+ "name": "m_refusal",
+ "model": {
+  "id": "claude-sonnet-5",
+  "name": "Claude Sonnet 5",
+  "api": "anthropic-messages",
+  "provider": "anthropic",
+  "baseUrl": "https://api.anthropic.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 10,
+   "cacheRead": 0.2,
+   "cacheWrite": 2.5
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max"
+  },
+  "compat": {
+   "forceAdaptiveThinking": true,
+   "supportsStrictTools": true
+  },
+  "promptCache": {
+   "short": 300,
+   "long": 3600
+  },
+  "inputLimits": {
+   "maxRequestBytes": 33554432,
+   "images": {
+    "maxPerRequest": 600,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_ref\",\"model\":\"claude-sonnet-5\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\",\"stop_details\":{\"explanation\":\"Declined.\"}},\"usage\":{\"input_tokens\":5,\"output_tokens\":1,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+ "request": {
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "headers": {
+   "accept": "application/json",
+   "anthropic-dangerous-direct-browser-access": "true",
+   "anthropic-version": "2023-06-01",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-api-key": "test-key",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "0.129.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0",
+   "x-stainless-timeout": "600"
+  },
+  "body": {
+   "model": "claude-sonnet-5",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hi",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ]
+    }
+   ],
+   "max_tokens": 128000,
+   "stream": true,
+   "system": [
+    {
+     "type": "text",
+     "text": "Sys",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ],
+   "thinking": {
+    "type": "disabled"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "anthropic-messages",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "usage": {
+     "input": 5,
+     "output": 1,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 6,
+     "cost": {
+      "input": 0.000009999999999999999,
+      "output": 0.00001,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000019999999999999998
+     },
+     "cacheWrite1h": 0
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "responseId": "msg_ref",
+    "rawStopReason": "refusal",
+    "errorMessage": "Declined.",
+    "durationMs": 30
+   }
+  }
+ ]
+}

@@ -1,0 +1,831 @@
+//! WP-A24 acceptance (app spec §3.14): `host_cmd` — the hub-level `_oino/*`
+//! subset against core services, **without a session runtime**:
+//!
+//! - `extensions` lists the loaded extensions; `set_extension_enabled` writes
+//!   `disabledExtensions` and the next `extensions` round-trips it;
+//! - `get_settings` reads the merged pi settings; `set_setting` writes one
+//!   dot-path key (global scope) and the merged view reflects it;
+//! - `get_settings_schema` answers `{namespaces}` (empty with no declaring
+//!   extension); unknown namespaces and bad scopes are errors, not silent
+//!   no-ops;
+//! - `set_api_key` stores a credential `auth_providers` then reports;
+//! - `login` is refused (the OAuth flow needs a session frontend).
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "tests assert by unwrapping"
+)]
+
+use std::sync::Arc;
+
+use oino_core::extensions::api::ExtensionMode;
+use oino_core::runtime::ToolSelection;
+use oino_core::services::{ResourceFlags, StaticLoader};
+use oino_core::testing::{FauxComponent, FauxProvider};
+use oino_models::ModelRegistry;
+use unipi_host::host_cmd;
+use unipi_host::sessions::hub::{HostHubOptions, SessionHub};
+use unipi_proto::settings::HostCmd;
+
+fn hub(dir: &tempfile::TempDir) -> Arc<SessionHub> {
+    hub_with_extensions(dir, Vec::new())
+}
+
+fn hub_with_extensions(
+    dir: &tempfile::TempDir,
+    extensions: Vec<Arc<dyn oino_core::extensions::api::ExtensionInstance>>,
+) -> Arc<SessionHub> {
+    let provider = FauxProvider::new(
+        (0..4)
+            .map(|_| oino_core::testing::FauxResponse::Text("ok".into()))
+            .collect(),
+    );
+    let cwd = dir.path().to_path_buf();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let mut instances =
+        vec![Arc::new(FauxComponent(provider))
+            as Arc<dyn oino_core::extensions::api::ExtensionInstance>];
+    instances.extend(extensions);
+    SessionHub::create(HostHubOptions {
+        cwd,
+        agent_dir,
+        docs_root: None,
+        session_dir: None,
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(instances)),
+        models: {
+            let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+            models.set_runtime_api_key("faux", "test-key");
+            Some(models)
+        },
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: Some(dir.path().join("host")),
+    })
+    .unwrap()
+}
+
+/// A hub whose registry holds one openai-shaped provider with a static model, so the
+/// readiness probe has a real endpoint to hit (G-05).
+fn hub_with_probeable(dir: &tempfile::TempDir, id: &str, base: &str) -> Arc<SessionHub> {
+    let provider = FauxProvider::new(
+        (0..4)
+            .map(|_| oino_core::testing::FauxResponse::Text("ok".into()))
+            .collect(),
+    );
+    let cwd = dir.path().to_path_buf();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    let models = ModelRegistry::in_memory(Arc::new(oino_models::MapEnv::default()));
+    models.register_api_implementor("openai-completions", "ext");
+    let _ = models.register_provider(
+        "ext",
+        oino_models::ProviderRegistration {
+            id: id.to_owned(),
+            name: Some(id.to_owned()),
+            api: "openai-completions".to_owned(),
+            base_url: Some(base.to_owned()),
+            auth_env: vec![format!("{}_API_KEY", id.to_uppercase())],
+            auth_header: oino_models::AuthHeaderMode::None,
+            oauth: false,
+            headers: indexmap::IndexMap::new(),
+            compat: None,
+            models: oino_models::ProviderModels::Static(vec![oino_models::ProviderModelConfig {
+                id: format!("{id}-m"),
+                name: None,
+                api: None,
+                base_url: None,
+                reasoning: false,
+                thinking_level_map: None,
+                input: vec![oino_ai::InputModality::Text],
+                input_limits: None,
+                cost: oino_ai::ModelCost::default(),
+                prompt_cache: None,
+                context_window: 128_000,
+                max_tokens: 16_384,
+                sampling_params: None,
+                sampling_params_by_thinking_level: None,
+                headers: None,
+                compat: None,
+            }]),
+        },
+    );
+    SessionHub::create(HostHubOptions {
+        cwd,
+        agent_dir,
+        docs_root: None,
+        session_dir: None,
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(vec![Arc::new(FauxComponent(provider))
+            as Arc<dyn oino_core::extensions::api::ExtensionInstance>])),
+        models: Some(models),
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: Some(dir.path().join("host")),
+    })
+    .unwrap()
+}
+
+async fn run(dir: &tempfile::TempDir, cmd: HostCmd) -> Result<serde_json::Value, String> {
+    let hub = hub(dir);
+    run_on(&hub, cmd).await
+}
+
+/// A hub whose model catalogue lives in `<agent>/models.json`, so a reload has a file
+/// to re-read (`ollama`, whose key is a literal, needs no credential).
+fn hub_with_models_json(dir: &tempfile::TempDir, model: &str) -> Arc<SessionHub> {
+    let cwd = dir.path().to_path_buf();
+    let agent_dir = dir.path().join("agent");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    std::fs::write(
+        agent_dir.join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": model}]}}})
+        .to_string(),
+    )
+    .unwrap();
+    let models = ModelRegistry::new(
+        Arc::new(oino_models::AuthStorage::in_memory(
+            indexmap::IndexMap::new(),
+        )),
+        oino_models::ModelRegistryOptions {
+            models_json_path: Some(agent_dir.join("models.json")),
+            env: Arc::new(oino_models::MapEnv::default()),
+            ..oino_models::ModelRegistryOptions::default()
+        },
+    );
+    models.register_api_implementor("openai-completions", "ext");
+    let provider = FauxProvider::new(
+        (0..4)
+            .map(|_| oino_core::testing::FauxResponse::Text("ok".into()))
+            .collect(),
+    );
+    SessionHub::create(HostHubOptions {
+        cwd,
+        agent_dir,
+        docs_root: None,
+        session_dir: None,
+        mode: ExtensionMode::Desktop,
+        has_ui: false,
+        approve: Some(false),
+        flags: ResourceFlags {
+            no_context_files: true,
+            ..ResourceFlags::default()
+        },
+        loader: Arc::new(StaticLoader(vec![Arc::new(FauxComponent(provider))
+            as Arc<dyn oino_core::extensions::api::ExtensionInstance>])),
+        models: Some(models),
+        tools: ToolSelection::Default,
+        exclude_tools: Vec::new(),
+        services_cap: None,
+        host_data_dir: Some(dir.path().join("host")),
+    })
+    .unwrap()
+}
+
+fn model_ids(reply: &serde_json::Value) -> Vec<String> {
+    reply["models"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn run_on(hub: &Arc<SessionHub>, cmd: HostCmd) -> Result<serde_json::Value, String> {
+    match host_cmd::run(hub, cmd).await {
+        Ok(value) => Ok(value),
+        Err(error) => Err(error.message.to_string()),
+    }
+}
+
+#[tokio::test]
+async fn reload_extensions_answers_with_the_fresh_list() {
+    // [owner-fix-8] The host discovers its packages again (a freshly installed
+    // package is live without a restart).
+    let dir = tempfile::tempdir().unwrap();
+    let before = run(&dir, HostCmd::Extensions).await.unwrap();
+    let before_ids: Vec<String> = before["extensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    let reloaded = run(&dir, HostCmd::ReloadExtensions).await.unwrap();
+    let after_ids: Vec<String> = reloaded["extensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(before_ids, after_ids);
+    assert_ne!(after_ids, [] as [std::string::String; 0]);
+}
+
+#[tokio::test]
+async fn reload_extensions_refreshes_models_and_returns_diagnostics() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_models_json(&dir, "qwen");
+    assert_eq!(
+        model_ids(&run_on(&hub, HostCmd::AvailableModels).await.unwrap()),
+        vec!["qwen".to_owned()]
+    );
+    std::fs::write(
+        hub.agent_dir().join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": "llama"}]}}})
+        .to_string(),
+    )
+    .unwrap();
+    let reply = run_on(&hub, HostCmd::ReloadExtensions).await.unwrap();
+    assert!(reply["diagnostics"].is_array());
+    assert_ne!(
+        reply["extensions"].as_array().unwrap().as_slice(),
+        [] as [serde_json::Value; 0]
+    );
+    assert_eq!(
+        model_ids(&run_on(&hub, HostCmd::AvailableModels).await.unwrap()),
+        vec!["llama".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn reload_rereads_models_json_alongside_the_packages() {
+    // The settings page's Reload: models.json + credentials + the extension packages,
+    // without restarting the host (a model edited outside the app becomes usable).
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_models_json(&dir, "qwen");
+    let before = run_on(&hub, HostCmd::AvailableModels).await.unwrap();
+    assert_eq!(model_ids(&before), vec!["qwen".to_owned()]);
+
+    std::fs::write(
+        hub.agent_dir().join("models.json"),
+        serde_json::json!({"providers": {"ollama": {"baseUrl": "http://localhost:11434/v1",
+            "api": "openai-completions", "apiKey": "ollama", "models": [{"id": "llama"}]}}})
+        .to_string(),
+    )
+    .unwrap();
+    let reloaded = run_on(&hub, HostCmd::Reload).await.unwrap();
+    assert_eq!(model_ids(&reloaded), vec!["llama".to_owned()]);
+    // A freshly installed package is live too: the packages are rediscovered, not only
+    // the catalogue.
+    assert_ne!(
+        reloaded["extensions"].as_array().unwrap().as_slice(),
+        [] as [serde_json::Value; 0]
+    );
+    let after = run_on(&hub, HostCmd::AvailableModels).await.unwrap();
+    assert_eq!(model_ids(&after), vec!["llama".to_owned()]);
+}
+
+#[tokio::test]
+async fn extension_toggle_round_trips_without_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    // The faux provider extension is loaded and enabled.
+    let listed = run(&dir, HostCmd::Extensions).await.unwrap();
+    let list = listed["extensions"].as_array().unwrap();
+    assert!(!list.is_empty(), "{list:?}");
+    assert!(list
+        .iter()
+        .all(|row| row["enabled"] == serde_json::json!(true)));
+
+    // Toggle off: the write lands in `disabledExtensions`…
+    run(
+        &dir,
+        HostCmd::SetExtensionEnabled {
+            id: "faux".into(),
+            enabled: false,
+        },
+    )
+    .await
+    .unwrap();
+    // …and a *fresh* hub (a restarted host, same agent dir) sees it disabled.
+    let relisted = run(&dir, HostCmd::Extensions).await.unwrap();
+    let faux = relisted["extensions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap();
+    assert_eq!(faux["enabled"], serde_json::json!(false));
+    assert_eq!(faux["loaded"], serde_json::json!(false));
+}
+
+#[tokio::test]
+async fn pi_settings_read_and_write_through_the_hub() {
+    let dir = tempfile::tempdir().unwrap();
+    let merged = run(&dir, HostCmd::GetSettings { key: None }).await.unwrap();
+    assert!(merged["settings"].is_object(), "{merged:?}");
+
+    run(
+        &dir,
+        HostCmd::SetSetting {
+            key: "ui.density".into(),
+            value: Some(serde_json::json!("compact")),
+            scope: "global".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let one = run(
+        &dir,
+        HostCmd::GetSettings {
+            key: Some("ui.density".into()),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(one["value"], serde_json::json!("compact"), "{one:?}");
+
+    // A fresh hub reads the same persisted global setting (no session ever ran).
+    let reread = run(
+        &dir,
+        HostCmd::GetSettings {
+            key: Some("ui.density".into()),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(reread["value"], serde_json::json!("compact"));
+}
+
+#[tokio::test]
+async fn schema_and_errors_match_the_session_commands() {
+    let dir = tempfile::tempdir().unwrap();
+    let schema = run(&dir, HostCmd::GetSettingsSchema).await.unwrap();
+    assert!(schema["namespaces"].is_array(), "{schema:?}");
+
+    // Unknown namespace: the session command's text.
+    let err = run(
+        &dir,
+        HostCmd::GetExtensionSettings {
+            namespace: "nope".into(),
+            layer: None,
+            cwd: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, "Unknown settings namespace: nope");
+
+    // Bad scope: a schema error, never a silent write.
+    let err = run(
+        &dir,
+        HostCmd::SetExtensionSetting {
+            namespace: "ns".into(),
+            key: "k".into(),
+            value: None,
+            scope: "somewhere".into(),
+            cwd: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("scope"), "{err}");
+
+    // Empty key: refused.
+    let err = run(
+        &dir,
+        HostCmd::SetSetting {
+            key: String::new(),
+            value: None,
+            scope: "global".into(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("empty"), "{err}");
+}
+
+#[tokio::test]
+async fn api_key_and_providers_without_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub(&dir);
+    run_on(
+        &hub,
+        HostCmd::SetApiKey {
+            provider: "faux".into(),
+            key: "sk-hub-level".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let faux = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap_or_else(|| panic!("{providers:?}"));
+    assert_eq!(faux["stored"], serde_json::json!("api_key"));
+    assert_eq!(faux["configured"], serde_json::json!(true));
+
+    // The OAuth flow needs a session frontend; the hub-level twin says so.
+    let err = run_on(
+        &hub,
+        HostCmd::Login {
+            provider: "faux".into(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("session"), "{err}");
+}
+
+/// G-05: a saved key is validated right away — the first `auth_providers` read after the
+/// save already carries the probe's verdict (a dead key is `invalid_key`, never `ready`
+/// by assumption), without a first send failing first.
+#[tokio::test]
+async fn saving_a_dead_key_reports_invalid_right_away() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // One canned 401 endpoint the probe can hit.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 4096];
+        let _ = socket.read(&mut buf).await;
+        let body = "[]";
+        let reply = format!(
+            "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = socket.write_all(reply.as_bytes()).await;
+        let _ = socket.shutdown().await;
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub_with_probeable(&dir, "probe", &format!("http://{addr}"));
+
+    run_on(
+        &hub,
+        HostCmd::SetApiKey {
+            provider: "probe".into(),
+            key: "sk-dead".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let _ = server.await;
+
+    // The next read (the UI's refetch after Save) sees the probe's answer.
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let row = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "probe")
+        .unwrap_or_else(|| panic!("{providers:?}"));
+    assert_eq!(row["state"], serde_json::json!("invalid_key"), "{row:?}");
+    assert_eq!(row["ready"], serde_json::json!(false));
+    assert!(
+        row["detail"].as_str().unwrap_or_default().contains("401"),
+        "{row:?}"
+    );
+}
+
+/// v2 QA D-01/D-37: `default_model` reports the model a new session will start on and
+/// `auth_providers` rows carry the hub's credential validation — `unknown` for an API the
+/// host cannot probe (never a fake `ready`), and a cached answer rides every row.
+#[tokio::test]
+async fn default_model_and_provider_readiness_without_a_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub(&dir);
+
+    // No default configured: the only credentialed provider (faux — not probeable) is the
+    // choice, reported as an unvalidated fallback with its provider state.
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("fallback"));
+    assert_eq!(reply["model"]["provider"], serde_json::json!("faux"));
+    assert_eq!(reply["model"]["id"], serde_json::json!("faux-1"));
+    assert_eq!(reply["defaultConfigured"], serde_json::Value::Null);
+
+    // Configure the faux default: the choice is the user's, source `settings`.
+    let settings = hub.core_services().await.unwrap();
+    settings
+        .settings
+        .lock()
+        .unwrap()
+        .set_default_model_and_provider("faux", "faux-1")
+        .unwrap();
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("settings"));
+    assert_eq!(reply["model"]["id"], serde_json::json!("faux-1"));
+    assert_eq!(
+        reply["defaultConfigured"]["provider"],
+        serde_json::json!("faux")
+    );
+
+    // A stored validation rides the provider row: state, ready, reason, checkedAt.
+    hub.readiness().store(
+        "faux",
+        unipi_host::models_readiness::ReadinessState::InvalidKey,
+        Some("HTTP 401".into()),
+    );
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let faux = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap_or_else(|| panic!("{providers:?}"));
+    assert_eq!(faux["state"], serde_json::json!("invalid_key"));
+    assert_eq!(faux["ready"], serde_json::json!(false));
+    assert!(faux["reason"].as_str().unwrap().contains("rejected"));
+    assert!(faux["checkedAt"].as_u64().is_some());
+
+    // With the key rejected, `default_model` falls back (unverified) and says why.
+    let reply = run_on(&hub, HostCmd::DefaultModel).await.unwrap();
+    assert_eq!(reply["source"], serde_json::json!("fallback-unverified"));
+    assert!(reply["reason"].as_str().unwrap().contains("was rejected"));
+
+    // A fresh key clears the verdict.
+    run_on(
+        &hub,
+        HostCmd::SetApiKey {
+            provider: "faux".into(),
+            key: "sk-2".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let providers = run_on(&hub, HostCmd::AuthProviders { validate: None })
+        .await
+        .unwrap();
+    let faux = providers["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "faux")
+        .unwrap();
+    assert_eq!(faux["state"], serde_json::json!("unknown"));
+    assert!(
+        faux.get("ready").is_none(),
+        "unvalidated rows carry no `ready`"
+    );
+}
+
+#[tokio::test]
+async fn install_and_remove_extension_through_host_cmd() {
+    // ext-install: `install_extension{path}` validates and copies into
+    // `<agent dir>/extensions/<id>`, answers needsRestart, asks before a same-id
+    // replace; `remove_extension{id}` deletes it again. Neither needs services.
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("pkg");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("component.wasm"), b"wasm").unwrap();
+    let tag = oino_extension_api::manifest::sha256_tag(b"wasm");
+    std::fs::write(
+        src.join("extension.json"),
+        format!(
+            r#"{{"apiVersion":"oino.extension/2","id":"acme.hello","name":"Hello","version":"1.0.0","checksums":{{"component.wasm":"{tag}"}}}}"#
+        ),
+    )
+    .unwrap();
+    let hub = hub(&dir);
+    let install = HostCmd::InstallExtension {
+        path: src.to_string_lossy().into_owned(),
+        replace: None,
+    };
+    let done = run_on(&hub, install.clone()).await.unwrap();
+    assert_eq!(done["installed"], true);
+    assert_eq!(done["needsRestart"], true);
+    assert_eq!(done["id"], "acme.hello");
+    let target = dir.path().join("agent/extensions/acme.hello");
+    assert!(target.join("component.wasm").is_file());
+    let again = run_on(&hub, install).await.unwrap();
+    assert_eq!(again["installed"], false);
+    assert_eq!(again["confirm"]["installedVersion"], "1.0.0");
+    // A tampered package is a schema error naming the checksum.
+    std::fs::write(src.join("component.wasm"), b"tampered").unwrap();
+    let error = run_on(
+        &hub,
+        HostCmd::InstallExtension {
+            path: src.to_string_lossy().into_owned(),
+            replace: Some(true),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("checksum"), "{error}");
+    let removed = run_on(
+        &hub,
+        HostCmd::RemoveExtension {
+            id: "acme.hello".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(removed["needsRestart"], true);
+    assert!(!target.exists());
+    let missing = run_on(
+        &hub,
+        HostCmd::RemoveExtension {
+            id: "acme.hello".into(),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(missing.contains("not installed"), "{missing}");
+}
+
+/// agent-disable: a global extension-settings write through the primary set reaches a
+/// project's already-warm services set (its own settings copy) at once; a bogus `cwd` is
+/// refused.
+#[tokio::test]
+async fn global_extension_setting_reaches_every_services_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("proj");
+    std::fs::create_dir_all(&project).unwrap();
+    let hub = hub(&dir);
+    // Warm the project's set first: it caches the settings files from now on.
+    let other = hub.core_services_for(&project).await.unwrap();
+    let disabled = |services: &oino_core::services::Services| {
+        services
+            .extension_settings
+            .merged_settings()
+            .get("extensionSettings")
+            .and_then(|e| e.get("subagents"))
+            .and_then(|s| s.get("disabled"))
+            .cloned()
+    };
+    assert_eq!(disabled(&other), None);
+    run_on(
+        &hub,
+        HostCmd::SetExtensionSetting {
+            namespace: "subagents".into(),
+            key: "disabled".into(),
+            value: Some(serde_json::json!(["subagent_general"])),
+            scope: "global".into(),
+            cwd: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        disabled(&other),
+        Some(serde_json::json!(["subagent_general"]))
+    );
+    let bad = run_on(
+        &hub,
+        HostCmd::UnsetExtensionSetting {
+            namespace: "subagents".into(),
+            key: "disabled".into(),
+            scope: "global".into(),
+            cwd: Some("relative/dir".into()),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(bad.contains("not a project folder"), "{bad}");
+}
+
+/// N4: the first command catalogue must not depend on any open session.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fresh_profile_lists_and_dispatches_first_extension_command() {
+    use oino_client::protocol::{AgentCommand, RpcCommand};
+    use oino_core::extensions::api::{CommandSpec, Registration};
+    use oino_core::testing::FakeExtension;
+    let dir = tempfile::tempdir().unwrap();
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&calls);
+    let extension = FakeExtension::new(
+        "fresh-commands",
+        Registration {
+            commands: vec!["swarm", "graph", "goal", "ralph"]
+                .into_iter()
+                .map(|name| CommandSpec {
+                    name: name.into(),
+                    description: Some(format!("Start {name}")),
+                    hidden: false,
+                    completions: false,
+                })
+                .chain(std::iter::once(CommandSpec {
+                    name: "secret".into(),
+                    description: None,
+                    hidden: true,
+                    completions: false,
+                }))
+                .collect(),
+            ..Registration::default()
+        },
+    )
+    .on_command(move |name, args| {
+        recorded
+            .lock()
+            .unwrap()
+            .push((name.to_owned(), args.to_owned()));
+        Ok(None)
+    });
+    // Global prompt templates must also be available before the first session.
+    std::fs::create_dir_all(dir.path().join("agent/prompts")).unwrap();
+    std::fs::write(
+        dir.path().join("agent/prompts/first.md"),
+        "First prompt $ARGUMENTS",
+    )
+    .unwrap();
+    let hub = hub_with_extensions(&dir, vec![Arc::new(extension)]);
+    assert_eq!(
+        hub.list().await.unwrap(),
+        [] as [unipi_host::sessions::SessionCard; 0]
+    );
+    let cwd = dir.path().to_str().unwrap().to_owned();
+    let catalogue = run_on(&hub, HostCmd::GetCommands { cwd: Some(cwd) })
+        .await
+        .unwrap();
+    let rows = catalogue["commands"].as_array().unwrap();
+    for name in ["swarm", "graph", "goal", "ralph", "first"] {
+        assert!(rows.iter().any(|row| row["name"] == name), "{catalogue}");
+    }
+    assert!(!rows.iter().any(|row| row["name"] == "secret"));
+    assert!(
+        hub.list().await.unwrap().is_empty(),
+        "discovery must not create a phantom chat"
+    );
+    let session = hub.create_session(Some(dir.path()), None).await.unwrap();
+    session
+        .send(RpcCommand::Agent(AgentCommand::Prompt {
+            message: "/swarm first chat".into(),
+            images: Vec::new(),
+            streaming_behavior: None,
+        }))
+        .await
+        .unwrap();
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![("swarm".into(), "first chat".into())]
+    );
+}
+
+#[tokio::test]
+async fn trust_ops_are_metadata_only_persist_parent_and_child_decisions() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = hub(&dir);
+    let project = dir.path().join("parent/project");
+    std::fs::create_dir_all(project.join(".pi")).unwrap();
+    std::fs::write(project.join(".pi/mcp.json"), "broken JSON").unwrap();
+    let get = || HostCmd::TrustGet {
+        cwd: project.display().to_string(),
+    };
+    let initial = host_cmd::run(&hub, get()).await.unwrap();
+    assert_eq!(initial["state"], "undecided");
+    assert_eq!(initial["protected"], serde_json::json!([".pi/mcp.json"]));
+    host_cmd::run(
+        &hub,
+        HostCmd::TrustSet {
+            path: project.parent().unwrap().display().to_string(),
+            trusted: true,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        host_cmd::run(&hub, get()).await.unwrap()["state"],
+        "trusted"
+    );
+    host_cmd::run(
+        &hub,
+        HostCmd::TrustSet {
+            path: project.display().to_string(),
+            trusted: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        host_cmd::run(&hub, get()).await.unwrap()["state"],
+        "untrusted"
+    );
+    assert!(host_cmd::run(
+        &hub,
+        HostCmd::TrustGet {
+            cwd: "relative".into()
+        }
+    )
+    .await
+    .is_err());
+    host_cmd::run(&hub, HostCmd::McpReload).await.unwrap();
+}

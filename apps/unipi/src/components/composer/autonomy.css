@@ -1,0 +1,22 @@
+/* Reuse toolbar/dock tokens and shared button feedback; no new travel motion. */
+.tb-chip-autonomy { flex: 0 0 auto; gap: 6px; }
+.autonomy-meter { display: inline-flex; gap: 2px; align-items: center; }
+.autonomy-bar { box-sizing: border-box; width: 5px; height: 12px; border: 1px solid var(--color-text-muted); border-radius: 1px; }
+.autonomy-bar[data-filled] { background: var(--color-claw); border-color: var(--color-claw); }
+.autonomy-approval { min-width: 0; }
+.autonomy-approval p { white-space: normal; overflow-wrap: anywhere; }
+.autonomy-command { display: flex; align-items: start; gap: 4px; }
+.autonomy-command .ap-cmd { flex: 1; min-width: 0; }
+.autonomy-risk { margin-left: auto; padding: 2px 8px; border-radius: 999px; font-size: 12px; text-transform: capitalize; color: var(--color-text-muted); background: var(--color-surface-3); }
+.autonomy-risk[data-risk='medium'] { color: var(--color-claw); }
+.autonomy-risk[data-risk='high'] { color: var(--color-danger, #d95757); }
+.autonomy-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.autonomy-approval-actions button { min-height: 40px; min-width: 40px; }
+/* Toolbar compression must keep all three bars and the explicit label. */
+html[data-shell=phone] .tl-composer .comp-bar .tb-slot[data-slot=permission] .tb-chip-autonomy { min-height: 40px; height: 40px; width: auto; }
+@media (max-width: 420px) {
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-permission] .tb-chip-autonomy > span:first-child { display: none; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-permission] .tb-chip-autonomy { padding: 0 7px; }
+}
+/* r5 D21: the level is not known yet (chat waking): dimmed, empty bars; no transition when it resolves. */
+.tb-chip-autonomy[data-pending] { opacity: 0.6; cursor: default; }

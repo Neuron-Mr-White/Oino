@@ -1,0 +1,122 @@
+{
+ "name": "h_error_429",
+ "model": {
+  "id": "gemini-2.5-flash",
+  "name": "Gemini 2.5 Flash",
+  "api": "google-generative-ai",
+  "provider": "google",
+  "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.3,
+   "output": 2.5,
+   "cacheRead": 0.03,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "maxRequestBytes": 20971520,
+   "images": {
+    "maxPerRequest": 3600,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "gem-key",
+ "status": 429,
+ "sse": "{\"error\":{\"code\":429,\"message\":\"Resource exhausted\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
+ "request": {
+  "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+  "headers": {
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1",
+   "x-goog-api-key": "gem-key"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "hi"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "thinkingBudget": 0
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "google-generative-ai",
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "{\"error\":{\"code\":429,\"message\":\"Resource exhausted\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
+    "durationMs": 0
+   }
+  }
+ ]
+}

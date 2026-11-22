@@ -1,0 +1,241 @@
+/**
+ * The session tree tab's pure logic (WP-A10, Z-18): the flattening (pi's
+ * `/tree` layout) and the five pi filters, ported with the TreeSheet tests
+ * from `SessionMenus.test.tsx` (the sheet itself is gone — the tree is a
+ * side-pane tab now), plus the `get_tree` reply → nodes build.
+ */
+import { describe, expect, it } from 'vitest';
+import { buildTreeNodes, buildTreeNodesFromEntries, errorText, filterTree, flattenTree, kindOfEntry, TREE_FILTERS, TREE_MAX_DEPTH, treeKindLabel, type TreeNode } from './tree';
+import type { SessionEntry } from '../../../lib/session/types';
+
+describe('flattenTree (UNI-186, pi /tree layout)', () => {
+  function node(id: string, parentId: string | null, current = false): TreeNode {
+    return { id, parentId, kind: 'message', preview: id, onPath: false, current };
+  }
+  const view = (rows: ReturnType<typeof flattenTree>) => rows.map((r) => `${r.cells.map((c) => c || ' ').join('')}${r.node.id}`);
+
+  it('a linear chain of messages stays flat', () => {
+    const rows = flattenTree([node('a', null), node('b', 'a'), node('c', 'b'), node('d', 'c')]);
+    expect(rows.map((r) => r.depth)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('a fork steps in with connectors and the first generation after it steps in again', () => {
+    const rows = flattenTree([node('a', null), node('b', 'a'), node('c', 'a'), node('d', 'b'), node('e', 'd')]);
+    expect(view(rows)).toEqual(['a', '├b', '│ d', '│ e', '└c']);
+  });
+
+  it('the branch holding the current leaf comes first among siblings', () => {
+    const rows = flattenTree([node('a', null), node('b', 'a'), node('c', 'a'), node('d', 'c', true)]);
+    expect(rows.map((r) => r.node.id)).toEqual(['a', 'c', 'd', 'b']);
+    expect(view(rows)[1]).toBe('├c');
+  });
+
+  it('several roots hang off a virtual root and their chains indent once', () => {
+    const rows = flattenTree([node('r1', null), node('x', 'r1'), node('r2', null), node('y', 'r2')]);
+    expect(rows.map((r) => [r.node.id, r.depth])).toEqual([
+      ['r1', 0],
+      ['x', 1],
+      ['r2', 0],
+      ['y', 1],
+    ]);
+  });
+
+  it('survives a malformed cycle without hanging', () => {
+    expect(() => flattenTree([node('a', 'b'), node('b', 'a')])).not.toThrow();
+  });
+});
+
+describe('filterTree (UNI-194, pi /tree filters)', () => {
+  const n = (id: string, parentId: string | null, kind: string, extra: Partial<TreeNode> = {}): TreeNode => ({ id, parentId, kind, preview: id, onPath: false, current: false, ...extra });
+  const nodes = [
+    n('u1', null, 'user'),
+    n('a1', 'u1', 'assistant', { preview: '' }),
+    n('t1', 'a1', 'toolResult'),
+    n('m1', 't1', 'model_change'),
+    n('a2', 'm1', 'assistant', { label: 'checkpoint' }),
+    n('u2', 'a2', 'user', { current: true }),
+  ];
+  const ids = (list: TreeNode[]) => list.map((x) => `${x.id}<${x.parentId ?? '-'}`);
+
+  it('default hides settings entries and text-less assistant rows, re-parenting', () => {
+    expect(ids(filterTree(nodes, 'default'))).toEqual(['u1<-', 't1<u1', 'a2<t1', 'u2<a2']);
+  });
+  it('no-tools also hides tool results', () => {
+    expect(ids(filterTree(nodes, 'no-tools'))).toEqual(['u1<-', 'a2<u1', 'u2<a2']);
+  });
+  it('user-only keeps user messages (and the current leaf)', () => {
+    expect(ids(filterTree(nodes, 'user-only'))).toEqual(['u1<-', 'u2<u1']);
+  });
+  it('labeled-only keeps labeled entries plus the current leaf', () => {
+    expect(ids(filterTree(nodes, 'labeled-only'))).toEqual(['a2<-', 'u2<a2']);
+  });
+  it('all shows everything', () => {
+    expect(filterTree(nodes, 'all')).toHaveLength(6);
+  });
+  it('offers pi\'s five filters in order', () => {
+    expect(TREE_FILTERS.map((f) => f.id)).toEqual(['default', 'no-tools', 'user-only', 'labeled-only', 'all']);
+  });
+});
+
+describe('buildTreeNodes (get_tree reply → rows)', () => {
+  const entry = (id: string, parentId: string | null, extra: Partial<SessionEntry> = {}): SessionEntry => ({ type: 'message', id, parentId, ...extra }) as SessionEntry;
+
+  it('walks the reply pre-order and marks the leaf and its branch', () => {
+    const tree = [
+      {
+        entry: entry('u1', null, { message: { role: 'user', content: [{ type: 'text', text: 'fix the test' }] } }),
+        children: [
+          {
+            entry: entry('a1', 'u1', { message: { role: 'assistant', content: [{ type: 'text', text: 'on it' }] }, timestamp: '2026-01-01T00:00:00.000Z' }),
+            children: [{ entry: entry('u2', 'a1', { message: { role: 'user', content: [{ type: 'text', text: 'continue' }] } }) }],
+          },
+          { entry: entry('b1', 'u1', { message: { role: 'assistant', content: [{ type: 'text', text: 'other branch' }] } }) },
+        ],
+      },
+    ];
+    const nodes = buildTreeNodes(tree as never, 'u2');
+    expect(nodes.map((n) => n.id)).toEqual(['u1', 'a1', 'u2', 'b1']);
+    expect(nodes.map((n) => n.onPath)).toEqual([true, true, true, false]);
+    expect(nodes.map((n) => n.current)).toEqual([false, false, true, false]);
+    expect(nodes[1]!.parentId).toBe('u1');
+    expect(nodes[1]!.timestamp).toBe('2026-01-01T00:00:00.000Z');
+    expect(nodes[0]!.preview).toBe('fix the test');
+  });
+
+  it('an orphan leaf leaves nothing on the path (a stale leafId)', () => {
+    const nodes = buildTreeNodes([{ entry: entry('a', null) }] as never, 'gone');
+    expect(nodes[0]!.onPath).toBe(false);
+    expect(nodes[0]!.current).toBe(false);
+  });
+
+  it('labels and kinds come from the entry', () => {
+    const nodes = buildTreeNodes(
+      [
+        { entry: { type: 'compaction', id: 'c1', parentId: null, summary: 'Compacted 40k tokens' } as SessionEntry, label: 'checkpoint' },
+        { entry: { type: 'model_change', id: 'm1', parentId: 'c1', modelId: 'gpt-5' } as SessionEntry },
+      ] as never,
+      'm1',
+    );
+    expect(nodes[0]).toMatchObject({ kind: 'compaction', label: 'checkpoint', preview: 'Compacted 40k tokens' });
+    expect(nodes[1]!.kind).toBe('model_change');
+    expect(kindOfEntry({ type: 'message', id: 'x', message: { role: 'bashExecution' } } as SessionEntry)).toBe('bash');
+  });
+
+  it('depth compression keeps the last TREE_MAX_DEPTH cells', () => {
+    expect(TREE_MAX_DEPTH).toBe(6);
+  });
+
+  it('hides system/model_change/custom leaves in default mode and promotes current to the conversation leaf, with readable labels in All (D-14)', () => {
+    const tree = [
+      {
+        entry: { type: 'message', id: 'sys', parentId: null, message: { role: 'system', content: '' } } as SessionEntry,
+        children: [
+          {
+            entry: { type: 'message', id: 'u1', parentId: 'sys', message: { role: 'user', content: 'hello' } } as SessionEntry,
+            children: [
+              {
+                entry: { type: 'message', id: 'a1', parentId: 'u1', message: { role: 'assistant', content: 'hi there' } } as SessionEntry,
+                children: [
+                  {
+                    entry: { type: 'model_change', id: 'm1', parentId: 'a1', modelId: 'deepseek-flash' } as SessionEntry,
+                    children: [
+                      {
+                        entry: { type: 'custom', id: 'c1', parentId: 'm1', customType: 'unipi-memory-session-card' } as SessionEntry,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const nodes = buildTreeNodes(tree as never, 'c1');
+    const def = filterTree(nodes, 'default');
+    expect(def.map((n) => [n.id, n.current])).toEqual([
+      ['u1', false],
+      ['a1', true],
+    ]);
+    const all = filterTree(nodes, 'all');
+    expect(all.map((n) => [n.id, n.preview, treeKindLabel(n.kind)])).toEqual([
+      ['u1', 'hello', 'User'],
+      ['a1', 'hi there', 'Assistant'],
+      ['m1', 'Model → DeepSeek Flash', 'Model'],
+      ['c1', 'Memory · session context', 'Note'],
+    ]);
+  });
+});
+
+describe('buildTreeNodesFromEntries (long chats)', () => {
+  const msg = (i: number, parent: number | null, role = 'user', text = `m${i}`): SessionEntry => ({
+    type: 'message',
+    id: `e${i}`,
+    parentId: parent === null ? null : `e${parent}`,
+    message: { role, content: [{ type: 'text', text }] } as never,
+  });
+
+  it('rebuilds the tree from parent links, labels and the current path', () => {
+    const entries = [msg(0, null), msg(1, 0, 'assistant'), msg(2, 1), msg(3, 1, 'assistant', 'other branch'), { type: 'label', id: 'l', parentId: 'e3', targetId: 'e0', label: 'start' } as SessionEntry];
+    const nodes = buildTreeNodesFromEntries(entries, 'e2');
+    expect(nodes.find((n) => n.id === 'e3')!.onPath).toBe(false);
+    expect(nodes.find((n) => n.id === 'e1')!.onPath).toBe(true);
+    expect(nodes.find((n) => n.id === 'e2')!.current).toBe(true);
+    expect(nodes.find((n) => n.id === 'e0')!.label).toBe('start');
+  });
+
+  it('handles a chain thousands of entries deep (what get_tree could not carry)', () => {
+    const entries = Array.from({ length: 20000 }, (_, i) => msg(i, i === 0 ? null : i - 1, i % 2 ? 'assistant' : 'user'));
+    const nodes = buildTreeNodesFromEntries(entries, 'e19999');
+    expect(nodes).toHaveLength(20000);
+    expect(flattenTree(filterTree(nodes, 'default'))).toHaveLength(20000);
+  });
+});
+
+describe('buildTreeNodes — the flat wire form ([tree-flat])', () => {
+  const msg = (i: number, parent: number | null, text = `m${i}`): SessionEntry => ({
+    type: 'message',
+    id: `e${i}`,
+    parentId: parent === null ? null : `e${parent}`,
+    message: { role: 'user', content: [{ type: 'text', text }] } as never,
+  });
+
+  it('links the nodes by entry.parentId and carries the reply labels', () => {
+    const tree = [
+      { entry: msg(0, null, 'fix the test') },
+      { entry: msg(1, 0, 'on it'), label: 'answer' },
+      { entry: msg(2, 1, 'continue') },
+      { entry: msg(3, 0, 'other branch') },
+    ];
+    const nodes = buildTreeNodes(tree as never, 'e2');
+    expect(nodes.map((n) => n.id)).toEqual(['e0', 'e1', 'e2', 'e3']);
+    expect(nodes.map((n) => n.parentId)).toEqual([null, 'e0', 'e1', 'e0']);
+    expect(nodes.map((n) => n.onPath)).toEqual([true, true, true, false]);
+    expect(nodes.map((n) => n.current)).toEqual([false, false, true, false]);
+    expect(nodes.find((n) => n.id === 'e1')!.label).toBe('answer');
+    expect(nodes[0]!.preview).toBe('fix the test');
+  });
+
+  it('a 5000-entry linear chain builds and flattens without recursing', () => {
+    const tree = Array.from({ length: 5000 }, (_, i) => ({ entry: msg(i, i === 0 ? null : i - 1, i % 2 ? 'reply' : 'turn') }));
+    const nodes = buildTreeNodes(tree as never, 'e4999');
+    expect(nodes).toHaveLength(5000);
+    const rows = flattenTree(filterTree(nodes, 'default'));
+    expect(rows).toHaveLength(5000);
+    expect(rows[0]!.depth).toBe(0);
+    expect(rows[4999]!.node.current).toBe(true);
+  });
+});
+
+describe('errorText', () => {
+  it('unwraps plain {code, message} rejections instead of [object Object]', () => {
+    expect(errorText({ code: 'E_TIMEOUT', message: 'The session did not answer in time' })).toBe('The session did not answer in time');
+  });
+
+  it('keeps Error messages and falls back readable for anything else', () => {
+    expect(errorText(new Error('boom'))).toBe('boom');
+    expect(errorText('nope')).toBe('nope');
+    expect(errorText({})).not.toContain('[object Object]');
+    expect(errorText(undefined)).not.toContain('[object Object]');
+  });
+});

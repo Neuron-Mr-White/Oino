@@ -1,0 +1,23 @@
+[
+ { "name": "ports_list request", "schema": "Control", "ok": true,
+   "value": { "type": "hello", "proto": "1.6.0", "req": { "op": "ports_list" } } },
+ { "name": "tcp_forward request", "schema": "Control", "ok": true,
+   "value": { "type": "hello", "proto": "1.6.0", "req": { "op": "tcp_forward", "port": 5173 } } },
+ { "name": "tcp_forward rejects port 0", "schema": "Control", "ok": false,
+   "value": { "type": "hello", "proto": "1.6.0", "req": { "op": "tcp_forward", "port": 0 } } },
+ { "name": "tcp_forward rejects port 65536", "schema": "Control", "ok": false,
+   "value": { "type": "hello", "proto": "1.6.0", "req": { "op": "tcp_forward", "port": 65536 } } },
+ { "name": "tcp_forward requires a port", "schema": "Control", "ok": false,
+   "value": { "type": "hello", "proto": "1.6.0", "req": { "op": "tcp_forward" } } },
+ { "name": "E_FORWARD_DISABLED error envelope", "schema": "Control", "ok": true,
+   "value": { "type": "err", "error": { "code": "E_FORWARD_DISABLED", "message": "Port forwarding is off on this PC", "hint": "unipi-host forward enable", "retryable": false } } },
+ { "name": "ports_list data", "schema": "PortsListData", "ok": true,
+   "value": { "ports": [
+     { "port": 5173, "bind": "127.0.0.1", "pid": 4242, "process": "node", "cmd": "node vite", "http": true, "allowed": true },
+     { "port": 22, "bind": "0.0.0.0", "http": false, "allowed": false }
+   ], "any": false, "allowed": [5173] } },
+ { "name": "ports_list data, any loopback", "schema": "PortsListData", "ok": true,
+   "value": { "ports": [], "any": true, "allowed": [] } },
+ { "name": "ports_list data rejects a port out of range", "schema": "PortsListData", "ok": false,
+   "value": { "ports": [{ "port": 70000, "bind": "::", "http": false, "allowed": false }], "any": true, "allowed": [] } }
+]

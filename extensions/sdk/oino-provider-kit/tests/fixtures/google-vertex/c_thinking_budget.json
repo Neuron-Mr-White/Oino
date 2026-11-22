@@ -1,0 +1,176 @@
+{
+ "name": "c_thinking_budget",
+ "model": {
+  "id": "gemini-2.5-flash",
+  "name": "Gemini 2.5 Flash",
+  "api": "google-vertex",
+  "provider": "google-vertex",
+  "baseUrl": "https://{location}-aiplatform.googleapis.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.3,
+   "output": 2.5,
+   "cacheRead": 0.03,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "reasoning": "low"
+ },
+ "apiKey": "vertex-key",
+ "status": 200,
+ "sse": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ponder\",\"thought\":true,\"thoughtSignature\":\"c2lnMQ==\"}],\"role\":\"model\"}}],\"responseId\":\"resp-g2\"}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ing\",\"thought\":true}],\"role\":\"model\"}}]}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"answer\",\"thoughtSignature\":\"c2lnMg==\"}],\"role\":\"model\"}}]}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":20,\"candidatesTokenCount\":10,\"totalTokenCount\":60,\"thoughtsTokenCount\":30,\"cachedContentTokenCount\":8}}\r\n\r\n",
+ "request": {
+  "url": "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+  "headers": {
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1",
+   "x-goog-api-key": "vertex-key"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "q"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "includeThoughts": true,
+     "thinkingBudget": 2048
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ponder"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "pondering"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "answer"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": ""
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "c2lnMQ=="
+     },
+     {
+      "type": "text",
+      "text": "answer",
+      "textSignature": "c2lnMg=="
+     }
+    ],
+    "api": "google-vertex",
+    "provider": "google-vertex",
+    "model": "gemini-2.5-flash",
+    "usage": {
+     "input": 12,
+     "output": 40,
+     "cacheRead": 8,
+     "cacheWrite": 0,
+     "reasoning": 30,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.0000036,
+      "output": 0.0001,
+      "cacheRead": 2.4e-7,
+      "cacheWrite": 0,
+      "total": 0.00010384000000000001
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "resp-g2",
+    "rawStopReason": "STOP",
+    "durationMs": 0
+   }
+  }
+ ]
+}

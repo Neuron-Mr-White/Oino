@@ -1,0 +1,11 @@
+{
+ "t": "Code",
+ "source": "let x = 1;\nlet y = 2;",
+ "language": "rust",
+ "lineNumbers": true,
+ "startLine": 10,
+ "highlightLines": [
+  11
+ ],
+ "wrap": false
+}

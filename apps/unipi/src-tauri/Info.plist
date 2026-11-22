@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged over the generated Info.plist by the tauri bundler (macOS) and by
+  `cargo tauri ios build/dev` (iOS, before Info.ios.plist). The visible name is
+  "Unipi" (menu bar, Dock, Finder, home screen) while the desktop productName
+  stays "UniPi Oino": the bundle path "UniPi Oino.app" must not become
+  "Unipi.app", which on case-insensitive APFS is the old UniPi app's
+  /Applications/UniPi.app.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Unipi</string>
+	<key>CFBundleDisplayName</key>
+	<string>Unipi</string>
+</dict>
+</plist>

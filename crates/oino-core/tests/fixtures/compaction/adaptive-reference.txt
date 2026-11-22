@@ -1,0 +1,17 @@
+Summarize this conversation or agent trajectory so the assistant can continue effectively after compaction.
+
+{IF previous summary: "You've previously produced a summary of the session up to a certain point. There have been new messages since then. You must update the summary to cover these messages, adhering to the guidelines provided below." ELSE: "You are to read the full conversation and produce a summary based on guidelines provided below."}
+
+Choose the sections and level of detail that fit this session. Organize around what matters for continuation, not a chronological account of tool calls.
+
+Favor a thorough, complete summary. Use your judgment to prioritize the material and allocate detail where it helps most. Do not omit useful context merely to keep the summary short.
+
+Always preserve relevant user context: the primary request and intent, the latest request, consequential requirements, clarifications, preferences, approvals and their limits, corrections, and unanswered questions. Distinguish user decisions from assistant proposals or assumptions.
+
+Preserve other context according to its value for continuing the work. This may include current line of investigation, important discoveries and reasoning, decisions, outstanding delegated work, unresolved findings, and immediate next actions. Keep identifiers and locations needed to act on that context.
+
+Project files, recorded evidence, and other relevant artifacts may already be durable sources of truth. Prefer referencing these sources while preserving important context that exists only in the conversation.
+
+When updating a previous summary, integrate new information, replace superseded state, and remove details that no longer help continuation. Do not turn proposals into commitments, reports into verified results, partial checks into verified correctness, or historical evidence into current proof.
+
+Return the summary inside <summary> tags.

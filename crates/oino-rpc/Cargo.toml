@@ -1,0 +1,31 @@
+[package]
+name = "oino-rpc"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Oino JSONL RPC codec, RPC server over a SessionBackend, typed RPC client"
+readme = "README.md"
+keywords = ["rpc", "jsonl", "protocol", "agent"]
+categories = ["network-programming"]
+
+[dependencies]
+futures.workspace = true
+oino-agent = { path = "../oino-agent", version = "1.0.2" }
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+oino-client = { path = "../oino-client", version = "1.1.0", default-features = false }
+oino-core = { path = "../oino-core", version = "1.0.1" }
+oino-ui.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = "2"
+tokio = { workspace = true, features = ["io-util", "process", "sync", "macros", "rt", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+oino-core = { path = "../oino-core", features = ["testing"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

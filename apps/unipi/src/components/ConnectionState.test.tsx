@@ -1,0 +1,4 @@
+import { render,cleanup } from '@solidjs/testing-library';import { afterEach,it,expect } from 'vitest';import { PathChip,OnlineDot } from './ConnectionState';
+afterEach(cleanup);
+it('labels and colours every path',()=>{for(const [path,label] of Object.entries({lan:'LAN',tailnet:'Tailnet',direct:'Direct',relay:'Relay',unknown:'Unknown'})){const r=render(()=><PathChip path={path as 'lan'}/>);const chip=r.getByText(label);expect(chip.className).toBe(path==='relay'?'text-amber':path==='unknown'?'text-text-dim':'text-wm-cyan');r.unmount();}});
+it('renders all online states',()=>{for(const[state,colour]of Object.entries({connected:'text-wm-green',connecting:'text-amber',error:'text-wm-red',unknown:'text-text-dim'})){const r=render(()=><OnlineDot state={state as 'connected'}/>);expect(r.getByLabelText(state)).toHaveClass(colour);r.unmount();}});

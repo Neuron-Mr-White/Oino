@@ -1,0 +1,265 @@
+{
+ "name": "i_tool_stream",
+ "model": {
+  "id": "llama-3.3-70b-versatile",
+  "name": "Llama 3.3 70B",
+  "api": "openai-completions",
+  "provider": "groq",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "reasoning": false,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 0.59,
+   "output": 0.79,
+   "cacheRead": 0,
+   "cacheWrite": 0
+  },
+  "contextWindow": 131072,
+  "maxTokens": 32768,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "toolsAdded": [
+     {
+      "name": "lookup",
+      "description": "Look up a value",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "q": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "q"
+       ]
+      }
+     },
+     {
+      "name": "write_file",
+      "description": "Write a file",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "data": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    ],
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "go",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"q\\\":\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"x\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_2\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"a\\\"}\"}}]},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":9,\"total_tokens\":39,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://api.groq.com/openai/v1/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "llama-3.3-70b-versatile",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "go"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "store": false,
+   "max_completion_tokens": 32768,
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "lookup",
+      "description": "Look up a value",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "q": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "q"
+       ]
+      },
+      "strict": false
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Write a file",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "data": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      },
+      "strict": false
+     }
+    }
+   ]
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 0,
+   "delta": ""
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 0,
+   "delta": "{\"q\":"
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 0,
+   "delta": "\"x\"}"
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "{\"path\":\"a\"}"
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 0,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "call_1",
+    "name": "lookup",
+    "arguments": {
+     "q": "x"
+    }
+   }
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 1,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "call_2",
+    "name": "write_file",
+    "arguments": {
+     "path": "a"
+    }
+   }
+  },
+  {
+   "type": "done",
+   "reason": "toolUse",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "toolCall",
+      "id": "call_1",
+      "name": "lookup",
+      "arguments": {
+       "q": "x"
+      }
+     },
+     {
+      "type": "toolCall",
+      "id": "call_2",
+      "name": "write_file",
+      "arguments": {
+       "path": "a"
+      }
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "usage": {
+     "input": 30,
+     "output": 9,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 39,
+     "cost": {
+      "input": 0.0000177,
+      "output": 0.0000071100000000000005,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00002481
+     }
+    },
+    "stopReason": "toolUse",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "tool_calls",
+    "durationMs": 22
+   }
+  }
+ ]
+}

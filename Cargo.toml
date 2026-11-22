@@ -1,39 +1,37 @@
+# Build-cache size policy (app-convention): smaller dev artifacts; budget enforced by
+# scripts/target-gc.sh (`mise run clean` / `mise run gc`).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [workspace]
-members = [
-  "crates/oino-types",
-  "crates/oino-agent-loop",
-  "crates/oino-agent",
-  "crates/oino-session",
-  "crates/oino-harness",
-  "crates/oino-resource",
-  "crates/oino-env",
-  "crates/oino-tools",
-  "crates/oino-extension-core",
-  "crates/oino-extension-builtins",
-  "crates/oino-extension-manager",
-  "crates/oino-extension-runtime",
-  "crates/oino-extension-sdk",
-  "crates/oino-auth",
-  "crates/oino-provider-catalog",
-  "crates/oino-tui",
-  "crates/oino-app",
-  "crates/oino-wasm-host",
-]
-resolver = "2"
+members = ["crates/*", "xtask"]
+resolver = "3"
 
 [workspace.package]
-edition = "2021"
+version = "1.0.0-alpha.5"
+edition = "2024"
+rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
+oino-ui = { path = "crates/oino-ui", version = "1.0.1" }
 async-trait = "0.1"
 futures = "0.3"
 bytes = "1"
 hmac = "0.12"
+indexmap = { version = "2", features = ["serde"] }
 sha2 = "0.10"
 crossterm = "0.28"
 dirs = "5"
+proptest = "1"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+croner = "4"
+iana-time-zone = "0.1"
 pulldown-cmark = "0.12"
 ratatui = "0.29"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
@@ -44,7 +42,7 @@ semver = { version = "1", features = ["serde"] }
 syntect = "5"
 syntect-assets = "0.23"
 nucleo = "0.5"
-thiserror = "1"
+thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 tempfile = "3"
@@ -52,10 +50,37 @@ unicode-segmentation = "1"
 unicode-width = "0.2"
 webbrowser = "1.2.1"
 mmdflux = { version = "2", default-features = false }
+base64 = "0.22"
+fs4 = { version = "0.13", features = ["sync"] }
+globset = "0.4"
+grep-matcher = "0.1"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+nix = { version = "0.29", features = ["signal", "process"] }
+regex = "1"
+serde_yaml_ng = "0.10"
+similar = "2"
+tokio-util = "0.7.20"
+tracing = "0.1"
+unicode-normalization = "0.1"
+insta = "1"
 
+# quality.md §2. Crates opt in with `[lints] workspace = true` (oino-wasm-host and xtask keep local tables).
 [workspace.lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
 
 [workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"

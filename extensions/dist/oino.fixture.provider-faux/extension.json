@@ -1,0 +1,22 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "oino.fixture.provider-faux",
+  "name": "Faux provider fixture",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Deterministic provider streaming a faux script (quality §4.1).",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "faux"
+    ],
+    "providers": [
+      "faux"
+    ]
+  },
+  "permissions": {},
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:a235757339112f53a5131f6b7c0b0e3f823604a14229f58e117f4c460d809b02"
+  }
+}

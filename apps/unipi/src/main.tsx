@@ -1,0 +1,201 @@
+/**
+ * App entry + routes (app spec §3.7, WP-A3). The shell (frames, sidebar,
+ * rail, side pane, bottom panel, shortcuts) is `components/shell/AppShell`.
+ *
+ *   /                    last open session of the last host, else the draft for This computer
+ *   /s/:host/:session    conversation
+ *   /new/:host?cwd=      draft (Z-19, WP-A5 fills it)
+ *   /board, /cron        rail pages
+ *   /x/:entryId          extension sidebar page (`fullscreen` slot, U10)
+ *   /settings/:section?  the one Settings screen
+ *   /setup               (gone: a stale link lands on `/`)
+ * Phone only (phone spec §1.2): /chat (Chats tab), /chat/archived, /files(/edit),
+ * /cron/job/:id; /preview redirects to /settings/ports (Ports live in Settings on
+ * the phone; on the desktop shell in the side pane `+` launcher, Z-104). On the
+ * desktop shell the phone-only routes redirect to `/` (or their desktop page).
+ *   /settings/:section/:sub   a Settings sub-page (agent profile, extension namespace…)
+ */
+import { render } from 'solid-js/web';
+import { HashRouter, Navigate, Route, useLocation, useParams, useSearchParams } from '@solidjs/router';
+import { lazy, Show, Suspense } from 'solid-js';
+import type { Component, JSX } from 'solid-js';
+import { Puzzle } from 'lucide-solid';
+import Chat, { ArchivedChats } from './screens/Chat';
+import SuperagentPage from './components/superagent/SuperagentPage';
+import { PageHeader } from './components/PageHeader';
+import { EmptyState } from './components/EmptyState';
+import { Requires, UnavailableNotice } from './components/Requires';
+import { AppShell } from './components/shell/AppShell';
+import { SessionTabLayer } from './components/panes/tabs';
+import { RootBoundary } from './components/ErrorBoundaries';
+import { readLastSession, Workspace } from './components/shell/Workspace';
+import { sessionHref } from './components/shell/Sidebar';
+import { extPageView } from './components/shell/Rail';
+import { SettingsNotices } from './components/SettingsNotices';
+import { UpdateBanner } from './components/UpdateCard';
+import { LOCAL_HOST } from './lib/host/client';
+import { localHostId, resolveHostId } from './lib/host/localId';
+import { useHostsOptional } from './hosts/context';
+import { layout } from './lib/layout';
+import { can, isWeb, type Capability } from './lib/platform';
+import { dismissSplashWhenReady } from './lib/splash';
+import { firstPaintDone } from './lib/firstPaint';
+import { watchForUpdates } from './lib/update';
+import { watchDesktopUpdates } from './lib/desktopUpdate';
+import { announceWebviewRecovery } from './lib/webviewRecovery';
+import { installGlobalErrorLog } from './lib/appLog';
+import { installIdleGuards } from './lib/idle';
+import { startKeyboardTracking } from './components/phone/services';
+import './components/media/media.css';
+import '@xterm/xterm/css/xterm.css';
+import './style.css';
+import './components/shell/shell.css';
+import './components/panes/panes.css';
+// Phone design system (phone spec §2): tokens, z scale, primitives (rules scoped html[data-shell=phone] / ph-*).
+import './components/phone/phone.css';
+// Shared tokens + components (UNI-218): last, so it wins over the per-screen rules it unifies.
+import './ui.css';
+
+// w2-ui: the Files layer (tree + CodeMirror editor + LSP) is a phone route; it loads when the route opens, not at launch.
+/** A route screen loaded on first visit (w2-ui: Board, Cron, Settings, Superagent and Files are not needed to paint the first chat). */
+const lazyScreen = (load: () => Promise<{ default: Component }>): Component => {
+  const Screen = lazy(load);
+  return () => (
+    <Suspense>
+      <Screen />
+    </Suspense>
+  );
+};
+const LazyFilesLayer = lazyScreen(() => import('./components/files/FilesTab').then((m) => ({ default: m.FilesLayer })));
+const Board = lazyScreen(() => import('./screens/Board'));
+const Cron = lazyScreen(() => import('./screens/Cron'));
+const Settings = lazyScreen(() => import('./screens/Settings'));
+
+const desktop = () => layout().desktop();
+
+/** Screens that need the native core show the standard notice in web mode (lib/platform.ts). */
+const gated = (cap: Capability, Screen: Component, title: string) => () => (
+  <Requires cap={cap} fallback={<div class="page-screen"><PageHeader title={title} /><UnavailableNotice cap={cap} /></div>}><Screen /></Requires>
+);
+
+/** A rail page: on the desktop shell it gets the page column (banner, notices, optional header). */
+const railPage = (Screen: Component, title?: string) => () => (
+  <Show when={desktop()} fallback={<Screen />}>
+    <div class="app-shell ashell-page">
+      <Show when={title}><PageHeader title={title!} /></Show>
+      <main class="app-content">
+        <Show when={title !== 'Settings'}><UpdateBanner onOpen={() => (location.hash = '#/settings')} /></Show>
+        <SettingsNotices />
+        <Screen />
+      </main>
+    </div>
+  </Show>
+);
+
+/** Phone-only routes; the desktop shell sends them home (or to `desktopHref`). */
+const phoneOnly = (Screen: Component, desktopHref = '/') => () => <Show when={!desktop()} fallback={<Navigate href={desktopHref} />}><Screen /></Show>;
+
+/** `/`: the web build (board only) opens the Board; the phone its Chat tab; the desktop the last session or a draft. */
+function Home() {
+  if (!can('chat') && can('board')) return <Navigate href="/board" />;
+  if (!desktop()) return <Navigate href="/chat" />;
+  const last = readLastSession();
+  return <Navigate href={last ? sessionHref(resolveHostId(last.hostId), last.sessionId) : `/new/${resolveHostId(LOCAL_HOST)}`} />;
+}
+
+/**
+ * `/new/local`, `/s/local/…`: the `local` alias is resolved here, once — the
+ * route is replaced by This computer's real id, so no screen ever keys hubs,
+ * sessions or panes by the alias (lib/host/localId). While the hosts load it
+ * waits; with no local host at all (web / harness) the alias renders as is.
+ */
+function HostRoute(props: { host: string; children: (hostId: string) => JSX.Element }) {
+  const hosts = useHostsOptional();
+  const location = useLocation();
+  const real = () => (props.host === LOCAL_HOST ? localHostId() : props.host);
+  const settled = () => !hosts || (!hosts.loading() && (hosts.hosts().length > 0 || !!hosts.error()));
+  return (
+    <Show when={real()} fallback={<Show when={props.host === LOCAL_HOST && settled() && !localHostId()}>{props.children(props.host)}</Show>}>
+      {(id) => (
+        <Show when={id() === props.host} fallback={<Navigate href={`${location.pathname.replace(/^\/(new|s)\/local\b/, `/$1/${encodeURIComponent(id())}`)}${location.search}`} />}>
+          {props.children(id())}
+        </Show>
+      )}
+    </Show>
+  );
+}
+
+function ConversationRoute() {
+  const params = useParams<{ host: string; session: string }>();
+  const body = () => (
+    <HostRoute host={params.host}>
+      {(hostId) => (
+        <Show when={params.session} keyed>
+          {(session) => <Workspace hostId={hostId} sessionId={session} />}
+        </Show>
+      )}
+    </HostRoute>
+  );
+  // w2-ui2 T1: on the desktop the chat mounts after the first frame (the sidebar rows paint without waiting for it).
+  return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}><Show when={firstPaintDone()}>{body()}</Show></Show>;
+}
+
+function DraftRoute() {
+  const params = useParams<{ host: string }>();
+  const [search] = useSearchParams<{ cwd?: string }>();
+  const body = () => <HostRoute host={params.host}>{(hostId) => <Workspace hostId={hostId} cwd={search.cwd} />}</HostRoute>;
+  return <Show when={desktop()} fallback={<div class="ws-layer">{body()}</div>}><Show when={firstPaintDone()}>{body()}</Show></Show>;
+}
+
+function ExtPageRoute() {
+  const params = useParams<{ entryId: string }>();
+  return (
+    <Show
+      when={extPageView()}
+      fallback={<EmptyState icon={<Puzzle size={22} />} title="This page isn't available" body="The extension that adds it is off or not installed." testId="ext-page-missing" />}
+    >
+      {(View) => {
+        const V = View();
+        return <V entryId={decodeURIComponent(params.entryId)} />;
+      }}
+    </Show>
+  );
+}
+
+export function Root() {
+  return (
+    <RootBoundary>
+      <HashRouter root={AppShell}>
+        <Route path="/" component={Home} />
+        <Route path="/s/:host/:session" component={ConversationRoute} />
+        <Route path="/new/:host" component={DraftRoute} />
+        <Route path="/chat" component={phoneOnly(gated('chat', Chat, 'Chats'))} />
+        <Route path="/chat/archived" component={phoneOnly(gated('chat', ArchivedChats, 'Archived chats'))} />
+        <Route path="/board" component={railPage(Board)} />
+        <Route path="/superagent" component={railPage(gated('chat', SuperagentPage, 'Superagent'))} />
+        <Route path="/cron" component={railPage(Cron)} />
+        {/* Phone spec §1.2: a job's detail + runs (Cron reads the :id); the desktop opens the Cron page. */}
+        <Route path="/cron/job/:id" component={phoneOnly(Cron, '/cron')} />
+        <Route path="/x/:entryId" component={railPage(ExtPageRoute)} />
+        <Route path={['/settings', '/settings/:section', '/settings/:section/:sub']} component={railPage(Settings, 'Settings')} />
+        <Route path="/setup" component={() => <Navigate href="/" />} />
+        <Route path={['/files', '/files/edit']} component={phoneOnly(gated('files', LazyFilesLayer, 'Files'))} />
+        {/* Ports moved into Settings (phone spec §3.12): the legacy route redirects. */}
+        <Route path="/preview" component={phoneOnly(() => <Navigate href="/settings/ports" />)} />
+      </HashRouter>
+      {/* WP-A10: the phone's session-tab sheets / diff layer (no-ops on the desktop). */}
+      <SessionTabLayer />
+    </RootBoundary>
+  );
+}
+const root = document.getElementById('root');
+if (root) {
+  installGlobalErrorLog();
+  installIdleGuards();
+  startKeyboardTracking();
+  watchForUpdates();
+  watchDesktopUpdates();
+  render(() => <Root />, root);
+  void dismissSplashWhenReady();
+  if (can('hosts')) void announceWebviewRecovery();
+}

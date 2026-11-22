@@ -1,0 +1,924 @@
+/* Timeline (WP-A6..A27): turn-unit virtual scroll, live tail, bottom lock,
+ * sticky bottom dock, tool rows/bodies, thinking blocks, user bubbles and
+ * turn footers. */
+
+.conv-tl { place-self: stretch; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.tl-frame { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* the one scroll viewport (composer docks inside it, Z-66) */
+.tl {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* [chat-load] the timeline keeps its own anchor (Timeline settle()); the browser's scroll
+     anchoring (Chromium) would move the view a second time, and WebKit has none */
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+/* F-12: `flex: 1 0 auto` (never `min-height: 100%`) so `.tl-content + .tl-dock` equals `clientHeight` when a chat is short — zero scroll/cutoff. */
+.tl-content { display: flex; flex-direction: column; flex: 1 0 auto; padding: 14px 0 20px; box-sizing: border-box; }
+.tl-list { width: 100%; box-sizing: border-box; }
+/* rows are in normal flow; flow-root keeps every child margin inside the row, so the
+   measured row height is exactly the height it takes in the list */
+.tl-vrow { display: flow-root; }
+/* perf-webview (spec §4.7): off-screen rows of the mounted window skip style/layout/paint;
+   `contain-intrinsic-size: auto <model height>` (inline) keeps their box until first rendered,
+   then the last rendered size. */
+.tl-list[data-cv] > .tl-vrow { content-visibility: auto; }
+.tl-work-more { align-self: flex-start; margin: 2px 0 4px; padding: 2px 8px; border-radius: 6px; font-size: calc(12px * var(--ui-font-scale, 1)); color: var(--color-text-dim); background: transparent; border: 1px solid var(--color-line); cursor: pointer; transition: background-color 140ms ease-out, color 140ms ease-out; }
+.tl-work-more:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-work-more:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 2px; }
+
+/* column: the unipi 760 px chat column, centred */
+.tl-turn, .tl-tail, .tl-skeleton, .tl-empty { max-width: 760px; margin: 0 auto; padding: 0 20px; width: 100%; box-sizing: border-box; }
+html:not([data-shell=desktop]) :is(.tl-turn, .tl-tail, .tl-skeleton, .tl-empty) { padding-left: 16px; padding-right: 16px; }
+/* [owner-fix-8] The live tail IS the column: it already carries the 20 px gutter,
+   so the turn inside it must not add it a second time (the live turn was 20 px right
+   of every settled turn — its event cards, fold and bubble all sat off the column).
+   Same rule for the phone's 16 px gutter. */
+html .tl-tail > .tl-turn { padding-left: 0; padding-right: 0; }
+.tl-tail-wrap { flex: none; }
+.tl-tail { display: flex; flex-direction: column; gap: 4px; }
+.tl-turn { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; padding-bottom: 10px; }
+.tl-segment { display: contents; }
+
+/* skeleton + empty (Z-88): calm conversation silhouette */
+.tl-skeleton { padding-top: 24px; gap: 12px; }
+.tl-skeleton > .tl-skel-bubble { width: min(52%, 340px); height: 38px; margin-left: auto; border-radius: 19px; }
+.tl-skeleton > .tl-skel-fold { width: min(38%, 220px); height: 12px; border-radius: 6px; opacity: 0.7; }
+.tl-skeleton > .tl-skel-line { height: 14px; border-radius: 7px; }
+.tl-skeleton > .tl-skel-w90 { width: 88%; }
+.tl-skeleton > .tl-skel-w68 { width: 64%; }
+/* perf-open: "load earlier" above the oldest loaded turn */
+.tl-earlier { display: flex; justify-content: center; align-items: center; flex: none; height: 52px; max-width: 760px; margin: 0 auto; padding: 8px 20px 4px; width: 100%; box-sizing: border-box; overflow: hidden; }
+.tl-earlier-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); cursor: pointer; }
+.tl-earlier-btn:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface-2); }
+.tl-earlier-btn:disabled { cursor: default; }
+.tl-earlier-spin { color: var(--color-claw); animation: tl-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tl-earlier-spin { animation: none; } }
+.tl-empty { display: grid; place-items: center; flex: 1; color: var(--color-text-dim); font-size: calc(14px * var(--ui-font-scale)); text-align: center; }
+
+/* user + steer */
+.tl-user { margin-top: 8px; margin-bottom: 2px; }
+.tl-user[data-steer] .chat-bubble { border-radius: 14px; font-size: calc(14px * var(--ui-font-scale)); padding: 6px 12px; background: var(--color-surface-2); }
+.tl-steer-tag { display: inline-flex; align-items: center; gap: 5px; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-claw); margin-bottom: 2px; font-weight: 550; }
+/* the owner's note ("Send as note"): a user-like bubble that is plainly not one — dashed gold edge, caption "Note · only you" */
+.tl-note { margin-top: 8px; }
+.tl-interrupted { color: var(--color-amber); }
+.tl-interrupted-sep { color: var(--color-text-dim); }
+.tl-interrupted-continue { min-height: 26px; padding: 3px 10px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text); font-size: calc(12px * var(--ui-font-scale)); font-weight: 550; }
+.tl-interrupted-continue:hover { background: var(--color-surface-2); }
+.tl-interrupted-continue:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.tl-interrupted-continue:disabled { opacity: 0.6; }
+.tl-interrupted-continue[data-pending] { opacity: 1; color: var(--color-text-dim); cursor: progress; }
+.tl-note-cap { display: inline-flex; align-items: center; gap: 5px; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); font-weight: 550; color: var(--color-gold); }
+.tl-note-bubble.chat-bubble { white-space: normal; background: color-mix(in srgb, var(--color-gold) 8%, var(--color-surface-2)); box-shadow: none; border: 1.5px dashed color-mix(in srgb, var(--color-gold) 55%, transparent); padding: 8px 14px; }
+.tl-note-body { font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+.tl-note-body > :last-child { margin-bottom: 0; }
+.tl-cron { display: flex; align-items: center; justify-content: flex-end; gap: 5px; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); padding-right: 4px; }
+.tl-cron svg { color: var(--color-amber); }
+
+/* Host-authored messages are notifications, not user bubbles. */
+.tl-notification { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; padding: 10px 12px; border-left: 2px solid var(--color-line); color: var(--color-text-dim); font-size: calc(13px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-notification-label { font-weight: 600; }
+
+/* harness / command row (Z-36) */
+.tl-harness .chat-bubble.tl-harness-typed { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); }
+.tl-harness-cmd { align-self: flex-end; }
+
+/* folds + groups: NEVER trap expanded rows inside a nested inner scrollbox. [chat-load]: scoped
+   under .tl so it beats chat.css `.proc-body` (same specificity, loaded later in the bundle),
+   which made an open fold a 420 px scroll box with `overscroll-behavior: contain` — a wheel
+   over it never reached the chat (scroll "hijacked") and it drew its own scrollbars (O-02) */
+.tl :is(.tl-fold-body, .tl-group-body) { max-height: none; overflow: visible; overscroll-behavior: auto; }
+.tl-fold-body { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px 10px; padding-left: 12px; border-left: 1px solid rgb(46 40 37 / 85%); }
+/* [owner-fix-8] The event cards share ONE left edge and ONE width — the chat
+   column's — in the session header, in a settled turn and in a live turn. The
+   work fold indents its tool rows by 23 px (12 margin + 1 border + 10 padding);
+   an event card that lands inside the fold is pulled back to the column edge. */
+.tl-fold-body > .tl-cardblock { margin-left: -23px; }
+.tl-group-head { min-height: 30px; }
+.tl-group[data-open] > .tl-group-head .proc-chev { transform: rotate(90deg); }
+.tl-group-body { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 10px; padding-left: 12px; border-left: 1px solid rgb(46 40 37 / 75%); }
+
+/* row rhythm & interactive states (ui-bar.md Global) */
+.tl :is(.proc-head, .tool-row) {
+  min-height: 30px;
+  padding: 4px 8px;
+  margin: 0 -4px;
+  width: calc(100% + 8px);
+  box-sizing: border-box;
+  border-radius: 8px;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+html[data-shell=phone] .tl :is(.proc-head, .tool-row) { min-height: 40px; }
+.tl :is(.proc-head, .tool-row):hover:not(:disabled) { background-color: var(--color-surface-1); color: var(--color-text); }
+.tl :is(.proc-head, .tool-row):active:not(:disabled) { background-color: var(--color-surface-2); transform: none; }
+.tl :is(.proc-head, .tool-row):focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
+
+/* light card rows inside work (model change, bash, custom) */
+.tl-card { display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 4px; color: var(--color-text-dim); font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); }
+.tl-card .tool-icon { flex: 0 0 18px; display: grid; place-items: center; }
+.tl-card-text { min-width: 0; }
+.tl-cardwrap:empty,
+.tl-cardblock:empty,
+.tl-cardblock:not(:has(*)) { display: none; }
+
+/* compaction divider keeps chat.css .compaction look */
+.tl-compaction { margin: 8px 0; }
+.tl-compaction .compaction-head { border-radius: 8px; padding: 0 6px; transition: background-color 140ms ease-out, color 140ms ease-out; }
+.tl-compaction .compaction-head:hover { background: var(--color-surface-1); color: var(--color-text-muted); }
+.compaction-chev { flex: 0 0 auto; transition: transform 160ms ease-out; }
+.compaction-chev[data-open] { transform: rotate(180deg); }
+
+/* Audience discrimination pills: User only · Agent only · User & agent */
+.tl-audience {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: calc(10.5px * var(--ui-font-scale));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: calc(18px * var(--ui-font-scale));
+  white-space: nowrap;
+  background: var(--color-surface-2);
+  color: var(--color-text-dim);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 7%);
+}
+.tl-audience[data-audience=user] {
+  color: var(--color-wm-cyan, #38bdf8);
+  background: color-mix(in srgb, var(--color-wm-cyan, #38bdf8) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-wm-cyan, #38bdf8) 30%, transparent);
+}
+.tl-audience[data-audience=agent] {
+  color: var(--color-amber, #f59e0b);
+  background: color-mix(in srgb, var(--color-amber, #f59e0b) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-amber, #f59e0b) 30%, transparent);
+}
+.tl-audience[data-audience=both] {
+  color: var(--color-wm-green, #4ade80);
+  background: color-mix(in srgb, var(--color-wm-green, #4ade80) 11%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-wm-green, #4ade80) 28%, transparent);
+}
+html[data-shell=phone] .tl-event-head .tl-audience { font-size: calc(10px * var(--ui-font-scale)); padding: 0 5px; }
+
+/* outbox */
+.tl-outbox .chat-user-note { display: inline-flex; align-items: center; gap: 6px; }
+.tl-outbox-retry { align-self: flex-end; min-height: 26px; margin-top: 2px; padding: 3px 10px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-amber); font-size: calc(12px * var(--ui-font-scale)); font-weight: 550; }
+.tl-outbox-retry:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+/* ── bottom dock (Z-66; regions arrive in A9–A12) ─────────────────── */
+.tl-dock {
+  flex: none;
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  margin-top: auto;
+  background: var(--color-bg);
+  padding: 0 10px calc(8px + max(var(--inset-ime, 0px), var(--vv-bottom, 0px), env(safe-area-inset-bottom), var(--inset-bottom, 0px)));
+}
+/* the gradient fade above the dock (the "background token" upward mask) */
+.tl-dock::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: -24px; height: 24px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--color-bg));
+}
+.tl-composer { display: flex; align-items: center; gap: 8px; max-width: 760px; margin: 0 auto; padding: 8px 10px; border-radius: 20px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), 0 6px 22px rgb(0 0 0 / 30%); }
+.tl-composer-input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--color-text); font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); padding: 6px 4px; }
+.tl-composer-input::placeholder { color: var(--color-text-dim); }
+.tl-composer-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--color-claw); color: #fff; }
+.tl-composer-send:active { transform: scale(0.94); }
+
+/* jump-to-bottom (Z-23/Z-24): above the dock, gradient behind it via ::before */
+.tl-jump {
+  position: absolute;
+  right: 16px;
+  top: -46px;
+  width: 38px; height: 38px; min-height: 38px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%), 0 6px 20px rgb(0 0 0 / 50%);
+  z-index: 7;
+  transition: background-color 140ms ease-out, transform 120ms ease-out;
+}
+.tl-jump:hover { background: var(--color-surface-2); }
+.tl-jump-dot { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--color-claw); box-shadow: 0 0 0 2px var(--color-bg); }
+
+/* banners sit above the scroll viewport */
+.tl-banner { margin: 6px 16px 0; }
+
+/* ── WP-A7: turn tail, fold, navigator, composer chips ───────────── */
+
+/* the rail + scroller wrapper (the rail must not scroll with the timeline) */
+.tl-outer { position: relative; flex: 1; min-height: 0; display: flex; }
+
+/* turn rail: thin vertical rail of horizontal ticks, fisheye on hover (≥ 560 px) */
+.tl-nav {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 30px;
+  padding: 8px 0;
+}
+.tl-nav-ticks { position: relative; width: 30px; }
+/* The rail owns a gutter: the scroller pads in only as far as the centred 760 px column leaves the rail
+   (8 + 30 px) less than 8 px of air — never drawn over bubbles / cards, at any width. */
+.tl-outer:has(> .tl-nav) > .tl { padding-inline: max(0px, calc(26px - max(0px, (100% - 760px) / 2))); box-sizing: border-box; }
+.tl-nav-tick {
+  position: absolute;
+  left: 0;
+  width: 30px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  --s: 1;
+}
+.tl-nav-tick::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 8px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--color-line);
+  transform: scaleX(var(--s));
+  transform-origin: left center;
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), background-color 140ms ease-out;
+  will-change: transform;
+}
+.tl-nav-tick[data-hot]::before, .tl-nav-tick:focus-visible::before { background: var(--color-text-muted); }
+.tl-nav-tick[data-live]::before { background: var(--color-amber); }
+.tl-nav-tick[data-active]::before { background: var(--color-claw); }
+.tl-nav-tick:focus-visible { outline: none; }
+.tl-nav-tick:focus-visible::before { outline: 2px solid var(--color-claw); outline-offset: 2px; }
+
+.tl-nav-panel {
+  position: absolute;
+  left: 34px; /* hugs the rail so the pointer never crosses a dead zone */
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(300px, 36vw);
+  display: flex;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-line);
+  box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.35);
+  animation: tl-nav-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tl-nav-in { from { opacity: 0; transform: translateY(-50%) translateX(-4px); } }
+.tl-nav-list { flex: 1; min-width: 0; overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.tl-nav-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: block;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: calc(13px * var(--ui-font-scale));
+  line-height: calc(28px * var(--ui-font-scale));
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-nav-row[data-active] { color: var(--color-claw); font-weight: 600; }
+.tl-nav-row[data-hot] { background: var(--color-line); color: var(--color-text); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-nav-tick::before { transition: none; }
+  .tl-nav-panel { animation: none; }
+}
+
+/* turn tail (Z-26/Z-27): metadata aligned left with prose, actions fade in right beside it */
+.tl-tail-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 2px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.tl-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+.tl-actions { display: inline-flex; align-items: center; gap: 2px; }
+.tl-act {
+  width: 28px; height: 28px; min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  background: transparent;
+  color: var(--color-text-dim);
+  transition: background-color 140ms ease-out, color 140ms ease-out, transform 120ms ease-out;
+}
+.tl-act:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+.tl-act:active:not(:disabled) { background: var(--color-surface-3); transform: scale(0.95); }
+.tl-act[data-copied] { color: var(--color-wm-green); }
+.tl-act:disabled { opacity: .4; }
+.tl-act-check { color: var(--color-wm-green); }
+.tl-done, .tl-time {
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: calc(18px * var(--ui-font-scale));
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tl-done[data-stopped] { color: var(--color-amber); }
+.tl-done[data-error] { color: #f6a39d; }
+.tl-done-sep { color: var(--color-text-dim); opacity: 0.65; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); user-select: none; }
+.tl-time { margin-left: 0; }
+.tl-menu-check { display: inline-block; width: 16px; height: 16px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--color-line); }
+
+/* phone touch targets (≥ 40 px hit area via compact row) */
+html[data-shell=phone] .tl-actions { gap: 2px; }
+html[data-shell=phone] .tl-act { width: 40px; height: 40px; min-height: 40px; border-radius: 9999px; }
+html[data-shell=phone] .tl-tail-line { gap: 6px; }
+
+/* actions are hover-revealed on the desktop, always visible on the phone (§3.9) */
+html[data-shell=desktop] .tl-actions,
+html[data-shell=desktop] .tl-user-actions { opacity: 0; pointer-events: none; transition: opacity 140ms ease-out; }
+html[data-shell=desktop] .tl-turn:hover .tl-actions,
+html[data-shell=desktop] .tl-turn:focus-within .tl-actions,
+html[data-shell=desktop] .tl-user:hover .tl-user-actions,
+html[data-shell=desktop] .tl-user:focus-within .tl-user-actions { opacity: 1; pointer-events: auto; }
+
+/* user bubble (Z-28/Z-29): 120 px fold + centred button; Edit under the bubble */
+.tl-user-actions { display: flex; justify-content: flex-end; margin-top: 2px; min-height: 24px; }
+.tl-user-actions .tl-act { width: 26px; height: 26px; min-height: 26px; }
+.tl-bubble { position: relative; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%); }
+.tl-bubble-body { display: block; }
+/* Clip whenever the body can fold: the expand/collapse max-height transition must never
+   let text spill outside the bubble mid-animation (the mask only applies while folded). */
+.tl-bubble[data-foldable] .tl-bubble-body { overflow: hidden; }
+.tl-bubble[data-folded] .tl-bubble-body {
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  mask-image: linear-gradient(to bottom, #000 62%, transparent);
+}
+.tl-fold-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  width: 28px; height: 28px; min-height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 0 0 1px var(--color-line), 0 2px 10px rgb(0 0 0 / 45%);
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+.tl-fold-btn:hover { background: var(--color-surface-3); color: var(--color-text); }
+.tl-fold-btn:active { transform: translateX(-50%) scale(0.95); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-bubble-body { transition: none !important; }
+}
+
+/* selection → Quote (Z-30): floating pill above the selection (desktop) */
+.tl-selection-quote {
+  position: fixed;
+  z-index: var(--z-popover, 65);
+  border-radius: 10px;
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-line), 0 8px 24px rgb(0 0 0 / 50%);
+}
+.tl-selection-quote button {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 30px; padding: 0 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: calc(12.5px * var(--ui-font-scale));
+}
+.tl-selection-quote button:hover { background: var(--color-surface-3); }
+
+/* action feedback: `<Toasts />` renders the visual toast stack; `.tl-notice` stays sr-only for screen readers. */
+.tl-notice {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* composer handoff: quote + restored images */
+.tl-composer-wrap { display: flex; flex-direction: column; gap: 6px; max-width: 760px; margin: 0 auto; width: 100%; }
+.tl-composer-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding: 0 4px; }
+.tl-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  max-width: min(320px, 100%);
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: calc(26px * var(--ui-font-scale));
+}
+.tl-chip svg { flex: 0 0 auto; color: var(--color-text-dim); }
+.tl-quote-chip svg:first-child { color: var(--color-claw); }
+.tl-chip-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-chip-x { flex: 0 0 auto; width: 20px; height: 20px; min-height: 20px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--color-text-dim); font-size: calc(13px * var(--ui-font-scale)); line-height: 1; }
+.tl-chip-x:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-composer-send:disabled { opacity: .45; }
+
+/* ── error row (Z-48): the red row + the raw error behind Details ──── */
+.tl-error { box-shadow: inset 0 0 0 1px rgb(240 60 50 / 24%); }
+.tl-error > svg { margin-top: 2px; color: var(--color-wm-red); }
+.tl-error-main { flex: 1 1 auto; min-width: 0; }
+.tl-error-text { display: block; overflow-wrap: anywhere; }
+.tl-error-details {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin: 5px 0 0 -4px; min-height: 24px; padding: 0 9px 0 5px;
+  border-radius: 9999px; background: rgb(246 163 157 / 11%); color: #f6a39d;
+  font-size: calc(12px * var(--ui-font-scale)); font-weight: 550;
+}
+.tl-error-details:hover { background: rgb(246 163 157 / 18%); color: var(--color-text); }
+.tl-error-caret { transition: transform 140ms ease-out; }
+.tl-error-caret[data-open] { transform: rotate(90deg); }
+.tl-error-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0 0; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+.tl-error-facts dt { color: var(--color-text-dim); }
+.tl-error-facts dd { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
+.tl-error-raw {
+  margin: 6px 0 0; padding: 8px 10px;
+  border-radius: 10px; background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-text-muted); font-family: var(--font-mono);
+  font-size: calc(12px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 240px; overflow: auto; overscroll-behavior: contain;
+}
+.tl-error-copy {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 6px; min-height: 26px; padding: 0 11px;
+  border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text);
+  font-size: calc(12px * var(--ui-font-scale)); font-weight: 500;
+}
+.tl-error-copy:hover { background: var(--color-surface-2); }
+.tl-error-count { color: var(--color-text-dim); font-weight: 500; white-space: nowrap; }
+.tl-error-text[data-collapsible] { cursor: pointer; }
+/* an older error (or folded run): one muted line, same height as a tool row; opens in place to the card */
+.tl-error-line {
+  display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 3px 4px; border-radius: 10px;
+  background: transparent; text-align: left; color: #f6a39d;
+  font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale));
+}
+.tl-error-line:hover { background: var(--color-surface-1); }
+.tl-error-line > svg:first-child { color: var(--color-wm-red); }
+.tl-error-line-text { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-error-line-chev { flex: 0 0 auto; margin-left: auto; color: var(--color-text-dim); opacity: 0; transition: opacity 140ms ease-out; }
+.tl-error-line:hover .tl-error-line-chev, .tl-error-line:focus-visible .tl-error-line-chev { opacity: 1; }
+html[data-shell=phone] .tl-error-line-chev { opacity: .8; }
+
+/* ── WP-A8: tool rows, thinking, bodies, renderer cards ───────────── */
+
+/* Z-37: the chevron shows on hover (always on phone / once open) */
+.tl-tool .proc-chev { opacity: 0; transition: opacity 140ms ease-out, transform 160ms ease-out; }
+.tl-tool:hover .proc-chev, .tl-tool:focus-within .proc-chev, .tl-tool .proc-chev[data-open] { opacity: 1; }
+.tl-tool .proc-chev[data-open], .tl-think .proc-chev[data-open] { transform: rotate(90deg); }
+html[data-shell=phone] .tl-tool .proc-chev { opacity: .8; }
+
+/* tool row status, tint & duration (ui-bar.md §Timeline) */
+.tl-tool[data-state=running] .tool-icon,
+.tl-tool[data-state=preparing] .tool-icon,
+.tl-think[data-live] .tool-icon { color: var(--color-claw); }
+.tl-tool[data-state=error] .tool-icon { color: var(--color-wm-red); }
+.tl-tool[data-state=stopped] .tool-icon { color: var(--color-amber); }
+.tl-tool[data-state=error] .tool-subject[data-error] { color: #f6a39d; }
+.tool-status {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 9999px;
+  font-size: calc(11px * var(--ui-font-scale));
+  line-height: calc(17px * var(--ui-font-scale));
+  font-weight: 550;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+.tool-status[data-state=error] { background: rgb(240 60 50 / 14%); color: #f6a39d; }
+.tool-status[data-state=stopped] { background: rgb(240 168 24 / 14%); color: var(--color-amber); }
+.tool-dur {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* thinking preview & expanded prose rail */
+.tl-think-preview {
+  font-family: var(--font-sans);
+  font-size: calc(13px * var(--ui-font-scale));
+  color: var(--color-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-think .think-body {
+  margin: 4px 0 8px 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid rgb(46 40 37 / 85%);
+  font-size: calc(13.5px * var(--ui-font-scale));
+  line-height: calc(21px * var(--ui-font-scale));
+  color: var(--color-text-muted);
+}
+
+/* tool bodies (bodies/*): terminal, diffs, full output */
+.tl .tool-body { margin: 4px 0 8px 22px; min-width: 0; }
+html:not([data-shell=desktop]) .tl .tool-body { margin-left: 8px; }
+.tl .tool-term-out[data-all],
+.tl .tool-read[data-all],
+.tl .tool-io-sec pre[data-all] { max-height: min(560px, 68vh); }
+.tl .tool-diff { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
+.tl .diff-file {
+  padding: 6px 12px;
+  background: var(--color-surface-2);
+  border-bottom: 1px solid rgb(46 40 37 / 75%);
+  font-size: calc(11.5px * var(--ui-font-scale));
+  color: var(--color-text-muted);
+}
+.tl .diff-row { white-space: pre; overflow-wrap: normal; }
+.tool-more {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; padding: 0 11px; margin: 6px 6px 2px 0;
+  border-radius: 9999px; background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 85%);
+  color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); font-weight: 500;
+}
+.tool-more:hover { background: var(--color-surface-3); color: var(--color-text); }
+.tool-more-loading { cursor: default; color: var(--color-text-dim); }
+.tool-more-loading:hover { background: var(--color-surface-2); color: var(--color-text-dim); }
+.tool-more-spin { color: var(--color-claw); animation: tl-spin 1s linear infinite; }
+.tl-fullmsg { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.tl-fullmsg-retry { align-self: flex-start; }
+.tool-view-diff > svg { color: var(--color-claw); }
+
+/* markdown code blocks, inline path copy & tables inside timeline */
+/* WebKitGTK mispositions `position: sticky` inside transformed `.tl-vrow` rows,
+   pushing `.cb-head` to the bottom of `.cb` — keep the header anchored at the top. */
+.tl .md .cb-head { position: relative; top: auto; }
+.tl .md .cb-copy,
+.tl .md .cb-wrap-toggle {
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+.tl .md .cb-copy:hover,
+.tl .md .cb-wrap-toggle:hover {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+}
+.tl .md .cb-copy[data-copied] { color: var(--color-wm-green); }
+.tl .md .cb-wrap-toggle[aria-pressed='true'] { background: var(--color-surface-3); color: var(--color-claw); }
+.tl .md .code-copy { vertical-align: -2px; margin-left: 3px; border-radius: 5px; }
+.tl .md .code-copy:hover { background: var(--color-surface-3); color: var(--color-text); }
+.tl .md .code-copy.code-copied { color: var(--color-wm-green); background: rgb(90 210 90 / 14%); }
+.tl .md .tbl { background: var(--color-surface-1); }
+.tl .md .tbl tbody tr:last-child > td { border-bottom: 0; }
+.tl .md .tbl tbody tr:hover > td { background: var(--color-surface-2); }
+
+/* write tool: Preview | Diff tabs (`.md` files, Z-39) */
+.tool-write-tabs { display: inline-flex; gap: 2px; margin-bottom: 6px; padding: 2px; border-radius: 10px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 75%); }
+.tool-write-tab { min-height: 24px; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); font-weight: 500; }
+.tool-write-tab:hover { color: var(--color-text); }
+.tool-write-tab[aria-selected=true] { background: var(--color-surface-3); color: var(--color-text); }
+.tool-write-md { max-height: 360px; overflow: auto; overscroll-behavior: contain; padding: 8px 12px; border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%); }
+
+/* todo renderer (Z-39) */
+.tool-todo { list-style: none; margin: 2px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.tool-todo-item { display: flex; align-items: baseline; gap: 7px; min-height: 24px; padding: 2px 4px; border-radius: 8px; color: var(--color-text-muted); font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); }
+.tool-todo-item[data-status=completed] { color: var(--color-text-dim); text-decoration: line-through; text-decoration-color: var(--color-line); }
+.tool-todo-item[data-active] { color: var(--color-text); }
+.tool-todo-item svg { flex: 0 0 auto; align-self: center; }
+.tool-todo-item .todo-done { color: var(--color-wm-green); }
+.tool-todo-item .todo-live { color: var(--color-claw); animation: tl-spin 1.6s linear infinite; }
+.tool-todo-item .todo-pending { color: var(--color-text-dim); }
+@media (prefers-reduced-motion: reduce) {
+  .tool-todo-item .todo-live,
+  .tool-more-spin { animation: none; }
+}
+@keyframes tl-spin { to { transform: rotate(360deg); } }
+
+/* mcp renderer (Z-39) */
+.tool-mcp-head { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.tool-mcp-server { color: var(--color-claw); font-weight: 600; }
+.tool-mcp-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--color-line); }
+.tool-mcp-fn { font-family: var(--font-mono); color: var(--color-text-muted); }
+
+/* extension-rendered rows (`_oino/render` → NodeView) sit inside the column */
+.tl-tool-render, .tl-card-render { margin: 2px 0 6px; min-width: 0; }
+.tl-card-render .ui-block { background: var(--color-surface-1); }
+.tl-cardwrap { margin: 1px 0; }
+.tl-cardblock { margin: 1px 0; }
+/* Z-42: a subagent / sidekick card's one way into the child transcript. */
+.tl-card-transcript { display: inline-flex; align-items: center; gap: 5px; margin: 2px 0 6px 22px; height: 26px; min-height: 26px; padding: 0 9px; border-radius: 7px; background: transparent; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); font-weight: 550; }
+.tl-card-transcript:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-card-transcript > svg { color: var(--color-claw); }
+
+/* ── WP-A27: turn file summary footer (D-1, `unipi.file-summary`) ───── */
+
+.ui-turnfooter:has(.tl-files) { padding: 0; max-height: none; background: none; overflow: visible; box-shadow: none; }
+.ui-turnfooter:has(> .ui-entry:empty):not(:has(.tl-files)) { display: none; }
+
+/* [owner-fix-8] The file summary speaks the event-card language: the same
+   surface, radius, hairline and accent bar as the Browser / Memory rows.
+   Collapsed it is one line — "[▸] 3 files +12 −4" — expanded it lists the
+   turn's paths with their counts, a status and the per-file actions. */
+.tl-files {
+  --ev: var(--color-wm-green);
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 3px 0;
+  border-radius: 10px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), inset 2px 0 0 0 color-mix(in srgb, var(--ev) 70%, transparent);
+  min-width: 0; overflow: hidden;
+}
+.tl-files-toggle {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  min-height: 32px; padding: 5px 10px 5px 11px;
+  border-radius: 10px; background: transparent; color: var(--color-text-muted);
+  font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); text-align: left;
+}
+.tl-files-toggle:hover { background-color: var(--color-surface-2); color: var(--color-text); }
+.tl-files-chev { flex: 0 0 auto; color: var(--color-text-dim); transition: transform 140ms ease-out; }
+.tl-files[data-expanded] .tl-files-chev { transform: rotate(90deg); }
+.tl-files-count { font-weight: 600; color: var(--color-text); }
+.tl-files-stat { flex: 0 0 auto; margin-left: auto; font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); font-variant-numeric: tabular-nums; }
+.tl-files-stat .add { color: var(--color-wm-green); }
+.tl-files-stat .del { color: var(--color-wm-red); }
+.tl-files-undone { flex: 0 0 auto; color: var(--color-text-dim); font-size: calc(11.5px * var(--ui-font-scale)); }
+
+/* expanded: one row per touched path (mono path, counts and status in columns) */
+.tl-files-list { display: flex; flex-direction: column; gap: 1px; padding: 0 4px 4px; border-top: 1px solid rgb(46 40 37 / 70%); }
+.tl-files-row { display: flex; align-items: center; gap: 2px; border-radius: 8px; }
+.tl-files-row:hover, .tl-files-row:focus-within { background: var(--color-surface-2); }
+.tl-files-file {
+  flex: 1 1 auto; min-width: 0;
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) 62px 58px; align-items: center; gap: 8px;
+  min-height: 30px; padding: 0 6px;
+  background: transparent; color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); text-align: left;
+}
+.tl-files-file:disabled { cursor: default; }
+.tl-files-rowchev { grid-column: 1; color: var(--color-text-dim); transition: transform 140ms ease-out; }
+.tl-files-file[aria-expanded=true] .tl-files-rowchev { transform: rotate(90deg); }
+.tl-files-path { grid-column: 2; display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.tl-files-leaf {
+  flex: 0 1 auto; min-width: 0; color: var(--color-text); font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tl-files-dir { min-width: 0; color: var(--color-text-dim); font-family: var(--font-mono); font-size: calc(11px * var(--ui-font-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-files-rowstat { grid-column: 3; justify-self: end; color: var(--color-text-dim); font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-files-status { grid-column: 4; justify-self: end; min-width: 0; text-align: right; color: var(--color-text-dim); font-size: calc(11px * var(--ui-font-scale)); }
+.tl-files-row[data-status=new] .tl-files-status { color: var(--color-wm-green); }
+.tl-files-row[data-status=deleted] .tl-files-status,
+.tl-files-row[data-status=skipped] .tl-files-status { color: var(--color-wm-red); }
+.tl-files-row[data-status=undone] .tl-files-leaf { color: var(--color-text-dim); text-decoration: line-through; text-decoration-color: var(--color-line); }
+.tl-files-rowactions { flex: 0 0 auto; display: flex; align-items: center; }
+.tl-files-rowactions .ghost-icon-button { width: 26px; height: 26px; min-height: 26px; color: var(--color-text-dim); }
+.tl-files-rowactions .ghost-icon-button:hover { color: var(--color-text); }
+
+/* the lazy inline diff under a row */
+.tl-files-diff { padding: 4px 4px 8px; }
+.tl-files-diff .diffview-wrap { max-height: 320px; overflow: auto; overscroll-behavior: contain; }
+.tl-files-note { margin: 2px 0 4px; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); }
+
+/* Undo all (confirm) + the conflict question */
+.tl-files-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; padding: 2px 4px; }
+.tl-files-undo-all { min-height: 26px; padding: 0 10px; border-radius: 9999px; background: var(--color-surface-3); color: var(--color-text-muted); font-size: calc(12px * var(--ui-font-scale)); font-weight: 500; }
+.tl-files-undo-all:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tl-files-actions .btn, .tl-files-conflict .btn { min-height: 26px; padding: 0 10px; font-size: calc(12px * var(--ui-font-scale)); }
+.tl-files-conflict {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 8px 10px; border-radius: 10px;
+  background: rgb(246 163 157 / 10%); box-shadow: inset 0 0 0 1px rgb(246 163 157 / 25%);
+}
+.tl-files-question { color: var(--color-text); font-size: calc(12px * var(--ui-font-scale)); }
+.tl-files-paths { flex: 1 1 100%; color: var(--color-text-dim); font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); overflow-wrap: anywhere; }
+
+html[data-shell=phone] .tl-files-toggle,
+html[data-shell=phone] .tl-files-file,
+html[data-shell=phone] .tl-files-undo-all { min-height: 36px; }
+
+/* ── D-06: native background-task tool & completion cards ────────────── */
+.tool-bg {
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%);
+  overflow: hidden;
+}
+.tl-bg-card { margin: 2px 0 4px; }
+.tool-bg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 12px;
+  min-width: 0;
+}
+.tool-bg-head[data-border] {
+  border-bottom: 1px solid rgb(46 40 37 / 70%);
+}
+.tool-bg .tool-term-cmd[data-last] {
+  border-bottom: 0;
+}
+.tool-bg-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: calc(11px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
+  font-weight: 600;
+  background: rgb(240 120 24 / 14%);
+  color: var(--color-claw);
+}
+.tool-bg-badge[data-status=completed] { background: rgb(90 210 90 / 13%); color: var(--color-wm-green); }
+.tool-bg-badge[data-status=failed] { background: rgb(240 60 50 / 14%); color: #f6a39d; }
+.tool-bg-badge[data-status=killed] { background: rgb(240 168 24 / 14%); color: var(--color-amber); }
+.tool-bg-title {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: calc(12.5px * var(--ui-font-scale));
+  line-height: calc(18px * var(--ui-font-scale));
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.tool-bg-meta {
+  flex: 0 1 auto;
+  margin-left: auto;
+  font-size: calc(11.5px * var(--ui-font-scale));
+  line-height: calc(16px * var(--ui-font-scale));
+  color: var(--color-text-dim);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tool-bg-list { display: flex; flex-direction: column; }
+.tool-bg-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 12px;
+}
+.tool-bg-item + .tool-bg-item { border-top: 1px solid rgb(46 40 37 / 60%); }
+
+
+/* owner5 #6: a command's report is a row at the bottom of the chat. */
+.tl-report-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 12px; background: var(--color-surface-1); border: 1px solid var(--color-line); }
+.tl-report-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--color-text-muted); }
+.tl-report-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text); }
+.tl-report-fold { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; padding: 2px 4px 2px 0; border: 0; background: none; color: inherit; cursor: pointer; border-radius: 6px; }
+.tl-report-fold:hover { color: var(--color-text); }
+.tl-report-peek { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.tl-report-x { width: 28px; height: 28px; min-height: 28px; }
+.tl-report-body { max-height: 420px; overflow: auto; background: var(--color-bg); }
+
+/* ── subagent runs ([ui-subagents]) ─────────────────────────────────
+ * One card per run_subagent call; parallel runs stack in .tl-agents.
+ * The expanded mini-timeline is the one deliberate inner scrollbox
+ * (owner ask: child transcripts can be hundreds of rows). */
+.tl-agents { margin: 2px 0; }
+.tl-agents[data-open] > .tl-agents-head .proc-chev { transform: rotate(90deg); }
+.tl-agents-body { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 6px 10px; padding-left: 12px; border-left: 1px solid rgb(46 40 37 / 85%); }
+.tl-agent { display: flex; flex-direction: column; border-radius: 12px; background: var(--color-surface-1); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%); margin: 2px 0; min-width: 0; }
+.tl-agent .tl-agent { background: var(--color-bg); margin: 2px 0; }
+.tl-agent[data-status=failed] { box-shadow: inset 0 0 0 1px rgb(246 163 157 / 28%); }
+.tl-agent-head { display: flex; align-items: center; gap: 2px; min-width: 0; padding-right: 4px; }
+.tl-agent-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 4px 6px 4px 10px; border-radius: 12px; background: transparent; text-align: left; color: var(--color-text-muted); font-size: calc(13.5px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); transition: background-color 140ms ease-out; }
+html[data-shell=phone] .tl-agent-toggle { min-height: 42px; }
+.tl-agent-toggle:hover { background: var(--color-surface-2); }
+.tl-agent-toggle:focus-visible, .tl-agent-open:focus-visible, .tl-agent-earlier:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
+.tl-agent[data-open] > .tl-agent-head .proc-chev { transform: rotate(90deg); }
+.tl-agent-icon { flex: 0 0 18px; display: grid; place-items: center; color: var(--color-claw); }
+.tl-agent-title { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-text); font-weight: 550; }
+.tl-agent-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; }
+.tl-agent-main > .tl-agent-title { flex: none; max-width: 100%; }
+/* A sub line that would hold nothing but the status icon is not rendered: the icon sits
+   inline after the title instead (owner-fix-5 — no spinner alone on its own row). */
+.tl-agent-titleline { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.tl-agent-titleline > .tl-agent-status { flex: none; }
+.tl-agent-sub { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tl-agent-sub > .tl-agent-meta { margin-left: 0; }
+.tl-agent-sub > .tl-agent-chip { max-width: 55%; }
+.tl-agent-chip { flex: 0 1 auto; min-width: 0; max-width: 34%; display: inline-flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 7px; border-radius: 999px; background: var(--color-surface-3); color: var(--color-text-dim); font-size: calc(11.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); }
+.tl-agent-model { overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: calc(10.5px * var(--ui-font-scale)); opacity: 0.85; }
+html[data-shell=phone] .tl-agent-model { display: none; }
+.tl-agent-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; margin-left: auto; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); font-variant-numeric: tabular-nums; }
+.tl-agent-counters::before, .tl-agent-elapsed::before { content: '·'; margin-right: 7px; }
+.tl-agent-status { display: grid; place-items: center; }
+.tl-agent-status[data-status=running] { color: var(--color-claw); }
+.tl-agent-status[data-status=done] { color: var(--color-wm-green); }
+.tl-agent-status[data-status=failed] { color: var(--color-wm-red); }
+.tl-agent-status[data-status=cancelled] { color: var(--color-amber); }
+.tl-agent-spin { animation: tl-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .tl-agent-spin { animation: none; } }
+.tl-agent-open { flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; border-radius: 8px; color: var(--color-text-dim); background: transparent; }
+.tl-agent-open:hover { color: var(--color-text); background: var(--color-surface-2); }
+.tl-agent-line { display: flex; align-items: baseline; gap: 7px; min-width: 0; padding: 0 12px 7px 35px; margin-top: -1px; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.tl-agent-line-tool { flex: none; color: var(--color-text-muted); font-weight: 500; }
+.tl-agent-line-text { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-agent-line[data-kind=live] .tl-agent-line-text { font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); }
+.tl-agent-line[data-kind=error] { color: #f6a39d; }
+.tl-agent-body { display: flex; flex-direction: column; gap: 1px; margin: 0 8px 8px 18px; padding: 2px 4px 2px 10px; border-left: 1px solid rgb(46 40 37 / 85%); max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; }
+.tl-agent-body .tool-row { min-height: 28px; }
+.tl-agent-earlier { align-self: flex-start; min-height: 26px; margin: 2px 0 4px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); }
+.tl-agent-earlier:hover { color: var(--color-text); background: var(--color-surface-2); }
+.tl-agent-note { padding: 3px 4px; color: var(--color-text-dim); font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tl-agent-empty { padding: 6px 4px; color: var(--color-text-dim); font-size: calc(12px * var(--ui-font-scale)); }
+.proc-hint { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-left: 8px; padding: 0 7px; border-radius: 999px; background: var(--color-surface-2); color: var(--color-text-dim); font-size: calc(11px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); }
+html[data-shell=phone] .proc-hint { display: none; }
+/* perf-app: a big fan-out's cards scroll in a bounded, virtualized box (AgentsGroup). */
+.tl-agents-scroll { max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; contain: strict; height: min(60vh, 560px); }
+.tl-agents-space { position: relative; width: 100%; }
+.tl-agents-vrow { position: absolute; top: 0; left: 0; right: 0; padding-bottom: 6px; }
+
+/* ── [chat-events] event rows: own icon + accent, one-line summary, expandable body ── */
+.tl-event {
+  --ev: var(--color-text-muted);
+  margin: 3px 0;
+  border-radius: 10px;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), inset 2px 0 0 0 color-mix(in srgb, var(--ev) 70%, transparent);
+  min-width: 0;
+  overflow: hidden;
+}
+.tl-event[data-family=memory] { --ev: #a78bfa; }
+.tl-event[data-family=agent] { --ev: var(--color-claw); }
+.tl-event[data-family=task] { --ev: var(--color-wm-green); }
+.tl-event[data-family=shell] { --ev: var(--color-text-muted); }
+.tl-event[data-family=compactor] { --ev: var(--color-gold); }
+.tl-event[data-family=board] { --ev: var(--color-amber); }
+.tl-event[data-family=mode] { --ev: var(--color-wm-cyan); }
+.tl-event[data-family=warn] { --ev: var(--color-amber); }
+.tl-event[data-family=dream] { --ev: #c084fc; }
+.tl-event[data-family=harness] { --ev: #8b9cf6; }
+.tl-event[data-family=system] { --ev: var(--color-text-dim); }
+.tl-event[data-tone=ok] { --ev-icon: var(--color-wm-green); }
+.tl-event[data-tone=warning] { --ev: var(--color-amber); box-shadow: inset 0 0 0 1px rgb(240 168 24 / 40%), inset 2px 0 0 0 var(--color-amber); }
+.tl-event[data-tone=error] { --ev: var(--color-wm-red); box-shadow: inset 0 0 0 1px rgb(240 60 50 / 38%), inset 2px 0 0 0 var(--color-wm-red); }
+.tl-event-head {
+  display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 5px 10px 5px 11px;
+  background: transparent; border-radius: 10px; text-align: left; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); color: var(--color-text-muted);
+  transition: background-color 140ms ease-out;
+}
+html[data-shell=phone] .tl-event-head { min-height: 40px; }
+.tl-event-head:hover:not([aria-disabled]) { background-color: var(--color-surface-2); }
+.tl-event-head[aria-disabled] { cursor: default; }
+.tl-event-head:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: -1.5px; }
+.tl-event-icon { flex: 0 0 18px; display: grid; place-items: center; color: var(--ev-icon, var(--ev)); }
+.tl-event-source { flex: 0 0 auto; font-weight: 600; color: var(--color-text); }
+.tl-event-source::after { content: '·'; margin-left: 7px; font-weight: 400; color: var(--color-text-dim); }
+.tl-event-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tl-event-meta { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(11.5px * var(--ui-font-scale)); color: var(--color-text-dim); font-variant-numeric: tabular-nums; }
+.tl-event-chev { flex: 0 0 auto; color: var(--color-text-dim); transition: transform 160ms ease-out; }
+.tl-event-chev[data-open] { transform: rotate(90deg); }
+.tl-event-bodywrap { border-top: 1px solid rgb(46 40 37 / 70%); animation: tl-event-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tl-event-bodywrap[data-leaving] { animation: tl-event-out 110ms ease-out both; }
+@keyframes tl-event-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tl-event-out { from { opacity: 1; } to { opacity: 0; } }
+.tl-event-body { margin: 0; padding: 8px 12px 10px 36px; max-height: min(420px, 55vh); overflow: auto; overscroll-behavior: contain; font-size: calc(13px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: normal; overflow-wrap: anywhere; }
+pre.tl-event-body { white-space: pre-wrap; font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); }
+.tl-event-body[data-format=json] { color: var(--color-text); }
+.tl-event-empty { color: var(--color-text-dim); }
+.tl-event-render { padding-left: 12px; }
+.tl-event-sheetbody .tl-event-body { max-height: none; padding: 4px 0 16px; overflow: visible; font-size: calc(15px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); }
+.tl-event-sheetbody pre.tl-event-body { font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(18px * var(--ui-font-scale)); overflow-x: auto; }
+.tl-event-sheetmeta { padding: 0 0 8px; font-size: calc(13px * var(--ui-font-scale)); color: var(--color-text-dim); }
+html[data-shell=phone] .tl-event-source { font-size: calc(13px * var(--ui-font-scale)); }
+@media (prefers-reduced-motion: reduce) {
+  .tl-event-bodywrap, .tl-event-bodywrap[data-leaving] { animation: none; }
+  .tl-event-chev { transition: none; }
+}
+.tool-bg [data-openable] { cursor: pointer; }
+.tool-bg [data-openable]:hover { background: var(--color-surface-2); }
+.tool-bg [data-openable]:focus-visible { outline: 2px solid var(--color-shell); outline-offset: -2px; }

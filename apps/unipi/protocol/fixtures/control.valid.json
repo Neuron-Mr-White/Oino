@@ -1,0 +1,179 @@
+[
+  {
+    "name": "hello_pair_min_code",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "111111"
+      }
+    }
+  },
+  {
+    "name": "hello_pair_with_name",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "111111",
+        "name": "My Laptop"
+      }
+    }
+  },
+  {
+    "name": "err_unsupported",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_UNSUPPORTED",
+        "message": "size_policy keep_pc is not supported on herdr",
+        "retryable": false
+      }
+    }
+  },
+  {
+    "name": "hello_pair_max_code",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  },
+  {
+    "name": "hello_prerelease_build_semver",
+    "value": {
+      "type": "hello",
+      "proto": "2.0.0-beta.1+build.5",
+      "req": {
+        "op": "pair",
+        "code": "abc123"
+      }
+    }
+  },
+  {
+    "name": "ok_no_data",
+    "value": {
+      "type": "ok"
+    }
+  },
+  {
+    "name": "ok_with_data",
+    "value": {
+      "type": "ok",
+      "data": {
+        "sessions": [
+          "a",
+          "b"
+        ],
+        "count": 2
+      }
+    }
+  },
+  {
+    "name": "ok_with_unknown_extra",
+    "value": {
+      "type": "ok",
+      "data": null,
+      "unexpected_field": "ignored"
+    }
+  },
+  {
+    "name": "err_full",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_PAIRING_INVALID",
+        "message": "pairing code expired",
+        "hint": "Generate a new code on the host",
+        "path": [
+          "req",
+          "code"
+        ],
+        "retryable": false,
+        "detail": {
+          "expiredAt": "2026-10-05T00:00:00Z"
+        }
+      }
+    }
+  },
+  {
+    "name": "err_minimal",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_TIMEOUT",
+        "message": "attach timed out",
+        "retryable": true
+      }
+    }
+  },
+  {
+    "name": "resize_basic",
+    "value": {
+      "type": "resize",
+      "cols": 80,
+      "rows": 24
+    }
+  },
+  {
+    "name": "resize_max",
+    "value": {
+      "type": "resize",
+      "cols": 1000,
+      "rows": 1000
+    }
+  },
+  {
+    "name": "exit_with_code",
+    "value": {
+      "type": "exit",
+      "code": 0
+    }
+  },
+  {
+    "name": "exit_nonzero_code",
+    "value": {
+      "type": "exit",
+      "code": 137
+    }
+  },
+  {
+    "name": "exit_null",
+    "value": {
+      "type": "exit",
+      "code": null
+    }
+  },
+  {
+    "name": "title_empty",
+    "value": {
+      "type": "title",
+      "title": ""
+    }
+  },
+  {
+    "name": "title_max_512",
+    "value": {
+      "type": "title",
+      "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
+    }
+  },
+  {
+    "name": "hello_unknown_extra_fields",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "abc123",
+        "bogus": true
+      },
+      "extra_top_level": "ignored"
+    }
+  }
+]

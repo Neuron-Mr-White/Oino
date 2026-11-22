@@ -1,0 +1,221 @@
+/**
+ * One rendered markdown block (chat prose/thinking/cards, UNI-156): sets
+ * the sanitised HTML then hydrates closed code fences (lazy
+ * CodeMirror/Lezer highlight) and mermaid diagrams in place.
+ *
+ * UNI-204 (was UNI-157): file paths anywhere in the block — prose, inline
+ * code, fenced code, markdown link targets — are scanned, verified to
+ * exist on the PC (`paths_stat`, lib/chat/fileRefs.ts) and only then made
+ * tappable (`[data-file-ref]`): tap opens the file (or the editor at
+ * `:line`, or Files for a dir), long-press/right-click opens the file
+ * menu. Only when a `chat` is given (board/card call sites have no
+ * session, so no refs). Inline code that is exactly a verified path also
+ * gets a small copy affordance (`.code-copy`, UNI-208).
+ *
+ * UNI-208: any other inline code (not a path, not in a fenced block) is
+ * tap-to-copy instead — a brief `.code-copied` class flashes on the
+ * element, no toast plumbing. Never calls `preventDefault` on
+ * `touchstart`/`contextmenu` so long-press text selection still works.
+ */
+import { createEffect, onCleanup } from 'solid-js';
+import { hydrateCode } from '../../lib/chat/markdown';
+import { openMermaidViewer } from './MermaidViewer';
+import { openInlineCodeMenu, openLinkMenu } from '../LinkAnchorMenu';
+import { anchorFromEvent, isExternalHref, openLink } from '../../lib/markdown/links';
+import { copyText } from '../../lib/board/share';
+import type { RefChat } from '../../lib/chat/pathStat';
+import { hydrateAttachments } from '../../lib/board/markdown';
+import { hydrateTaskRefs, knownPrefixes } from '../../lib/board/portal';
+import { openTaskFromChat } from '../../lib/session/open';
+import { hydrateFileRefs } from '../../lib/chat/fileRefs';
+import { attachFileRefGestures, handleFileRefClick } from '../../lib/chat/fileRefGestures';
+
+const COPY_FLASH_MS = 1200;
+
+/** Copies `text` via Tauri/Web Clipboard, with a DOM execCommand fallback for X11/WebKit views. */
+async function copyWithFallback(text: string): Promise<boolean> {
+  if (await copyText(text)) return true;
+  if (typeof document === 'undefined') return false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Briefly flashes `.code-copied` on `el` (CSS handles the visual, no toast). */
+function flashCopied(el: HTMLElement): void {
+  el.classList.add('code-copied');
+  setTimeout(() => el.classList.remove('code-copied'), COPY_FLASH_MS);
+}
+
+/** Adds the tiny copy-icon affordance after a path-like inline `<code>`
+ * (UNI-208) — idempotent, so re-renders don't double it up. */
+function ensurePathCopyButton(code: HTMLElement): void {
+  if (code.nextElementSibling?.classList.contains('code-copy')) return;
+  const btn = code.ownerDocument.createElement('button');
+  btn.type = 'button';
+  btn.className = 'code-copy';
+  btn.setAttribute('aria-label', 'Copy path');
+  btn.title = 'Copy path';
+  btn.dataset.copyPath = '1';
+  code.after(btn);
+}
+
+export function MdBlock(props: {
+  html: string;
+  class?: string;
+  chat?: RefChat;
+  /** Board reports: swaps the `att:` media (`data-att-path`) for object URLs fetched from this host. */
+  attHost?: string;
+  /**
+   * perf-webview: the still-growing tail block of a live stream. Its HTML is replaced every
+   * frame, so the task-ref / file-ref passes (DOM walks + path stats) wait until it settles;
+   * code highlighting still runs (cached grammar, no plain-code flash).
+   */
+  live?: boolean;
+}) {
+  let el: HTMLDivElement | undefined;
+  let pass = 0;
+  createEffect(() => {
+    const html = props.html;
+    const live = !!props.live;
+    if (!el) return;
+    el.innerHTML = html;
+    const mine = ++pass;
+    const highlighted = hydrateCode(el);
+    if (props.attHost) void hydrateAttachments(el, props.attHost);
+    if (live) return;
+    // Task refs (UNI-181): only in chat, against this PC's real prefixes.
+    // File refs (UNI-204) run after highlighting (it replaces fenced code
+    // contents) and task refs, so the passes never fight over text nodes.
+    const chat = props.chat;
+    if (chat) {
+      const target = el;
+      const current = () => mine === pass;
+      void Promise.all([knownPrefixes(chat.hostId), highlighted.catch(() => undefined)]).then(async ([prefixes]) => {
+        if (!current()) return;
+        hydrateTaskRefs(target, prefixes);
+        await hydrateFileRefs(target, chat, current);
+        if (!current()) return;
+        for (const code of target.querySelectorAll<HTMLElement>('code.file-ref-code')) ensurePathCopyButton(code);
+      });
+    }
+  });
+  createEffect(() => {
+    if (!el || !props.chat) return;
+    onCleanup(attachFileRefGestures(el, () => props.chat));
+  });
+  const onClick = (event: MouseEvent) => {
+    const targetEl = event.target as HTMLElement | null;
+    if (!targetEl) return;
+    // Fenced code-block Copy button (`.cb-head [data-copy]`).
+    const cbCopy = targetEl.closest<HTMLButtonElement>('[data-copy]');
+    if (cbCopy && el?.contains(cbCopy)) {
+      event.stopPropagation();
+      const cb = cbCopy.closest('.cb');
+      const raw =
+        cb?.querySelector<HTMLElement>('pre code')?.textContent ??
+        cb?.querySelector<HTMLElement>('[data-diff-raw]')?.textContent ??
+        '';
+      void copyWithFallback(raw.replace(/\n$/, '')).then((ok) => {
+        if (!ok) return;
+        cbCopy.textContent = 'Copied';
+        cbCopy.dataset.copied = '';
+        setTimeout(() => {
+          cbCopy.textContent = 'Copy';
+          delete cbCopy.dataset.copied;
+        }, COPY_FLASH_MS);
+      });
+      return;
+    }
+    // Long fenced code-block Wrap / Unwrap toggle (`.cb-head [data-wrap-toggle]`).
+    const wrapToggle = targetEl.closest<HTMLButtonElement>('[data-wrap-toggle]');
+    if (wrapToggle && el?.contains(wrapToggle)) {
+      event.stopPropagation();
+      const cb = wrapToggle.closest('.cb');
+      if (cb) {
+        const wrapped = cb.classList.toggle('wrapped');
+        wrapToggle.textContent = wrapped ? 'Unwrap' : 'Wrap';
+        wrapToggle.setAttribute('aria-pressed', String(wrapped));
+      }
+      return;
+    }
+    const svg = targetEl.closest<HTMLElement>('[data-mmd-tap]');
+    if (svg) {
+      const source = decodeURIComponent(svg.closest<HTMLElement>('.mmd')?.dataset.mmdSource ?? '');
+      openMermaidViewer({ svg: svg.innerHTML, source });
+      return;
+    }
+    // Task refs (UNI-181): open the task's pane on the board.
+    const taskRef = (event.target as HTMLElement).closest<HTMLElement>('[data-task]');
+    if (taskRef && props.chat && el?.contains(taskRef)) {
+      event.preventDefault();
+      event.stopPropagation();
+      openTaskFromChat(props.chat.hostId, taskRef.dataset.task!, props.chat.cwd?.());
+      return;
+    }
+    // File refs (UNI-204): verified paths in prose, code and link targets.
+    if (el && handleFileRefClick(event, el, props.chat)) return;
+    // Links (UNI-170): external anchors open outside the app (copy
+    // fallback); any other anchor is inert but must not navigate the
+    // WebView away.
+    const anchor = el ? anchorFromEvent(event, el) : null;
+    if (anchor) {
+      const href = anchor.getAttribute('href') ?? '';
+      if (isExternalHref(href)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void openLink(href);
+      } else {
+        event.preventDefault();
+      }
+      return;
+    }
+    // Path-copy button beside a path-like inline code (UNI-208).
+    const copyBtn = (event.target as HTMLElement).closest<HTMLElement>('[data-copy-path]');
+    if (copyBtn && el?.contains(copyBtn)) {
+      event.stopPropagation();
+      const code = copyBtn.previousElementSibling as HTMLElement | null;
+      void copyWithFallback(code?.textContent ?? '').then((ok) => {
+        if (ok) flashCopied(copyBtn);
+      });
+      return;
+    }
+    const code = (event.target as HTMLElement).closest<HTMLElement>('code');
+    if (!code || code.closest('pre') || code.classList.contains('task-ref') || !el?.contains(code)) return; // inline only, not a fenced block or task ref
+    // Any other inline code copies its text (UNI-208) — no preventDefault,
+    // so long-press text selection still works.
+    void copyWithFallback(code.textContent ?? '').then((ok) => {
+      if (ok) flashCopied(code);
+    });
+  };
+  const onContextMenu = (event: MouseEvent) => {
+    if (!el || event.defaultPrevented) return;
+    // OIN-97: desktop right-click on inline code offers Copy (inner text, exactly). A phone long-press (UNI-208) and a text selection keep the native behaviour.
+    if (openInlineCodeMenu(event, el)) return;
+    const anchor = anchorFromEvent(event, el);
+    if (!anchor || !isExternalHref(anchor.getAttribute('href') ?? '')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openLinkMenu(anchor);
+  };
+  // Native, not Solid's delegated `onContextMenu`: the handler must stop the event BEFORE it reaches the message menu of an ancestor.
+  createEffect(() => {
+    if (!el) return;
+    const root = el;
+    root.addEventListener('contextmenu', onContextMenu);
+    onCleanup(() => root.removeEventListener('contextmenu', onContextMenu));
+  });
+  return <div ref={el} class={props.class} onClick={onClick} />;
+}

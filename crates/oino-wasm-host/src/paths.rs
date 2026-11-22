@@ -1,0 +1,529 @@
+//! Extension directories (extension-api §5.7) and workspace identity (§5.8, D10).
+
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
+
+use oino_extension_api::manifest::{FsAccess, Permissions};
+use oino_extension_api::ops::WorkspaceInfo;
+use oino_extension_api::{ExtensionId, HostError};
+use sha2::{Digest, Sha256};
+
+/// Host directories of one extension.
+#[derive(Clone, Debug)]
+pub(crate) struct ExtPaths {
+    pub(crate) agent_dir: PathBuf,
+    pub(crate) global: PathBuf,
+    pub(crate) workspace_root: PathBuf,
+    pub(crate) session_root: PathBuf,
+    pub(crate) tmp: PathBuf,
+    pub(crate) cache: PathBuf,
+    pub(crate) logs: PathBuf,
+    pub(crate) log_file: PathBuf,
+}
+
+impl ExtPaths {
+    pub(crate) fn new(agent_dir: &Path, id: &ExtensionId) -> Self {
+        let state = agent_dir.join("state").join(id.as_str());
+        Self {
+            agent_dir: agent_dir.to_path_buf(),
+            global: state.join("global"),
+            workspace_root: state.join("workspace"),
+            session_root: state.join("session"),
+            tmp: agent_dir.join("tmp").join("ext").join(id.as_str()),
+            cache: agent_dir.join("cache").join("ext").join(id.as_str()),
+            logs: agent_dir.join("logs").join("ext").join(id.as_str()),
+            log_file: agent_dir.join("logs").join("ext").join(format!("{id}.log")),
+        }
+    }
+
+    /// Creates every always-on directory.
+    pub(crate) fn create(&self) -> std::io::Result<()> {
+        for dir in [
+            &self.global,
+            &self.workspace_root,
+            &self.session_root,
+            &self.tmp,
+            &self.cache,
+            &self.logs,
+        ] {
+            std::fs::create_dir_all(dir)?;
+        }
+        Ok(())
+    }
+
+    /// `state/<id>/workspace/<wsid>`.
+    pub(crate) fn workspace(&self, wsid: &str) -> PathBuf {
+        self.workspace_root.join(wsid)
+    }
+
+    /// `state/<id>/session/<sid>`.
+    pub(crate) fn session(&self, sid: &str) -> PathBuf {
+        self.session_root.join(sanitize(sid))
+    }
+}
+
+fn sanitize(id: &str) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// One named preopen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Preopen {
+    pub(crate) name: String,
+    pub(crate) host: PathBuf,
+    pub(crate) writable: bool,
+}
+
+impl Preopen {
+    pub(crate) fn guest_path(&self) -> String {
+        format!("/{}", self.name)
+    }
+}
+
+/// Agent-dir subdirectories exposed by `fs.agentDir: read` (never `auth.json`/`secrets.json`).
+pub(crate) const AGENT_SUBDIRS: &[&str] = &[
+    "sessions",
+    "skills",
+    "prompts",
+    "themes",
+    "extensions",
+    "bundled",
+];
+
+/// Agent-dir files exposed read-only as `/agent/<name>` (`mcp.json`-style config, R1).
+pub(crate) const AGENT_FILES: &[&str] = &["mcp.json"];
+
+/// Shared read-only view of the agent-dir config files, exposed to guests as `/agent`.
+///
+/// It lives in `<agent>/state/agent-view`, which no extension can write, and holds *copies* of
+/// [`AGENT_FILES`]: cap-std refuses to follow a symlink that leaves the preopen, so links would
+/// not be readable. The host refreshes the copies when an instance is created and whenever the
+/// agent dir changes (`WasmRuntime` watches it), so guests read the current file while
+/// `auth.json` / `secrets.json` stay unreachable.
+#[must_use]
+pub(crate) fn agent_view_dir(agent_dir: &Path) -> PathBuf {
+    agent_dir.join("state").join("agent-view")
+}
+
+/// Whether `path` is one of the [`AGENT_FILES`].
+#[must_use]
+pub(crate) fn is_agent_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| AGENT_FILES.contains(&name))
+}
+
+fn expand_home(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+    {
+        return PathBuf::from(home).join(rest);
+    }
+    PathBuf::from(path)
+}
+
+/// Re-roots a manifest grant that names the **default** agent dir (`~/.oino/…`) onto this
+/// host's agent dir (v2 QA D-46: `OINO_AGENT_DIR` runs an isolated profile — an extension
+/// granting `~/.oino/cron` must reach *this profile's* `cron`, never the real `~/.oino`).
+/// Anything else (`~/Documents`, absolute paths) is untouched, and on a default install the
+/// re-root is the identity.
+fn rooted_in_agent_dir(host: PathBuf, agent_dir: &Path) -> PathBuf {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    rooted_in_agent_dir_with(home.as_deref().map(Path::new), host, agent_dir)
+}
+
+/// [`rooted_in_agent_dir`] with the home directory given (tests).
+fn rooted_in_agent_dir_with(home: Option<&Path>, host: PathBuf, agent_dir: &Path) -> PathBuf {
+    let Ok(default) = oino_settings::paths::agent_dir_from(None, home) else {
+        return host;
+    };
+    if host == default {
+        return agent_dir.to_path_buf();
+    }
+    match host.strip_prefix(&default) {
+        Ok(rest) => agent_dir.join(rest),
+        // v2 QA E-20: the memory palace grants (`~/.mempalace`, `~/.config/mempalace`)
+        // follow the host's agent dir of an ISOLATED profile, so it never reads the
+        // user's real palace (nor leaks its memories into QA chats). On a default
+        // install (the agent dir is the default) the user's palace keeps working where
+        // it is; an explicitly configured grant (any other path) is untouched.
+        Err(_) if agent_dir == default => host,
+        Err(_) => match home.filter(|home| is_memory_grant(home, &host)) {
+            // The palace dir is created on demand: the preopen only materializes for
+            // existing dirs.
+            Some(home) => {
+                let name = if host == home.join(".mempalace") {
+                    PathBuf::from("mempalace")
+                } else {
+                    PathBuf::from("mempalace").join("config")
+                };
+                let re_rooted = agent_dir.join(&name);
+                if std::fs::create_dir_all(&re_rooted).is_ok() {
+                    re_rooted
+                } else {
+                    host
+                }
+            }
+            None => host,
+        },
+    }
+}
+
+/// Whether `host` is one of the memory extension's default palace grants under `home`.
+fn is_memory_grant(home: &Path, host: &Path) -> bool {
+    host == home.join(".mempalace") || host == home.join(".config").join("mempalace")
+}
+
+/// Refreshes the `/agent` view from the agent dir and returns it.
+///
+/// Each file is staged and renamed into place: the watcher and instance creation can refresh
+/// concurrently, and a plain `fs::copy` would let one refresh truncate the other's file.
+pub(crate) fn refresh_agent_view(agent_dir: &Path) -> std::io::Result<PathBuf> {
+    static REFRESH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = REFRESH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let view = agent_view_dir(agent_dir);
+    std::fs::create_dir_all(&view)?;
+    for name in AGENT_FILES {
+        let source = agent_dir.join(name);
+        let target = view.join(name);
+        if !source.is_file() {
+            let _ = std::fs::remove_file(&target);
+            continue;
+        }
+        let staging = view.join(format!(".{name}.staging"));
+        std::fs::copy(&source, &staging)?;
+        std::fs::rename(&staging, &target)?;
+    }
+    Ok(view)
+}
+
+/// Every preopen granted to an extension.
+pub(crate) fn preopens(paths: &ExtPaths, perms: &Permissions, cwd: &Path) -> Vec<Preopen> {
+    let rw = |name: &str, host: &Path| Preopen {
+        name: name.to_owned(),
+        host: host.to_path_buf(),
+        writable: true,
+    };
+    let mut out = vec![
+        rw("ext-global", &paths.global),
+        rw("ext-workspace", &paths.workspace_root),
+        rw("ext-session", &paths.session_root),
+        rw("tmp", &paths.tmp),
+        rw("cache", &paths.cache),
+        rw("logs", &paths.logs),
+    ];
+    if perms.fs.project != FsAccess::None {
+        out.push(Preopen {
+            name: "project".into(),
+            host: cwd.to_path_buf(),
+            writable: perms.fs.project == FsAccess::Write,
+        });
+    }
+    if perms.fs.agent_dir != FsAccess::None {
+        for sub in AGENT_SUBDIRS {
+            let host = paths.agent_dir.join(sub);
+            if host.is_dir() {
+                out.push(Preopen {
+                    name: format!("agent/{sub}"),
+                    host,
+                    writable: false,
+                });
+            }
+        }
+        if let Ok(view) = refresh_agent_view(&paths.agent_dir) {
+            out.push(Preopen {
+                name: "agent".into(),
+                host: view,
+                writable: false,
+            });
+        }
+    }
+    for grant in &perms.fs.paths {
+        if grant.access == FsAccess::None {
+            continue;
+        }
+        let host = rooted_in_agent_dir(expand_home(&grant.path), &paths.agent_dir);
+        if host.is_dir() {
+            out.push(Preopen {
+                name: grant.alias.trim_matches('/').to_owned(),
+                host,
+                writable: grant.access == FsAccess::Write,
+            });
+        }
+    }
+    out
+}
+
+/// Resolves a guest path (`/<preopen>/rest`) to a host path; `write` requires a writable
+/// preopen. `..` components are rejected.
+pub(crate) fn resolve(
+    preopens: &[Preopen],
+    guest: &str,
+    write: bool,
+) -> Result<PathBuf, HostError> {
+    let trimmed = guest.trim_start_matches('/');
+    let best = preopens
+        .iter()
+        .filter(|p| trimmed == p.name || trimmed.starts_with(&format!("{}/", p.name)))
+        .max_by_key(|p| p.name.len())
+        .ok_or_else(|| HostError::Denied(format!("fs: `{guest}` is outside every preopen")))?;
+    let rest = trimmed[best.name.len()..].trim_start_matches('/');
+    let rel = Path::new(rest);
+    if rel
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(HostError::InvalidArgument(format!(
+            "fs: `{guest}` must be a normalized path"
+        )));
+    }
+    if write && !best.writable {
+        return Err(HostError::Denied(format!("fs write: /{}", best.name)));
+    }
+    Ok(best.host.join(rel))
+}
+
+/// Project root: nearest ancestor with `.git`, else `cwd`.
+pub(crate) fn git_root(cwd: &Path) -> Option<PathBuf> {
+    cwd.ancestors()
+        .find(|dir| dir.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
+fn git_branch(root: &Path) -> Option<String> {
+    let head = std::fs::read_to_string(root.join(".git").join("HEAD")).ok()?;
+    head.trim()
+        .strip_prefix("ref: refs/heads/")
+        .map(ToOwned::to_owned)
+}
+
+/// D10 workspace id: first 16 hex chars of sha256(canonical project root).
+#[must_use]
+pub fn workspace_id(root: &Path) -> String {
+    let digest = Sha256::digest(root.to_string_lossy().as_bytes());
+    let mut out = String::with_capacity(16);
+    for b in &digest[..8] {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
+/// Workspace info for `cwd`.
+pub(crate) fn workspace_info(cwd: &Path) -> WorkspaceInfo {
+    let canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let git = git_root(&canonical);
+    let root = git.clone().unwrap_or_else(|| canonical.clone());
+    WorkspaceInfo {
+        id: workspace_id(&root),
+        root: root.to_string_lossy().into_owned(),
+        git_branch: git.as_deref().and_then(git_branch),
+        git_root: git.map(|g| g.to_string_lossy().into_owned()),
+        cwd: cwd.to_string_lossy().into_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_preopens() {
+        let pre = vec![
+            Preopen {
+                name: "ext-global".into(),
+                host: "/s/g".into(),
+                writable: true,
+            },
+            Preopen {
+                name: "project".into(),
+                host: "/p".into(),
+                writable: false,
+            },
+            Preopen {
+                name: "agent/sessions".into(),
+                host: "/a/s".into(),
+                writable: false,
+            },
+        ];
+        assert_eq!(
+            resolve(&pre, "/ext-global/a/b.json", true).unwrap(),
+            PathBuf::from("/s/g/a/b.json")
+        );
+        assert_eq!(
+            resolve(&pre, "/project/x", false).unwrap(),
+            PathBuf::from("/p/x")
+        );
+        assert!(matches!(
+            resolve(&pre, "/project/x", true),
+            Err(HostError::Denied(_))
+        ));
+        assert!(matches!(
+            resolve(&pre, "/etc/passwd", false),
+            Err(HostError::Denied(_))
+        ));
+        assert!(matches!(
+            resolve(&pre, "/project/../etc", false),
+            Err(HostError::InvalidArgument(_))
+        ));
+        assert_eq!(
+            resolve(&pre, "/agent/sessions/x", false).unwrap(),
+            PathBuf::from("/a/s/x")
+        );
+    }
+
+    /// `fs.agentDir: read` exposes the agent-dir config files as `/agent/<name>`
+    /// and never the secrets next to them (R1).
+    #[test]
+    fn agent_view_exposes_config_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent_dir = dir.path().join("agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(agent_dir.join("mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+        std::fs::write(agent_dir.join("auth.json"), "{}").unwrap();
+        std::fs::write(agent_dir.join("secrets.json"), "{}").unwrap();
+        let paths = ExtPaths::new(&agent_dir, &ExtensionId::new("acme.ext").unwrap());
+        paths.create().unwrap();
+        let perms = Permissions {
+            fs: oino_extension_api::manifest::FsPermission {
+                agent_dir: FsAccess::Read,
+                ..oino_extension_api::manifest::FsPermission::default()
+            },
+            ..Permissions::default()
+        };
+        let pre = preopens(&paths, &perms, dir.path());
+        let view = pre.iter().find(|p| p.name == "agent").expect("/agent");
+        assert!(!view.writable);
+        assert!(
+            !view.host.starts_with(&paths.cache),
+            "view outside writable preopens"
+        );
+        assert_eq!(
+            resolve(&pre, "/agent/mcp.json", false).unwrap(),
+            view.host.join("mcp.json")
+        );
+        assert!(
+            std::fs::read_to_string(resolve(&pre, "/agent/mcp.json", false).unwrap())
+                .unwrap()
+                .contains("mcpServers")
+        );
+        // Only the allow-listed names are linked, so the secrets are not reachable.
+        assert!(!resolve(&pre, "/agent/auth.json", false).unwrap().exists());
+        assert!(
+            !resolve(&pre, "/agent/secrets.json", false)
+                .unwrap()
+                .exists()
+        );
+        // The view follows a replaced file (atomic rename) at the next preopen refresh.
+        std::fs::remove_file(agent_dir.join("mcp.json")).unwrap();
+        std::fs::write(agent_dir.join("mcp.json"), r#"{"mcpServers":{"x":{}}}"#).unwrap();
+        let pre = preopens(&paths, &perms, dir.path());
+        assert!(
+            std::fs::read_to_string(resolve(&pre, "/agent/mcp.json", false).unwrap())
+                .unwrap()
+                .contains("\"x\"")
+        );
+    }
+
+    #[test]
+    fn wsid_is_16_hex() {
+        let id = workspace_id(Path::new("/home/u/project"));
+        assert_eq!(id.len(), 16);
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(id, workspace_id(Path::new("/home/u/project")));
+    }
+
+    /// v2 QA D-46: a manifest's `~/.oino/...` grant follows the host's agent dir — an
+    /// isolated profile (`OINO_AGENT_DIR`) never preopens the real `~/.oino`.
+    #[test]
+    fn agent_dir_grants_follow_the_host_agent_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let default_agent = home.path().join(".oino");
+        let isolated = tempfile::tempdir().unwrap();
+        let agent_dir = isolated.path().join("agent");
+        std::fs::create_dir_all(default_agent.join("cron")).unwrap();
+        std::fs::create_dir_all(agent_dir.join("cron")).unwrap();
+        // The default install: `~/.oino/cron` is the agent dir's `cron` (identity).
+        assert_eq!(
+            rooted_in_agent_dir_with(
+                Some(home.path()),
+                default_agent.join("cron"),
+                &default_agent
+            ),
+            default_agent.join("cron")
+        );
+        // An isolated profile re-roots the very same grant onto its own agent dir.
+        assert_eq!(
+            rooted_in_agent_dir_with(
+                Some(home.path()),
+                default_agent.join("cron").join("jobs"),
+                &agent_dir
+            ),
+            agent_dir.join("cron").join("jobs")
+        );
+        // Other home paths are untouched.
+        let documents = home.path().join("Documents");
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), documents.clone(), &agent_dir),
+            documents
+        );
+        // Without a home there is no default agent dir to re-root against.
+        assert_eq!(
+            rooted_in_agent_dir_with(None, default_agent.join("cron"), &agent_dir),
+            default_agent.join("cron")
+        );
+    }
+
+    /// v2 QA E-20: the memory palace grants follow the host's agent dir for isolated
+    /// profiles (never the user's real palace), and stay put on a default install.
+    #[test]
+    fn memory_palace_grants_follow_the_host_agent_dir() {
+        let home = tempfile::tempdir().unwrap();
+        let palace = home.path().join(".mempalace");
+        let palace_config = home.path().join(".config").join("mempalace");
+        std::fs::create_dir_all(&palace).unwrap();
+        std::fs::create_dir_all(&palace_config).unwrap();
+        let default_agent = home.path().join(".oino");
+        let isolated = tempfile::tempdir().unwrap();
+        let agent_dir = isolated.path().join("agent");
+
+        // Default install: the user's palace keeps working where it is.
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace.clone(), &default_agent),
+            palace
+        );
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace_config.clone(), &default_agent),
+            palace_config
+        );
+
+        // An isolated profile gets its own palace under the agent dir (created).
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace, &agent_dir),
+            agent_dir.join("mempalace")
+        );
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), palace_config, &agent_dir),
+            agent_dir.join("mempalace").join("config")
+        );
+        assert!(agent_dir.join("mempalace").is_dir());
+        assert!(agent_dir.join("mempalace").join("config").is_dir());
+
+        // An explicitly configured palace (any other path) is never re-rooted.
+        let custom = home.path().join("memories");
+        std::fs::create_dir_all(&custom).unwrap();
+        assert_eq!(
+            rooted_in_agent_dir_with(Some(home.path()), custom.clone(), &agent_dir),
+            custom
+        );
+    }
+}

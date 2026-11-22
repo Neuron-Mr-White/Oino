@@ -1,0 +1,141 @@
+// @vitest-environment jsdom
+/**
+ * Renderer cards (WP-A8, G-21 acceptance): **every unipi card type from
+ * the U7b fixtures** — the nodes the migrated extension render spec owners
+ * answer for `_oino/render` — renders through U9's `NodeView` (golden DOM
+ * snapshots); an unregistered type keeps the native light row; a renderer
+ * that never answers (the 2 s timeout path) also keeps it.
+ */
+import { cleanup, render, waitFor } from '@solidjs/testing-library';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { SessionEntry } from '../../../lib/session/types';
+import { resetSessionRenderCaches } from '../../../lib/session/renderCache';
+import fixtures from '../../../dev/mock/fixtures/cards.json';
+import { RendererCard, nativeCardLabel } from './RendererCard';
+import { ModelChangeCard } from './ModelChangeCard';
+import { fakeCtx } from '../tools/testutil';
+
+/** The U7b card corpus (fixture key → the customType whose owner answers it). */
+const CORPUS: Array<[string, string, 'custom_message' | 'custom']> = [
+  ['harnessCard', 'unipi:lh-continue', 'custom_message'],
+  ['harnessCard', 'unipi:kanboard-continue', 'custom_message'],
+  ['harnessCard', 'unipi:kanboard-next', 'custom_message'],
+  ['harnessCard', 'unipi-memory-recall-reminder', 'custom_message'],
+  ['harnessCard', 'unipi-memory-retro-reminder', 'custom_message'],
+  ['harnessCard', 'unipi-skills-revealed', 'custom_message'],
+  ['harnessCard', 'unipi:plan-mode-message', 'custom_message'],
+  ['harnessCard', 'compactor-recall', 'custom_message'],
+  ['harnessCard', 'unipi-response', 'custom_message'],
+  ['harnessWarning', 'unipi-watchdog', 'custom_message'],
+  ['subagentCompletion', 'subagent-completion', 'custom_message'],
+  ['sidekickCompletion', 'sidekick-completion', 'custom_message'],
+  ['backgroundTask', 'background-task-notification', 'custom_message'],
+  ['memorySession', 'unipi-memory-session-card', 'custom_message'],
+  ['memorySave', 'unipi-memory-save-card', 'custom_message'],
+  ['compaction', 'unipi-compaction', 'custom_message'],
+  ['kanboardBadge', 'unipi:kanboard-badge', 'custom_message'],
+  ['attachments', 'unipi:attachments', 'custom'],
+];
+
+const entry = (customType: string, kind: 'custom_message' | 'custom', n: number): SessionEntry =>
+  ({
+    type: kind,
+    id: `c${n}`,
+    customType,
+    data: { note: 'fixture entry' },
+    timestamp: '2026-10-30T09:00:00Z',
+  }) as SessionEntry;
+
+const renderersOf = () =>
+  Object.fromEntries(CORPUS.map(([fixture, type, kind]) => [`${kind === 'custom' ? 'customEntry' : 'customMessage'}/${type}`, (fixtures as Record<string, unknown>)[fixture]]));
+
+beforeEach(() => resetSessionRenderCaches());
+afterEach(cleanup);
+
+function normalize(el: Element): Element {
+  const clone = el.cloneNode(true) as Element;
+  const ids = new Map<string, string>();
+  const norm = (v: string) => v.replace(/\b(cl-\d+|solid-\S+-\d+|[a-z]+-\d+-\d+)\b/g, (m) => ids.get(m) ?? (ids.set(m, `id${ids.size}`), ids.get(m)!));
+  for (const node of [clone, ...clone.querySelectorAll('*')]) {
+    for (const attr of ['id', 'for', 'aria-labelledby', 'aria-controls', 'aria-describedby', 'aria-activedescendant']) {
+      const v = node.getAttribute(attr);
+      if (v) node.setAttribute(attr, norm(v));
+    }
+  }
+  return clone;
+}
+
+describe('RendererCard goldens (U7b corpus)', () => {
+  it.each(CORPUS)('%s answers for "%s" through NodeView', async (fixture, type, kind) => {
+    const ctx = fakeCtx([entry(type, kind, 1)], { renderers: renderersOf() });
+    const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    await waitFor(() => expect(r.getByTestId('tl-card-render')).toBeTruthy(), { timeout: 2000 });
+    expect(r.queryByTestId('tl-card-render')).toBeTruthy();
+    expect(normalize(r.container.firstElementChild!)).toMatchSnapshot();
+  });
+
+  it('every card type of the corpus is covered (guards the fixture file)', () => {
+    const fixtureKeys = new Set(Object.keys(fixtures).filter((k) => !k.startsWith('_')));
+    const covered = new Set(CORPUS.map(([f]) => f));
+    expect([...fixtureKeys].filter((k) => !covered.has(k) && k !== 'toolBashAdvanced')).toEqual([]);
+  });
+});
+
+describe("the frontend's own row", () => {
+  it('an unregistered custom_message keeps the native light row (source · title) even after null settles', async () => {
+    const ctx = fakeCtx([entry('acme:report', 'custom_message', 2)], {});
+    const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    await new Promise((res) => setTimeout(res, 20));
+    expect(r.container.querySelector('.tl-card')).toBeTruthy();
+    expect(r.container.textContent).toContain('acme:report');
+  });
+
+  it('an unregistered custom entry renders nothing (never flashes a placeholder)', async () => {
+    const ctx = fakeCtx([entry('oino.tool-dispatch', 'custom', 9)], {});
+    const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    expect(r.container.querySelector('.tl-card')).toBeNull();
+    await new Promise((res) => setTimeout(res, 20));
+    expect(r.container.querySelector('.tl-card')).toBeNull();
+  });
+
+  it('a renderer that never answers (2 s timeout path) renders nothing over the native row', async () => {
+    const ctx = fakeCtx([entry('acme:stuck', 'custom_message', 3)], { renderers: { 'customMessage/acme:stuck': { never: true } } });
+    const r = render(() => <RendererCard entry={ctx.session.state.entries[0]!} ctx={ctx} />);
+    // still native while the request hangs — and nothing else renders
+    await new Promise((res) => setTimeout(res, 20));
+    expect(r.container.querySelector('.tl-card')).toBeTruthy();
+    expect(r.queryByTestId('tl-card-render')).toBeNull();
+  });
+
+  it('harness / oinoProvenance meta beats entry data for the native label', () => {
+    const e = { type: 'custom_message', customType: 'unipi:lh-continue', data: {}, message: { details: { unipiHarness: { source: 'Long-horizon', title: 'Continuation' } } } } as unknown as SessionEntry;
+    expect(nativeCardLabel(e)).toEqual({ source: 'Long-horizon', title: 'Continuation' });
+    const oino = { type: 'custom_message', customType: 'unipi:plan-mode-message', details: { oinoProvenance: { source: 'Plan mode', title: 'Plan mode on' } } } as unknown as SessionEntry;
+    expect(nativeCardLabel(oino)).toEqual({ source: 'Plan mode', title: 'Plan mode on' });
+  });
+});
+
+describe('native change cards', () => {
+  it('model_change renders the light "Model → X" row', () => {
+    const r = render(() => <ModelChangeCard entry={{ type: 'model_change', id: 'm1', modelId: 'claude-sonnet-4-5' } as SessionEntry} />);
+    expect(r.getByTestId('tl-model-change').textContent).toContain('Model → Claude Sonnet 4.5');
+  });
+  it('model_change uses the catalogue / running model name, not the id words (perf r3 D5)', () => {
+    const entry = { type: 'model_change', id: 'm9', provider: 'dead', modelId: 'dead-1' } as unknown as SessionEntry;
+    const plain = render(() => <ModelChangeCard entry={entry} />);
+    expect(plain.getByTestId('tl-model-change').textContent).toContain('Model → Dead 1');
+    cleanup();
+    const named = render(() => <ModelChangeCard entry={entry} current={() => ({ provider: 'dead', id: 'dead-1', name: 'Dead Local' })} />);
+    expect(named.getByTestId('tl-model-change').textContent).toContain('Model → Dead Local');
+    cleanup();
+    const other = render(() => <ModelChangeCard entry={entry} current={() => ({ provider: 'mock', id: 'mock-1', name: 'Mock' })} />);
+    expect(other.getByTestId('tl-model-change').textContent).toContain('Model → Dead 1');
+  });
+  it('thinking_level_change renders "Thinking → high" for both v3 thinkingLevel and legacy level', () => {
+    const r = render(() => <ModelChangeCard entry={{ type: 'thinking_level_change', id: 'm2', level: 'high' } as SessionEntry} />);
+    expect(r.getByTestId('tl-model-change').textContent).toContain('Thinking → high');
+    cleanup();
+    const v3 = render(() => <ModelChangeCard entry={{ type: 'thinking_level_change', id: 'm3', thinkingLevel: 'medium' } as unknown as SessionEntry} />);
+    expect(v3.getByTestId('tl-model-change').textContent).toContain('Thinking → medium');
+  });
+});

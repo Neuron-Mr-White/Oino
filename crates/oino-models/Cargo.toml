@@ -1,0 +1,28 @@
+[package]
+name = "oino-models"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Model registry for Oino: models.json, model resolution, auth storage, virtual models"
+readme = "README.md"
+keywords = ["llm", "models", "registry", "auth", "ai"]
+categories = ["config"]
+
+[dependencies]
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+futures.workspace = true
+globset.workspace = true
+indexmap.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = "2"
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

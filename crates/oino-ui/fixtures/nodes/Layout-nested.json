@@ -1,0 +1,17 @@
+{
+ "t": "Layout",
+ "key": "root",
+ "children": [
+  {
+   "t": "Layout",
+   "key": "row",
+   "direction": "Horizontal",
+   "children": [
+    {
+     "t": "Empty",
+     "title": "Nested"
+    }
+   ]
+  }
+ ]
+}

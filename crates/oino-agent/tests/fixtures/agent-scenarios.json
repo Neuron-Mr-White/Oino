@@ -1,0 +1,83 @@
+[
+  {"name": "text-only", "systemPrompt": "You are a test.", "tools": [], "prompt": "hi",
+   "responses": [{"content": [{"type": "text", "text": "hello"}], "stopReason": "stop"}]},
+  {"name": "thinking-and-text", "systemPrompt": "S", "thinkingLevel": "high", "tools": [], "prompt": "think",
+   "responses": [{"content": [{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": "done"}], "stopReason": "stop"}]},
+  {"name": "parallel-tools", "systemPrompt": "S", "prompt": "use tools",
+   "tools": [
+     {"name": "echo", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+      "behaviour": {"result": {"content": [{"type": "text", "text": "echoed"}], "details": {"n": 1}}, "updates": [{"content": [{"type": "text", "text": "partial"}], "details": {}}]}},
+     {"name": "boom", "parameters": {"type": "object", "properties": {}}, "behaviour": {"throws": "kaboom"}}
+   ],
+   "responses": [
+     {"content": [{"type": "text", "text": "calling"},
+                  {"type": "toolCall", "id": "c1", "name": "echo", "arguments": {"text": "a"}},
+                  {"type": "toolCall", "id": "c2", "name": "boom", "arguments": {}},
+                  {"type": "toolCall", "id": "c3", "name": "missing", "arguments": {}},
+                  {"type": "toolCall", "id": "c4", "name": "echo", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "after"}], "stopReason": "stop"}
+   ]},
+  {"name": "sequential-tool", "systemPrompt": "S", "prompt": "seq",
+   "tools": [
+     {"name": "seq", "executionMode": "sequential", "parameters": {"type": "object", "properties": {"n": {"type": "number"}}},
+      "behaviour": {"result": {"content": [{"type": "text", "text": "ok"}], "details": {}}}},
+     {"name": "par", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "p"}]}}}
+   ],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "s1", "name": "seq", "arguments": {"n": "5"}}, {"type": "toolCall", "id": "p1", "name": "par", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "end"}], "stopReason": "stop"}
+   ]},
+  {"name": "steer-during-tool", "systemPrompt": "S", "prompt": "go",
+   "tools": [{"name": "t", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "r"}]}, "steer": ["steer one", "steer two"]}}],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "t1", "name": "t", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "a"}], "stopReason": "stop"},
+     {"content": [{"type": "text", "text": "b"}], "stopReason": "stop"}
+   ]},
+  {"name": "steer-all-mode", "systemPrompt": "S", "prompt": "go", "steeringMode": "all",
+   "tools": [{"name": "t", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "r"}]}, "steer": ["s1", "s2"]}}],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "t1", "name": "t", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "a"}], "stopReason": "stop"}
+   ]},
+  {"name": "follow-up", "systemPrompt": "S", "prompt": "go",
+   "tools": [{"name": "t", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "r"}]}, "followUp": ["later"]}}],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "t1", "name": "t", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "a"}], "stopReason": "stop"},
+     {"content": [{"type": "text", "text": "b"}], "stopReason": "stop"}
+   ]},
+  {"name": "length-stop-fails-tools", "systemPrompt": "S", "prompt": "go",
+   "tools": [{"name": "t", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "r"}]}}}],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "t1", "name": "t", "arguments": {}}], "stopReason": "length"},
+     {"content": [{"type": "text", "text": "again"}], "stopReason": "stop"}
+   ]},
+  {"name": "error-stop", "systemPrompt": "S", "prompt": "go", "tools": [],
+   "responses": [{"content": [], "stopReason": "error", "errorMessage": "rate limited"}]},
+  {"name": "terminate-batch", "systemPrompt": "S", "prompt": "go",
+   "tools": [{"name": "stop", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "bye"}], "terminate": true}}}],
+   "responses": [{"content": [{"type": "toolCall", "id": "x1", "name": "stop", "arguments": {}}, {"type": "toolCall", "id": "x2", "name": "stop", "arguments": {}}], "stopReason": "toolUse"}]},
+  {"name": "hooks-block-and-override", "systemPrompt": "S", "prompt": "go",
+   "hooks": {"block": {"danger": "Not allowed"}, "after": {"echo": {"content": [{"type": "text", "text": "rewritten"}]}}},
+   "tools": [
+     {"name": "danger", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "x"}]}}},
+     {"name": "echo", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "e"}], "structuredContent": {"a": 1}}}}
+   ],
+   "responses": [
+     {"content": [{"type": "toolCall", "id": "d1", "name": "danger", "arguments": {}}, {"type": "toolCall", "id": "e1", "name": "echo", "arguments": {}}], "stopReason": "toolUse"},
+     {"content": [{"type": "text", "text": "fin"}], "stopReason": "stop"}
+   ]},
+  {"name": "finish-turn-continue", "systemPrompt": "S", "prompt": "go", "tools": [],
+   "hooks": {"finishTurn": ["continue", null]},
+   "responses": [
+     {"content": [{"type": "text", "text": "one"}], "stopReason": "stop"},
+     {"content": [{"type": "text", "text": "two"}], "stopReason": "stop"}
+   ]},
+  {"name": "finish-turn-end", "systemPrompt": "S", "prompt": "go",
+   "hooks": {"finishTurn": ["end"]},
+   "tools": [{"name": "t", "parameters": {"type": "object", "properties": {}}, "behaviour": {"result": {"content": [{"type": "text", "text": "r"}]}}}],
+   "responses": [{"content": [{"type": "toolCall", "id": "t1", "name": "t", "arguments": {}}], "stopReason": "toolUse"}]},
+  {"name": "no-tools-in-system", "systemPrompt": "", "prompt": "go", "tools": [],
+   "responses": [{"content": [{"type": "text", "text": "x"}], "stopReason": "stop"}]}
+]

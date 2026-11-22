@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+[ Deploy ]
+  ~ 0..10=fg=rgb(a798d7)

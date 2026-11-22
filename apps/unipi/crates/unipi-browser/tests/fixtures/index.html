@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><title>Fixture Home</title>
+<style>
+ #cover { position: fixed; left: 0; top: 0; width: 220px; height: 60px; background: rgba(0,0,0,.6); color: #fff; }
+ #under { position: absolute; left: 10px; top: 10px; }
+ #mover { position: relative; animation: slide .4s linear 1; }
+ @keyframes slide { from { left: 0 } to { left: 200px } }
+ body { margin-top: 90px; font-family: sans-serif; }
+</style></head>
+<body>
+<button id="under" onclick="document.title='under clicked'">Hidden target</button>
+<div id="cover">Cookie banner</div>
+<h1>Fixture Home</h1>
+<p>Welcome to the fixture.</p>
+<nav aria-label="Main"><a href="/second.html">Second page</a> <a href="/second.html" target="_blank">Popup page</a> <a href="/file.txt" download>Get file</a></nav>
+<button id="count" onclick="this.dataset.n=(+this.dataset.n||0)+1; document.getElementById('out').textContent='clicked '+this.dataset.n; console.log('count', this.dataset.n)">Count</button>
+<button id="mover" onclick="document.getElementById('out').textContent='moved click'">Moving</button>
+<button onclick="alert('Hello dialog')">Alert me</button>
+<button disabled>Disabled button</button>
+<p id="out">idle</p>
+<label>Email <input id="email" type="email" value="old@x.dev"></label>
+<label>Password <input type="password" value="secret123"></label>
+<label>Notes <textarea id="notes"></textarea></label>
+<div id="rich" contenteditable="true" role="textbox" aria-label="Rich editor"></div>
+<label>Color <select id="color"><option value="r">Red</option><option value="g">Green</option><option value="b">Blue</option></select></label>
+<label><input type="checkbox" id="agree"> I agree</label>
+<label>Upload <input type="file" id="up" onchange="document.getElementById('out').textContent='file '+this.files[0].name"></label>
+<button id="late" onclick="setTimeout(()=>{const p=document.createElement('p');p.textContent='Late text arrived';document.body.appendChild(p)},300)">Later</button>
+<button onclick="throw new Error('boom from fixture')">Throw</button>
+<shadow-card></shadow-card>
+<iframe title="Same origin" src="/frame.html" width="300" height="80"></iframe>
+<iframe id="xo" title="Cross origin" width="300" height="80"></iframe>
+<script>
+customElements.define('shadow-card', class extends HTMLElement { connectedCallback() { const r = this.attachShadow({mode:'open'}); r.innerHTML = '<button>Shadow button</button>'; } });
+document.getElementById('xo').src = location.search.includes('xo=') ? decodeURIComponent(location.search.split('xo=')[1]) : 'about:blank';
+</script>
+</body></html>

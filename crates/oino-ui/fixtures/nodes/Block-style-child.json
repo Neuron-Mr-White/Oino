@@ -1,0 +1,14 @@
+{
+ "t": "Block",
+ "key": "box",
+ "style": {
+  "fg": "muted"
+ },
+ "child": {
+  "t": "Block",
+  "child": {
+   "t": "Spinner",
+   "label": "\u2026"
+  }
+ }
+}

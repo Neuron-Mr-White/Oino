@@ -1,0 +1,30 @@
+{
+ "t": "Tabs",
+ "titles": [
+  {
+   "key": "log",
+   "title": "Log"
+  },
+  {
+   "key": "graph",
+   "title": "Graph"
+  }
+ ],
+ "selected": "log",
+ "panes": {
+  "log": {
+   "t": "Log",
+   "lines": [
+    "tail"
+   ]
+  },
+  "graph": {
+   "t": "Sparkline",
+   "data": [
+    1,
+    2,
+    3
+   ]
+  }
+ }
+}

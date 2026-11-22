@@ -1,0 +1,40 @@
+{
+ "t": "Tree",
+ "nodes": [
+  {
+   "key": "src",
+   "label": "src",
+   "icon": "folder",
+   "expanded": true,
+   "children": [
+    {
+     "key": "lib",
+     "label": {
+      "spans": [
+       {
+        "content": "lib.rs",
+        "style": {
+         "fg": "text"
+        }
+       }
+      ]
+     },
+     "icon": "file",
+     "badge": "1K"
+    },
+    {
+     "key": "tests",
+     "label": "tests",
+     "icon": "folder",
+     "lazy": true
+    }
+   ]
+  }
+ ],
+ "state": {
+  "selected": "lib"
+ },
+ "onSelect": "pick",
+ "onActivate": "open",
+ "onToggle": "fold"
+}

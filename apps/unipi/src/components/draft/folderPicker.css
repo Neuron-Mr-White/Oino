@@ -1,0 +1,95 @@
+/* The one workspace picker (FolderPicker.tsx) — a regular "Open folder" dialog.
+   Desktop: the session modal's chrome (.sm-overlay / .sm-dialog) with a location box, ONE list and a
+   footer. Phone: the same body inside the full-screen Sheet with 48 px rows. Buttons are the draft
+   picker's (.ws-btn / .ws-btn-primary) and the phone's (.ph-btn). */
+
+.fb-overlay { z-index: 70; }
+.fp-dialog { width: min(720px, 92vw); height: min(600px, 86vh); border-radius: var(--radius-card); }
+.fp-head { min-height: 48px; padding: 6px 8px 6px 18px; }
+
+.fp { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── location bar: Up · box, and the crumbs of where you are ───────────── */
+.fp-top { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 6px; background: var(--color-surface-1); }
+.fp-locate { display: flex; align-items: center; gap: 8px; }
+.fp-up { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 10px; background: var(--color-surface-2); color: var(--color-text-muted); cursor: pointer; }
+.fp-up:hover:not(:disabled) { background: var(--color-surface-3); color: var(--color-text); }
+.fp-up:disabled { opacity: 0.35; cursor: default; }
+.fp-up:focus-visible { outline: 1.5px solid var(--color-claw); outline-offset: 1px; }
+.fp-box { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface-2); color: var(--color-text-muted); }
+.fp-box:focus-within { border-color: var(--color-claw); box-shadow: 0 0 0 1px var(--color-claw); }
+.fp-box-ic { flex: none; }
+.fp-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--color-text); font-size: calc(14px * var(--ui-font-scale)); outline: none; }
+.fp[data-mode='path'] .fp-input { font-family: var(--font-mono); font-size: calc(13px * var(--ui-font-scale)); }
+.fp-box .fp-input:focus, .fp-box .fp-input:focus-visible { outline: none; box-shadow: none; }
+.fp-input::placeholder { color: var(--color-text-dim); }
+.fp-busy { flex: none; font-size: calc(14px * var(--ui-font-scale)); color: var(--color-text-dim); opacity: 0; transition: opacity 120ms ease-out 150ms; }
+.fp-busy[data-on] { opacity: 1; }
+
+.fp-crumbs { display: flex; align-items: center; gap: 2px; min-height: 28px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; }
+.fp-crumbs::-webkit-scrollbar { display: none; }
+.fp-crumb-sep { flex: none; color: var(--color-text-dim); }
+.fp-crumb { flex: none; min-height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-muted); font-size: calc(12.5px * var(--ui-font-scale)); cursor: pointer; }
+.fp-crumb:hover { color: var(--color-text); background: var(--color-surface-2); }
+.fp-crumb[aria-current='location'] { color: var(--color-text); font-weight: 600; }
+.fp-status { margin: 0; display: flex; align-items: center; min-height: 28px; padding: 0 6px; font-size: calc(12.5px * var(--ui-font-scale)); color: var(--color-text-dim); }
+
+/* ── the one list ───────────────────────────────────────────────────────── */
+.fp-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 10px; border-top: 1px solid var(--color-line); }
+.fp-group { margin: 0; padding: 12px 8px 4px; font-size: calc(11px * var(--ui-font-scale)); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-dim); }
+.fp-group[data-section='dir'] { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: calc(12px * var(--ui-font-scale)); }
+.fp-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--color-text); font-size: calc(13.5px * var(--ui-font-scale)); text-align: left; cursor: default; }
+.fp-row:hover { background: var(--color-surface-2); }
+.fp-row[aria-selected='true'] { background: var(--color-surface-3); box-shadow: inset 2px 0 0 var(--color-claw); }
+.fp-row-ic { flex: none; color: var(--color-claw); }
+.fp-row-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.fp-row-name { flex: none; max-width: 70%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 560; }
+.fp-row[data-source='dir'] .fp-row-name { font-weight: 480; max-width: 100%; }
+.fp-row-path { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: calc(11.5px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.fp-mark { background: none; color: var(--color-claw); font-weight: 700; }
+.fp-row-chev { flex: none; color: var(--color-text-dim); opacity: 0.6; }
+.fp-enter { flex: none; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.fp-error { margin: 0; padding: 8px 16px; font-size: calc(13px * var(--ui-font-scale)); color: #f6a39d; border-top: 1px solid var(--color-line); }
+.fp-note { margin: 8px 8px 0; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.fp-hint { margin: 14px 8px 0; padding-top: 10px; border-top: 1px dashed var(--color-line); font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
+
+/* ── footer ─────────────────────────────────────────────────────────────── */
+.fp-foot { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 8px 16px; border-top: 1px solid var(--color-line); }
+/* N2: the footer is ONE line whatever the folder's name: the path and the primary button's label are cut in the middle (MiddleText), the buttons never wrap. */
+.fp-foot-path { flex: 0 100 auto; min-width: 0; display: flex; overflow: hidden; white-space: nowrap; text-align: left; font-family: var(--font-mono); font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-muted); }
+.fp-foot-path bdi { display: flex; justify-content: flex-end; min-width: 0; max-width: 100%; }
+.fp-foot-grow { flex: 1 1 0; min-width: 0; }
+.fp-foot .ws-btn { flex: none; white-space: nowrap; }
+.fp-foot .ws-btn-primary { flex: 0 1 auto; min-width: 0; max-width: 240px; }
+.fp-foot .ws-btn svg { flex: none; }
+.fp-use-label { display: inline-flex; min-width: 0; max-width: 100%; white-space: pre; }
+
+/* ── phone / narrow: full-screen sheet, ≥ 44 px targets ────────────────── */
+.fp-sheet .ph-sheet-head { display: flex; align-items: center; }
+.fp-sheet .ph-sheet-title { flex: 1 1 auto; min-width: 0; }
+.fp-sheet { display: flex; flex-direction: column; }
+.fp-sheet .ph-sheet-head, .fp-sheet .ph-sheet-foot { flex: none; }
+.fp-sheet .ph-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0; }
+.fp-sheet .fp { min-height: 100%; }
+.fp-sheet .fp-top { position: sticky; top: 0; z-index: 2; padding: 8px var(--ph-4, 16px) 4px; }
+.fp-sheet .fp-up { width: 48px; height: 48px; border-radius: 12px; }
+.fp-sheet .fp-box { height: 48px; border-radius: 12px; }
+.fp-sheet .fp-input { font-size: 16px; }
+.fp-sheet .fp-crumb { min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 14px; }
+.fp-sheet .fp-status { min-height: 44px; font-size: 13.5px; }
+.fp-sheet .fp-list { overflow: visible; padding: 0 var(--ph-3, 12px) 16px; }
+.fp-sheet .fp-group { padding-top: 14px; }
+.fp-sheet .fp-row { min-height: 52px; padding: 0 12px; gap: 12px; font-size: 15.5px; }
+.fp-sheet .fp-row-main { flex-direction: column; align-items: flex-start; gap: 1px; }
+.fp-sheet .fp-row-name { max-width: 100%; }
+.fp-sheet .fp-row-path { max-width: 100%; font-size: 12px; }
+.fp-sheet .fp-row:active { background: var(--color-surface-3); }
+.fp-sheet .fp-note, .fp-sheet .fp-hint { font-size: 13.5px; line-height: 19px; }
+.fp-sheet-foot { display: flex; flex-direction: column; gap: 8px; }
+.fp-sheet-foot .fp-foot-path { flex: none; max-width: 100%; text-align: left; }
+.fp-sheet-foot .ph-btn { min-width: 0; white-space: nowrap; }
+.fp-sheet-secondary { display: flex; gap: 8px; }
+.fp-sheet-secondary:empty { display: none; }
+.fp-sheet-secondary .ws-btn { flex: 1 1 0; min-height: 44px; height: 44px; justify-content: center; font-size: 14px; }
+
+@media (prefers-reduced-motion: reduce) { .fp-busy { transition: none; } }

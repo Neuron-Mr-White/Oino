@@ -1,0 +1,47 @@
+{
+ "t": "Layout",
+ "direction": "Horizontal",
+ "constraints": [
+  {
+   "Length": 20
+  },
+  {
+   "Percentage": 50
+  },
+  {
+   "Ratio": [
+    1,
+    4
+   ]
+  },
+  {
+   "Min": 5
+  },
+  {
+   "Max": 10
+  },
+  {
+   "Fill": 1
+  }
+ ],
+ "children": [
+  {
+   "t": "Spinner"
+  },
+  {
+   "t": "Spinner"
+  },
+  {
+   "t": "Spinner"
+  },
+  {
+   "t": "Spinner"
+  },
+  {
+   "t": "Spinner"
+  },
+  {
+   "t": "Spinner"
+  }
+ ]
+}

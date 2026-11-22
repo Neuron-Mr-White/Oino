@@ -1,0 +1,24 @@
+---
+source: crates/oino-tui/tests/snapshots.rs
+expression: "h.frame(60, 20)"
+---
+
+ oino v1.0.0-test
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands ·…
+ Press ctrl+o to show full startup help.
+
+ Oino can explain its own features and look up its docs. As…
+
+
+
+
+────────────────────────────────────────────────────────────
+ Questions
+ Scope Style
+ What should I change?
+› 1. ○ Only tests
+  2. ○ Everything  big
+  Other…
+ 1-9/enter choose · space toggle · ←/→ questions · esc canc…
+/work/project (main)
+↑1.2k ↓345 $0.012 0.8%/200k (auto)    (faux) faux-1 • medium

@@ -1,0 +1,56 @@
+[
+ {
+  "name": "notify_config request",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.0.0", "req": { "op": "notify_config" } }
+ },
+ {
+  "name": "notify_register request with a valid https endpoint",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.0.0", "req": { "op": "notify_register", "endpoint": "https://ntfy.sh/unipi-abc123" } }
+ },
+ {
+  "name": "notify_register rejects a non-https endpoint",
+  "schema": "Control",
+  "ok": false,
+  "value": { "type": "hello", "proto": "1.0.0", "req": { "op": "notify_register", "endpoint": "http://ntfy.sh/unipi-abc123" } }
+ },
+ {
+  "name": "notify_register rejects an empty endpoint",
+  "schema": "Control",
+  "ok": false,
+  "value": { "type": "hello", "proto": "1.0.0", "req": { "op": "notify_register", "endpoint": "" } }
+ },
+ {
+  "name": "notify_test request",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.0.0", "req": { "op": "notify_test" } }
+ },
+ {
+  "name": "notify_config full response with server/topic/token",
+  "schema": "NotifyConfigData",
+  "ok": true,
+  "value": {
+   "server": "https://ntfy.nrn.one",
+   "topic": "unipi-abc123",
+   "token": "tk_secret",
+   "key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+   "app_detail": "full"
+  }
+ },
+ {
+  "name": "notify_config response with only the key (no server configured yet)",
+  "schema": "NotifyConfigData",
+  "ok": true,
+  "value": { "key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+ },
+ {
+  "name": "notify_config response missing the key is rejected",
+  "schema": "NotifyConfigData",
+  "ok": false,
+  "value": { "server": "https://ntfy.nrn.one" }
+ }
+]

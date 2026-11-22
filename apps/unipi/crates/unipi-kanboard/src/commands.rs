@@ -1,0 +1,2188 @@
+//! Command implementations. Every one returns the JSON payload printed by
+//! `--json`; the human rendering is derived from it in `main`.
+
+use chrono::{DateTime, Duration, Utc};
+use serde_json::{Value, json};
+
+use crate::board::Board;
+use crate::deps;
+use crate::error::{Error, Result};
+use crate::format;
+use crate::model::{
+    Actor, Autonomy, ChainGate, Origin, Priority, Run, RunMode, RunOwner, Staleness, Status, Task,
+};
+use crate::order;
+use crate::store::{self, Layout, Project};
+use crate::transitions;
+
+/// Options shared by every command.
+#[derive(Debug, Clone)]
+pub struct Common {
+    /// Who acts.
+    pub actor: Actor,
+    /// When a dependency counts as satisfied.
+    pub gate: ChainGate,
+    /// Session id from --session / $`UNIPI_KANBOARD_SESSION` (agent calls carry it).
+    pub session: Option<String>,
+    /// Timestamp for the activity entries this command writes.
+    pub now: DateTime<Utc>,
+    /// Where a created ticket comes from (OIN-83, `--origin`); `add` stamps it
+    /// once. `None` for every other command and every caller that does not
+    /// know an origin.
+    pub origin: Option<Origin>,
+}
+
+impl Common {
+    /// Options for `actor` with no session, stamped now.
+    #[must_use]
+    pub fn new(actor: Actor, gate: ChainGate) -> Self {
+        Common {
+            actor,
+            gate,
+            session: None,
+            now: Utc::now(),
+            origin: None,
+        }
+    }
+
+    /// The session tag recorded on agent writes (None for user/system).
+    fn tag(&self) -> Option<&str> {
+        match self.actor {
+            Actor::Agent => self.session.as_deref(),
+            _ => None,
+        }
+    }
+}
+
+/// The JSON shape of one task: file fields plus readiness, waits, staleness and allowed moves.
+#[must_use]
+pub fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) -> Value {
+    let by_id = board.dep_lookup(all);
+    let blocked = deps::blocked_by(task, &by_id, gate);
+    let mut value = serde_json::to_value(task).unwrap_or(Value::Null);
+    if let Value::Object(ref mut map) = value {
+        map.insert("autonomy".into(), json!(task.autonomy.unwrap_or_default()));
+        map.insert(
+            "path".into(),
+            json!(board.task_path(&task.id).to_string_lossy()),
+        );
+        map.insert("displayTitle".into(), json!(task.display_title()));
+        map.insert("creator".into(), json!(task.creator_of().as_str()));
+        map.insert("ready".into(), json!(deps::is_ready(task, &by_id, gate)));
+        map.insert("staleness".into(), json!(staleness_of(task)));
+        map.insert(
+            "allowedMoves".into(),
+            json!(
+                transitions::allowed_targets(task.status, Actor::User)
+                    .iter()
+                    .map(|status| status.as_str())
+                    .collect::<Vec<_>>()
+            ),
+        );
+        map.insert(
+            "depsStatus".into(),
+            json!(
+                task.deps
+                    .iter()
+                    .map(|dep| json!({
+                        "id": dep,
+                        "status": by_id(dep).map(|task| task.status),
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+        );
+        map.insert(
+            "lockedBy".into(),
+            json!(deps::locked_by(task, &by_id, gate)),
+        );
+        if task.status == Status::Blocked {
+            // The comment on the latest move *into* blocked is the reason.
+            let reason = task
+                .activity
+                .iter()
+                .rev()
+                .find(|entry| entry.text.starts_with("blocked"))
+                .map(|entry| {
+                    json!({
+                        "text": entry.text.trim_start_matches("blocked").trim_start_matches([':', '—', ' ']),
+                        "actor": entry.actor.as_str(),
+                        "at": entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    })
+                });
+            if let Some(reason) = reason {
+                map.insert("blockedReason".into(), reason);
+            }
+        }
+        if let Some(report) = status_report(task) {
+            map.insert("statusReport".into(), report);
+        }
+        map.insert(
+            "attachments".into(),
+            json!(crate::attachments::list(
+                board.layout,
+                &board.project.slug,
+                &task.id
+            )),
+        );
+        map.insert(
+            "waitingFor".into(),
+            match blocked {
+                Some(blocked) => json!(
+                    blocked
+                        .pending
+                        .iter()
+                        .map(|(id, _)| id.clone())
+                        .collect::<Vec<_>>()
+                ),
+                None => json!([]),
+            },
+        );
+    }
+    value
+}
+
+// ─── project ────────────────────────────────────────────────────────────────
+
+/// `project add`: register a project (idempotent per root). `cwd` supplies the
+/// default root (its git toplevel) when `--root` is not given.
+pub fn project_add(
+    layout: &Layout,
+    root: Option<&std::path::Path>,
+    name: Option<&str>,
+    prefix: Option<&str>,
+    cwd: &std::path::Path,
+) -> Result<Value> {
+    let root = root.map_or_else(|| store::resolve_root(cwd), std::path::Path::to_path_buf);
+    let slug = store::slug_for(&store::canonical_root(&root)?);
+    // Re-registering a project must never reset its id counter: a reset hands
+    // out ids that already exist on disk and overwrites those tasks.
+    let existing = Project::load(layout, &slug).ok();
+    let mut project = Project::create(layout, &root, name, prefix)?;
+    if let Some(previous) = existing {
+        project.next_id = project.next_id.max(previous.next_id);
+        // Onboarding an archived project's folder brings it back.
+        project.archived = false;
+        project.save(layout)?;
+    }
+    Ok(json!(project))
+}
+
+/// `project list`: every registered project with its task counts.
+pub fn project_list(layout: &Layout) -> Result<Value> {
+    let projects = layout.list_projects()?;
+    Ok(json!(projects))
+}
+
+/// `project archive|unarchive <slug>` — user only, checked by the caller.
+pub fn project_set_archived(layout: &Layout, slug: &str, archived: bool) -> Result<Value> {
+    let mut project = Project::load(layout, slug)?;
+    project.archived = archived;
+    project.save(layout)?;
+    Ok(json!(project))
+}
+
+/// `project rebind <slug> --root <path>` — user only, checked by the caller.
+/// Repoints a registered project at a new root (the folder moved on disk):
+/// the slug, tasks and history are untouched — only `root` changes. The new
+/// root is canonicalized (it must exist) and must not already be used by
+/// another registered project; the write goes through the same atomic
+/// `project.json` write and the same per-project `board.lock` every other
+/// write uses, so a concurrent writer never sees a half-written file.
+pub fn project_rebind(layout: &Layout, slug: &str, root: &std::path::Path) -> Result<Value> {
+    let canonical = store::canonical_root(root)?;
+    let lock = layout.lock_board(slug)?;
+    let mut project = Project::load(layout, slug)?;
+    if project.root == canonical {
+        return Err(Error::rule(format!(
+            "project {slug} is already rooted at {}",
+            canonical.display()
+        )));
+    }
+    for other in layout.list_projects()? {
+        if other.slug != slug && other.root == canonical {
+            return Err(Error::rule(format!(
+                "{} is already registered at {} — refusing to bind two projects to the same root",
+                other.slug,
+                canonical.display()
+            )));
+        }
+    }
+    project.root = canonical;
+    project.save(layout)?;
+    drop(lock);
+    Ok(json!(project))
+}
+
+/// `project show`: one project with counts, total and file problems.
+pub fn project_show(layout: &Layout, project: &Project) -> Result<Value> {
+    let board = Board::open(layout, project.clone())?;
+    let tasks = board.tasks()?;
+    let mut counts = serde_json::Map::new();
+    for status in Status::ALL {
+        let count = tasks.iter().filter(|task| task.status == status).count();
+        counts.insert(status.as_str().to_string(), json!(count));
+    }
+    Ok(json!({
+        "project": project,
+        "counts": counts,
+        "total": tasks.len(),
+    }))
+}
+
+// ─── tasks ──────────────────────────────────────────────────────────────────
+
+/// Trim, drop empties and dedupe case-insensitively, preserving first-seen
+/// order and the first-seen spelling of each one.
+fn clean_labels(labels: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for label in labels {
+        let label = label.trim();
+        if label.is_empty() {
+            continue;
+        }
+        if !out
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(label))
+        {
+            out.push(label.to_string());
+        }
+    }
+    out
+}
+
+/// UNI-100: resolve `labels` (trimmed) against `existing` project labels
+/// (also trimmed, case-insensitive match, union of every lane including
+/// archived — see `Board::project_labels`). Known labels are rewritten to
+/// their stored (canonical) spelling. Unless `allow_new`, a label matching
+/// nothing already on the project is refused before anything is written —
+/// the task/edit is unaffected by the attempt; with `allow_new` any label is
+/// accepted as typed (still trimmed/deduped).
+fn resolve_labels(labels: &[String], existing: &[String], allow_new: bool) -> Result<Vec<String>> {
+    let cleaned = clean_labels(labels);
+    let mut out = Vec::new();
+    for label in cleaned {
+        if let Some(canonical) = existing
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(&label))
+        {
+            if !out
+                .iter()
+                .any(|seen: &String| seen.eq_ignore_ascii_case(canonical))
+            {
+                out.push(canonical.clone());
+            }
+        } else {
+            if allow_new {
+                out.push(label);
+                continue;
+            }
+            if existing.is_empty() {
+                return Err(Error::rule(format!(
+                    "no labels exist yet — pass --new-label to create \"{label}\""
+                )));
+            }
+            let mut sorted: Vec<&String> = existing.iter().collect();
+            sorted.sort_by_key(|a| a.to_lowercase());
+            let list = sorted
+                .iter()
+                .map(|label| label.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(Error::rule(format!(
+                "unknown label \"{label}\" — existing labels: {list}. Reuse one, or pass --new-label to create it on purpose."
+            )));
+        }
+    }
+    Ok(out)
+}
+
+/// Backward-compatible create with the default ticket ceiling.
+#[allow(clippy::too_many_arguments)]
+pub fn add(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    title: &str,
+    body: Option<&str>,
+    status: Option<Status>,
+    priority: Priority,
+    after: &[String],
+    attach: &[std::path::PathBuf],
+    labels: &[String],
+    new_label: bool,
+) -> Result<Value> {
+    add_with_autonomy(
+        layout, project, common, title, body, status, priority, after, attach, labels, new_label,
+        None,
+    )
+}
+
+/// The origin stamp out of a shared `Common` (a plain `.clone()` there would
+/// trip `clippy::assigning_clones` on an expression, which cannot carry an
+/// attribute on stable Rust).
+fn clone_origin(common: &Common) -> Option<Origin> {
+    common.origin.clone()
+}
+
+/// `add`: create a task in Backlog or Todo.
+#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "uniform command signature: every board command takes the Project by value"
+)]
+pub fn add_with_autonomy(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    title: &str,
+    body: Option<&str>,
+    status: Option<Status>,
+    priority: Priority,
+    after: &[String],
+    attach: &[std::path::PathBuf],
+    labels: &[String],
+    new_label: bool,
+    autonomy: Option<Autonomy>,
+) -> Result<Value> {
+    let status = status.unwrap_or(Status::Backlog);
+    if !matches!(status, Status::Backlog | Status::Todo) {
+        return Err(Error::usage(format!(
+            "new tasks start in backlog or todo, not {status}"
+        )));
+    }
+    // A task needs a point: a title or a description. The body here is the
+    // user's text — attachment embeds are appended below and count for nothing.
+    if title.trim().is_empty() && body.unwrap_or("").trim().is_empty() {
+        return Err(Error::usage("a task needs a title or a description"));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    // Re-read under the lock: a stale in-memory copy would hand out a used id.
+    let mut project = Project::load(layout, &project.slug)?;
+    let id = project.reserve_id(layout)?;
+    let board = Board::open(layout, project.clone())?;
+    let tasks = board.tasks()?;
+
+    for dep in after {
+        if !tasks.iter().any(|task| task.id == *dep) {
+            return Err(Error::not_found(format!(
+                "--after {dep}: no such task (dependencies must exist)"
+            )));
+        }
+    }
+    for dep in after {
+        deps::check_cycle(&tasks, &id, dep)?;
+    }
+
+    let lane = order::lane(tasks.iter().filter(|task| task.status == status));
+    let mut task = Task::new(
+        id.clone(),
+        title.trim().to_string(),
+        status,
+        priority,
+        order::bottom_of(&lane),
+        common.now,
+    );
+    task.autonomy = autonomy;
+    let mut body = body.unwrap_or("").trim().to_string();
+    for file in attach {
+        let bytes = std::fs::read(file)
+            .map_err(|err| Error::usage(format!("cannot read {}: {err}", file.display())))?;
+        let original = file
+            .file_name()
+            .map_or_else(|| "file".into(), |name| name.to_string_lossy().to_string());
+        let attachment = crate::attachments::store(layout, &project.slug, &id, &original, &bytes)?;
+        body = embed_attachment(&body, &file.to_string_lossy(), &attachment.markdown);
+    }
+    task.body = body.trim().to_string();
+    task.deps = after.to_vec();
+    // UNI-100: the agent-created guard applies to the agent actor only (a
+    // human picking from the same label list stays free to create one on
+    // the spot, same as the web UI) — a label must already exist on the
+    // project (trimmed, case-insensitive) unless --new-label opts in; a
+    // match is rewritten to its stored spelling.
+    task.labels = if common.actor == Actor::Agent {
+        let existing_labels = board.project_labels()?;
+        resolve_labels(labels, &existing_labels, new_label)?
+    } else {
+        clean_labels(labels)
+    };
+    // The creator is written once here and never again (UNI-59).
+    task.creator = Some(common.actor);
+    // The origin is written once here and never edited again (OIN-83).
+    // (`common` is a shared reference, so `assigning_clones` cannot apply.)
+    task.origin = clone_origin(common);
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("created in {status}"),
+    );
+    board.save(&task)?;
+    drop(lock);
+
+    let mut value = task_json(&board, &task, &tasks, common.gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("id".into(), json!(id));
+    }
+    Ok(value)
+}
+
+/// The report behind the task's current status — what the reviewer or the
+/// person unblocking it reads: for `in_review` the latest `finished:` (agent) or
+/// `released to in_review:` (user `release`) entry, for blocked the latest
+/// `blocked:` entry. The status prefix is stripped; the text is the full,
+/// untruncated comment (markdown).
+fn status_report(task: &Task) -> Option<Value> {
+    let (kind, prefixes): (&str, &[&str]) = match task.status {
+        Status::InReview => ("review", &["finished:", "released to in_review:"]),
+        Status::Blocked => ("blocked", &["blocked:", "blocked"]),
+        _ => return None,
+    };
+    task.activity.iter().rev().find_map(|entry| {
+        let prefix = prefixes
+            .iter()
+            .find(|prefix| entry.text.starts_with(**prefix))?;
+        let text = entry.text[prefix.len()..]
+            .trim_start_matches([':', '—', ' '])
+            .trim();
+        Some(json!({
+            "kind": kind,
+            "text": text,
+            "actor": entry.actor.as_str(),
+            "at": entry.at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        }))
+    })
+}
+
+/// Splice an attachment reference into a body: `![label](path)` / `[label](path)`
+/// constructs containing the file's path are replaced wholesale; a bare path
+/// occurrence is replaced in place; absent entirely, it is appended.
+fn embed_attachment(body: &str, path: &str, markdown: &str) -> String {
+    let mut out = body.to_string();
+    // Markdown-wrapped occurrences first: `..](path)` back to its `[`/`![`.
+    let wrapped = format!("]({path})");
+    while let Some(close) = out.find(&wrapped) {
+        // `close` sits on the `]`; walk back to the `[` that opens the label.
+        let head = &out[..close];
+        let Some(open) = head.rfind('[') else { break };
+        let start = if open > 0 && head.as_bytes()[open - 1] == b'!' {
+            open - 1
+        } else {
+            open
+        };
+        out.replace_range(start..close + wrapped.len(), markdown);
+    }
+    // Bare path occurrences.
+    while let Some(at) = out.find(path) {
+        out.replace_range(at..at + path.len(), markdown);
+    }
+    if !out.contains(markdown) {
+        if out.is_empty() {
+            out = markdown.to_string();
+        } else {
+            out = format!("{out}\n\n{markdown}");
+        }
+    }
+    out
+}
+
+/// Store `files` on task `id` and splice their markdown into `text` (a file's
+/// path in the text is replaced; otherwise the reference is appended). Used by
+/// `note`, `move` and `finish --attach` so a comment can carry evidence.
+fn embed_files(
+    layout: &Layout,
+    slug: &str,
+    id: &str,
+    text: &str,
+    files: &[std::path::PathBuf],
+) -> Result<String> {
+    let mut out = text.trim().to_string();
+    for file in files {
+        let bytes = std::fs::read(file)
+            .map_err(|err| Error::usage(format!("cannot read {}: {err}", file.display())))?;
+        let original = file
+            .file_name()
+            .map_or_else(|| "file".into(), |name| name.to_string_lossy().to_string());
+        let attachment = crate::attachments::store(layout, slug, id, &original, &bytes)?;
+        out = embed_attachment(&out, &file.to_string_lossy(), &attachment.markdown);
+    }
+    Ok(out)
+}
+
+/// `[{file, line, error}]` — the shape the CLI and the UI both report.
+#[must_use]
+pub fn problems_json(problems: &[crate::error::Problem]) -> Value {
+    json!(
+        problems
+            .iter()
+            .map(|problem| json!({
+                "file": problem.file,
+                "line": problem.line,
+                "error": problem.message,
+                "fixable": problem.fixable,
+            }))
+            .collect::<Vec<_>>()
+    )
+}
+
+/// Mirror of the app dashboard's `enteredStatus` (`src/lib/board/api.ts`):
+/// the lane a status-changing activity entry moved its task into.
+fn entered_status(text: &str) -> Option<&str> {
+    let t = text.trim();
+    if t.starts_with("finished:") {
+        return Some("in_review");
+    }
+    if let Some(rest) = t.strip_prefix("released to ") {
+        return Some(rest.split(':').next().unwrap_or("").trim());
+    }
+    if t == "blocked" || t.starts_with("blocked:") {
+        return Some("blocked");
+    }
+    if t == "unblocked" || t.starts_with("unblocked:") || t == "rework" || t.starts_with("rework:")
+    {
+        return Some("todo");
+    }
+    if t == "cancelled" || t.starts_with("cancelled:") {
+        return Some("cancelled");
+    }
+    if t == "archived" || t.starts_with("archived ") || t.starts_with("archived:") {
+        return Some("archived");
+    }
+    if let Some(rest) = t.strip_prefix("moved ") {
+        let to = rest
+            .rsplit(" → ")
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(" (bulk)")
+            .trim();
+        return (!to.is_empty()).then_some(to);
+    }
+    if let Some(rest) = t.strip_prefix("undo: ") {
+        // `undo: {to} → {from} (restored)`: `from` is the lane entered.
+        let from = rest
+            .rsplit(" → ")
+            .next()
+            .unwrap_or("")
+            .split(" (")
+            .next()
+            .unwrap_or("")
+            .trim();
+        return (!from.is_empty()).then_some(from);
+    }
+    if let Some(rest) = t.strip_prefix("created in ") {
+        return rest.split_whitespace().next();
+    }
+    None
+}
+
+/// Keep at most `max` chars of `text` (on a char boundary), marking the cut
+/// with `…`.
+fn truncate_chars(text: &str, max: usize) -> (String, bool) {
+    let mut chars = text.chars();
+    let prefix: String = chars.by_ref().take(max).collect();
+    if chars.next().is_some() {
+        (format!("{prefix}…"), true)
+    } else {
+        (prefix, false)
+    }
+}
+
+/// One `list` row for `--brief`: full body, the activity the cards and the
+/// dashboard derive from, and a short status report (the board reply must fit
+/// the app's 1 MiB control frame; OIN board `list --all` was 1.1 MB).
+///
+/// Activity kept: entries from the last 48 h, status transitions from the
+/// last 14 days, an older `in_review` transition whose exit is inside that
+/// window, and the latest entry that moved the task into its current status
+/// (plus the previous real transition when that latest one is an `undo:`),
+/// original order, no duplicates. Recent entries keep 500 chars, transitions
+/// 200; the report keeps 600. `show` still returns everything.
+fn brief_task(mut value: Value, task: &Task, now: DateTime<Utc>) -> Value {
+    let status = task.status.as_str();
+    let mut keep: Vec<Option<usize>> = vec![None; task.activity.len()];
+    for (index, entry) in task.activity.iter().enumerate() {
+        let age = now.signed_duration_since(entry.at);
+        if age <= Duration::hours(48) {
+            keep[index] = Some(500);
+            continue;
+        }
+        let entered = entered_status(&entry.text);
+        if entered.is_none() {
+            continue;
+        }
+        if age <= Duration::days(14) {
+            keep[index] = Some(200);
+            continue;
+        }
+        // A review cycle entered before the window still completes inside it:
+        // keep the enter entry when the next transition out of `in_review` is
+        // within 14 days, so the dashboard can pair the two.
+        if entered == Some("in_review")
+            && (index + 1..task.activity.len())
+                .find(|&later| {
+                    matches!(entered_status(&task.activity[later].text), Some(lane) if lane != "in_review")
+                })
+                .is_some_and(|exit| {
+                    now.signed_duration_since(task.activity[exit].at) <= Duration::days(14)
+                })
+        {
+            keep[index] = Some(200);
+        }
+    }
+    if let Some(anchor) = (0..task.activity.len())
+        .rev()
+        .find(|&index| entered_status(&task.activity[index].text) == Some(status))
+    {
+        if keep[anchor].is_none() {
+            keep[anchor] = Some(200);
+        }
+        if task.activity[anchor].text.trim().starts_with("undo: ")
+            && let Some(previous) = (0..anchor).rev().find(|&candidate| {
+                let text = task.activity[candidate].text.trim();
+                !text.starts_with("undo:") && entered_status(text) == Some(status)
+            })
+            && keep[previous].is_none()
+        {
+            keep[previous] = Some(200);
+        }
+    }
+
+    let mut activity_trimmed = false;
+    let mut report_trimmed = false;
+    if let Value::Object(ref mut map) = value {
+        if let Some(Value::Array(entries)) = map.get_mut("activity") {
+            let mut kept = Vec::with_capacity(entries.len());
+            for (index, mut entry) in std::mem::take(entries).into_iter().enumerate() {
+                let Some(max) = keep.get(index).copied().flatten() else {
+                    activity_trimmed = true;
+                    continue;
+                };
+                if let Value::Object(ref mut fields) = entry
+                    && let Some(Value::String(text)) = fields.get_mut("text")
+                {
+                    let (next, cut) = truncate_chars(text.as_str(), max);
+                    if cut {
+                        *text = next;
+                        activity_trimmed = true;
+                    }
+                }
+                kept.push(entry);
+            }
+            *entries = kept;
+        }
+        if let Some(Value::Object(report)) = map.get_mut("statusReport")
+            && let Some(Value::String(text)) = report.get_mut("text")
+        {
+            let (next, cut) = truncate_chars(text.as_str(), 600);
+            if cut {
+                *text = next;
+                report_trimmed = true;
+            }
+        }
+        if activity_trimmed {
+            map.insert("activityTrimmed".into(), json!(true));
+        }
+        if report_trimmed {
+            map.insert("statusReportTrimmed".into(), json!(true));
+        }
+    }
+    value
+}
+
+/// `list`: tasks of the board (default lanes, `--all`, `--status`, `--ready`).
+pub fn list(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    statuses: &[Status],
+    ready_only: bool,
+    brief: bool,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let (tasks, problems) = board.state()?;
+    let by_id = board.dep_lookup(&tasks);
+
+    let mut selected: Vec<&Task> = tasks
+        .iter()
+        .filter(|task| statuses.contains(&task.status))
+        .collect();
+    if ready_only {
+        selected.retain(|task| deps::is_ready(task, &by_id, gate));
+    }
+    let mut lane = order::lane(selected.iter().copied());
+    lane.sort_by(|a, b| {
+        b.priority
+            .rank()
+            .cmp(&a.priority.rank())
+            .then_with(|| a.order.cmp(&b.order))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let items: Vec<Value> = lane
+        .iter()
+        .map(|task| {
+            let mut value = task_json(&board, task, &tasks, gate);
+            if brief {
+                value = brief_task(value, task, now);
+            }
+            if let Value::Object(ref mut map) = value {
+                map.insert("ready".into(), json!(deps::is_ready(task, &by_id, gate)));
+            }
+            value
+        })
+        .collect();
+    Ok(json!({
+        "tasks": items,
+        "problems": problems_json(&problems),
+    }))
+}
+
+/// `show`: one task.
+pub fn show(layout: &Layout, project: Project, id: &str, gate: ChainGate) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let tasks = board.tasks()?;
+    // Cold tasks aren't in the scan — `get` reports them as "in cold storage".
+    let task = match Board::find(&tasks, id) {
+        Ok(task) => task.clone(),
+        // Cold tasks aren't in the scan — `get` reports "in cold storage".
+        Err(_) => board.get(id)?,
+    };
+    Ok(task_json(&board, &task, &tasks, gate))
+}
+
+/// `note`: append a note to a task's activity.
+pub fn note(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    text: &str,
+) -> Result<Value> {
+    note_with(layout, project, common, id, text, &[])
+}
+
+/// `note` with files attached to the comment (`note --attach`).
+pub fn note_with(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    text: &str,
+    attach: &[std::path::PathBuf],
+) -> Result<Value> {
+    if text.trim().is_empty() && attach.is_empty() {
+        return Err(Error::usage("note text must not be empty"));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    let text = embed_files(layout, &board.project.slug, &task.id, text, attach)?;
+    task.push_activity_session(common.now, common.actor, common.tag(), &text);
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, common.gate))
+}
+
+/// Attach a file to a task; with `note`, also log a comment that embeds it.
+pub fn attach(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    original_name: &str,
+    bytes: &[u8],
+    note: Option<&str>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    let attachment =
+        crate::attachments::store(layout, &board.project.slug, &task.id, original_name, bytes)?;
+    let text = match note.map(str::trim).filter(|text| !text.is_empty()) {
+        Some(text) => format!("{text}\n{}", attachment.markdown),
+        None => format!("attached {}", attachment.markdown),
+    };
+    task.push_activity_session(common.now, common.actor, common.tag(), &text);
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    let mut value = task_json(&board, &task, &tasks, common.gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("attachment".into(), json!(attachment));
+    }
+    Ok(value)
+}
+
+/// Store a file without logging activity (the UI uploads first, then posts the
+/// comment that references it — so one comment can carry several files).
+pub fn upload(
+    layout: &Layout,
+    project: Project,
+    id: &str,
+    original_name: &str,
+    bytes: &[u8],
+) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let task = board.get(id)?;
+    let attachment =
+        crate::attachments::store(layout, &board.project.slug, &task.id, original_name, bytes)?;
+    Ok(json!(attachment))
+}
+
+/// Fields `edit` may change (`None` = unchanged).
+pub struct EditArgs<'a> {
+    /// New execution ceiling.
+    pub autonomy: Option<Autonomy>,
+    /// New title.
+    pub title: Option<&'a str>,
+    /// New body.
+    pub body: Option<&'a str>,
+    /// New priority.
+    pub priority: Option<Priority>,
+    /// New label set.
+    pub labels: Option<Vec<String>>,
+    /// UNI-100: opt in to creating labels that do not already exist on the
+    /// project. Ignored when `labels` is `None`.
+    pub new_label: bool,
+}
+
+/// `edit`: change title, body, priority or labels.
+pub fn edit(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    args: EditArgs<'_>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    // Agents may rewrite only their own drafts: created by an agent (the first
+    // activity entry) and not yet claimed/scheduled beyond todo.
+    if common.actor == Actor::Agent {
+        let owned = task.activity.first().map(|entry| entry.actor) == Some(Actor::Agent);
+        let draft = matches!(task.status, Status::Backlog | Status::Todo);
+        if !(owned && draft) {
+            return Err(Error::rule(format!(
+                "{id} was written by someone else (or is past todo); agents can't rewrite it. Add \
+                 a note instead: `note {id} \"…\"`."
+            )));
+        }
+    }
+    let mut changed = Vec::new();
+    if let Some(autonomy) = args.autonomy {
+        task.autonomy = Some(autonomy);
+        changed.push("autonomy");
+    }
+    if let Some(title) = args.title {
+        task.title = title.trim().to_string();
+        changed.push("title");
+    }
+    if let Some(body) = args.body {
+        task.body = body.trim().to_string();
+        changed.push("body");
+    }
+    if let Some(priority) = args.priority {
+        task.priority = priority;
+        changed.push("priority");
+    }
+    if let Some(labels) = args.labels {
+        // UNI-100: the agent-created guard applies to the agent actor only
+        // (the web UI/user keeps creating labels on the spot); resolve
+        // against the whole-project label union — a label this task
+        // already carries always matches there too.
+        task.labels = if common.actor == Actor::Agent {
+            let existing_labels = board.project_labels()?;
+            resolve_labels(&labels, &existing_labels, args.new_label)?
+        } else {
+            clean_labels(&labels)
+        };
+        changed.push("labels");
+    }
+    if changed.is_empty() {
+        return Err(Error::usage(
+            "edit needs at least one of --title/--body/--priority/--labels",
+        ));
+    }
+    // An empty title is fine as long as the body carries the point (and vice
+    // versa) — the task must not end up with neither.
+    if task.title.trim().is_empty() && task.body.trim().is_empty() {
+        return Err(Error::usage("a task needs a title or a description"));
+    }
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("edited {}", changed.join(", ")),
+    );
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, common.gate))
+}
+
+/// `link`/`unlink`: add or remove a dependency.
+pub fn link(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    gate: ChainGate,
+    id: &str,
+    dep: &str,
+    remove: bool,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let tasks = board.tasks()?;
+    let mut task = Board::find(&tasks, id)?.clone();
+
+    if remove {
+        if !task.deps.iter().any(|existing| existing == dep) {
+            return Err(Error::rule(format!("{id} does not depend on {dep}")));
+        }
+        task.deps.retain(|existing| existing != dep);
+        task.push_activity_session(
+            common.now,
+            common.actor,
+            common.tag(),
+            format!("unlinked {dep}"),
+        );
+    } else {
+        if !tasks.iter().any(|candidate| candidate.id == dep) {
+            return Err(Error::not_found(format!("--after {dep}: no such task")));
+        }
+        if task.deps.iter().any(|existing| existing == dep) {
+            return Err(Error::rule(format!("{id} already depends on {dep}")));
+        }
+        deps::check_cycle(&tasks, id, dep)?;
+        task.deps.push(dep.to_string());
+        task.push_activity_session(
+            common.now,
+            common.actor,
+            common.tag(),
+            format!("linked after {dep}"),
+        );
+    }
+    board.save(&task)?;
+    drop(lock);
+    Ok(task_json(&board, &task, &tasks, gate))
+}
+
+/// Where `order` moves a task inside its lane.
+pub enum OrderTarget<'a> {
+    /// Top of the lane.
+    Top,
+    /// Bottom of the lane.
+    Bottom,
+    /// Right before this task.
+    Before(&'a str),
+    /// Right after this task.
+    AfterPos(&'a str),
+}
+
+/// `order`: move a task inside its lane.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "uniform command signature: every board command takes the Project by value"
+)]
+pub fn order(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    target: OrderTarget<'_>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let tasks = board.tasks()?;
+    let mut task = Board::find(&tasks, id)?.clone();
+
+    let mut lane_tasks: Vec<Task> = tasks
+        .iter()
+        .filter(|candidate| candidate.status == task.status && candidate.id != task.id)
+        .cloned()
+        .collect();
+
+    let mut rebalanced = 0usize;
+    let new_order = if let Some(value) = slot(&lane_tasks, &target) {
+        value
+    } else {
+        rebalanced = rebalance_lane(&board, &lane_tasks)?;
+        lane_tasks = board
+            .tasks()?
+            .into_iter()
+            .filter(|candidate| candidate.status == task.status && candidate.id != task.id)
+            .collect();
+        slot(&lane_tasks, &target)
+            .ok_or_else(|| Error::rule("cannot place the task even after rebalancing the lane"))?
+    };
+
+    task.order = new_order;
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("ordered (position {new_order})"),
+    );
+    board.save(&task)?;
+    drop(lock);
+
+    let tasks = board.tasks()?;
+    let current = tasks.iter().find(|t| t.id == id).cloned().unwrap_or(task);
+    let mut value = task_json(&board, &current, &tasks, common.gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("rebalanced".into(), json!(rebalanced));
+    }
+    Ok(value)
+}
+
+/// Target slot for a placement, or `None` when the lane needs rebalancing first.
+fn slot(lane_tasks: &[Task], target: &OrderTarget<'_>) -> Option<i64> {
+    let lane = order::lane(lane_tasks.iter());
+    match target {
+        OrderTarget::Top => Some(lane.first().map_or(order::STEP, |task| task.order) - order::STEP),
+        OrderTarget::Bottom => Some(order::bottom_of(&lane)),
+        OrderTarget::Before(target_id) => order::before(&lane, target_id).ok().flatten(),
+        OrderTarget::AfterPos(target_id) => order::after(&lane, target_id).ok().flatten(),
+    }
+}
+
+fn rebalance_lane(board: &Board<'_>, lane_tasks: &[Task]) -> Result<usize> {
+    let lane = order::lane(lane_tasks.iter());
+    let rewritten = order::rebalance(&lane);
+    for (id, new_order) in &rewritten {
+        let mut task = board.get(id)?;
+        task.order = *new_order;
+        board.save(&task)?;
+    }
+    Ok(rewritten.len())
+}
+
+// ─── start / finish / release / reap ──────────────────────────────────────────────
+
+/// Release every in-progress task whose run pid is dead on this host.
+/// `tasks` is updated to reflect the releases even on `dry_run` (nothing is
+/// written then); returns (released ids, foreign-host claims we cannot judge).
+fn reap_dead(
+    board: &Board<'_>,
+    tasks: &mut [Task],
+    now: DateTime<Utc>,
+    dry_run: bool,
+) -> (Vec<String>, Vec<String>) {
+    let host = hostname();
+    let mut released = Vec::new();
+    let mut unknown = Vec::new();
+    for task in tasks.iter_mut() {
+        if task.status != Status::InProgress {
+            continue;
+        }
+        let Some(run) = task.run.clone() else {
+            continue;
+        };
+        if run.owner == RunOwner::Dispatcher {
+            continue;
+        }
+        if run.host != host {
+            unknown.push(task.id.clone());
+            continue;
+        }
+        if pid_alive(run.pid) {
+            continue;
+        }
+        let was = task.status;
+        released.push(task.id.clone());
+        task.status = Status::Todo;
+        task.run = None;
+        if !dry_run {
+            task.push_activity(
+                now,
+                Actor::System,
+                format!(
+                    "session lost: {} (pid {}) ended without releasing",
+                    run.session, run.pid
+                ),
+            );
+            task.push_activity(
+                now,
+                Actor::System,
+                crate::dispatcher::released_incomplete_line(
+                    was,
+                    &run.session,
+                    "session process gone",
+                    None,
+                ),
+            );
+            if let Err(err) = board.save(task) {
+                #[allow(
+                    clippy::print_stderr,
+                    reason = "best-effort diagnostic; the reap result still lists the task"
+                )]
+                {
+                    eprintln!("reap could not write {}: {err}", task.id);
+                }
+            }
+        }
+    }
+    (released, unknown)
+}
+
+/// `reap [--dry-run]`: release claims whose pid is gone on this host.
+pub fn reap(layout: &Layout, project: Project, dry_run: bool, now: DateTime<Utc>) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    let (released, unknown) = reap_dead(&board, &mut tasks, now, dry_run);
+    drop(lock);
+    Ok(json!({ "released": released, "unknown": unknown }))
+}
+
+/// The order `next` suggests ready tasks in: priority desc, then order, then id.
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "shape required by `sort_by` over `Vec<&Task>`"
+)]
+fn claim_sort(a: &&Task, b: &&Task) -> std::cmp::Ordering {
+    b.priority
+        .rank()
+        .cmp(&a.priority.rank())
+        .then_with(|| a.order.cmp(&b.order))
+        .then_with(|| a.id.cmp(&b.id))
+}
+
+fn waiting_json(
+    by_id: &dyn Fn(&str) -> Option<Task>,
+    tasks: &[Task],
+    gate: ChainGate,
+) -> Vec<Value> {
+    tasks
+        .iter()
+        .filter(|task| task.status == Status::Todo)
+        .map(|task| {
+            json!({
+                "id": task.id,
+                "waitingFor": deps::blocked_by(task, &by_id, gate)
+                    .map(|blocked| blocked.pending.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+                "lockedBy": deps::locked_by(task, &by_id, gate),
+            })
+        })
+        .collect()
+}
+
+/// Who claims a task with `start`.
+pub struct StartArgs<'a> {
+    /// Session id of the claimer.
+    pub session: &'a str,
+    /// The long-lived process that owns the claim (the pi process, not the
+    /// short-lived CLI) — the stale-claim reaper checks it.
+    pub pid: u32,
+    /// Host the claiming process runs on.
+    pub host: &'a str,
+}
+
+/// `start <ID>`: the agent self-claims a todo task for its session
+/// (todo → `in_progress`, actor agent), or resumes a task it blocked
+/// (blocked → `in_progress` — UNI-105: the same claim rules apply either
+/// way). Deps must be satisfied and the task not already claimed; a session
+/// may hold several started tasks.
+pub fn start(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    id: &str,
+    args: &StartArgs<'_>,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    // Dead sessions give their tasks back first.
+    reap_dead(&board, &mut tasks, now, false);
+    let by_id = board.dep_lookup(&tasks);
+    let task = tasks
+        .iter()
+        .find(|task| task.id == id)
+        .ok_or_else(|| Error::not_found(format!("start {id}: no such task")))?;
+    if task.status == Status::Blocked
+        && task
+            .run
+            .as_ref()
+            .is_some_and(|run| run.owner == RunOwner::Dispatcher && run.session == args.session)
+    {
+        return Ok(task_json(&board, task, &tasks, gate));
+    }
+    if task.status == Status::InProgress {
+        let owner = task.run.as_ref();
+        if owner.is_some_and(|run| run.session == args.session) {
+            return Ok(task_json(&board, task, &tasks, gate));
+        }
+        return Err(Error::rule(format!(
+            "start {id}: already claimed by {} {} — pick another ticket (`list --ready`) or add a \
+             note: `note {id} \"…\"`.",
+            owner.map_or("nobody", |run| run.owner.as_str()),
+            owner.map_or("?", |run| run.session.as_str()),
+        )));
+    }
+    // Per-ticket claims (OIN-82): a lead and a chat can work different tickets
+    // in one project. When the claimer *is* the project's lead session (the
+    // dispatcher reserved a ticket for it), its self-started ticket keeps the
+    // dispatcher owner so the lead record and the reaper keep tracking it.
+    let lead_session = tasks.iter().any(|t| {
+        t.run
+            .as_ref()
+            .is_some_and(|r| r.owner == RunOwner::Dispatcher && r.session == args.session)
+    });
+    let owner = if lead_session {
+        RunOwner::Dispatcher
+    } else {
+        RunOwner::Agent
+    };
+    // UNI-105: `start` also resumes a task the agent itself blocked — same
+    // claim rules as a fresh todo claim.
+    if !matches!(task.status, Status::Todo | Status::Blocked) {
+        return Err(Error::rule(format!(
+            "start {id}: the task is {}, not todo or blocked{}",
+            task.status,
+            if task.status == Status::Backlog {
+                " — move it to todo first"
+            } else {
+                ""
+            }
+        )));
+    }
+    let from = task.status;
+    if task.is_claimed() {
+        return Err(Error::rule(format!(
+            "start {id}: the task is already claimed"
+        )));
+    }
+    // UNI-105 regression: `blocked_by` only evaluates todo tasks — resuming
+    // a blocked one must not bypass the same dependency gate a fresh todo
+    // claim is held to, so the status-agnostic check runs for both.
+    if let Some(blocked) = deps::pending_deps_regardless_of_status(task, &by_id, gate) {
+        return Err(Error::rule(format!(
+            "start {id}: {}",
+            blocked.describe(gate)
+        )));
+    }
+    transitions::check(
+        from,
+        Status::InProgress,
+        Actor::Agent,
+        None,
+        Staleness::Running,
+    )?;
+
+    let mut task = task.clone();
+    task.status = Status::InProgress;
+    task.run = Some(Run {
+        session: args.session.to_string(),
+        pid: args.pid,
+        host: args.host.to_string(),
+        mode: RunMode::None,
+        goal: None,
+        started: now,
+        owner,
+    });
+    task.push_activity_session(
+        now,
+        Actor::Agent,
+        Some(args.session),
+        if from == Status::Blocked {
+            format!("resumed from blocked (pid {} on {})", args.pid, args.host)
+        } else {
+            format!("started (pid {} on {})", args.pid, args.host)
+        },
+    );
+    board.save(&task)?;
+    drop(lock);
+
+    let tasks = board.tasks()?;
+    let mut value = task_json(&board, &task, &tasks, gate);
+    if let Value::Object(ref mut map) = value {
+        map.insert("handoffNotes".into(), json!(task.handoff_notes()));
+    }
+    Ok(value)
+}
+
+/// `finish <ID> --comment "…"`: the agent hands a task it `start`ed to review
+/// (`in_progress` → `in_review`, actor agent). Refused for another session's claim.
+#[allow(clippy::too_many_arguments)]
+pub fn finish(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    id: &str,
+    session: &str,
+    comment: &str,
+    attach: &[std::path::PathBuf],
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let summary = comment.trim();
+    if summary.is_empty() {
+        return Err(Error::rule(format!(
+            "finish {id} requires --comment (a summary of what you did — the reviewer reads it)"
+        )));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    if task.status != Status::InProgress {
+        return Err(Error::rule(format!(
+            "finish {id}: the task is {}, not in_progress{}",
+            task.status,
+            if task.status == Status::Todo {
+                format!(" — `start {id}` first")
+            } else {
+                String::new()
+            }
+        )));
+    }
+    match task.run.as_ref() {
+        None => {
+            return Err(Error::rule(format!(
+                "finish {id}: the task has no claim (run `validate`)"
+            )));
+        }
+        Some(run) if run.session != session => {
+            return Err(Error::rule(format!(
+                "finish {id}: started by session {}, not this one ({session}) — only the session that started it can finish it",
+                run.session
+            )));
+        }
+        Some(_) => {}
+    }
+    transitions::check(
+        Status::InProgress,
+        Status::InReview,
+        Actor::Agent,
+        Some(summary),
+        Staleness::Running,
+    )?;
+    let summary = embed_files(layout, &board.project.slug, &task.id, summary, attach)?;
+    task.status = Status::InReview;
+    task.run = None;
+    task.push_activity_session(
+        now,
+        Actor::Agent,
+        Some(session),
+        format!("finished: {summary}"),
+    );
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, gate))
+}
+
+/// `release`: return a claimed task to Todo/Backlog with a comment.
+pub fn release(
+    layout: &Layout,
+    project: Project,
+    id: &str,
+    to: Status,
+    comment: &str,
+    gate: ChainGate,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    if !matches!(to, Status::Todo | Status::InReview | Status::Blocked) {
+        return Err(Error::usage(
+            "release --to must be todo, in_review or blocked (release only hands back an in-progress claim)",
+        ));
+    }
+    if comment.trim().is_empty() {
+        return Err(Error::rule(format!(
+            "release to {to} requires --comment (the note is what the next reader sees)"
+        )));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut task = board.get(id)?;
+    if to == Status::Todo
+        && task
+            .run
+            .as_ref()
+            .is_some_and(|r| r.owner == RunOwner::Dispatcher)
+    {
+        return Err(Error::rule(
+            "Dispatcher workers cannot be requeued automatically; block the ticket, then explicitly move to todo to retry",
+        ));
+    }
+    let from = task.status;
+    transitions::check(from, to, Actor::System, Some(comment), Staleness::Running)?;
+    let released_session = task.run.as_ref().map(|r| r.session.clone());
+    let prev_question = crate::dispatcher::last_blocked_question(&task).map(str::to_owned);
+    task.status = to;
+    task.run = None;
+    task.push_activity(
+        now,
+        Actor::System,
+        format!("released to {to}: {}", comment.trim()),
+    );
+    if matches!(to, Status::Todo | Status::Blocked)
+        && let Some(session) = released_session.as_deref()
+    {
+        task.push_activity(
+            now,
+            Actor::System,
+            crate::dispatcher::released_incomplete_line(
+                from,
+                session,
+                "released by system",
+                prev_question.as_deref(),
+            ),
+        );
+    }
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, gate))
+}
+
+// ─── move ───────────────────────────────────────────────────────────────────
+
+/// `move`: change a task's status under the transition rules.
+pub fn move_task(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    to: Status,
+    comment: Option<&str>,
+) -> Result<Value> {
+    move_task_with(layout, project, common, id, to, comment, &[])
+}
+
+/// `move` with files attached to the comment (`move --attach`).
+pub fn move_task_with(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    to: Status,
+    comment: Option<&str>,
+    attach: &[std::path::PathBuf],
+) -> Result<Value> {
+    let (value, _) = move_task_undoable(layout, project, common, id, to, comment, attach)?;
+    Ok(value)
+}
+
+/// The material an undo needs: the exact pre-move task and the exact
+/// post-move task (compared wholesale — activity included — to reject any
+/// intervening change).
+#[derive(Debug, Clone)]
+pub struct UndoMove {
+    /// The task before the move.
+    pub before: Task,
+    /// The task after the move.
+    pub after: Task,
+}
+
+/// `move` that also reports undo material. The pre-move task is captured
+/// under the same board lock that performs the write, so the snapshot can
+/// never race another writer. `UndoMove` is `Some` only for hard-to-reverse
+/// user transitions to a terminal lane (see `transitions::undo_worthy`) on a
+/// task with no live claim — claims are never revived (UNI-57).
+#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "validate, move, then record the undo snapshot in one locked section"
+)]
+pub fn move_task_undoable(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    id: &str,
+    to: Status,
+    comment: Option<&str>,
+    attach: &[std::path::PathBuf],
+) -> Result<(Value, Option<UndoMove>)> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let read = board.get(id)?;
+    let undoable = transitions::undo_worthy(read.status, to, common.actor) && read.run.is_none();
+    let before = read.clone();
+    let mut task = read;
+    let from = task.status;
+    if from == Status::Blocked
+        && task
+            .run
+            .as_ref()
+            .is_some_and(|r| r.owner == RunOwner::Dispatcher)
+        && !(common.actor == Actor::Agent && to == Status::Cancelled)
+        && common.actor != Actor::System
+    {
+        return Err(Error::rule(
+            "Worker is waiting for approval; answer or stop it first",
+        ));
+    }
+    let staleness = staleness_of(&task);
+    // The self-claim moves have their own commands: `move` would skip the
+    // claim bookkeeping (run block, ownership, summary).
+    if common.actor == Actor::Agent {
+        match (from, to) {
+            (Status::Todo, Status::InProgress) => {
+                return Err(Error::rule(format!(
+                    "use `start {id}` to begin a task (it claims it for your session)"
+                )));
+            }
+            (Status::Blocked, Status::InProgress) => {
+                return Err(Error::rule(format!(
+                    "use `start {id}` to resume a blocked task (it claims it for your session)"
+                )));
+            }
+            (Status::InProgress, Status::InReview) => {
+                return Err(Error::rule(format!(
+                    "use `finish {id} --comment \"<summary>\"` to hand a task you started to review"
+                )));
+            }
+            _ => {}
+        }
+    }
+    transitions::check(from, to, common.actor, comment, staleness)?;
+
+    // An agent may block only the task its own session is running.
+    if common.actor == Actor::Agent && from == Status::InProgress && to == Status::Blocked {
+        let claimed_by = task.run.as_ref().map(|run| run.session.as_str());
+        match common.session.as_deref() {
+            None => {
+                return Err(Error::rule(format!(
+                    "agent may block {id} only while its own session runs it (no --session given{}; claimed by {})",
+                    claimed_by.map_or(" and it has no run block", |_| ""),
+                    claimed_by.unwrap_or("nobody"),
+                )));
+            }
+            Some(session) if claimed_by != Some(session) => {
+                return Err(Error::rule(format!(
+                    "agent may block {id} only while its own session runs it (session {session}; claimed by {})",
+                    claimed_by.unwrap_or("nobody"),
+                )));
+            }
+            _ => {}
+        }
+    }
+
+    // OIN-89: an agent may cancel an in_progress/blocked ticket only while its
+    // own session holds the claim (the same check `finish` uses). An
+    // agent-blocked ticket has already released its claim, so any agent may
+    // abandon it.
+    if common.actor == Actor::Agent
+        && to == Status::Cancelled
+        && matches!(from, Status::InProgress | Status::Blocked)
+        && let Some(run) = &task.run
+    {
+        let claimed_by = Some(run.session.as_str());
+        match common.session.as_deref() {
+            None => {
+                return Err(Error::rule(format!(
+                    "agent may cancel {id} only while its own session holds it (no --session given; claimed by {})",
+                    run.session,
+                )));
+            }
+            Some(session) if claimed_by != Some(session) => {
+                return Err(Error::rule(format!(
+                    "agent may cancel {id} only while its own session holds it (session {session}; claimed by {})",
+                    run.session,
+                )));
+            }
+            _ => {}
+        }
+    }
+
+    task.status = to;
+    let note = embed_files(
+        layout,
+        &board.project.slug,
+        &task.id,
+        comment.unwrap_or(""),
+        attach,
+    )?;
+    let note = note.as_str();
+    let text = match (from, to) {
+        (_, Status::Blocked) => format!("blocked: {note}"),
+        (Status::Blocked, Status::Todo) => {
+            // UNI-106: the answer is optional — an empty note reads as a bare
+            // "unblocked", not "unblocked: " with nothing after the colon.
+            // OIN-28: blocked → backlog falls through to "moved blocked → backlog"
+            // (the app reads "unblocked" as a move to todo).
+            if note.is_empty() {
+                "unblocked".to_string()
+            } else {
+                format!("unblocked: {note}")
+            }
+        }
+        (Status::InReview, Status::Todo | Status::Backlog) => {
+            // UNI-106: the rework note is optional.
+            if note.is_empty() {
+                "rework".to_string()
+            } else {
+                format!("rework: {note}")
+            }
+        }
+        (_, Status::Cancelled) => {
+            if note.is_empty() {
+                "cancelled".to_string()
+            } else {
+                format!("cancelled: {note}")
+            }
+        }
+        (_, Status::Archived) => "archived".to_string(),
+        _ => {
+            if note.is_empty() {
+                format!("moved {from} → {to}")
+            } else {
+                format!("moved {from} → {to}: {note}")
+            }
+        }
+    };
+    task.push_activity_session(common.now, common.actor, common.tag(), text);
+
+    // Leaving in_progress (or being cancelled) always clears the run block;
+    // parking a blocked task in todo/backlog must not leave a claim behind
+    // either.
+    let released_session = task.run.as_ref().map(|run| run.session.clone());
+    let prev_question = crate::dispatcher::last_blocked_question(&before).map(str::to_owned);
+    if (from == Status::InProgress && to != Status::InProgress)
+        || to == Status::Cancelled
+        || (from == Status::Blocked && matches!(to, Status::Todo | Status::Backlog))
+    {
+        task.run = None;
+        if matches!(common.actor, Actor::User | Actor::System)
+            && matches!(to, Status::Backlog | Status::Todo | Status::Blocked)
+            && let Some(session) = released_session.as_deref()
+        {
+            let reason = format!("released by {}", common.actor);
+            task.push_activity(
+                common.now,
+                Actor::System,
+                crate::dispatcher::released_incomplete_line(
+                    from,
+                    session,
+                    &reason,
+                    prev_question.as_deref(),
+                ),
+            );
+        }
+    }
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    let value = task_json(&board, &task, &tasks, common.gate);
+    let undo = undoable.then(|| UndoMove {
+        before,
+        after: task.clone(),
+    });
+    Ok((value, undo))
+}
+
+/// Undo one move: restore the exact pre-move task — status and everything —
+/// after verifying nothing has changed since the move. The comparison is the
+/// full canonical file text (activity included), so any intervening write —
+/// note, edit, reorder, another move, even within the same second — is caught
+/// (in-memory timestamps carry nanoseconds the file format rounds away, so
+/// raw struct equality would both miss and misfire). The token itself is
+/// checked by the caller's daemon-held store; undo is a user surface only
+/// (UNI-57).
+pub fn undo_move(
+    layout: &Layout,
+    project: Project,
+    common: &Common,
+    expected_after: &Task,
+    before: Task,
+) -> Result<Value> {
+    // Defence in depth against direct library callers: undo is a user
+    // surface, the snapshot must name the very task it restores, and a
+    // snapshot that still carries a claim is never revived (UNI-57).
+    if common.actor != Actor::User {
+        return Err(Error::rule(
+            "undo is a user surface — agents and system cannot undo moves",
+        ));
+    }
+    if before.id != expected_after.id {
+        return Err(Error::rule(
+            "the undo snapshot does not name this task — refusing it",
+        ));
+    }
+    if before.run.is_some() {
+        return Err(Error::rule(
+            "the undo snapshot carries a live claim — claims are never revived",
+        ));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let current = board.get(&expected_after.id)?;
+    if format::render(&current) != format::render(expected_after) {
+        return Err(Error::rule(
+            "the task changed since that move — undo is no longer available (move it back by hand)",
+        ));
+    }
+    let to = current.status;
+    let mut task = before;
+    let from = task.status;
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("undo: {to} → {from} (state restored)"),
+    );
+    board.save(&task)?;
+    drop(lock);
+    let tasks = board.tasks()?;
+    Ok(task_json(&board, &task, &tasks, common.gate))
+}
+
+/// Stale-run detection: same host → check the pid; other host → unknown.
+#[must_use]
+pub fn staleness_of(task: &Task) -> Staleness {
+    let Some(run) = task.run.as_ref() else {
+        return Staleness::Running;
+    };
+    let host = hostname();
+    if run.host != host {
+        return Staleness::Unknown;
+    }
+    if pid_alive(run.pid) {
+        Staleness::Running
+    } else {
+        Staleness::Stale
+    }
+}
+
+/// This machine's host name (`unknown` when it cannot be read).
+#[must_use]
+pub fn hostname() -> String {
+    std::env::var("HOSTNAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/proc/sys/kernel/hostname")
+                .ok()
+                .map(|value| value.trim().to_string())
+        })
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn pid_alive(pid: u32) -> bool {
+    crate::sys::pid_alive(pid)
+}
+
+// ─── duplicate / archive / validate ─────────────────────────────────────────
+
+/// `duplicate`: copy a task into Backlog.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "uniform command signature: every board command takes the Project by value"
+)]
+pub fn duplicate(layout: &Layout, project: Project, common: &Common, id: &str) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let mut project = Project::load(layout, &project.slug)?;
+    let board = Board::open(layout, project.clone())?;
+    let tasks = board.tasks()?;
+    let source = Board::find(&tasks, id)?.clone();
+    let new_id = project.reserve_id(layout)?;
+    let lane = order::lane(tasks.iter().filter(|task| task.status == Status::Backlog));
+
+    let mut task = Task::new(
+        new_id.clone(),
+        source.title.clone(),
+        Status::Backlog,
+        source.priority,
+        order::bottom_of(&lane),
+        common.now,
+    );
+    task.body.clone_from(&source.body);
+    task.labels.clone_from(&source.labels);
+    task.deps.clone_from(&source.deps);
+    // A duplicate is a new task by whoever duplicated it (UNI-59).
+    task.creator = Some(common.actor);
+    task.push_activity_session(
+        common.now,
+        common.actor,
+        common.tag(),
+        format!("duplicated from {id}"),
+    );
+    board.save(&task)?;
+    drop(lock);
+    Ok(task_json(&board, &task, &tasks, common.gate))
+}
+
+/// `archive-sweep`: archive old finished tasks and move old archived ones to cold storage.
+pub fn archive_sweep(
+    layout: &Layout,
+    project: Project,
+    after_days: i64,
+    retention_days: i64,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    if after_days <= 0 && retention_days <= 0 {
+        return Ok(
+            json!({ "archived": [], "cold": [], "skipped": "archiveAfterDays and retentionDays are 0 (off)" }),
+        );
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    let cutoff = now - Duration::days(after_days.max(0));
+    let mut archived = Vec::new();
+    if after_days > 0 {
+        for task in tasks.iter_mut().filter(|task| {
+            matches!(task.status, Status::Done | Status::Cancelled) && task.updated < cutoff
+        }) {
+            transitions::check(
+                task.status,
+                Status::Archived,
+                Actor::System,
+                None,
+                Staleness::Running,
+            )?;
+            task.status = Status::Archived;
+            task.push_activity(
+                now,
+                Actor::System,
+                format!("archived automatically after {after_days} days"),
+            );
+            board.save(task)?;
+            archived.push(task.id.clone());
+        }
+    }
+
+    // Retention: old Archived/Cancelled tasks move to cold/ — the file keeps
+    // its frozen status; dep lookups still resolve it.
+    let mut cold = Vec::new();
+    if retention_days > 0 {
+        let cold_cutoff = now - Duration::days(retention_days);
+        let dir = board.cold_dir();
+        for task in tasks.iter_mut().filter(|task| {
+            matches!(task.status, Status::Archived | Status::Cancelled)
+                && task.updated < cold_cutoff
+        }) {
+            task.push_activity(
+                now,
+                Actor::System,
+                format!("moved to cold storage after {retention_days} days"),
+            );
+            let target = board.cold_path(&task.id);
+            std::fs::create_dir_all(&dir)?;
+            // Write the final file (with the cold-storage note), then remove the live one.
+            store::write_atomic(&target, &format::render(task))?;
+            std::fs::remove_file(board.task_path(&task.id))?;
+            cold.push(task.id.clone());
+        }
+    }
+    drop(lock);
+    Ok(json!({ "archived": archived, "cold": cold }))
+}
+
+/// `validate` result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidateResult {
+    /// Problems found (after fixing, when `--fix`).
+    pub problems: Vec<crate::error::Problem>,
+    /// Files rewritten by `--fix`.
+    pub fixed: Vec<String>,
+}
+
+/// `validate [--fix]`: check every task file; `--fix` rewrites fixable files.
+pub fn validate(layout: &Layout, project: Project, fix: bool) -> Result<ValidateResult> {
+    let lock = if fix {
+        Some(layout.lock_board(&project.slug)?)
+    } else {
+        None
+    };
+    let board = Board::open(layout, project)?;
+    let (tasks, mut problems) = board.scan()?;
+
+    // Board-level rules.
+    let mut seen: Vec<&str> = Vec::new();
+    for task in &tasks {
+        if seen.contains(&task.id.as_str()) {
+            problems.push(crate::error::Problem::new(
+                board.task_path(&task.id).to_string_lossy(),
+                1,
+                format!("duplicate task id {}", task.id),
+            ));
+        } else {
+            seen.push(&task.id);
+        }
+    }
+    for task in &tasks {
+        for dep in &task.deps {
+            if !tasks.iter().any(|candidate| candidate.id == *dep) {
+                let path = board.task_path(&task.id);
+                let line = format::find_key_line(
+                    &std::fs::read_to_string(&path).unwrap_or_default(),
+                    "deps",
+                );
+                problems.push(crate::error::Problem::new(
+                    path.to_string_lossy(),
+                    line,
+                    format!("dependency {dep} does not exist (it blocks readiness forever)"),
+                ));
+            }
+        }
+    }
+    for id in deps::find_cycles(&tasks) {
+        problems.push(crate::error::Problem::new(
+            board.task_path(&id).to_string_lossy(),
+            1,
+            format!("dependency cycle through {id}"),
+        ));
+    }
+    for task in &tasks {
+        if task.status == Status::InProgress && task.run.is_none() {
+            problems.push(crate::error::Problem::new(
+                board.task_path(&task.id).to_string_lossy(),
+                1,
+                "in_progress without a run block (release it, or re-claim)",
+            ));
+        }
+        if task.status != Status::InProgress
+            && task.run.is_some()
+            && !(task.status == Status::Blocked
+                && task
+                    .run
+                    .as_ref()
+                    .is_some_and(|r| r.owner == RunOwner::Dispatcher))
+        {
+            problems.push(crate::error::Problem::new(
+                board.task_path(&task.id).to_string_lossy(),
+                1,
+                format!("run block present while status is {}", task.status),
+            ));
+        }
+    }
+
+    let mut fixed = Vec::new();
+    if fix {
+        let fixable: Vec<&crate::error::Problem> =
+            problems.iter().filter(|problem| problem.fixable).collect();
+        let fixable_files: Vec<String> =
+            fixable.iter().map(|problem| problem.file.clone()).collect();
+        for file in &fixable_files {
+            let path = layout.home.join(file);
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let (task, _) = format::parse(file, &text);
+            if let Some(task) = task {
+                std::fs::write(&path, format::render(&task))
+                    .map_err(|err| Error::Io(format!("cannot fix {}: {err}", path.display())))?;
+                fixed.push(task.id);
+            }
+        }
+        problems.retain(|problem| !problem.fixable);
+    }
+    drop(lock);
+
+    Ok(ValidateResult { problems, fixed })
+}
+
+// ─── read-only: next / chain / search ───────────────────────────────────────
+
+/// `next`: the ready todo task to work next (after a simulated reap) — pick it
+/// up with `start <ID>` — plus the reasons every todo task is waiting. Writes
+/// nothing.
+pub fn next(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    reap_dead(&board, &mut tasks, now, true);
+    let by_id = board.dep_lookup(&tasks);
+    let mut candidates: Vec<&Task> = tasks
+        .iter()
+        .filter(|task| deps::is_ready(task, &by_id, gate))
+        .collect();
+    candidates.sort_by(claim_sort);
+    let task = candidates
+        .first()
+        .map_or(Value::Null, |task| task_json(&board, task, &tasks, gate));
+    Ok(json!({ "task": task, "waiting": waiting_json(&by_id, &tasks, gate) }))
+}
+
+/// `chain <ID>`: transitive upstream deps and downstream dependents, with status.
+pub fn chain(layout: &Layout, project: Project, gate: ChainGate, id: &str) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let tasks = board.tasks()?;
+    let task = Board::find(&tasks, id)?;
+    let by_id = board.dep_lookup(&tasks);
+
+    // Upstream: BFS over this task's deps.
+    let mut upstream: Vec<String> = Vec::new();
+    let mut stack = task.deps.clone();
+    while let Some(current) = stack.pop() {
+        if upstream.contains(&current) {
+            continue;
+        }
+        upstream.push(current.clone());
+        if let Some(dep) = by_id(&current) {
+            stack.extend(dep.deps.iter().cloned());
+        }
+    }
+    // Downstream: every task whose transitive deps reach `id`.
+    let downstream: Vec<String> = tasks
+        .iter()
+        .filter(|candidate| {
+            candidate.id != task.id && {
+                let mut seen: Vec<String> = Vec::new();
+                let mut stack = candidate.deps.clone();
+                while let Some(current) = stack.pop() {
+                    if current == task.id {
+                        return true;
+                    }
+                    if seen.contains(&current) {
+                        continue;
+                    }
+                    seen.push(current.clone());
+                    if let Some(dep) = by_id(&current) {
+                        stack.extend(dep.deps.iter().cloned());
+                    }
+                }
+                false
+            }
+        })
+        .map(|candidate| candidate.id.clone())
+        .collect();
+
+    let describe = |wanted: &str| -> Value {
+        match by_id(wanted) {
+            Some(task) => json!({
+                "id": task.id,
+                "title": task.title,
+                "displayTitle": task.display_title(),
+                "status": task.status
+            }),
+            None => json!({"id": wanted, "status": "missing"}),
+        }
+    };
+    let _ = gate;
+    Ok(json!({
+        "id": task.id,
+        "title": task.title,
+        "displayTitle": task.display_title(),
+        "status": task.status,
+        "upstream": upstream.iter().map(|id| describe(id)).collect::<Vec<_>>(),
+        "downstream": downstream.iter().map(|id| describe(id)).collect::<Vec<_>>(),
+    }))
+}
+
+/// `search <text>`: case-insensitive match on id/title/body; archived excluded
+/// unless `all` is set.
+pub fn search(
+    layout: &Layout,
+    project: Project,
+    gate: ChainGate,
+    needle: &str,
+    all: bool,
+) -> Result<Value> {
+    let board = Board::open(layout, project)?;
+    let tasks = board.tasks()?;
+    let needle = needle.to_lowercase();
+    let items: Vec<Value> = tasks
+        .iter()
+        .filter(|task| all || task.status != Status::Archived)
+        .filter(|task| {
+            task.id.to_lowercase().contains(&needle)
+                || task.title.to_lowercase().contains(&needle)
+                || task.body.to_lowercase().contains(&needle)
+        })
+        .map(|task| task_json(&board, task, &tasks, gate))
+        .collect();
+    Ok(json!({ "tasks": items }))
+}
+
+// ─── in-process status (round 5, #7) ───────────────────────────────────────
+
+/// `status`: what the agent needs to see the board is reachable — where the
+/// files live and which projects exist (the daemon health check, in-process
+/// now: `ok` means reads and writes are possible).
+pub fn board_status(layout: &Layout) -> Result<Value> {
+    let projects = layout.list_projects()?;
+    let binary = std::env::current_exe()
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned());
+    Ok(json!({
+        "ok": true,
+        "home": layout.home.to_string_lossy(),
+        "binary": binary,
+        "hostname": hostname(),
+        "projects": projects.iter().map(|project| json!({
+            "slug": project.slug,
+            "name": project.name,
+            "prefix": project.prefix,
+            "root": project.root.to_string_lossy(),
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+/// `POST /api/projects/{slug}/archive-lane`: every task currently in `status`
+/// (done, `in_review` or cancelled) → Archived, under one board lock. User-actor moves.
+pub fn archive_lane(
+    layout: &Layout,
+    project: Project,
+    status: Status,
+    now: DateTime<Utc>,
+) -> Result<Value> {
+    if !matches!(status, Status::Done | Status::InReview | Status::Cancelled) {
+        return Err(Error::usage(
+            "archive-lane accepts status done, in_review or cancelled",
+        ));
+    }
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    let mut archived = Vec::new();
+    let mut skipped = Vec::new();
+    for task in tasks.iter_mut().filter(|task| task.status == status) {
+        match transitions::check(
+            task.status,
+            Status::Archived,
+            Actor::User,
+            None,
+            Staleness::Running,
+        ) {
+            Ok(()) => {
+                task.status = Status::Archived;
+                task.run = None;
+                task.push_activity(now, Actor::User, format!("archived from {status} (bulk)"));
+                board.save(task)?;
+                archived.push(task.id.clone());
+            }
+            Err(_) => skipped.push(task.id.clone()),
+        }
+    }
+    drop(lock);
+    Ok(json!({ "archived": archived, "skipped": skipped }))
+}
+
+/// Move every `in_review` task to `done` in one bulk pass (the review lane's
+/// "Done all" button). Actor `user` satisfies the transition table.
+pub fn review_done(layout: &Layout, project: Project, now: DateTime<Utc>) -> Result<Value> {
+    let lock = layout.lock_board(&project.slug)?;
+    let board = Board::open(layout, project)?;
+    let mut tasks = board.tasks()?;
+    let mut moved = Vec::new();
+    for task in tasks
+        .iter_mut()
+        .filter(|task| task.status == Status::InReview)
+    {
+        task.status = Status::Done;
+        task.push_activity(
+            now,
+            Actor::User,
+            "moved in_review → done (bulk)".to_string(),
+        );
+        board.save(task)?;
+        moved.push(task.id.clone());
+    }
+    drop(lock);
+    Ok(json!({ "moved": moved }))
+}

@@ -1,0 +1,203 @@
+import { describe, expect, it } from 'vitest';
+import { allCommands, isKnownCommand, rankSkills, applyAt, atQuery, rankCommands, slashQuery } from './commands';
+
+const cmds = [
+  { name: 'model', source: 'builtin' as const },
+  { name: 'compact', source: 'builtin' as const },
+  { name: 'unipi:goal', description: 'Set a goal', source: 'extension' as const },
+  { name: 'unipi:kanboard-do', source: 'extension' as const },
+  { name: 'skill:find-docs', source: 'skill' as const },
+  { name: 'skill:apply-docs', source: 'skill' as const },
+  { name: 'release-notes', source: 'prompt' as const },
+];
+
+describe('slash commands', () => {
+  it('detects /query only as the first word', () => {
+    expect(slashQuery('/un', 3)).toEqual({ start: 0, query: 'un' });
+    expect(slashQuery('  /', 3)).toEqual({ start: 2, query: '' });
+    expect(slashQuery('hi /un', 6)).toBeNull();
+    expect(slashQuery('/a b', 4)).toBeNull();
+    expect(slashQuery('see https://x/y', 15)).toBeNull();
+  });
+  it('ranks prefix, word prefix, substring, subsequence', () => {
+    expect(rankCommands(cmds, 'go').map((c) => c.name)).toEqual(['unipi:goal']);
+    expect(rankCommands(cmds, 'kb').map((c) => c.name)).toEqual(['unipi:kanboard-do']);
+    expect(rankCommands(cmds, 'c')[0]!.name).toBe('compact');
+    expect(rankCommands(cmds, '').length).toBe(7);
+    expect(rankCommands(cmds, 'zzz')).toEqual([]);
+  });
+  it('ties (same score) sort by source group — builtin, extension, prompt, skill — then alphabetically within a group', () => {
+    // An empty query scores every command 0: group order + name alone decide.
+    expect(rankCommands(cmds, '').map((c) => `${c.source}:${c.name}`)).toEqual([
+      'builtin:compact',
+      'builtin:model',
+      'extension:unipi:goal',
+      'extension:unipi:kanboard-do',
+      'prompt:release-notes',
+      'skill:skill:apply-docs',
+      'skill:skill:find-docs',
+    ]);
+  });
+});
+
+describe('@ files', () => {
+  it('finds the @query at the caret only when @ starts a token', () => {
+    expect(atQuery('look at @src/ch', 15)).toEqual({ start: 8, query: 'src/ch' });
+    expect(atQuery('@', 1)).toEqual({ start: 0, query: '' });
+    expect(atQuery('mail me@home', 12)).toBeNull();
+    expect(atQuery('see @src now', 12)).toBeNull();
+    expect(atQuery('open @"my dir/no', 16)).toEqual({ start: 5, query: '"my dir/no' });
+  });
+  it('replaces the query: files get a space, directories keep going', () => {
+    const t = 'look at @ch please';
+    const at = atQuery(t, 11)!;
+    expect(applyAt(t, 11, at, '@src/chat/ChatView.tsx', false)).toEqual({ text: 'look at @src/chat/ChatView.tsx please', caret: 31 });
+    expect(applyAt('@sr', 3, { start: 0 }, '@src/', true)).toEqual({ text: '@src/', caret: 5 });
+    // quoted directory: the caret stays inside the quotes
+    expect(applyAt('@my', 3, { start: 0 }, '@"my dir/"', true)).toEqual({ text: '@"my dir/"', caret: 9 });
+    // then a file inside it replaces the whole quoted token
+    expect(applyAt('@"my dir/"', 9, { start: 0 }, '@"my dir/notes.md"', false)).toEqual({ text: '@"my dir/notes.md" ', caret: 19 });
+  });
+});
+
+describe('UNI-276: every command is suggested', () => {
+  it('adds pi built-ins the session list lacks; a same-named extension command wins', async () => {
+    const { allCommands, PI_BUILTINS, guiHiddenCommand } = await import('./commands');
+    const session = [
+      { name: 'model', source: 'builtin' as const },
+      { name: 'name', description: 'mine', source: 'extension' as const },
+    ];
+    const all = allCommands(session);
+    expect(all.filter((c) => c.name === 'name')).toEqual([{ name: 'name', description: 'mine', source: 'extension' }]);
+    const hidden = PI_BUILTINS.filter((c) => (Array.isArray(c.surfaces) && !(c.surfaces as string[]).includes('gui')) || guiHiddenCommand(c.name)).length;
+    // `model` (session) is GUI-hidden too; `name` replaces the built-in.
+    expect(all.length).toBe(session.length - 1 + PI_BUILTINS.length - 2 - hidden + 1);
+    expect(all.some((c) => c.name === 'settings')).toBe(true);
+  });
+});
+
+describe('[gui-cleanup] commands meant for the terminal only', () => {
+  const session = [
+    { name: 'answer', description: 'Answer the last reply', source: 'extension', surfaces: ['tui'] },
+    { name: 'doctor', description: 'Check the runtime', source: 'extension' },
+    { name: 'gui-only', source: 'extension', surfaces: ['gui'] },
+  ];
+  it('stay out of the / menu (extension rows by their surfaces; the dead /share built-in)', async () => {
+    const { allCommands, rankCommands } = await import('./commands');
+    const names = allCommands(session).map((c) => c.name);
+    expect(names).not.toContain('answer');
+    expect(names).not.toContain('share');
+    // OIN-101: /trust and /mcp open Settings › MCP on the chat's project.
+    expect(names).toContain('trust');
+    expect(names).toContain('mcp');
+    // Owner 2026-11-05: terminal-era commands the app has UI for stay out of `/` (the plug menu has them).
+    expect(names).not.toContain('doctor');
+    expect(names).toContain('gui-only');
+    expect(rankCommands(allCommands(session), 'ans').map((c) => c.name)).not.toContain('answer');
+  });
+  it('still run when typed (known, never sent as a prompt)', async () => {
+    const { isKnownCommand, isAppBuiltin } = await import('./commands');
+    expect(isKnownCommand('doctor', session)).toBe(true);
+    expect(isKnownCommand('answer', session)).toBe(true);
+    expect(isKnownCommand('trust', session)).toBe(true);
+    expect(isAppBuiltin('share', session)).toBe(true);
+  });
+  it('shownInMenu: absent = every client, a list must name gui', async () => {
+    const { shownInMenu } = await import('./commands');
+    expect(shownInMenu({ name: 'a' })).toBe(true);
+    expect(shownInMenu({ name: 'a', surfaces: ['gui', 'tui'] })).toBe(true);
+    expect(shownInMenu({ name: 'a', surfaces: ['tui'] })).toBe(false);
+    expect(shownInMenu({ name: 'a', surfaces: 'tui' })).toBe(true);
+  });
+});
+
+describe('OIN-19: a prompt template never shadows a built-in', () => {
+  it('/compact stays the app built-in next to a project prompts/compact.md; an extension command still takes it over', async () => {
+    const { isAppBuiltin } = await import('./commands');
+    expect(isAppBuiltin('compact', [{ name: 'compact', description: 'You are a context summarization assistant…', source: 'prompt' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'skill' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'builtin' }])).toBe(true);
+    expect(isAppBuiltin('compact', [{ name: 'compact', source: 'extension' }])).toBe(false);
+    expect(isAppBuiltin('compact', [{ name: 'compact' }])).toBe(false);
+  });
+});
+
+describe('UNI-308 / WP-A25: every PI_BUILTINS entry has an app surface', () => {
+  it('APP_HANDLED_BUILTINS \u222a BUILTIN_ROUTES covers exactly PI_BUILTINS \u2014 none falls through to a prompt', async () => {
+    const { APP_HANDLED_BUILTINS, PI_BUILTINS } = await import('./commands');
+    const { routedBuiltinNames } = await import('../composer/builtins');
+    const union = new Set([...APP_HANDLED_BUILTINS, ...routedBuiltinNames()]);
+    for (const c of PI_BUILTINS) expect(union.has(c.name)).toBe(true);
+    expect(union.size).toBe(PI_BUILTINS.length);
+  });
+});
+
+describe('UNI-308: isKnownCommand', () => {
+  it('a session command (extension/prompt/skill) is known even if not in PI_BUILTINS', async () => {
+    const { isKnownCommand } = await import('./commands');
+    expect(isKnownCommand('unipi:goal', cmds)).toBe(true);
+    expect(isKnownCommand('skill:find-docs', cmds)).toBe(true);
+    expect(isKnownCommand('release-notes', cmds)).toBe(true);
+  });
+  it('a pi built-in is known (routed or app-handled)', async () => {
+    const { isKnownCommand } = await import('./commands');
+    expect(isKnownCommand('compact', cmds)).toBe(true);
+    // `/reload` reads everything back from disk (`reload` on the session stream).
+    expect(isKnownCommand('reload', cmds)).toBe(true);
+    expect(isKnownCommand('settings', cmds)).toBe(true);
+  });
+  it('anything else is unknown', async () => {
+    const { isKnownCommand } = await import('./commands');
+    expect(isKnownCommand('made-up-command', cmds)).toBe(false);
+  });
+});
+
+describe('UNI-276: argument position', () => {
+  it('argQuery finds `/cmd <prefix>` on one line only', async () => {
+    const { argQuery } = await import('./commands');
+    expect(argQuery('/unipi:dream st', 15)).toEqual({ command: 'unipi:dream', start: 13, prefix: 'st' });
+    expect(argQuery('/unipi:dream ', 13)).toEqual({ command: 'unipi:dream', start: 13, prefix: '' });
+    expect(argQuery('/unipi:dream', 12)).toBeNull();
+    expect(argQuery('hi /x y', 7)).toBeNull();
+    expect(argQuery('/x a\nb', 6)).toBeNull();
+  });
+
+  it("wantsArgCompletions (UNI-304): extension commands and skills (/skill:name) are worth asking; prompts and builtins aren't (/model etc. have their own UI)", async () => {
+    const { wantsArgCompletions } = await import('./commands');
+    expect(wantsArgCompletions('extension')).toBe(true);
+    expect(wantsArgCompletions('skill')).toBe(true);
+    expect(wantsArgCompletions('prompt')).toBe(false);
+    expect(wantsArgCompletions('builtin')).toBe(false);
+  });
+});
+
+describe('skillQuery / applySkill (owner spec 2026-11-03)', () => {
+  it('opens on $ at the start, after whitespace or a bracket; never on prices or inside words', async () => {
+    const { skillQuery, applySkill } = await import('./commands');
+    expect(skillQuery('$', 1)).toEqual({ start: 0, query: '' });
+    expect(skillQuery('fix with $rev', 13)).toEqual({ start: 9, query: 'rev' });
+    expect(skillQuery('(see $pdf', 9)).toEqual({ start: 5, query: 'pdf' });
+    expect(skillQuery('costs $5', 8)).toBeNull();
+    expect(skillQuery('a$b', 3)).toBeNull();
+    expect(skillQuery('$review done', 12)).toBeNull();
+    expect(applySkill('fix with $rev now', 13, { start: 9 }, 'review')).toEqual({ text: 'fix with $review now', caret: 17 });
+  });
+});
+
+it('OIN-101 D7 exact /mcp outranks /mcp-reload', () => {
+  expect(rankCommands([
+    { name: 'mcp-reload', description: 'Reload', source: 'extension' },
+    { name: 'mcp', description: 'Settings', source: 'builtin' },
+  ], 'mcp')[0]!.name).toBe('mcp');
+});
+
+describe('board scope menus', () => {
+  it('hides absent/archived board commands and skill, but accepts typed commands', () => {
+    const commands = ['kanboard', 'kanboard-add', 'skill:kanboard'].map((name) => ({ name, source: 'extension' as const, surfaces: [] }));
+    expect(allCommands(commands).some((c) => c.name.includes('kanboard'))).toBe(false);
+    expect(rankSkills(commands, '')).toEqual([]);
+    expect(isKnownCommand('kanboard', commands)).toBe(true);
+    expect(isKnownCommand('kanboard-add', commands)).toBe(true);
+    expect(allCommands(commands.map((c) => ({ ...c, surfaces: undefined }))).filter((c) => c.name.includes('kanboard'))).toHaveLength(3);
+  });
+});

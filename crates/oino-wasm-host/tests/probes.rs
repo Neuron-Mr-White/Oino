@@ -1,0 +1,626 @@
+#![allow(clippy::print_stderr, reason = "diagnostic test timing output")]
+//! ui-probe, async-probe and provider-faux fixtures: UI round trips, concurrency, deadlines,
+//! cancellation, services between instances, bus, tasks, traps and provider streaming.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::too_many_lines,
+    reason = "tests assert by unwrapping"
+)]
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use futures::StreamExt;
+use oino_extension_api::{
+    CallKind, CancellationToken, EventKind, ExtensionInstance, InitInput, RawJson, ToolInvocation,
+};
+use oino_wasm_host::testing::Harness;
+use serde_json::{Value, json};
+
+fn inv(name: &str, id: &str) -> ToolInvocation {
+    ToolInvocation {
+        tool_call_id: id.into(),
+        name: name.into(),
+        args: RawJson::from(json!({})),
+        parent_tool_call_id: None,
+    }
+}
+
+/// Collects the `t` tags of every node in `value`.
+fn kinds(value: &Value, out: &mut std::collections::BTreeSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(t) = map.get("t").and_then(Value::as_str) {
+                out.insert(t.to_owned());
+            }
+            map.values().for_each(|v| kinds(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| kinds(v, out)),
+        _ => {}
+    }
+}
+
+async fn loaded(h: &Harness, name: &str) -> Arc<dyn ExtensionInstance> {
+    let ext = h.load(name, None).await.unwrap();
+    ext.init(InitInput::default(), h.cx("s1", CallKind::Init))
+        .await
+        .unwrap();
+    ext
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ui_probe_round_trips_every_request() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "ui-probe").await;
+    for i in 0..8 {
+        h.host
+            .queue_dialog_answer(json!({"value": format!("a{i}")}));
+    }
+    h.host.queue_dialog_answer(json!({"confirmed": true}));
+    let out = ext
+        .run_command(
+            "ui-probe",
+            "",
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Command),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .to_value();
+    assert_eq!(out["answers"].as_array().unwrap().len(), 8);
+    assert_eq!(out["answers"][7]["value"], "a7");
+    assert_eq!(out["editor"], "draft!");
+    assert_eq!(out["confirmed"], true);
+    assert_eq!(out["panel"], "panel-1");
+    let dialogs: Vec<String> = h
+        .host
+        .calls_named("ui_dialog")
+        .iter()
+        .map(|c| c.detail["method"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        &dialogs[..8],
+        [
+            "select",
+            "confirm",
+            "input",
+            "editor",
+            "multiSelect",
+            "form",
+            "approval",
+            "custom"
+        ]
+    );
+    let panels = h.host.calls_named("ui_panel");
+    // One entry per panel slot (§6.2), each opened, tree-updated and closed.
+    let slots: std::collections::BTreeSet<String> = panels
+        .iter()
+        .filter_map(|c| c.detail["open"]["placement"].as_str().map(str::to_owned))
+        .collect();
+    assert_eq!(
+        slots,
+        [
+            "overlay",
+            "sidePane",
+            "bottomPane",
+            "editorReplace",
+            "fullscreen"
+        ]
+        .map(str::to_owned)
+        .into_iter()
+        .collect()
+    );
+    assert!(
+        panels
+            .iter()
+            .any(|c| c.detail["open"]["spec"]["t"] == "Layout"),
+        "the probe opens a node tree"
+    );
+    // Every node kind of §4.5 appears in an opened or updated spec.
+    let mut found = std::collections::BTreeSet::new();
+    for call in &panels {
+        kinds(&call.detail, &mut found);
+    }
+    for expected in [
+        "Block",
+        "Paragraph",
+        "Layout",
+        "List",
+        "Table",
+        "Tabs",
+        "Gauge",
+        "LineGauge",
+        "Sparkline",
+        "BarChart",
+        "Chart",
+        "Scrollbar",
+        "Markdown",
+        "Code",
+        "Diff",
+        "Image",
+        "Log",
+        "Tree",
+        "KeyHints",
+        "Input",
+        "Toggle",
+        "Select",
+        "Button",
+        "Spinner",
+        "Empty",
+    ] {
+        assert!(found.contains(expected), "ui-probe never sends {expected}");
+    }
+    // Every non-panel slot: widget (both placements), status, header, footer.
+    let fires = h.host.calls_named("ui_fire");
+    let methods: Vec<&str> = fires
+        .iter()
+        .filter_map(|c| c.detail["method"].as_str())
+        .collect();
+    for method in ["setWidget", "setStatus", "setHeader", "setFooter"] {
+        assert!(methods.contains(&method), "ui-probe never fires {method}");
+    }
+    assert!(
+        fires
+            .iter()
+            .any(|c| c.detail["widgetPlacement"] == json!("belowEditor")
+                && c.detail["widgetSpec"]["t"] == json!("Layout")),
+        "the widget slot carries a node tree"
+    );
+    assert_eq!(h.host.calls_named("ui_device").len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tool_waits_on_dialog_while_events_run() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "async-probe").await;
+    let e2 = Arc::clone(&ext);
+    let cx = h.cx("s1", CallKind::Tool);
+    let tool = tokio::spawn(async move {
+        e2.run_tool(inv("wait_dialog", "t1"), CancellationToken::new(), cx)
+            .await
+    });
+    for _ in 0..100 {
+        if h.host.pending_dialogs() == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(h.host.pending_dialogs(), 1);
+    for _ in 0..3 {
+        ext.on_event(
+            EventKind::TurnStart,
+            RawJson::from(json!({"type": "turn_start"})),
+            h.cx("s1", CallKind::Event),
+        )
+        .await
+        .unwrap();
+    }
+    assert!(h.host.answer_pending_dialog(json!({"confirmed": true})));
+    let result = tool.await.unwrap().unwrap().to_value();
+    assert_eq!(result["details"]["eventsDuring"], 3);
+    assert_eq!(result["details"]["answer"]["confirmed"], true);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deadlines_cancellation_and_trap_restart() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "async-probe").await;
+    let started = std::time::Instant::now();
+    let err = ext
+        .on_event(
+            EventKind::AgentStart,
+            RawJson::from(json!({"type": "agent_start"})),
+            h.cx("s1", CallKind::Event),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("timed out"), "{err:?}");
+    assert!(started.elapsed() < Duration::from_millis(1500));
+
+    let token = CancellationToken::new();
+    let e2 = Arc::clone(&ext);
+    let (t2, cx) = (token.clone(), h.cx("s1", CallKind::Tool));
+    let call = tokio::spawn(async move { e2.run_tool(inv("wait_cancel", "t2"), t2, cx).await });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    token.cancel();
+    assert_eq!(
+        call.await.unwrap().unwrap().to_value()["content"][0]["text"],
+        "cancelled"
+    );
+
+    ext.on_event(
+        EventKind::TurnStart,
+        RawJson::from(json!({"type": "turn_start"})),
+        h.cx("s1", CallKind::Event),
+    )
+    .await
+    .unwrap();
+    let err = ext
+        .run_tool(
+            inv("crash", "t3"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.trap, "{err:?}");
+    // Restarted lazily with init replayed: state reset, tools still served.
+    let count = ext
+        .run_tool(
+            inv("count", "t4"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        )
+        .await
+        .unwrap();
+    assert_eq!(count.to_value()["content"][0]["text"], "0");
+    for i in 0..3 {
+        let _ = ext
+            .run_tool(
+                inv("crash", &format!("c{i}")),
+                CancellationToken::new(),
+                h.cx("s1", CallKind::Tool),
+            )
+            .await;
+    }
+    let err = ext
+        .run_tool(
+            inv("count", "t5"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("disabled"), "{err:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn services_bus_and_tasks_between_instances() {
+    let h = Harness::new().unwrap();
+    // Decision E: authorize this harmless shell fixture explicitly; grants alone
+    // must not authorize task-service execution.
+    h.host
+        .allow_process_command(if cfg!(windows) { "cmd" } else { "sh" });
+    let a = loaded(&h, "async-probe").await;
+    let echo = loaded(&h, "echo").await;
+    let cmd = |ext: &Arc<dyn ExtensionInstance>, args: &str| {
+        let ext = Arc::clone(ext);
+        let (args, cx) = (args.to_owned(), h.cx("s1", CallKind::Command));
+        async move {
+            ext.run_command(
+                args.split_once(' ').map_or(args.as_str(), |p| p.0),
+                args.split_once(' ').map_or("", |p| p.1),
+                CancellationToken::new(),
+                cx,
+            )
+            .await
+        }
+    };
+    // async-probe → echo's service, and echo → async-probe's `add`.
+    let out = cmd(&a, "call oino.fixture.echo echo.ping")
+        .await
+        .unwrap()
+        .unwrap()
+        .to_value();
+    assert_eq!(out["pong"], json!({"a": 2, "b": 3}));
+    assert_eq!(out["caller"], "oino.fixture.async-probe");
+    let out = cmd(&a, "call  add").await.unwrap().unwrap().to_value();
+    assert_eq!(out, json!(5));
+    let probe = format!(
+        "probe service {}",
+        json!({"name": "add", "payload": {"a": 40, "b": 2}})
+    );
+    let out = cmd(&echo, &probe).await.unwrap().unwrap().to_value();
+    assert_eq!(out["ok"], json!(42));
+    let missing = format!("probe service {}", json!({"name": "nope", "payload": null}));
+    assert!(
+        cmd(&echo, &missing).await.unwrap().unwrap().to_value()["err"]
+            .as_str()
+            .unwrap()
+            .contains("not found")
+    );
+
+    cmd(&a, "bus sub news:*").await.unwrap();
+    let publish = format!(
+        "probe bus-publish {}",
+        json!({"topic": "news:x", "data": {"n": 1}})
+    );
+    cmd(&echo, &publish).await.unwrap();
+    let mut seen = false;
+    for _ in 0..100 {
+        if h.host
+            .entries()
+            .iter()
+            .any(|e| e["customType"] == "async.bus" && e["data"]["topic"] == "news:x")
+        {
+            seen = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(seen, "{:?}", h.host.entries());
+
+    let id = cmd(&a, "task echo done; exit 3")
+        .await
+        .unwrap()
+        .unwrap()
+        .to_value();
+    assert!(id.is_string());
+    let mut notified = false;
+    let mut task_event = false;
+    let mut message = false;
+    for _ in 0..300 {
+        task_event = h
+            .host
+            .entries()
+            .iter()
+            .any(|e| e["customType"] == "async.task" && e["data"]["exitCode"] == 3);
+        message = h.host.calls_named("session_write").iter().any(|c| {
+            c.detail["sendMessage"]["customType"] == "background-task-notification"
+                && c.detail["options"]["deliverAs"] == "followUp"
+        });
+        if task_event && message {
+            notified = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        notified,
+        "task_entry={task_event} message={message} writes={:?}",
+        h.host.calls_named("session_write")
+    );
+}
+
+/// `fs.agentDir: read` gives guests `~/.oino/mcp.json` as `/agent/mcp.json` and nothing
+/// else from the agent dir (integration spec R1).
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_preopen_exposes_pi_mcp_json_only() {
+    let h = Harness::new().unwrap();
+    std::fs::write(
+        h.agent_dir.path().join("mcp.json"),
+        r#"{"mcpServers":{"local":{"command":"echo"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(h.agent_dir.path().join("auth.json"), "{}").unwrap();
+    std::fs::write(h.agent_dir.path().join("secrets.json"), "{}").unwrap();
+    let echo = loaded(&h, "echo").await;
+    let out = echo
+        .run_command(
+            "probe",
+            "agent-config",
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Command),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .to_value();
+    let out = &out["ok"];
+    assert!(
+        out["mcp"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("mcpServers"),
+        "{out}"
+    );
+    assert_eq!(out["unreadable"], json!(2), "{out}");
+    assert!(
+        out["preopens"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("agent")),
+        "{out}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn provider_faux_streams_script() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "provider-faux").await;
+    assert!(
+        h.host
+            .calls_named("register_provider")
+            .iter()
+            .any(|c| c.detail["id"] == "faux")
+    );
+    let provider = ext.provider().unwrap();
+    let models = provider.list_models("faux", None).await.unwrap();
+    assert_eq!(models[0].id, "faux-1");
+    let request = json!({"requestId": "r1", "model": {"id": "faux-1", "api": "faux", "provider": "faux"}, "context": {"messages": []},
+        "options": {"metadata": {"fauxScript": [{"text": "a"}, {"toolCall": {"id": "c1", "name": "echo", "arguments": {"text": "x"}}}]}}});
+    let events: Vec<Value> = provider
+        .stream(RawJson::from(request))
+        .await
+        .unwrap()
+        .map(|e| serde_json::to_value(e.unwrap()).unwrap())
+        .collect()
+        .await;
+    let types: Vec<&str> = events.iter().map(|e| e["type"].as_str().unwrap()).collect();
+    assert_eq!(
+        types,
+        [
+            "start",
+            "text_start",
+            "text_delta",
+            "text_end",
+            "toolcall_start",
+            "toolcall_end",
+            "done"
+        ]
+    );
+    assert_eq!(events[6]["reason"], "toolUse");
+    let err = provider
+        .stream(RawJson::from(json!({"requestId": "r2", "model": {}, "options": {"metadata": {"fauxScript": [{"error": "boom"}]}}})))
+        .await
+        .unwrap()
+        .map(|e| serde_json::to_value(e.unwrap()).unwrap())
+        .collect::<Vec<_>>()
+        .await;
+    assert_eq!(err.last().unwrap()["type"], "error");
+    // provider-host hooks reached HostServices::provider_hook (recorder passes through).
+    let default = provider
+        .stream(RawJson::from(json!({"requestId": "r3", "model": {}})))
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert_eq!(default.len(), 5);
+}
+
+// Saturate both the bounded inbox and the in-flight limit with real guest calls,
+// then dispose the store while calls are pending. Every waiter must terminate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn saturated_actor_shutdown_releases_all_waiters_and_wakes() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "async-probe").await;
+    let mut jobs = Vec::new();
+    for i in 0..80 {
+        let ext = ext.clone();
+        let cx = h.cx("s1", CallKind::Tool);
+        jobs.push(tokio::spawn(async move {
+            ext.run_tool(
+                inv("wait_cancel", &format!("sat-{i}")),
+                CancellationToken::new(),
+                cx,
+            )
+            .await
+        }));
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::timeout(Duration::from_secs(8), ext.shutdown("saturation-test"))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        for job in jobs {
+            let _ = job.await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    let result = ext
+        .run_tool(
+            inv("count", "awake"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.to_value()["content"][0]["text"], "0");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abandoning_call_cancels_store_instead_of_retaining_guest_work() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "async-probe").await;
+    // Set state in the current instance, then abandon an in-flight export.
+    ext.on_event(
+        EventKind::TurnStart,
+        RawJson::from(json!({})),
+        h.cx("s1", CallKind::Event),
+    )
+    .await
+    .unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_millis(30),
+        ext.run_tool(
+            inv("wait_cancel", "abandon"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        ),
+    )
+    .await;
+    assert!(result.is_err());
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        ext.run_tool(
+            inv("count", "fresh"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(result.to_value()["content"][0]["text"], "0");
+}
+
+/// A CPU-bound guest never awaits an import. Dropping the result-bearing call
+/// must interrupt it at an epoch tick, then allow a clean store restart.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cpu_spin_guest_is_cancelled_and_store_restarts() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "panic-probe").await;
+    let start = std::time::Instant::now();
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            ext.on_event(
+                EventKind::ToolCall,
+                RawJson::from(json!({"type":"tool_call", "toolName":"spin"})),
+                h.cx("s1", CallKind::Event),
+            )
+        )
+        .await
+        .is_err()
+    );
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        ext.on_event(
+            EventKind::ToolCall,
+            RawJson::from(json!({"type":"tool_call", "toolName":"after-spin"})),
+            h.cx("s1", CallKind::Event),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    eprintln!(
+        "cpu_spin_cancel_and_restart_ms={}",
+        start.elapsed().as_millis()
+    );
+    assert!(start.elapsed() < Duration::from_secs(3));
+    assert_eq!(h.host.calls_named("session_write").len(), 1);
+}
+
+/// Replay deliberately takes 400 ms, twice the probe's 200 ms event budget.
+#[tokio::test(flavor = "multi_thread")]
+async fn hibernated_event_gets_its_full_budget_after_replay() {
+    let h = Harness::new().unwrap();
+    let ext = loaded(&h, "async-probe").await;
+    ext.on_event(
+        EventKind::SessionStart,
+        json!({"type":"session_start"}).into(),
+        h.cx("s1", CallKind::Event),
+    )
+    .await
+    .unwrap();
+    ext.shutdown("hibernate").await;
+    let started = std::time::Instant::now();
+    ext.on_event(
+        EventKind::TurnStart,
+        json!({"type":"turn_start"}).into(),
+        h.cx("s1", CallKind::Event),
+    )
+    .await
+    .unwrap();
+    eprintln!(
+        "hibernated turn_start completed in {} ms (replay 400 ms; handler budget 200 ms)",
+        started.elapsed().as_millis()
+    );
+    assert!(started.elapsed() >= Duration::from_millis(400));
+    let count = ext
+        .run_tool(
+            inv("count", "after-wake"),
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Tool),
+        )
+        .await
+        .unwrap()
+        .to_value();
+    assert_eq!(count["content"][0]["text"], "1");
+}

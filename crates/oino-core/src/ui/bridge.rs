@@ -1,0 +1,700 @@
+//! Dialog protocol and one-shot effects (ui-protocol.md §2–§4).
+//!
+//! Extensions raise dialogs (`select`, `confirm`, `input`, `editor`, Oino dialogs) and
+//! fire-and-forget updates (`notify`, `setStatus`, `setWidget`, …). The bridge publishes the
+//! legacy `extension_ui_request` records, resolves dialogs with the first valid
+//! `extension_ui_response` (or the default on timeout / cancel / no UI), and broadcasts
+//! `extension_ui_dismiss`. Retained producer calls are also mirrored into the
+//! [`super::registry::UiRegistry`] (§6); the v1 `retained` replay here feeds v1
+//! frontends until the TUI renderer (WP-U4) and `oino-view` (WP-U5) move to the registry.
+//!
+//! Wire types live in `oino_ui::slot`; this module keeps the request/response records
+//! byte-for-byte (D-U1).
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
+
+use indexmap::IndexMap;
+use oino_ai::{JsonObject, JsonValue};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
+
+/// `extension_ui_request`: `{type, id, method, …fields, extensionId?, sessionId?}`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiRequest {
+    /// Request id (UUID v4).
+    pub id: String,
+    /// Method name (`select`, `setStatus`, …).
+    pub method: String,
+    /// Method fields (wire names).
+    pub params: JsonObject,
+    /// Owning extension (Oino).
+    pub extension_id: Option<String>,
+    /// Session (Oino).
+    pub session_id: Option<String>,
+}
+
+impl Serialize for UiRequest {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("type", "extension_ui_request")?;
+        map.serialize_entry("id", &self.id)?;
+        map.serialize_entry("method", &self.method)?;
+        for (key, value) in &self.params {
+            map.serialize_entry(key, value)?;
+        }
+        if let Some(extension) = &self.extension_id {
+            map.serialize_entry("extensionId", extension)?;
+        }
+        if let Some(session) = &self.session_id {
+            map.serialize_entry("sessionId", session)?;
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for UiRequest {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut object = JsonObject::deserialize(deserializer)?;
+        if object.get("type").and_then(JsonValue::as_str) != Some("extension_ui_request") {
+            return Err(serde::de::Error::custom("not an extension_ui_request"));
+        }
+        object.shift_remove("type");
+        let take_string = |object: &mut JsonObject, key: &str| {
+            object
+                .shift_remove(key)
+                .and_then(|v| v.as_str().map(str::to_owned))
+        };
+        let id =
+            take_string(&mut object, "id").ok_or_else(|| serde::de::Error::missing_field("id"))?;
+        let method = take_string(&mut object, "method")
+            .ok_or_else(|| serde::de::Error::missing_field("method"))?;
+        let extension_id = take_string(&mut object, "extensionId");
+        let session_id = take_string(&mut object, "sessionId");
+        Ok(Self {
+            id,
+            method,
+            params: object,
+            extension_id,
+            session_id,
+        })
+    }
+}
+
+/// Answer of a dialog (wire response forms).
+#[derive(Clone, Debug, PartialEq)]
+pub enum UiAnswer {
+    /// `{value}`.
+    Value(JsonValue),
+    /// `{confirmed}`.
+    Confirmed(bool),
+    /// `{cancelled: true}` (also the result of timeouts and missing UI).
+    Cancelled,
+}
+
+/// `extension_ui_response` from a frontend.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiResponse {
+    /// Request id.
+    pub id: String,
+    /// Answer.
+    pub answer: UiAnswer,
+}
+
+impl Serialize for UiResponse {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("type", "extension_ui_response")?;
+        map.serialize_entry("id", &self.id)?;
+        match &self.answer {
+            UiAnswer::Value(value) => map.serialize_entry("value", value)?,
+            UiAnswer::Confirmed(confirmed) => map.serialize_entry("confirmed", confirmed)?,
+            UiAnswer::Cancelled => map.serialize_entry("cancelled", &true)?,
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for UiResponse {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let object = JsonObject::deserialize(deserializer)?;
+        let id = object
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("id"))?
+            .to_owned();
+        let answer = if object.get("cancelled") == Some(&JsonValue::Bool(true)) {
+            UiAnswer::Cancelled
+        } else if let Some(confirmed) = object.get("confirmed").and_then(JsonValue::as_bool) {
+            UiAnswer::Confirmed(confirmed)
+        } else if let Some(value) = object.get("value") {
+            UiAnswer::Value(value.clone())
+        } else {
+            UiAnswer::Cancelled
+        };
+        Ok(Self { id, answer })
+    }
+}
+
+/// Why a dialog closed (`extension_ui_dismiss.reason`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DismissReason {
+    /// A frontend answered.
+    Answered,
+    /// The timeout expired.
+    Timeout,
+    /// The caller cancelled.
+    Cancelled,
+}
+
+impl UiRequest {
+    /// The registry form of this request (`UiSnapshot.dialogs`, `op:"dialog"`, §9.2).
+    #[must_use]
+    pub fn to_registry(&self) -> super::registry::DialogRequest {
+        let mut fields = JsonObject::new();
+        fields.insert("method".to_owned(), JsonValue::String(self.method.clone()));
+        for (key, value) in &self.params {
+            fields.insert(key.clone(), value.clone());
+        }
+        if let Some(extension) = &self.extension_id {
+            fields.insert(
+                "extensionId".to_owned(),
+                JsonValue::String(extension.clone()),
+            );
+        }
+        if let Some(session) = &self.session_id {
+            fields.insert("sessionId".to_owned(), JsonValue::String(session.clone()));
+        }
+        oino_ui::slot::UiRequest {
+            id: self.id.clone(),
+            fields,
+        }
+    }
+}
+
+impl From<DismissReason> for oino_ui::slot::DismissReason {
+    fn from(reason: DismissReason) -> Self {
+        match reason {
+            DismissReason::Answered => Self::Answered,
+            DismissReason::Timeout => Self::Timeout,
+            DismissReason::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+/// Output of the bridge: requests to publish and dismissals.
+#[derive(Clone, Debug, PartialEq)]
+pub enum UiOutput {
+    /// Publish `extension_ui_request`.
+    Request(UiRequest),
+    /// Publish `extension_ui_dismiss`.
+    Dismiss {
+        /// Request id.
+        id: String,
+        /// Why.
+        reason: DismissReason,
+    },
+}
+
+/// Where the bridge publishes; implemented by the session's event hub.
+pub trait UiSink: Send + Sync {
+    /// Publishes one output in order.
+    fn publish(&self, output: UiOutput);
+}
+
+/// Dialog methods (everything else is fire-and-forget).
+const DIALOG_METHODS: [&str; 10] = [
+    "select",
+    "confirm",
+    "input",
+    "editor",
+    "multiSelect",
+    "form",
+    "approval",
+    "custom",
+    "clipboardReadImage",
+    "editExternally",
+];
+
+/// Whether `method` waits for an answer.
+#[must_use]
+pub fn is_dialog(method: &str) -> bool {
+    DIALOG_METHODS.contains(&method)
+}
+
+/// The `UIPromptKind` of a dialog method (Oino-only dialogs map to `custom`).
+#[must_use]
+pub fn prompt_kind(method: &str) -> &'static str {
+    match method {
+        "select" => "select",
+        "confirm" => "confirm",
+        "input" => "input",
+        "editor" => "editor",
+        _ => "custom",
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[derive(Default)]
+struct BridgeState {
+    pending: HashMap<String, (oneshot::Sender<UiAnswer>, UiRequest)>,
+    /// Retained fire-and-forget state keyed by `<method>:<extension>/<key>`.
+    retained: IndexMap<String, UiRequest>,
+}
+
+/// Session-side UI bridge. Cheap to clone.
+#[derive(Clone)]
+pub struct UiBridge {
+    has_ui: bool,
+    session_id: String,
+    sink: Arc<dyn UiSink>,
+    state: Arc<Mutex<BridgeState>>,
+}
+
+impl std::fmt::Debug for UiBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiBridge")
+            .field("has_ui", &self.has_ui)
+            .field("session_id", &self.session_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl UiBridge {
+    /// A bridge publishing to `sink`; without UI every dialog resolves as cancelled.
+    #[must_use]
+    pub fn new(has_ui: bool, session_id: impl Into<String>, sink: Arc<dyn UiSink>) -> Self {
+        Self {
+            has_ui,
+            session_id: session_id.into(),
+            sink,
+            state: Arc::new(Mutex::new(BridgeState::default())),
+        }
+    }
+
+    /// Whether dialog-capable UI is attached.
+    #[must_use]
+    pub const fn has_ui(&self) -> bool {
+        self.has_ui
+    }
+
+    /// Session whose UI requests this bridge publishes.
+    #[must_use]
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    fn request(&self, extension: Option<&str>, method: &str, params: JsonObject) -> UiRequest {
+        UiRequest {
+            id: uuid::Uuid::new_v4().to_string(),
+            method: method.to_owned(),
+            params,
+            extension_id: extension.map(str::to_owned),
+            session_id: Some(self.session_id.clone()),
+        }
+    }
+
+    /// Raises a dialog and waits for the first answer, the timeout (`params.timeout` ms) or
+    /// `cancel`. Returns [`UiAnswer::Cancelled`] without UI.
+    pub async fn dialog(
+        &self,
+        extension: Option<&str>,
+        method: &str,
+        params: JsonObject,
+        cancel: Option<CancellationToken>,
+    ) -> UiAnswer {
+        if !self.has_ui {
+            return UiAnswer::Cancelled;
+        }
+        let timeout = params
+            .get("timeout")
+            .and_then(JsonValue::as_u64)
+            .filter(|ms| *ms > 0)
+            .map(Duration::from_millis);
+        let request = self.request(extension, method, params);
+        let id = request.id.clone();
+        let (tx, rx) = oneshot::channel();
+        lock(&self.state)
+            .pending
+            .insert(id.clone(), (tx, request.clone()));
+        self.sink.publish(UiOutput::Request(request));
+        // Withdraws the dialog when the waiting handler is dropped (handler deadline, abort):
+        // no orphan cards (GA-42).
+        let mut guard = Withdraw {
+            bridge: self,
+            id: id.clone(),
+            armed: true,
+        };
+        let cancelled = async {
+            match &cancel {
+                Some(token) => token.cancelled().await,
+                None => std::future::pending().await,
+            }
+        };
+        let expired = async {
+            match timeout {
+                Some(duration) => tokio::time::sleep(duration).await,
+                None => std::future::pending().await,
+            }
+        };
+        let (answer, reason) = tokio::select! {
+            answer = rx => (answer.unwrap_or(UiAnswer::Cancelled), None),
+            () = expired => (UiAnswer::Cancelled, Some(DismissReason::Timeout)),
+            () = cancelled => (UiAnswer::Cancelled, Some(DismissReason::Cancelled)),
+        };
+        guard.armed = false;
+        if let Some(reason) = reason
+            && lock(&self.state).pending.remove(&id).is_some()
+        {
+            self.sink.publish(UiOutput::Dismiss { id, reason });
+        }
+        answer
+    }
+
+    /// Open dialogs raised by `extension` (handler deadlines pause while one is open).
+    #[must_use]
+    pub fn pending_for(&self, extension: &str) -> usize {
+        lock(&self.state)
+            .pending
+            .values()
+            .filter(|(_, request)| request.extension_id.as_deref() == Some(extension))
+            .count()
+    }
+
+    /// Cancels the open dialogs of `extension` (its handler died).
+    pub fn cancel_for(&self, extension: &str) {
+        let ids: Vec<String> = lock(&self.state)
+            .pending
+            .iter()
+            .filter(|(_, (_, request))| request.extension_id.as_deref() == Some(extension))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.withdraw(&id);
+        }
+    }
+
+    fn withdraw(&self, id: &str) {
+        let pending = lock(&self.state).pending.remove(id);
+        if let Some((tx, _)) = pending {
+            let _ = tx.send(UiAnswer::Cancelled);
+            self.sink.publish(UiOutput::Dismiss {
+                id: id.to_owned(),
+                reason: DismissReason::Cancelled,
+            });
+        }
+    }
+
+    /// Delivers a frontend answer; the first answer wins, later ones are ignored.
+    pub fn respond(&self, response: UiResponse) {
+        let pending = lock(&self.state).pending.remove(&response.id);
+        if let Some((tx, _)) = pending {
+            let _ = tx.send(response.answer);
+            self.sink.publish(UiOutput::Dismiss {
+                id: response.id,
+                reason: DismissReason::Answered,
+            });
+        }
+    }
+
+    /// Publishes a fire-and-forget request (dropped without UI) and retains keyed state.
+    ///
+    /// Returns the published record so the caller can mirror it into the registry
+    /// (one-shot `effect` ops, §9.2).
+    #[must_use]
+    pub fn fire(
+        &self,
+        extension: Option<&str>,
+        method: &str,
+        params: JsonObject,
+    ) -> Option<UiRequest> {
+        if !self.has_ui {
+            return None;
+        }
+        let request = self.request(extension, method, params);
+        if let Some(key) = retention_key(&request) {
+            lock(&self.state).retained.insert(key, request.clone());
+        }
+        self.sink.publish(UiOutput::Request(request.clone()));
+        Some(request)
+    }
+
+    /// Retained fire-and-forget state plus open dialogs, for a frontend that attaches late.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<UiRequest> {
+        let state = lock(&self.state);
+        state
+            .retained
+            .values()
+            .cloned()
+            .chain(state.pending.values().map(|(_, request)| request.clone()))
+            .collect()
+    }
+
+    /// Cancels every open dialog (session shutdown).
+    pub fn cancel_all(&self) {
+        let pending: Vec<_> = lock(&self.state).pending.drain().collect();
+        for (id, (tx, _)) in pending {
+            let _ = tx.send(UiAnswer::Cancelled);
+            self.sink.publish(UiOutput::Dismiss {
+                id,
+                reason: DismissReason::Cancelled,
+            });
+        }
+    }
+}
+
+/// Withdraws a dialog whose waiter was dropped.
+struct Withdraw<'a> {
+    bridge: &'a UiBridge,
+    id: String,
+    armed: bool,
+}
+
+impl Drop for Withdraw<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.bridge.withdraw(&self.id);
+        }
+    }
+}
+
+/// Key under which a fire-and-forget request replaces earlier state.
+fn retention_key(request: &UiRequest) -> Option<String> {
+    let field = match request.method.as_str() {
+        "setStatus" => "statusKey",
+        "setWidget" => "widgetKey",
+        "setFrame" => "frameKey",
+        "setHeader" | "setFooter" => "key",
+        "openPanel" | "updatePanel" | "closePanel" => "panelId",
+        "setTitle" | "setWorkingMessage" | "setShortcuts" => "",
+        _ => return None,
+    };
+    let key = if field.is_empty() {
+        String::new()
+    } else {
+        request.params.get(field)?.as_str()?.to_owned()
+    };
+    let family = match request.method.as_str() {
+        "openPanel" | "updatePanel" | "closePanel" => "panel",
+        other => other,
+    };
+    Some(format!(
+        "{family}:{}/{key}",
+        request.extension_id.as_deref().unwrap_or("")
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<UiOutput>>);
+
+    impl UiSink for Recorder {
+        fn publish(&self, output: UiOutput) {
+            lock(&self.0).push(output);
+        }
+    }
+
+    fn params(value: JsonValue) -> JsonObject {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn request_and_response_wire_forms() {
+        let request = UiRequest {
+            id: "1".into(),
+            method: "select".into(),
+            params: params(json!({"title":"Pick","options":["a","b"]})),
+            extension_id: Some("ext".into()),
+            session_id: None,
+        };
+        let value = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            value,
+            json!({"type":"extension_ui_request","id":"1","method":"select","title":"Pick","options":["a","b"],"extensionId":"ext"})
+        );
+        assert_eq!(serde_json::from_value::<UiRequest>(value).unwrap(), request);
+        let response: UiResponse = serde_json::from_value(
+            json!({"type":"extension_ui_response","id":"1","confirmed":true}),
+        )
+        .unwrap();
+        assert_eq!(response.answer, UiAnswer::Confirmed(true));
+    }
+
+    #[tokio::test]
+    async fn first_answer_wins_and_dismisses() {
+        let sink = Arc::new(Recorder::default());
+        let bridge = UiBridge::new(true, "s", sink.clone());
+        let dialog = {
+            let bridge = bridge.clone();
+            tokio::spawn(async move {
+                bridge
+                    .dialog(
+                        Some("e"),
+                        "confirm",
+                        params(json!({"title":"t","message":"m"})),
+                        None,
+                    )
+                    .await
+            })
+        };
+        tokio::task::yield_now().await;
+        let id = loop {
+            if let Some(UiOutput::Request(request)) = lock(&sink.0).first().cloned() {
+                break request.id;
+            }
+            tokio::task::yield_now().await;
+        };
+        bridge.respond(UiResponse {
+            id: id.clone(),
+            answer: UiAnswer::Confirmed(true),
+        });
+        bridge.respond(UiResponse {
+            id,
+            answer: UiAnswer::Confirmed(false),
+        });
+        assert_eq!(dialog.await.unwrap(), UiAnswer::Confirmed(true));
+        assert_eq!(lock(&sink.0).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn dropped_waiters_and_dead_handlers_withdraw_dialogs() {
+        let sink = Arc::new(Recorder::default());
+        let bridge = UiBridge::new(true, "s", sink.clone());
+        let waiting = {
+            let bridge = bridge.clone();
+            tokio::spawn(async move {
+                bridge
+                    .dialog(Some("wf"), "select", params(json!({"title": "t"})), None)
+                    .await
+            })
+        };
+        while bridge.pending_for("wf") == 0 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(bridge.pending_for("other"), 0);
+        waiting.abort();
+        let _ = waiting.await;
+        assert_eq!(bridge.pending_for("wf"), 0);
+        assert_eq!(bridge.snapshot().len(), 0);
+        assert!(matches!(
+            lock(&sink.0).last(),
+            Some(UiOutput::Dismiss {
+                reason: DismissReason::Cancelled,
+                ..
+            })
+        ));
+        let second = {
+            let bridge = bridge.clone();
+            tokio::spawn(async move {
+                bridge
+                    .dialog(Some("wf"), "confirm", params(json!({"title": "t"})), None)
+                    .await
+            })
+        };
+        while bridge.pending_for("wf") == 0 {
+            tokio::task::yield_now().await;
+        }
+        bridge.cancel_for("wf");
+        assert_eq!(second.await.unwrap(), UiAnswer::Cancelled);
+        assert_eq!(bridge.snapshot().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn timeout_and_no_ui() {
+        let sink = Arc::new(Recorder::default());
+        let bridge = UiBridge::new(true, "s", sink.clone());
+        let answer = bridge
+            .dialog(
+                None,
+                "input",
+                params(json!({"title":"t","timeout":10})),
+                None,
+            )
+            .await;
+        assert_eq!(answer, UiAnswer::Cancelled);
+        assert!(matches!(
+            lock(&sink.0).last(),
+            Some(UiOutput::Dismiss {
+                reason: DismissReason::Timeout,
+                ..
+            })
+        ));
+        let headless = UiBridge::new(false, "s", sink);
+        assert_eq!(
+            headless
+                .dialog(None, "select", JsonObject::new(), None)
+                .await,
+            UiAnswer::Cancelled
+        );
+    }
+
+    /// Every documented RPC UI example round-trips byte-for-byte
+    /// (D-U1): the request/response records are untouched by the v2 wire.
+    #[test]
+    fn rpc_extension_ui_examples_round_trip_byte_for_byte() {
+        let requests = [
+            r#"{"type":"extension_ui_request","id":"uuid-1","method":"select","title":"Allow dangerous command?","options":["Allow","Block"],"timeout":10000}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-2","method":"confirm","title":"Clear session?","message":"All messages will be lost.","timeout":5000}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-3","method":"input","title":"Enter a value","placeholder":"type something..."}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-4","method":"editor","title":"Edit some text","prefill":"Line 1\nLine 2\nLine 3"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-5","method":"notify","message":"Command blocked by user","notifyType":"warning"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-6","method":"setStatus","statusKey":"my-ext","statusText":"Turn 3 running..."}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-7","method":"setWidget","widgetKey":"my-ext","widgetLines":["--- My Widget ---","Line 1","Line 2"],"widgetPlacement":"aboveEditor"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-8","method":"setTitle","title":"oino - my project"}"#,
+            r#"{"type":"extension_ui_request","id":"uuid-9","method":"set_editor_text","text":"prefilled text for the user"}"#,
+        ];
+        for example in requests {
+            let request: UiRequest = serde_json::from_str(example).unwrap();
+            let encoded = serde_json::to_string(&request).unwrap();
+            assert_eq!(encoded, example);
+        }
+        let responses = [
+            r#"{"type":"extension_ui_response","id":"uuid-1","value":"Allow"}"#,
+            r#"{"type":"extension_ui_response","id":"uuid-2","confirmed":true}"#,
+            r#"{"type":"extension_ui_response","id":"uuid-3","cancelled":true}"#,
+        ];
+        for example in responses {
+            let response: UiResponse = serde_json::from_str(example).unwrap();
+            let encoded = serde_json::to_string(&response).unwrap();
+            assert_eq!(encoded, example);
+        }
+        // The registry form keeps the wire fields and adds the Oino ids (§9.2).
+        let request: UiRequest = serde_json::from_str(requests[0]).unwrap();
+        let registry = request.to_registry();
+        assert_eq!(registry.id, "uuid-1");
+        assert_eq!(registry.fields["method"], json!("select"));
+        assert_eq!(registry.fields["title"], json!("Allow dangerous command?"));
+    }
+
+    #[test]
+    fn retains_keyed_state() {
+        let sink = Arc::new(Recorder::default());
+        let bridge = UiBridge::new(true, "s", sink);
+        let _ = bridge.fire(
+            Some("e"),
+            "setStatus",
+            params(json!({"statusKey":"k","statusText":"1"})),
+        );
+        let _ = bridge.fire(
+            Some("e"),
+            "setStatus",
+            params(json!({"statusKey":"k","statusText":"2"})),
+        );
+        let _ = bridge.fire(Some("e"), "notify", params(json!({"message":"hi"})));
+        let snapshot = bridge.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].params["statusText"], json!("2"));
+    }
+}

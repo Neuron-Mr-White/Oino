@@ -1,0 +1,14 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.browser",
+  "name": "Browser",
+  "version": "1.0.0-alpha.5",
+  "kind": "extension",
+  "description": "Lets the agent use the in-app browser (browser_* tools); you see its tabs and can take over.",
+  "license": "MIT OR Apache-2.0",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "hostServices": ["browser"],
+    "sessionControl": false
+  }
+}

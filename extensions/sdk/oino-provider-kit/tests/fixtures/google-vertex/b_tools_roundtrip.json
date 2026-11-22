@@ -1,0 +1,380 @@
+{
+ "name": "b_tools_roundtrip",
+ "model": {
+  "id": "gemini-3.1-pro-preview",
+  "name": "Gemini 3.1 Pro Preview",
+  "api": "google-vertex",
+  "provider": "google-vertex",
+  "baseUrl": "https://{location}-aiplatform.googleapis.com",
+  "reasoning": true,
+  "thinkingLevelMap": {
+   "off": null,
+   "minimal": null,
+   "low": "low",
+   "medium": "medium",
+   "high": "high",
+   "xhigh": null,
+   "max": null
+  },
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 12,
+   "cacheRead": 0.2,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "toolsAdded": [
+     {
+      "name": "lookup",
+      "description": "Look up a value",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "q": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "q"
+       ]
+      }
+     },
+     {
+      "name": "write_file",
+      "description": "Write a file",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "data": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    ],
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "look up x",
+    "timestamp": 1
+   },
+   {
+    "role": "assistant",
+    "api": "google-vertex",
+    "provider": "google-vertex",
+    "model": "gemini-3.1-pro-preview",
+    "content": [
+     {
+      "type": "text",
+      "text": "Sure."
+     },
+     {
+      "type": "toolCall",
+      "id": "call_1",
+      "name": "lookup",
+      "arguments": {
+       "q": "x"
+      }
+     }
+    ],
+    "stopReason": "toolUse",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "timestamp": 2
+   },
+   {
+    "role": "toolResult",
+    "toolCallId": "call_1",
+    "toolName": "lookup",
+    "content": [
+     {
+      "type": "text",
+      "text": "42"
+     }
+    ],
+    "isError": false,
+    "timestamp": 3
+   },
+   {
+    "role": "user",
+    "content": "thanks",
+    "timestamp": 4
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "vertex-key",
+ "status": 200,
+ "sse": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Looking.\"}],\"role\":\"model\"}}],\"responseId\":\"resp-g3\"}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"fc-1\",\"name\":\"lookup\",\"args\":{\"q\":\"x\"}},\"thoughtSignature\":\"dG9vbA==\"},{\"functionCall\":{\"id\":\"fc-2\",\"name\":\"write_file\",\"args\":{\"path\":\"a\"}}}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":30,\"candidatesTokenCount\":9,\"totalTokenCount\":39}}\r\n\r\n",
+ "request": {
+  "url": "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse",
+  "headers": {
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1",
+   "x-goog-api-key": "vertex-key"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "look up x"
+      }
+     ],
+     "role": "user"
+    },
+    {
+     "parts": [
+      {
+       "text": "Sure."
+      },
+      {
+       "functionCall": {
+        "name": "lookup",
+        "args": {
+         "q": "x"
+        },
+        "id": "call_1"
+       }
+      }
+     ],
+     "role": "model"
+    },
+    {
+     "parts": [
+      {
+       "functionResponse": {
+        "name": "lookup",
+        "response": {
+         "output": "42"
+        },
+        "id": "call_1"
+       }
+      }
+     ],
+     "role": "user"
+    },
+    {
+     "parts": [
+      {
+       "text": "thanks"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "tools": [
+    {
+     "functionDeclarations": [
+      {
+       "name": "lookup",
+       "description": "Look up a value",
+       "parametersJsonSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "q"
+        ]
+       }
+      },
+      {
+       "name": "write_file",
+       "description": "Write a file",
+       "parametersJsonSchema": {
+        "type": "object",
+        "properties": {
+         "path": {
+          "type": "string"
+         },
+         "data": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ]
+       }
+      }
+     ]
+    }
+   ],
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "thinkingLevel": "LOW"
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Looking."
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Looking."
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "{\"q\":\"x\"}"
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 1,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "fc-1",
+    "name": "lookup",
+    "arguments": {
+     "q": "x"
+    },
+    "thoughtSignature": "dG9vbA=="
+   }
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 2
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 2,
+   "delta": "{\"path\":\"a\"}"
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 2,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "fc-2",
+    "name": "write_file",
+    "arguments": {
+     "path": "a"
+    }
+   }
+  },
+  {
+   "type": "done",
+   "reason": "toolUse",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Looking."
+     },
+     {
+      "type": "toolCall",
+      "id": "fc-1",
+      "name": "lookup",
+      "arguments": {
+       "q": "x"
+      },
+      "thoughtSignature": "dG9vbA=="
+     },
+     {
+      "type": "toolCall",
+      "id": "fc-2",
+      "name": "write_file",
+      "arguments": {
+       "path": "a"
+      }
+     }
+    ],
+    "api": "google-vertex",
+    "provider": "google-vertex",
+    "model": "gemini-3.1-pro-preview",
+    "usage": {
+     "input": 30,
+     "output": 9,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 39,
+     "cost": {
+      "input": 0.000059999999999999995,
+      "output": 0.000108,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000168
+     }
+    },
+    "stopReason": "toolUse",
+    "timestamp": 0,
+    "responseId": "resp-g3",
+    "rawStopReason": "STOP",
+    "durationMs": 0
+   }
+  }
+ ]
+}

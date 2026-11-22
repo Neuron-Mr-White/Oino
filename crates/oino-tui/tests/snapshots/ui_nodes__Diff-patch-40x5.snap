@@ -1,0 +1,14 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+--- a/f
+  ~ 0..7=fg=rgb(ea7f81)
++++ b/f
+  ~ 0..7=fg=rgb(68b78d)
+@@ -1 +1 @@
+  ~ 0..11=fg=rgb(cd9a22)
+-old
+  ~ 0..4=fg=rgb(ea7f81)
++new
+  ~ 0..4=fg=rgb(68b78d)

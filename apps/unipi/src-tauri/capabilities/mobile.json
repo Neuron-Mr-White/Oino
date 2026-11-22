@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Phone-only plugins (QR scan, haptics): registered under #[cfg(mobile)] in lib.rs",
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "barcode-scanner:default",
+    "haptics:allow-impact-feedback",
+    "haptics:allow-selection-feedback",
+    "haptics:allow-vibrate"
+  ]
+}

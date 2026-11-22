@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+████████████████  40%
+  ~ 0..18=fg=rgb(68b78d) 21..40=fg=rgb(68b78d)

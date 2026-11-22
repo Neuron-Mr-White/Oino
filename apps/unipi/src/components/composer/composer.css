@@ -1,0 +1,703 @@
+/**
+ * Composer styles (WP-A12): the dock's send box reuses the timeline's
+ * `.tl-composer*` classes (timeline.css) for the frame, chips and send
+ * button; this sheet adds the field (a contenteditable, not an `<input>`),
+ * the `/` and `@` menus above it, the paste chip and the read-only state.
+ */
+
+/* The field: a chip-aware contenteditable inside the composer card. A plain
+   block (never flex: a flex field centred its float placeholder half under
+   the toolbar and grew a phantom scrollbar), so it grows line by line with
+   the text up to 40 % of the viewport, then scrolls inside. */
+.tl-composer .tl-composer-field {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  max-height: 40vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--color-text);
+  caret-color: var(--color-claw);
+  font: inherit;
+  font-size: calc(15px * var(--ui-font-scale));
+  line-height: calc(22px * var(--ui-font-scale));
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+  cursor: text;
+}
+.tl-composer .tl-composer-field::-webkit-scrollbar { width: 6px; }
+.tl-composer .tl-composer-field::-webkit-scrollbar-track { background: transparent; }
+.tl-composer .tl-composer-field::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--color-line); }
+.tl-composer .tl-composer-field:focus,
+.tl-composer .tl-composer-field:focus-visible { outline: none; }
+
+.tl-composer .tl-composer-field[data-readonly] {
+  color: var(--color-text-dim);
+  cursor: default;
+}
+
+/* The placeholder sits exactly on the first line, inside the padding. */
+.tl-composer .tl-composer-field[data-empty][data-placeholder]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-text-dim);
+  pointer-events: none;
+}
+
+/* §3.9: on the phone the state placeholder may take two lines, never more. */
+html[data-shell=phone] .tl-composer .tl-composer-field[data-empty][data-placeholder]::before {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tl-composer .tl-composer-field .ichip {
+  height: 24px;
+  margin: 1px 1px;
+}
+
+/* Inline image chip (owner spec 2026-11-03): a thumbnail + "image N"; a click opens the editor. */
+.ichip-thumb {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+  border-radius: 4px;
+  object-fit: cover;
+  pointer-events: none;
+}
+.tl-composer .ichip[data-kind=image],
+.tl-composer .ichip[data-kind=file] { cursor: pointer; }
+.ichip[data-kind=image] svg { color: var(--color-wm-cyan); }
+/* A mode switch (/graph, /goal, /ralph, /swarm, /regular) reads as a mode, not a plain command. */
+.ichip[data-kind=command][data-mode] {
+  background: color-mix(in srgb, var(--color-claw) 16%, var(--color-surface-3));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-claw) 45%, transparent);
+}
+.ichip[data-kind=skill] { background: color-mix(in srgb, var(--color-wm-cyan) 12%, var(--color-surface-3)); }
+
+/* The menus anchor to the composer itself, not the conversation pane. */
+.tl-composer-wrap { position: relative; }
+
+/* The `/` and `@` menus, above the composer (inside the dock). */
+.cmenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  transform: translateY(calc(-100% - 6px));
+  z-index: 30;
+  max-height: min(320px, 42vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border-radius: 18px;
+  background: var(--color-surface-2);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 60%), inset 0 0 0 1px rgb(46 40 37 / 80%);
+}
+
+.cmenu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  text-align: left;
+  color: var(--color-text);
+  font-size: calc(13.5px * var(--ui-font-scale));
+}
+
+.cmenu-row[data-sel],
+.cmenu-row:hover {
+  background: var(--color-surface-3);
+}
+/* E-09: the keyboard's row is visible in every composer menu. */
+.cmenu-row:focus, .cmenu-row:focus-visible { background: var(--color-surface-3); outline: 2px solid var(--color-shell); outline-offset: -2px; }
+
+.cmenu-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-dim);
+}
+
+.cmenu-icon svg {
+  color: var(--color-wm-green);
+}
+
+.cmenu-name {
+  /* The command name never gives way to its description (it ellipsizes only past 60 %). */
+  flex: 0 0 auto;
+  max-width: 60%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: calc(12.5px * var(--ui-font-scale));
+  color: var(--color-claw);
+}
+
+.cmenu-row .cmenu-name:not(:first-child) {
+  font-family: inherit;
+  font-size: calc(13.5px * var(--ui-font-scale));
+  color: var(--color-text);
+}
+
+.cmenu-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-text-dim);
+  font-size: calc(12.5px * var(--ui-font-scale));
+}
+
+.cmenu-path {
+  font-family: var(--font-mono);
+  font-size: calc(11.5px * var(--ui-font-scale));
+}
+
+.cmenu-src {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  color: var(--color-text-dim);
+  font-size: calc(11px * var(--ui-font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cmenu-src[data-src='skill'] {
+  color: var(--color-wm-cyan);
+}
+
+.cmenu-src[data-src='terminal'] {
+  opacity: 0.7;
+}
+
+/* A "Pasted text · N lines" chip (Z-61) among the draft chips. */
+.cpaste-chip {
+  max-width: min(100%, 260px);
+  color: var(--color-text);
+}
+
+.cpaste-chip .tl-chip-label {
+  color: var(--color-text-muted);
+}
+
+/* Draft image chips carry the shrunk thumbnail itself. */
+.tl-chip-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+/* The phone shell keeps the composer compact: the menus cap against the
+   smaller viewport, the field stays one-to-few lines. */
+html:not([data-shell='desktop']) .cmenu {
+  max-height: min(240px, 36vh);
+}
+
+/* ── WP-A13: the toolbar row (Z-64) ──────────────────────────────────────
+   The field takes the full width, the toolbar sits under it: `+` on the
+   left, the permission/plan (and, from A14, model/thinking/context) chips in
+   the middle, Send/Stop on the right. One row, never wraps; narrow widths
+   fold chips into their icon forms (the Toolbar sets `data-c-*` per step). */
+.tl-composer { position: relative; }
+.tl-composer.tl-composer-dock {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 4px 6px 6px;
+  border-radius: 22px;
+  cursor: text;
+  transition: box-shadow 140ms ease-out;
+}
+/* Focus (and a file dragged over it): a calm claw ring around the whole card. */
+.tl-composer.tl-composer-dock:focus-within,
+.tl-composer.tl-composer-dock[data-drop] {
+  box-shadow:
+    inset 0 0 0 1px rgb(240 120 24 / 55%),
+    0 0 0 3px rgb(240 120 24 / 12%),
+    0 6px 22px rgb(0 0 0 / 30%);
+}
+.tl-composer.tl-composer-dock[data-drop] { background: color-mix(in srgb, var(--color-surface-2) 92%, var(--color-claw)); }
+.tl-composer.tl-composer-dock[data-readonly] { cursor: default; }
+.tl-composer.tl-composer-dock[data-readonly]:focus-within {
+  box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%), 0 6px 22px rgb(0 0 0 / 30%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-composer.tl-composer-dock { transition: none; }
+}
+
+/* Note mode ("Send as note"): the card reads as a different surface — a gold edge and a faint gold wash,
+   never the brand orange that Send and the focus ring use. */
+.tl-composer.tl-composer-dock[data-note],
+.tl-composer[data-note] {
+  background: color-mix(in srgb, var(--color-gold) 7%, var(--color-surface-2));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 50%, transparent),
+    0 6px 22px rgb(0 0 0 / 30%);
+}
+.tl-composer.tl-composer-dock[data-note]:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 70%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--color-gold) 14%, transparent),
+    0 6px 22px rgb(0 0 0 / 30%);
+}
+.tl-composer[data-note] .tl-composer-field { caret-color: var(--color-gold); }
+.tl-composer[data-note] .tl-composer-input { caret-color: var(--color-gold); }
+.tl-composer[data-note] .tl-composer-send:not(:disabled) { background: var(--color-gold); }
+.comp-bar .tl-composer-send[data-note]:hover:not(:disabled) { background: color-mix(in srgb, var(--color-gold) 85%, #fff); }
+.comp-bar .tl-composer-send[data-note]:active:not(:disabled) { background: var(--color-gold); }
+
+/* The toolbar's "Note" chip: StickyNote · Note · ✕ (✕ leaves the mode). */
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 5px;
+  height: 28px;
+  margin-left: 2px;
+  padding: 0 4px 0 9px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-gold) 16%, var(--color-surface-3));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-gold) 45%, transparent);
+  color: var(--color-gold);
+  font-size: calc(13px * var(--ui-font-scale));
+  font-weight: 600;
+  white-space: nowrap;
+}
+.note-chip-x {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: inherit;
+}
+.note-chip-x:hover { background: color-mix(in srgb, var(--color-gold) 22%, transparent); }
+/* Phone: the row is full at 412 px — while writing a note the agent-side chips (permission, thinking, tools) step aside so Send keeps its place. */
+html[data-shell=phone] .tl-composer[data-note] .comp-bar .tb-slot[data-slot=permission],
+html[data-shell=phone] .tl-composer[data-note] .comp-bar .tb-slot[data-slot=think],
+html[data-shell=phone] .tl-composer[data-note] .comp-bar > .tb-item:not(:first-child):not(:last-child) { display: none; }
+html[data-shell=phone] .note-chip { height: 32px; }
+html[data-shell=phone] .note-chip-x { width: 28px; height: 28px; min-width: 28px; min-height: 28px; position: relative; }
+html[data-shell=phone] .note-chip-x::after { content: ''; position: absolute; inset: -6px; }
+
+/* The draft's chips (quotes, long pastes, attachments) sit inside the card,
+   above the text they go with. */
+.tl-composer-dock .tl-composer-chips {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 6px 4px 0;
+  cursor: default;
+}
+
+/* A row inside the card above the field (the draft's workspace picker). */
+.comp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 2px 0;
+  cursor: default;
+}
+
+.comp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  flex: none;
+  padding: 0 1px;
+  white-space: nowrap;
+  cursor: default;
+}
+.comp-bar .tb-item,
+.comp-bar .tb-slot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.comp-bar .tb-spacer { flex: 1 1 auto; min-width: 0; }
+/* A control that is not offered here (no workflow extension, a model without
+   thinking) leaves no slot behind — no double gap. */
+.comp-bar .tb-slot:empty { display: none; }
+.comp-bar .composer-plus-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.comp-bar .composer-plus-btn:hover:not(:disabled) { color: var(--color-text); background: var(--color-surface-3); }
+.comp-bar .composer-plus-btn[aria-expanded='true'] { color: var(--color-text); background: var(--color-surface-3); }
+
+/* The end group: send options · Send/Stop, one centre line. */
+.comp-bar .tb-end-group { display: flex; align-items: center; gap: 4px; height: 32px; }
+
+/* The model capsule (owner 2026-11-04): context ring · model name · chevron in
+   ONE pill, the same pill as the other chips. It is the bar's flexible slot:
+   natural width up to the name's cap, shrinking (ellipsis) on a narrow row to
+   the floor `CAPSULE_MIN` (ModelChip.tsx) before the other chips fold. While
+   the bar measures (`data-measuring`) it holds its natural width. */
+.comp-bar .tb-slot[data-flex] { flex: 0 1 auto; min-width: 0; }
+/* !important: a transient measuring state that must beat the phone shell's own model-slot rule. */
+.comp-bar[data-measuring] .tb-slot[data-flex] { flex-shrink: 0 !important; }
+.tb-capsule {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: 30px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+}
+.tb-capsule .ctx-ring { flex: none; width: 30px; height: 30px; min-height: 30px; border-radius: 9999px; }
+.tb-capsule .ctx-ring svg { width: 18px; height: 18px; }
+.tb-capsule .ctx-ring .ctx-ring-track,
+.tb-capsule .ctx-ring[data-empty] .ctx-ring-track { stroke: rgb(163 154 144 / 32%); }
+.tb-capsule .tb-chip-model { flex: 1 1 auto; min-width: 0; padding-left: 3px; background: transparent; }
+.tb-capsule .tb-chip-model .tb-label { flex: 0 1 auto; }
+.comp-bar .tb-capsule .tb-chip-model .tb-label { max-width: 320px; }
+
+/* Send / Stop: one 32 px circle in every state (the base layer's 44 px
+   button minimum would stretch it into an oval). */
+.comp-bar .tl-composer-send,
+.comp-bar .tl-composer-stop {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--color-claw);
+  color: var(--color-ink);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+.comp-bar .tl-composer-send:hover:not(:disabled) { background: var(--color-amber); }
+.comp-bar .tl-composer-send:active:not(:disabled) { background: var(--color-claw); transform: scale(.94); }
+.comp-bar .tl-composer-send:disabled { opacity: 1; background: var(--color-surface-3); color: var(--color-text-dim); }
+.comp-bar .tl-composer-stop { background: var(--color-text); color: var(--color-bg); }
+.comp-bar .tl-composer-stop:hover:not(:disabled) { background: #fff; }
+.comp-bar .tl-composer-stop:active:not(:disabled) { background: var(--color-text); transform: scale(.94); }
+.comp-bar .send-btn-chevron {
+  width: 18px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+/* A chip: the permission mode, the Plan toggle — same shape A14's model and
+   thinking chips use (`.tb-chip` + `.tb-ic` + `.tb-label`). */
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+  font-size: calc(12.5px * var(--ui-font-scale));
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.tb-chip:hover:not(:disabled) { background: var(--color-surface-2); color: var(--color-text); }
+/* The open state: a chip (or the capsule's ring) whose menu / dialog is showing
+   reads pressed — the same lift as hover, the label at full contrast. */
+.tb-chip[aria-expanded='true'],
+.tb-capsule .ctx-ring[aria-expanded='true'] { background: var(--color-surface-2); color: var(--color-text); }
+.tb-capsule .tb-chip-model:hover:not(:disabled),
+.tb-capsule .tb-chip-model[aria-expanded='true'] { background: var(--color-surface-2); }
+.tb-chip:disabled { opacity: .5; }
+.tb-chip .tb-ic { flex: 0 0 auto; }
+/* A long name ends in an ellipsis (the chip's native title has the full text), never mid-word clipping. */
+.tb-chip .tb-label { min-width: 0; }
+.tb-chip .roll-label { grid-template-columns: minmax(0, 1fr); }
+.tb-chip .roll-in,
+.tb-chip .roll-out { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comp-bar .tb-chip-model .tb-label { max-width: 176px; }
+.tb-chip .tb-chev { flex: 0 0 auto; color: var(--color-text-dim); transform: rotate(180deg); }
+.tb-chip[data-mode="auto"] { color: var(--color-claw); background: rgb(240 120 24 / 12%); }
+.tb-chip[data-mode="full"] { color: #f6a89d; background: rgb(240 60 50 / 12%); }
+.tb-chip-plan[data-on] { color: var(--color-claw); background: rgb(240 120 24 / 12%); }
+
+/* The seven compression steps (Z-64): step 2 permission, 3 Plan, 4 thinking
+   icon + level bar, 6 thinking square, 7 model square. Steps are cumulative,
+   so each flag stays set from its step on. */
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-label,
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-chev,
+.comp-bar[data-c-plan] .tb-slot[data-slot="plan"] .tb-label,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-label,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-chev,
+.comp-bar[data-c-computer] .tb-slot[data-slot="computer"] .tb-label { display: none; }
+.comp-bar[data-c-permission] .tb-slot[data-slot="permission"] .tb-chip,
+.comp-bar[data-c-plan] .tb-slot[data-slot="plan"] .tb-chip,
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-chip,
+.comp-bar[data-c-computer] .tb-slot[data-slot="computer"] .tb-chip {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+/* Step 7 in the capsule: ring + chevron (the ring stays, the chevron is the model's way in). */
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-capsule .tb-chip-model { width: 24px; padding: 0 9px 0 0; }
+.comp-bar[data-c-model] .tb-slot[data-slot="model"] .tb-capsule .tb-chev { display: inline; }
+.comp-bar[data-c-think] .tb-slot[data-slot="think"] .tb-label,
+.comp-bar[data-c-think] .tb-slot[data-slot="think"] .tb-chev { display: none; }
+.comp-bar[data-c-think="square"] .tb-slot[data-slot="think"] .tb-chip {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* P3: keep the active permission mode (Ask / Auto / Full — 3–4 chars) readable on phone. */
+html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-label { display: inline; font-size: calc(12px * var(--ui-font-scale)); }
+html[data-shell='phone'] .comp-bar[data-c-permission] .tb-slot[data-slot='permission'] .tb-chip { width: auto; padding: 0 9px; gap: 5px; }
+
+/* The permission menu rows (`.tb-menu-*` inside an AnchoredMenu). */
+.tb-menu-dot { display: block; width: 16px; height: 16px; }
+.tb-menu-hint { font-size: calc(11px * var(--ui-font-scale)); color: var(--color-text-dim); white-space: nowrap; }
+
+/* The permission menu (G-6): full labels over their descriptions. */
+.perm-menu-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 12px 7px 10px;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.perm-menu-row:hover { background: var(--color-surface-3); }
+/* D-05: the keyboard's row — same fill as hover, the ring drawn inside (the menu clips outside rings). */
+.perm-menu-row:focus, .perm-menu-row:focus-visible { background: var(--color-surface-3); outline: 2px solid var(--color-shell); outline-offset: -2px; }
+/* The keyboard wrapper of a toolbar menu adds no box of its own. */
+.menu-keys { display: contents; }
+.perm-menu-row[aria-checked='true'] { background: rgb(240 120 24 / 9%); }
+.perm-menu-check { grid-row: 1 / span 2; display: grid; place-items: center; color: var(--color-claw); }
+.perm-menu-label { grid-column: 2; display: flex; align-items: center; gap: 6px; font-size: calc(14px * var(--ui-font-scale)); line-height: calc(19px * var(--ui-font-scale)); font-weight: 600; white-space: nowrap; }
+.perm-menu-scope { margin: 4px 10px 6px; padding-top: 6px; border-top: 1px solid var(--color-line); font-size: calc(12px * var(--ui-font-scale)); line-height: calc(16px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.perm-menu-desc { grid-column: 2; font-size: calc(12.5px * var(--ui-font-scale)); line-height: calc(17px * var(--ui-font-scale)); color: var(--color-text-muted); white-space: nowrap; }
+.perm-menu-row[data-mode='auto'] .perm-menu-label { color: var(--color-claw); }
+.perm-menu-row[data-mode='full'] .perm-menu-label { color: #f6a89d; }
+
+/* ── Attachment chips (Z-60 states) ─────────────────────────────────── */
+.att-chip {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  max-width: min(280px, 78vw);
+  min-height: 34px;
+  padding: 3px 4px 3px 5px;
+  border-radius: 10px;
+  background: var(--color-surface-3);
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--color-text);
+}
+.att-chip[data-status="failed"] { box-shadow: inset 0 0 0 1px rgb(240 60 50 / 55%); }
+.att-chip[data-status="queued"],
+.att-chip[data-status="uploading"] { color: var(--color-text-muted); }
+.att-ic { display: grid; place-items: center; width: 26px; color: var(--color-text-dim); }
+.att-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-surface-1);
+}
+.att-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.att-edit {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 62%);
+  color: var(--color-text);
+}
+.att-body { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; padding-right: 2px; }
+.att-name { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(12px * var(--ui-font-scale)); line-height: calc(15px * var(--ui-font-scale)); }
+.att-meta { max-width: 190px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(11px * var(--ui-font-scale)); line-height: calc(14px * var(--ui-font-scale)); color: var(--color-text-dim); }
+.att-chip[data-status="failed"] .att-meta { color: #f6a89d; }
+.att-bar { display: block; height: 2px; border-radius: 2px; background: var(--color-line); overflow: hidden; }
+.att-bar-fill { display: block; height: 100%; background: var(--color-claw); transition: width 160ms linear; }
+.att-act {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  align-self: center;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-dim);
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: 1;
+}
+.att-act:hover { background: var(--color-surface-2); color: var(--color-text); }
+.att-retry { color: var(--color-claw); }
+.att-fail { align-self: center; display: grid; place-items: center; color: #f6a89d; }
+html[data-shell=phone] .att-remove { width: 26px; height: 26px; min-height: 26px; }
+.perm-menu-default { min-height: 40px; margin-top: 4px; border-top: 1px solid var(--color-line); border-radius: 0 0 12px 12px; }
+.perm-menu-default .perm-menu-check { grid-row: 1; }
+
+/* ── Phone composer (phone spec §3.5, PH-11 / PH-22 / PH-29) ─────────────
+   In flow at the bottom of the chat column; a 24 px card; the native
+   textarea field (16/22, autogrow to 6 lines / 40 % of the visible height);
+   one 48 px toolbar row (+ · Mode · Model · ring · Send), no overflow at 360. */
+html[data-shell=phone] .tl-composer.tl-composer-dock { border-radius: 24px; padding: 8px 8px 4px 12px; gap: 0; }
+html[data-shell=phone] .tl-composer .ph-field {
+  display: block; width: 100%; box-sizing: border-box; margin: 0; padding: 8px 4px 6px; resize: none; border: 0; outline: none;
+  background: transparent; color: var(--color-text); font: inherit; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale));
+  min-height: 36px; max-height: min(138px, calc(var(--vvh, 100dvh) * 0.4)); overflow-y: auto; overscroll-behavior: contain;
+}
+html[data-shell=phone][data-short] .tl-composer .ph-field { max-height: calc(var(--vvh, 100dvh) * 0.4 - 56px); }
+html[data-shell=phone] .tl-composer .ph-field::placeholder { color: var(--color-text-dim); }
+html[data-shell=phone] .tl-composer .ph-field:disabled { opacity: .7; }
+html[data-shell=phone] .tl-composer .comp-bar { height: 48px; gap: 4px; margin-left: -8px; }
+html[data-shell=phone] .tl-composer .comp-bar .composer-plus-btn { width: 48px; height: 48px; min-height: 48px; border-radius: 9999px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip { position: relative; height: 36px; min-height: 36px; padding: 0 10px; font-size: calc(14px * var(--ui-font-scale)); gap: 6px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip::after { content: ''; position: absolute; inset: -6px -2px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip .tb-chev { display: none; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip-model { min-width: 0; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-slot[data-slot=model] { min-width: 0; flex: 0 1 auto; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-chip-model .tb-label { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Phone capsule: 36 px pill, the ring a 36 px circle in it; hit zones stretch to 48 px tall without overlapping. */
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule { height: 36px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule .ctx-ring { position: relative; width: 36px; height: 36px; min-width: 36px; min-height: 36px; margin: 0; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule .ctx-ring svg { width: 20px; height: 20px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule .ctx-ring::after { content: ''; position: absolute; inset: -6px 0 -6px -4px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule .tb-chip-model { padding: 0 12px 0 2px; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-capsule .tb-chip-model .tb-label { max-width: 320px; }
+html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .tb-chip-model { width: auto; min-width: 28px; padding: 0 10px 0 2px; gap: 4px; }
+html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .tb-chev { display: inline; }
+html[data-shell=phone] .tl-composer .comp-bar .tb-think-glyph { flex: none; color: var(--color-shell); }
+html[data-shell=phone] .tl-composer .comp-bar .tb-end-group { height: 48px; gap: 2px; }
+html[data-shell=phone] .tl-composer-chips { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-top: 4px; }
+html[data-shell=phone] .tl-composer-chips .tl-chip { flex: none; min-height: 36px; }
+html[data-shell=phone] .tl-composer-chips .tl-chip-x { position: relative; }
+html[data-shell=phone] .tl-composer-chips .tl-chip-x::after { content: ''; position: absolute; inset: -12px; }
+
+/* The `/` and `@` lists: flush on the composer card (0 gap), 48 px rows, ~5.5 rows with a fade, no badges. */
+html[data-shell=phone] .cmenu {
+  transform: translateY(-100%); max-height: 264px; padding: 4px; border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(46 40 37 / 80%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px); mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+  z-index: var(--z-sticky, 10);
+}
+html[data-shell=phone][data-short] .cmenu { max-height: 152px; }
+html[data-shell=phone] .cmenu-row { min-height: 48px; padding: 4px 12px; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); gap: 10px; }
+html[data-shell=phone] .cmenu-name { font-size: calc(16px * var(--ui-font-scale)); }
+html[data-shell=phone] .cmenu-desc { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-shell=phone] .cmenu-src { display: none; }
+html[data-shell=phone] .cmenu-src[data-src='command'] { display: inline; background: none; padding: 0; font-size: calc(12px * var(--ui-font-scale)); color: var(--color-text-dim); text-transform: none; letter-spacing: 0; }
+html[data-shell=phone] .tl-composer-wrap:has(.cmenu) .tl-composer.tl-composer-dock { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Model sheet footer: Thinking (§3.5). */
+.ph-think-foot { display: flex; flex-direction: column; gap: 8px; }
+.ph-think-title { font-size: calc(14px * var(--ui-font-scale)); line-height: calc(20px * var(--ui-font-scale)); font-weight: 600; color: var(--color-text-muted); }
+/* Send / Stop / Queue: one 44 px circle with a 48 px hit; the options chevron is a 44 px target. */
+html[data-shell=phone] .tl-composer .comp-bar .tl-composer-send,
+html[data-shell=phone] .tl-composer .comp-bar .tl-composer-stop { width: 44px; height: 44px; min-height: 44px; }
+html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 28px; height: 44px; min-height: 44px; }
+@media (max-width: 420px) {
+  html[data-shell=phone] .tl-composer .comp-bar { gap: 2px; }
+  html[data-shell=phone] .tl-composer .comp-bar .composer-plus-btn { width: 32px; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-think] .tb-slot[data-slot=think] .tb-chip { width: 32px; padding: 0; justify-content: center; }
+  html[data-shell=phone] .tl-composer .comp-bar .tl-composer-send,
+  html[data-shell=phone] .tl-composer .comp-bar .tl-composer-stop { width: 40px; height: 40px; min-height: 40px; }
+  html[data-shell=phone] .tl-composer .comp-bar .send-btn-chevron { width: 20px; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) { height: auto; flex-wrap: wrap; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) .tb-spacer { display: none; }
+  html[data-shell=phone] .tl-composer .comp-bar:has([data-testid=send-stop]):has([data-testid=send-send]) > .tb-item:last-child { flex-basis: 100%; justify-content: flex-end; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-slot[data-slot=model] { flex: 0 0 auto; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .ctx-ring { width: 28px; min-width: 28px; }
+  html[data-shell=phone] .tl-composer .comp-bar[data-c-model] .tb-capsule .tb-chip-model { min-width: 20px; padding: 0 4px 0 0; }
+}
+@media (max-height: 479px) {
+  html[data-shell=phone] .tl-composer .ph-field { max-height: calc(var(--vvh, 100dvh) * 0.4); }
+}
+
+/* Phone inline chips (owner spec 2026-11-03): the textarea stays the input; a draft with chips is
+   drawn by a mirror layer under the transparent text, with the exact same box, font and wrapping. */
+.ph-field-box { position: relative; width: 100%; min-width: 0; }
+.ph-field-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ph-field-mirror-in {
+  box-sizing: border-box; width: 100%; padding: 8px 4px 6px; color: var(--color-text);
+  font: inherit; font-size: calc(16px * var(--ui-font-scale)); line-height: calc(22px * var(--ui-font-scale)); white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word;
+}
+html[data-shell=phone] .tl-composer .ph-field-box[data-chips] .ph-field { position: relative; color: transparent; caret-color: var(--color-claw); }
+.phf-chip { position: relative; border-radius: 6px; background: var(--color-surface-3); box-shadow: 0 0 0 1.5px var(--color-surface-3); }
+.phf-chip[data-kind=skill] { color: var(--color-wm-cyan); background: color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-wm-cyan) 14%, var(--color-surface-3)); }
+.phf-chip[data-kind=command] { color: var(--color-claw); }
+.phf-chip[data-kind=command][data-mode] { background: color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-claw) 18%, var(--color-surface-3)); }
+.phf-chip[data-kind=path] { color: var(--color-wm-green); }
+.phf-chip[data-covered] { color: transparent; }
+.phf-chip-label {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px; overflow: hidden;
+  white-space: nowrap; color: var(--color-text); font-size: calc(14px * var(--ui-font-scale));
+}
+.phf-chip-thumb { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
+.phf-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* r5 D18: the model is not known yet (chat waking): the neutral word reads as a placeholder. */
+.tb-chip-model[data-pending] .tb-label { opacity: 0.5; }

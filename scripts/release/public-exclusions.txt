@@ -1,0 +1,29 @@
+# Python fnmatch patterns, relative to repository root; * also matches /.
+# Internal development plans, owner QA evidence, rigs and machine-local measurements.
+docs/dev/*
+bench/records/*
+bench/run-r3.sh
+bench/README.md
+scripts/qa/*
+apps/unipi/scripts/qa/*
+apps/unipi/scripts/t15-paired.sh
+.pi/*
+.agents/*
+# Captured owner conversation and its dedicated replay test (not synthetic).
+apps/unipi/src/lib/session/__fixtures__/swarm-lead-turn.json
+apps/unipi/src/components/timeline/TurnRow.swarmFixture.test.tsx
+# File-reference corpus sampled from owner sessions, plus its dedicated test.
+apps/unipi/src/lib/chat/fileRefCorpus.json
+apps/unipi/src/lib/chat/fileRefCorpus.test.ts
+# Internal handoff/design reports embedded next to product code.
+apps/unipi/src/components/superagent/HANDOFF.md
+apps/unipi/src/components/superagent/DESIGN.md
+# Recordings/captured logs are never release sources. Synthetic JSONL format
+# fixtures deliberately remain: they are build/test inputs, not QA captures.
+*.mp4
+*.webm
+*.mov
+*.log
+*.out
+*/shots/*
+*/recordings/*

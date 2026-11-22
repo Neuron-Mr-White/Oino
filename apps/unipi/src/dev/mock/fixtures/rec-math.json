@@ -1,0 +1,59 @@
+{
+  "source": "Synthetic math replay; no recorded user data.",
+  "snapshot": {
+    "session_id": "synthetic-math",
+    "cwd": "/work/math",
+    "reset": true,
+    "seq": 0,
+    "state": {
+      "running": false,
+      "sessionId": "synthetic-math",
+      "isStreaming": false,
+      "isCompacting": false,
+      "thinkingLevel": "low",
+      "model": {
+        "provider": "example",
+        "id": "example-model"
+      },
+      "pendingMessageCount": 0
+    },
+    "entries": [
+      {
+        "type": "message",
+        "id": "math-user",
+        "parentId": null,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "What is 2 + 2?"
+            }
+          ]
+        }
+      }
+    ],
+    "leaf_id": "math-user",
+    "commands": [],
+    "ui": {
+      "scope": "session",
+      "sessionId": "synthetic-math",
+      "rev": 0,
+      "entries": [],
+      "dialogs": []
+    },
+    "topics": []
+  },
+  "events": [
+    {
+      "at": 0,
+      "dto": {
+        "seq": 1,
+        "event": {
+          "type": "agent_start"
+        }
+      }
+    }
+  ]
+}

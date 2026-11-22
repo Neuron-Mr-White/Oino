@@ -1,0 +1,150 @@
+{
+ "name": "h_error_plain",
+ "model": {
+  "id": "gpt-5.6-luna",
+  "name": "GPT-5.6 Luna",
+  "api": "openai-codex-responses",
+  "provider": "openai-codex",
+  "baseUrl": "https://chatgpt.com/backend-api",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.2,
+   "output": 1.2,
+   "cacheRead": 0.02,
+   "cacheWrite": 0.25,
+   "tiers": [
+    {
+     "inputTokensAbove": 272000,
+     "input": 0.4,
+     "output": 1.8,
+     "cacheRead": 0.04,
+     "cacheWrite": 0.5
+    }
+   ]
+  },
+  "contextWindow": 272000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max",
+   "minimal": "low"
+  },
+  "compat": {
+   "supportsOpenAIGrammarTools": true,
+   "supportsAdditionalTools": true,
+   "supportsToolSearch": true,
+   "supportsMidConvoSystemMessages": true
+  },
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "transport": "sse"
+ },
+ "apiKey": "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+ "status": 502,
+ "sse": "Bad gateway",
+ "request": {
+  "url": "https://chatgpt.com/backend-api/codex/responses",
+  "headers": {
+   "accept": "text/event-stream",
+   "authorization": "Bearer eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+   "chatgpt-account-id": "acct-123",
+   "content-encoding": "zstd",
+   "content-type": "application/json",
+   "openai-beta": "responses=experimental",
+   "originator": "pi",
+   "session-id": "sess-1234",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-client-request-id": "sess-1234"
+  },
+  "body": {
+   "model": "gpt-5.6-luna",
+   "store": false,
+   "stream": true,
+   "instructions": "Sys",
+   "input": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "hi"
+      }
+     ]
+    }
+   ],
+   "text": {
+    "verbosity": "low"
+   },
+   "include": [
+    "reasoning.encrypted_content"
+   ],
+   "prompt_cache_key": "sess-1234",
+   "tool_choice": "auto",
+   "parallel_tool_calls": true,
+   "reasoning": {
+    "effort": "none"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "openai-codex-responses",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "Bad gateway",
+    "durationMs": 0
+   }
+  }
+ ]
+}

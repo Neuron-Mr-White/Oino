@@ -1,0 +1,18 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+
+  ~ 0..2=fg=rgb(69add0) 3..5=fg=rgb(a798d7) 7..9=fg=rgb(a798d7)
+   ▁▁
+  ~ 0..2=fg=rgb(69add0) 3..5=fg=rgb(a798d7) 7..9=fg=rgb(a798d7)
+   ██
+  ~ 0..2=fg=rgb(69add0) 3..5=fg=rgb(a798d7) 7..9=fg=rgb(a798d7)
+▃▃ ██
+  ~ 0..2=fg=rgb(69add0) 3..5=fg=rgb(a798d7) 7..9=fg=rgb(a798d7)
+██ ██  ▁▁
+  ~ 0..2=fg=rgb(69add0) 3..5=fg=rgb(a798d7) 7..9=fg=rgb(a798d7)
+4█ 7█  2█
+  ~ 1..2=fg=rgb(69add0) 4..5=fg=rgb(a798d7) 8..9=fg=rgb(a798d7)
+Mo Tu
+Builds

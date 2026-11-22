@@ -1,0 +1,161 @@
+{
+ "name": "p_azure_completions",
+ "model": {
+  "id": "deepseek-v4-pro",
+  "name": "DeepSeek V4 Pro",
+  "api": "openai-completions",
+  "baseUrl": "",
+  "provider": "azure",
+  "reasoning": true,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 1.925,
+   "output": 3.828,
+   "cacheRead": 0.165,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 384000,
+  "compat": {
+   "supportsStrictMode": true,
+   "requiresReasoningContentOnAssistantMessages": true,
+   "thinkingFormat": "openai",
+   "supportsDeveloperRole": false,
+   "supportsMidConvoSystemMessages": true,
+   "supportsLongCacheRetention": false
+  },
+  "thinkingLevelMap": {
+   "minimal": null,
+   "low": "low",
+   "medium": "medium",
+   "high": "high",
+   "xhigh": null,
+   "max": null
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "env": {
+   "AZURE_OPENAI_RESOURCE_NAME": "my-resource",
+   "AZURE_OPENAI_DEPLOYMENT_NAME_MAP": "deepseek-v4-pro=ds-prod"
+  },
+  "reasoning": "high"
+ },
+ "apiKey": "azure-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":5,\"total_tokens\":17}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://my-resource.openai.azure.com/openai/v1/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer azure-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.22.1"
+  },
+  "body": {
+   "model": "ds-prod",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "store": false,
+   "max_completion_tokens": 384000,
+   "reasoning_effort": "high"
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Hel"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "lo"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Hello"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "azure",
+    "model": "deepseek-v4-pro",
+    "usage": {
+     "input": 12,
+     "output": 5,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 17,
+     "cost": {
+      "input": 0.000023100000000000002,
+      "output": 0.000019139999999999996,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00004224
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "stop",
+    "durationMs": 0
+   }
+  }
+ ]
+}

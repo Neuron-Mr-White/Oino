@@ -1,0 +1,14 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+┌Framed────────────────────────────────────────────────────────────────────────────────────────────┐
+  ~ 0..1=fg=rgb(5fa8cc) 1..7=fg=rgb(7e888e) 7..100=fg=rgb(5fa8cc)
+│                                                                                                  │
+  ~ 0..1=fg=rgb(5fa8cc) 1..99=fg=rgb(7e888e) 99..100=fg=rgb(5fa8cc)
+│ framed text                                                                                      │
+  ~ 0..1=fg=rgb(5fa8cc) 1..99=fg=rgb(7e888e) 99..100=fg=rgb(5fa8cc)
+│                                                                                                  │
+  ~ 0..1=fg=rgb(5fa8cc) 1..99=fg=rgb(7e888e) 99..100=fg=rgb(5fa8cc)
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+  ~ 0..100=fg=rgb(5fa8cc)

@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+1 2026-11-01 started
+  ~ 0..13=fg=rgb(7e888e) 13..20=fg=rgb(68b78d)

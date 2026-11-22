@@ -1,0 +1,16 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "oino.fixture.panic-probe",
+  "name": "Panic probe fixture",
+  "version": "1.0.0",
+  "kind": "extension",
+  "description": "Traps on demand so hosts can exercise per-session crash protection (X-TRAP).",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:2bb73a9a989caab64fb8cb8c9739bf20c74dd5c2a39502b6338428f75b83e05f"
+  }
+}

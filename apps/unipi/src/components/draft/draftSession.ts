@@ -1,0 +1,384 @@
+/**
+ * The new-chat draft's stand-in session (Z-19): the draft page renders the
+ * SAME composer a chat does, and the composer talks to a `SessionHandle`. No
+ * session exists yet — the first prompt creates it (a fileless session would
+ * show in every PC's list, so nothing is created early) — so this handle
+ * answers locally:
+ *
+ * - the toolbar reads the host's defaults (`host_cmd get_settings`: the model
+ *   and thinking level a new session starts with), the selected folder's
+ *   command catalogue and, for the model list, a live chat when one is open;
+ * - the permission / Plan controls send their usual `/permission …` /
+ *   `/plan …` commands — kept here as the draft's choices and replayed on the
+ *   new session before the first prompt (`startSession.ts`);
+ * - a thinking pick or a model pick is kept the same way;
+ * - any other send is the first prompt → `onSubmit`.
+ */
+import { batch, createEffect, createSignal, on, untrack } from 'solid-js';
+import { createStore, produce } from 'solid-js/store';
+import { z } from 'zod';
+import { initialState } from '../../lib/session/reducer';
+import { sessions, type SendOptions, type SessionHandle } from '../../lib/session/store';
+import type { CommandInfo, OutboxImage, OutboxItem, SessionState } from '../../lib/session/types';
+import type { RpcCommand } from '../../lib/host/client';
+import { clampLevel, levelsOfModel, THINKING_ORDER } from '../../lib/model/thinking';
+import { hostReadiness, withModelProviders, type Readiness } from '../../lib/model/readiness';
+import { WORKFLOW_STATUS_TOPIC } from '../../lib/status/plan';
+import { hostCmd } from '../../settings/hostCmd';
+import { parseModels, type ModelInfo } from '../../lib/model/picker';
+import { cachedModels, rememberModels } from './hostCache';
+import { loadDraft, saveDraftChoices } from './draftStored';
+
+export type DraftModel = { provider: string; modelId: string; name?: string };
+
+/** A Fusion lead + sidekick pair picked on the draft (`unipi.fusion`'s `Active` fusion record). */
+export type DraftFusion = { lead: string; sidekick: string; leadEffort: string; sidekickEffort: string };
+
+/** What the user chose on the draft, replayed on the new session. */
+export type DraftChoices = {
+  model?: DraftModel;
+  /** Fusion's pair, set with `fusion.set-pair` right after the chat starts (it switches pi to the lead). */
+  fusion?: DraftFusion;
+  thinking?: string;
+  permission?: string;
+  autonomy?: import('../../lib/session/autonomy').AutonomyLevel;
+  plan?: boolean;
+};
+
+export type DraftSession = SessionHandle & {
+  readonly choices: () => DraftChoices;
+  /** A live chat on the same PC (borrowed for the model catalogue), if one is open. */
+  peer(): SessionHandle | undefined;
+  pickModel(model: DraftModel): void;
+  /** The draft's Fusion pair (`undefined` = back to one model); `lead` is the model shown meanwhile. */
+  pickFusion(pair: DraftFusion | undefined, lead?: DraftModel): void;
+  /** Whether a provider on this PC can run a model (D-01): `checking` until the host answers. */
+  readiness: () => Readiness | undefined;
+  /** The toolbar's chips are final (defaults + the PC's commands answered, or a short grace passed) — D-21. */
+  ready: () => boolean;
+  commandsLoading: () => boolean;
+  commandsError: () => string | undefined;
+};
+
+/** The levels offered before a chat knows its model's (pi's common set). */
+const DEFAULT_LEVELS = THINKING_ORDER.filter((level) => level !== 'minimal' && level !== 'max');
+
+const SettingsSchema = z.object({ settings: z.record(z.string(), z.unknown()).optional() }).passthrough();
+const DefaultModelSchema = z
+  .object({
+    model: z.object({ provider: z.string().optional(), id: z.string(), name: z.string().optional() }).nullable().optional(),
+  })
+  .passthrough();
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined);
+
+/** The draft composer's key: its text, images and history live under it. */
+export const draftKey = (hostId: string) => `draft:${hostId}`;
+
+let refSeq = 0;
+
+export function createDraftSession(hostId: string, onSubmit: (text: string, images: OutboxImage[]) => unknown, cwd: () => string | undefined = () => undefined): DraftSession {
+  const [state, setState] = createStore<SessionState>({ ...initialState(hostId, ''), conn: 'live' });
+  // Z-19b: the picks survive leaving the route — seeded from the host's stored
+  // record and written back on every change (see draftStored.ts).
+  const [choices, setChoicesBase] = createSignal<DraftChoices>(untrack(() => loadDraft(hostId).choices ?? {}));
+  const storedModel = choices().model;
+  if (storedModel) setState('model', { provider: storedModel.provider, id: storedModel.modelId, name: storedModel.name ?? storedModel.modelId });
+  const setChoices = (fn: (c: DraftChoices) => DraftChoices) => {
+    const next = fn(choices());
+    setChoicesBase(next);
+    saveDraftChoices(hostId, next);
+  };
+  const mutate = (fn: (s: SessionState) => void) => setState(produce(fn));
+
+  /** A live chat on this PC for the model catalogue. */
+  const peer = (): SessionHandle | undefined => {
+    const reg = sessions();
+    const keys = reg.keys().filter((k) => k.startsWith(`${hostId}/`)).reverse();
+    for (const key of keys) {
+      const handle = reg.peek(hostId, key.slice(hostId.length + 1));
+      if (handle && handle.state.conn === 'live') return handle;
+    }
+    return undefined;
+  };
+
+  const [hostReady, setReadiness] = createSignal<Readiness | undefined>();
+  // Providers seen in the model list: an extension-registered one (absent from the host's
+  // credential rows) counts as usable, so a router-only PC is not "no provider".
+  const [modelProviders, setModelProviders] = createSignal<string[]>((cachedModels(hostId) ?? []).map((m) => m.provider));
+  const readiness = (): Readiness | undefined => withModelProviders(hostReady(), [...modelProviders(), state.model?.provider]);
+  const [defaultsIn, setDefaultsIn] = createSignal(false);
+  const [commandsIn, setCommandsIn] = createSignal(false);
+  const [commandsError, setCommandsError] = createSignal<string>();
+  /** D-21: the chips paint once, final; a slow host never keeps them hidden past the grace. */
+  const [graceOver, setGraceOver] = createSignal(false);
+  setTimeout(() => setGraceOver(true), 1500);
+
+  /** The catalogue row of the draft's model (the PC's remembered list, else a live chat's). */
+  const catalogueRow = (): ModelInfo | undefined => {
+    const m = state.model;
+    if (!m?.id) return undefined;
+    return (cachedModels(hostId) ?? []).find((row) => row.id === m.id && (!m.provider || row.provider === m.provider));
+  };
+  /** The levels the draft's model offers, when the catalogue knows (D-02). */
+  const knownLevels = (): string[] | undefined => levelsOfModel(catalogueRow());
+  /** Shows the level the new session will actually run: a level the model lacks is clamped like the host does. */
+  const settleThinking = () => {
+    const levels = knownLevels();
+    const want = choices().thinking ?? defaultLevel;
+    if (!want) return;
+    setState('thinkingLevel', levels ? clampLevel(want, levels) : want);
+  };
+  let defaultLevel: string | undefined;
+
+  /**
+   * r9 P3-4: a default model with no name known (first launch, nothing remembered) would read as its id ("Mock 1") and
+   * roll to the catalogue's name ("Mock") later. Ask the host for the catalogue now; the chips stay hidden until
+   * `ready` (a 1.5 s grace at most), so they paint once, with the name.
+   */
+  const nameFromCatalogue = async (want: { provider: string | undefined; id: string }): Promise<void> => {
+    const reply = await hostCmd({ kind: 'available_models' }, z.unknown(), hostId).then((r) => (r.ok ? r.value : undefined)).catch(() => undefined);
+    const models: ModelInfo[] = reply ? parseModels(reply) : [];
+    if (!models.length) return;
+    rememberModels(hostId, models);
+    const row = models.find((m) => m.id === want.id && (!want.provider || m.provider === want.provider));
+    const m = state.model;
+    if (row?.name && !choices().model && m?.id === want.id && (!m.name || m.name === want.id)) setState('model', 'name', row.name);
+    settleThinking();
+  };
+
+  // The host's defaults: the model + thinking level a new session starts with,
+  // and which providers can run one (D-01: a default whose provider has no
+  // working credential is not what the session will use — the chip says so).
+  void Promise.all([hostCmd({ kind: 'get_settings' }, SettingsSchema, hostId), hostReadiness(hostId)])
+    .then(async ([res, ready]) => {
+      let nameless: { provider: string | undefined; id: string } | undefined;
+      setReadiness(ready);
+      if (!res.ok) return;
+      const s = res.value.settings ?? {};
+      const extPerm = ((s.extensionSettings as Record<string, unknown> | undefined)?.permission ?? {}) as Record<string, unknown>;
+      const permDefault = str(extPerm.defaultMode) ?? str(extPerm.mode);
+      const autonomy = (s.autonomy as { defaultLevel?: unknown } | undefined)?.defaultLevel;
+      if (['low', 'medium', 'high'].includes(String(autonomy)) && !choices().autonomy) setState('info', 'autonomy', autonomy);
+      const provider = str(s.defaultProvider);
+      const id = str(s.defaultModel);
+      defaultLevel = str(s.defaultThinkingLevel) ?? 'medium';
+      batch(() => {
+        if (permDefault && !choices().permission) setWorkflow({ permissionMode: permDefault });
+        const usable = !provider || ready.providerReady(provider);
+        if (id && usable && !choices().model) {
+          const known = (cachedModels(hostId) ?? []).find((row) => row.id === id && (!provider || row.provider === provider));
+          setState('model', { provider, id, name: known?.name ?? id });
+          if (!known) nameless = { provider, id };
+        }
+        settleThinking();
+      });
+      if (nameless) await nameFromCatalogue(nameless);
+      if (!id && !choices().model) {
+        await hostCmd({ kind: 'default_model' }, DefaultModelSchema, hostId)
+          .then(async (def) => {
+            const m = def.ok ? def.value.model : undefined;
+            const curReady = readiness() ?? ready;
+            if (!m?.id || choices().model || state.model?.id) return;
+            if (m.provider && !curReady.providerReady(m.provider)) return;
+            setState('model', { provider: m.provider, id: m.id, name: m.name ?? m.id });
+            settleThinking();
+            if (!m.name || m.name === m.id) await nameFromCatalogue({ provider: m.provider, id: m.id });
+          })
+          .catch(() => undefined);
+      }
+    })
+    .catch(() => undefined)
+    .finally(() => setDefaultsIn(true));
+  // G-05: the cached answer paints at once; the host's real credential check follows and
+  // corrects it (a saved dead key is "not working", so the Connect card stays).
+  void hostReadiness(hostId, { validate: true })
+    .then((checked) => {
+      if (!checked.known) return;
+      setReadiness(checked);
+      // The default the host proposed turned out to be on a dead key: don't show a name the chat can't run.
+      const m = state.model;
+      if (m?.provider && !choices().model && checked.providers.some((p) => p.id === m.provider && p.ready === false)) setState('model', undefined);
+    })
+    .catch(() => undefined);
+
+  // A previous chat's catalogue may belong to another project. Always ask for
+  // the selected folder's real registrations, even on the very first launch.
+  let commandRequest = 0;
+  createEffect(on(cwd, (folder) => {
+    const request = ++commandRequest;
+    setCommandsIn(false);
+    setCommandsError(undefined);
+    setState('commands', []);
+    void hostCmd({ kind: 'get_commands', ...(folder ? { cwd: folder } : {}) }, z.object({ commands: z.array(z.object({
+      name: z.string(), description: z.string().optional(), source: z.string().optional(),
+      surfaces: z.array(z.string()).optional(),
+    }).passthrough()) }), hostId)
+      .then((res) => {
+        if (request !== commandRequest) return;
+        if (!res.ok) throw new Error(res.error.message);
+        setState('commands', res.value.commands as CommandInfo[]);
+        setCommandsIn(true);
+      })
+      .catch(() => {
+        if (request === commandRequest) setCommandsError('Commands could not be loaded. Reopen New chat to retry.');
+      });
+  }));
+
+  const setWorkflow = (patch: { permissionMode?: string; planMode?: boolean }) => {
+    mutate((s) => {
+      const prev = (s.topics[WORKFLOW_STATUS_TOPIC]?.data ?? { planMode: false }) as { planMode: boolean; permissionMode?: string };
+      s.topics[WORKFLOW_STATUS_TOPIC] = { data: { ...prev, ...patch }, sticky: true, publisher: 'draft' };
+    });
+  };
+
+  const fakeItem = (text: string, images?: OutboxImage[]): OutboxItem => ({
+    ref: `draft-${++refSeq}`,
+    text,
+    ...(images?.length ? { images } : {}),
+    mode: 'prompt',
+    at: Date.now(),
+    status: 'sending',
+  });
+
+  const handle: DraftSession = {
+    commandsLoading: () => !commandsIn() && !commandsError(),
+    commandsError,
+    key: draftKey(hostId),
+    hostId,
+    sessionId: () => '',
+    state,
+    turns: () => [],
+    send(text: string, opts: SendOptions = {}) {
+      const perm = /^\/permission\s+(ask|auto|full)\s*$/.exec(text.trim());
+      if (perm) {
+        setChoices((c) => ({ ...c, permission: perm[1] }));
+        setWorkflow({ permissionMode: perm[1] });
+        return fakeItem(text);
+      }
+      const plan = /^\/plan\s+(on|off)\s*$/.exec(text.trim());
+      if (plan) {
+        setChoices((c) => ({ ...c, plan: plan[1] === 'on' }));
+        setWorkflow({ planMode: plan[1] === 'on' });
+        return fakeItem(text);
+      }
+      const item = fakeItem(text, opts.images);
+      const submitted = onSubmit(text, opts.images ?? []);
+      if (opts.onResult) void Promise.resolve(submitted).then(
+        (accepted) => opts.onResult?.({ accepted: accepted !== false }),
+        (error: unknown) => opts.onResult?.({ accepted: false, reason: String(error) }),
+      );
+      return item;
+    },
+    resend() {},
+    dismiss() {},
+    abort: async () => {},
+    async cmd<T = unknown>(cmd: RpcCommand): Promise<T> {
+      if (cmd.type === 'set_autonomy' && ['low', 'medium', 'high'].includes(String(cmd.level))) {
+        setChoices((c) => ({ ...c, autonomy: cmd.level as 'low' | 'medium' | 'high' }));
+        setState('info', 'autonomy', cmd.level);
+        return undefined as T;
+      }
+      if (cmd.type === 'get_available_thinking_levels') {
+        const fromCatalogue = knownLevels();
+        if (fromCatalogue) return { levels: fromCatalogue } as T;
+        const p = peer();
+        const same = p && p.state.model?.id === state.model?.id && p.state.model?.provider === state.model?.provider;
+        if (same) {
+          const reply = await p.cmd<unknown>(cmd).catch(() => undefined);
+          if (reply) return reply as T;
+        }
+        return { levels: [...DEFAULT_LEVELS] } as T;
+      }
+      if (cmd.type === 'get_available_models') {
+        const p = peer();
+        // No chat open on this PC: ask the host for the catalogue itself (a remembered list
+        // can be stale — e.g. saved while extensions were off — and hide the real providers).
+        const reply = p
+          ? await p.cmd<unknown>(cmd).catch(() => undefined)
+          : await hostCmd({ kind: 'available_models' }, z.unknown(), hostId)
+              .then((res) => (res.ok ? res.value : undefined))
+              .catch(() => undefined);
+        const models: ModelInfo[] = reply ? parseModels(reply) : [];
+        if (models.length) {
+          rememberModels(hostId, models);
+          setModelProviders(models.map((m) => m.provider));
+          settleThinking();
+          return { models } as T;
+        }
+        const cached = cachedModels(hostId) ?? [];
+        if (cached.length) setModelProviders(cached.map((m) => m.provider));
+        return { models: cached } as T;
+      }
+      if (cmd.type === 'set_model' && typeof cmd.provider === 'string' && typeof cmd.modelId === 'string') {
+        const known = (cachedModels(hostId) ?? []).find((m) => m.provider === cmd.provider && m.id === cmd.modelId);
+        handle.pickModel({ provider: cmd.provider, modelId: cmd.modelId, ...(known?.name ? { name: known.name } : {}) });
+        return null as T;
+      }
+      if (cmd.type === 'set_thinking_level' && typeof cmd.level === 'string') {
+        setChoices((c) => ({ ...c, thinking: cmd.level as string }));
+        settleThinking();
+        return null as T;
+      }
+      if (cmd.type === '_oino/set_extension_setting' && typeof cmd.namespace === 'string' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'set_extension_setting', namespace: cmd.namespace, key: cmd.key, value: cmd.value, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        if (cmd.namespace === 'permission' && (cmd.key === 'defaultMode' || cmd.key === 'mode') && typeof cmd.value === 'string' && !choices().permission) {
+          setWorkflow({ permissionMode: cmd.value });
+        }
+        return null as T;
+      }
+      if (cmd.type === '_oino/unset_extension_setting' && typeof cmd.namespace === 'string' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'unset_extension_setting', namespace: cmd.namespace, key: cmd.key, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return null as T;
+      }
+      if (cmd.type === '_oino/get_extension_settings' && typeof cmd.namespace === 'string') {
+        const layer = cmd.layer === 'global' || cmd.layer === 'project' ? cmd.layer : 'effective';
+        const res = await hostCmd({ kind: 'get_extension_settings', namespace: cmd.namespace, layer }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return res.value as T;
+      }
+      if (cmd.type === '_oino/get_settings') {
+        const res = await hostCmd({ kind: 'get_settings', ...(typeof cmd.key === 'string' ? { key: cmd.key } : {}) }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return res.value as T;
+      }
+      if (cmd.type === '_oino/set_setting' && typeof cmd.key === 'string') {
+        const scope = cmd.scope === 'project' ? 'project' : 'global';
+        const res = await hostCmd({ kind: 'set_setting', key: cmd.key, value: cmd.value, scope }, z.unknown(), hostId);
+        if (!res.ok) throw res.error;
+        return null as T;
+      }
+      throw { code: 'E_UNSUPPORTED', message: 'Start the chat first', retryable: false };
+    },
+    subscribeTopics() {},
+    getEntries: async () => [],
+    retry() {},
+    takeBack() {},
+    acquire: () => () => {},
+    close() {},
+    choices,
+    peer,
+    readiness,
+    ready: () => graceOver() || (defaultsIn() && commandsIn()),
+    pickModel(model) {
+      // One model picked: the draft's Fusion pair (if any) is off.
+      setChoices(({ fusion: _fusion, ...c }) => ({ ...c, model }));
+      setState('model', { provider: model.provider, id: model.modelId, name: model.name ?? model.modelId });
+      // The new model may not offer the level on show (D-02).
+      settleThinking();
+    },
+    pickFusion(pair, lead) {
+      if (!pair) {
+        setChoices(({ fusion: _fusion, ...c }) => c);
+        return;
+      }
+      setChoices((c) => ({ ...c, fusion: pair, ...(lead ? { model: lead } : {}) }));
+      if (lead) setState('model', { provider: lead.provider, id: lead.modelId, name: lead.name ?? lead.modelId });
+    },
+  };
+  return handle;
+}

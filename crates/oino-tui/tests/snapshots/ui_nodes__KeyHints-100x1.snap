@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+enter open · n new
+  ~ 0..5=fg=rgb(7e888e) 6..10=fg=rgb(9da5a9) 10..14=fg=rgb(7e888e) 15..18=fg=rgb(9da5a9)

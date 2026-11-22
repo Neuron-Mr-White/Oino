@@ -1,0 +1,12 @@
+{
+ "t": "List",
+ "items": [
+  "a",
+  "b"
+ ],
+ "state": {
+  "selected": "b"
+ },
+ "onSelect": "pick",
+ "onActivate": "open"
+}

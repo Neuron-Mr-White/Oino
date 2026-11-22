@@ -1,0 +1,31 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.updater",
+  "name": "Updater",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Checks GitHub for new Oino releases, shows what changed, and browses the bundled READMEs and the changelog.",
+  "license": "MIT",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "api.github.com",
+        "github.com",
+        "objects.githubusercontent.com",
+        "raw.githubusercontent.com"
+      ]
+    },
+    "fs": {
+      "agentDir": "read"
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:6af259403990961822c2c1253bd78f3ab67cbf4041aed84c784a84c8db5ab321"
+  }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "oino-ai"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Message, content, model and streaming types for the Oino agent stack"
+readme = "README.md"
+keywords = ["llm", "ai", "agent", "streaming", "messaging"]
+categories = ["data-structures", "encoding"]
+
+[dependencies]
+indexmap.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = "2"
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

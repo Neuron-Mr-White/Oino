@@ -1,0 +1,923 @@
+/**
+ * Session reducer (app spec §3.4, WP-A2): host session snapshot / replay /
+ * live events → `SessionState`. Pure over a mutable draft: the store runs it
+ * inside Solid's `produce` (one `batch()` per animation frame), tests run it
+ * on plain objects.
+ *
+ * - `applySnapshot` — `reset:true` rebuilds from the snapshot; `reset:false`
+ *   applies the `replay` in order.
+ * - `applyEvent` — one `{session, seq, event}`. Duplicates (`seq ≤ state.seq`)
+ *   are skipped; a gap that coalesced/dropped text deltas cannot explain
+ *   returns `gap` (the store reopens with `sinceSeq`).
+ * - `message_end` appends a **provisional** entry (`live:<seq>`, host entries
+ *   are persisted without an event); `agent_end` asks the store to
+ *   `reconcile` the tail with `get_entries{since}` so the state equals a
+ *   fresh snapshot (real ids for fork / tree / edit).
+ */
+import type { SessionEventDto, SessionSnapshot } from '../host/client';
+import { hostEventBanner } from '@unipi/protocol';
+import { textOf, type Part as ModelPart } from '../chat/model';
+import { settleByEntry, settleByMessage, settleByQueue } from './outbox';
+import { isTurnStart, turnStartAtOrBefore } from './chunks';
+import { parseTrust } from './trust';
+import {
+  LIVE_PREFIX,
+  isProvisional,
+  type AgentMessage,
+  type BannerKind,
+  type CommandInfo,
+  type LiveTool,
+  type Part,
+  type RunPhase,
+  type SessionEntry,
+  type SessionState,
+  type TopicValue,
+} from './types';
+
+/** What the store must do after an apply (side effects stay out of the reducer). */
+export type ApplyResult = {
+  /** A seq gap: reopen with `sinceSeq = state.seq`. The event was not applied. */
+  gap?: boolean;
+  /** The run ended: fetch `get_entries{since}` and `reconcileEntries`. */
+  reconcile?: boolean;
+  /** `commands_changed`: refetch `get_commands`. */
+  commandsChanged?: boolean;
+  /** `lagged` (core dropped events): reopen without `sinceSeq` (full snapshot). */
+  resync?: boolean;
+  /** `taken_over`: stop reconnecting (a reopen would take it back). */
+  takenOver?: boolean;
+  /** `session_replaced`: the runtime now serves this session id. */
+  replacedBy?: string;
+  /** `session_info_changed` / snapshot `sessionName`: sync live title to the hub card (D-03). */
+  nameChanged?: string;
+  /** ui-protocol registry traffic for the U9 registry (`extension_ui_request`, `_dismiss`, `oino_ui_patch`). */
+  ui?: Array<Record<string, unknown>>;
+  /** `woken` / `compaction_end` / `entry_appended` gap: fetch `get_entries{since}` and append. */
+  catchUp?: string;
+  /** `compaction_end` / `entry_appended` with no prior confirmed anchor: reload tail page. */
+  reloadTail?: boolean;
+  /** [chat-tree] `session_tree` (a tree jump, any client): the leaf the branch moved to; reload its tail page unless it is ours already. */
+  branchMoved?: string | null;
+};
+
+/** Extension UI methods that wait for the user (needs-you). */
+const DIALOG_METHODS = new Set(['select', 'confirm', 'input', 'editor', 'multiSelect', 'form', 'approval', 'custom', 'clipboardReadImage', 'editExternally']);
+
+export function initialState(hostId: string, sessionId: string): SessionState {
+  return {
+    hostId,
+    sessionId,
+    seq: 0,
+    entries: [],
+    byId: {},
+    leafId: null,
+    entriesRev: 0,
+    liveTools: {},
+    run: { phase: 'idle', running: false },
+    queue: { steering: [], followUp: [] },
+    topics: {},
+    commands: [],
+    info: {},
+    dialogs: [],
+    conn: 'connecting',
+    outbox: [],
+  };
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+
+function indexEntries(entries: readonly SessionEntry[]): Record<string, number> {
+  const byId: Record<string, number> = {};
+  for (let i = 0; i < entries.length; i++) byId[entries[i]!.id] = i;
+  return byId;
+}
+
+function topicsOf(list: readonly unknown[] | undefined): Record<string, TopicValue> {
+  const out: Record<string, TopicValue> = {};
+  for (const raw of list ?? []) {
+    if (!isObject(raw) || typeof raw.topic !== 'string') continue;
+    out[raw.topic] = { data: raw.data, sticky: raw.sticky !== false, publisher: str(raw.publisher) ?? '' };
+  }
+  return out;
+}
+
+/** `RpcSessionState` → run / name / model / thinking / queue. */
+function applyInfo(s: SessionState, info: Record<string, unknown>): void {
+  s.info = info;
+  const streaming = info.isStreaming === true || info.running === true;
+  const compacting = info.isCompacting === true;
+  // Oino's `get_state` also says what an idle session waits on (`waitingOn`) or still runs
+  // quietly (`backgroundOn`), so a chat opened mid-wait reads "Working" from the first frame.
+  const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((w): w is string => typeof w === 'string' && !!w) : []);
+  const waitingOn = streaming || compacting ? [] : strings(info.waitingOn);
+  const backgroundOn = streaming || compacting || waitingOn.length ? [] : strings(info.backgroundOn);
+  s.run = {
+    phase: compacting ? 'compacting' : streaming ? 'running' : waitingOn.length ? 'waiting' : 'idle',
+    running: streaming,
+    ...(streaming ? { startedAt: s.run.startedAt } : {}),
+    ...(waitingOn.length ? { waitingOn } : {}),
+    ...(backgroundOn.length ? { backgroundOn } : {}),
+  };
+  if (!streaming) delete s.run.startedAt;
+  const name = str(info.sessionName);
+  if (name !== undefined) s.name = name;
+  if (isObject(info.model)) s.model = info.model as SessionState['model'];
+  const thinking = str(info.thinkingLevel) ?? str(info.thinking);
+  if (thinking !== undefined) s.thinkingLevel = thinking;
+  if (Array.isArray(info.steering) || Array.isArray(info.followUp) || info.pendingMessageCount === 0) {
+    const steering = Array.isArray(info.steering) ? info.steering.filter((t): t is string => typeof t === 'string') : [];
+    const followUp = Array.isArray(info.followUp) ? info.followUp.filter((t): t is string => typeof t === 'string') : [];
+    s.queue = { steering, followUp, steeringIds: info.steeringIds as (string | null)[] | undefined, followUpIds: info.followUpIds as (string | null)[] | undefined };
+    settleByQueue(s, [...steering, ...followUp], alignedQueueIds(s.queue));
+  }
+}
+
+/**
+ * The first frame of a stream. `reset:true` replaces everything the host
+ * owns (outbox, conn and an open banner survive only when it is not a reset).
+ */
+export function applySnapshot(s: SessionState, snap: SessionSnapshot, now = Date.now()): ApplyResult {
+  if (!snap.reset) {
+    const merged: ApplyResult = {};
+    for (const dto of snap.replay ?? []) {
+      const r = applyEvent(s, dto, now);
+      if (r.gap) return { ...merged, gap: true };
+      mergeResult(merged, r);
+    }
+    mergeResult(merged, reconcileRequests(s, snap.pending_requests));
+    s.conn = 'live';
+    s.everLive = true;
+    delete s.connError;
+    return merged;
+  }
+  // Persisted entries are immutable: an unchanged one keeps its object (and so its proxy), so
+  // the turns index keeps settled turns' identity across a reset.
+  const prev = new Map<string, SessionEntry>();
+  for (const e of s.entries) if (!isProvisional(e.id)) prev.set(e.id, e);
+  const entries = ((snap.entries ?? []) as SessionEntry[])
+    .filter((e) => isObject(e) && typeof e.id === 'string')
+    .map((e) => {
+      const old = prev.get(e.id);
+      return old && old.type === e.type && old.timestamp === e.timestamp && old.parentId === e.parentId ? old : e;
+    });
+  s.seq = snap.seq;
+  s.entries = entries;
+  s.byId = indexEntries(entries);
+  s.leafId = snap.leaf_id ?? entries.at(-1)?.id ?? null;
+  s.entriesRev += 1;
+  const page = snap.page;
+  if (page) s.history = { total: page.total, hasMore: page.has_more, ...(page.cursor ? { cursor: page.cursor } : {}) };
+  else delete s.history;
+  if (snap.waking) s.waking = true;
+  else delete s.waking;
+  delete s.streaming;
+  s.liveTools = {};
+  s.queue = { steering: [], followUp: [] };
+  s.topics = topicsOf(snap.topics as unknown[] | undefined);
+  s.commands = (Array.isArray(snap.commands) ? snap.commands : []).filter(isObject) as CommandInfo[];
+  s.run = { phase: 'idle', running: false };
+  applyInfo(s, isObject(snap.state) ? snap.state : {});
+  const trust = parseTrust((snap as { project_trust?: unknown }).project_trust);
+  if (trust) s.projectTrust = trust;
+  else delete s.projectTrust;
+  delete s.banner;
+  s.conn = 'live';
+  s.everLive = true;
+  delete s.connError;
+  // A user message the host already holds settles its outbox bubble.
+  for (const e of entries) settleByEntry(s, e);
+  const ui = isObject(snap.ui) ? [{ type: 'oino_ui_snapshot', ...snap.ui }] : undefined;
+  const out: ApplyResult = {};
+  if (ui) out.ui = ui;
+  if (snap.pending_requests !== undefined) mergeResult(out, reconcileRequests(s, snap.pending_requests));
+  else {
+    s.dialogs = [];
+    s.approvals = [];
+  }
+  if (s.name !== undefined) out.nameChanged = s.name;
+  return out;
+}
+
+function mergeResult(into: ApplyResult, r: ApplyResult): void {
+  if (r.reconcile) into.reconcile = true;
+  if (r.commandsChanged) into.commandsChanged = true;
+  if (r.resync) into.resync = true;
+  if (r.takenOver) into.takenOver = true;
+  if (r.replacedBy) into.replacedBy = r.replacedBy;
+  if (r.nameChanged !== undefined) into.nameChanged = r.nameChanged;
+  if (r.gap) into.gap = true;
+  if (r.ui) (into.ui ??= []).push(...r.ui);
+  if (r.catchUp && !into.catchUp) into.catchUp = r.catchUp;
+  if (r.reloadTail) into.reloadTail = true;
+  if (r.branchMoved !== undefined) into.branchMoved = r.branchMoved;
+}
+
+/** Applies a batch in order; stops at the first gap. */
+export function applyEvents(s: SessionState, items: readonly SessionEventDto[], now = Date.now()): ApplyResult {
+  const out: ApplyResult = {};
+  for (const dto of items) {
+    const r = applyEvent(s, dto, now);
+    mergeResult(out, r);
+    if (r.gap) break;
+  }
+  return out;
+}
+
+/** Text/thinking deltas the host coalesces (and may drop for a slow client) — a gap before one is benign. */
+function isLossyDelta(event: Record<string, unknown>): boolean {
+  if (event.type !== 'message_update') return false;
+  const kind = (event.assistantMessageEvent as { type?: unknown } | undefined)?.type;
+  return kind === 'text_delta' || kind === 'thinking_delta';
+}
+
+function benignGap(s: SessionState, event: Record<string, unknown>): boolean {
+  if (isLossyDelta(event)) return true;
+  // A dropped delta followed by the next update / the end of the same message: the full
+  // `message` the event carries repairs the text.
+  return !!s.streaming && (event.type === 'message_update' || event.type === 'message_end');
+}
+
+const isoOf = (ts: unknown, now: number): string => new Date(typeof ts === 'number' && Number.isFinite(ts) ? ts : now).toISOString();
+
+/** A settled message → the entry pi would persist for it. */
+function entryForMessage(message: AgentMessage, id: string, parentId: string | null, now: number): SessionEntry {
+  if (message.role === 'custom') {
+    const entry: SessionEntry = { type: 'custom_message', id, parentId, timestamp: isoOf(message.timestamp, now), customType: str(message.customType) ?? '', content: message.content };
+    if (message.display !== undefined) entry.display = message.display;
+    if (message.details !== undefined) entry.details = message.details;
+    return entry;
+  }
+  return { type: 'message', id, parentId, timestamp: isoOf(message.timestamp, now), message };
+}
+
+const QUEUE_LEFT_MS = 5_000;
+const queueKey = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+/** The host's queue ids in the order of the texts `steering` then `followUp` (a missing id is null: older host, restored item). */
+const alignedQueueIds = (q: SessionState['queue']): (string | null)[] => [
+  ...q.steering.map((_, i) => q.steeringIds?.[i] ?? null),
+  ...q.followUp.map((_, i) => q.followUpIds?.[i] ?? null),
+];
+
+/** Remembers which queue texts a `queue_update` just removed (delivered, or taken out by the user). */
+function noteQueueLeft(s: SessionState, next: readonly string[], now: number): void {
+  const left = [...s.queue.steering, ...s.queue.followUp].map(queueKey);
+  for (const key of next.map(queueKey)) {
+    const i = left.indexOf(key);
+    if (i >= 0) left.splice(i, 1);
+  }
+  const kept = (s.queueLeft ?? []).filter((l) => now - l.at < QUEUE_LEFT_MS);
+  for (const key of left) kept.push({ key, at: now });
+  if (kept.length) s.queueLeft = kept;
+  else delete s.queueLeft;
+}
+
+/** Does this user message come out of the host queue (still listed, or removed from it a moment ago)? Consumes the match. */
+function deliveredFromQueue(s: SessionState, message: AgentMessage, now: number): boolean {
+  const key = queueKey(textOf(message.content as string | ModelPart[] | undefined));
+  if (!key) return false;
+  const i = (s.queueLeft ?? []).findIndex((l) => l.key === key && now - l.at < QUEUE_LEFT_MS);
+  if (i >= 0) {
+    s.queueLeft!.splice(i, 1);
+    return true;
+  }
+  return [...s.queue.steering, ...s.queue.followUp].some((t) => queueKey(t) === key);
+}
+
+/** The newest turn's persisted entry that IS this custom message (same type and content, no user message between). */
+function hasPersistedTwin(s: SessionState, message: AgentMessage): boolean {
+  if (message.role !== 'custom') return false;
+  const customType = str(message.customType) ?? '';
+  const content = JSON.stringify(message.content);
+  for (let i = s.entries.length - 1; i >= 0 && i >= s.entries.length - 40; i--) {
+    const e = s.entries[i]!;
+    if (e.type === 'message' && e.message?.role === 'user') return false;
+    if (isProvisional(e.id) || e.type !== 'custom_message') continue;
+    if (e.customType === customType && JSON.stringify(e.content) === content) return true;
+  }
+  return false;
+}
+
+function appendEntry(s: SessionState, entry: SessionEntry): void {
+  const at = s.byId[entry.id];
+  if (at !== undefined) {
+    // Not an append: the turns index must rebuild (it reuses unchanged turns).
+    s.entries[at] = entry;
+    s.entriesRev += 1;
+  } else {
+    s.byId[entry.id] = s.entries.length;
+    s.entries.push(entry);
+  }
+  s.leafId = entry.id;
+}
+
+function resultText(result: unknown): string | undefined {
+  if (!isObject(result)) return typeof result === 'string' ? result : undefined;
+  const content = result.content;
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+  return content
+    .filter((p): p is { type: string; text: string } => isObject(p) && p.type === 'text' && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('');
+}
+
+/** Applies one assistant stream event to the streaming message's parts (when no full `message.content` came). */
+function applyDelta(message: AgentMessage, ev: Record<string, unknown>): void {
+  const kind = str(ev.type);
+  if (!kind) return;
+  const index = typeof ev.contentIndex === 'number' ? ev.contentIndex : -1;
+  const parts = (Array.isArray(message.content) ? message.content : (message.content = [])) as Part[];
+  const ensure = (fresh: () => Part): Part | undefined => {
+    if (index < 0) return undefined;
+    while (parts.length <= index) parts.push(fresh());
+    return parts[index];
+  };
+  switch (kind) {
+    case 'text_start':
+    case 'text_delta': {
+      const part = ensure(() => ({ type: 'text', text: '' }));
+      if (part && kind === 'text_delta') part.text = String(part.text ?? '') + String(ev.delta ?? '');
+      return;
+    }
+    case 'thinking_start':
+    case 'thinking_delta': {
+      const part = ensure(() => ({ type: 'thinking', thinking: '' }));
+      if (part && kind === 'thinking_delta') part.thinking = String(part.thinking ?? '') + String(ev.delta ?? '');
+      return;
+    }
+    case 'toolcall_start':
+    case 'toolcall_delta': {
+      const part = ensure(() => ({ type: 'toolCall', id: '', name: '', arguments: {} }));
+      if (!part) return;
+      const call = isObject(ev.toolCall) ? ev.toolCall : undefined;
+      if (call) {
+        if (typeof call.id === 'string') part.id = call.id;
+        if (typeof call.name === 'string') part.name = call.name;
+      }
+      if (kind === 'toolcall_delta') {
+        part.partialJson = String(part.partialJson ?? '') + String(ev.delta ?? '');
+        try {
+          const parsed = JSON.parse(String(part.partialJson));
+          if (isObject(parsed)) part.arguments = parsed;
+        } catch {
+          // partial JSON while streaming
+        }
+      }
+      return;
+    }
+    case 'toolcall_end': {
+      const call = isObject(ev.toolCall) ? ev.toolCall : undefined;
+      if (call && index >= 0) {
+        while (parts.length <= index) parts.push({ type: 'toolCall', id: '', name: '', arguments: {} });
+        parts[index] = { type: 'toolCall', ...call };
+      }
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/** The streaming message takes the event's full partial `message` (host coalescing keeps the newest). */
+function takeMessage(s: SessionState, message: AgentMessage, now: number): void {
+  if (!s.streaming) {
+    s.streaming = { message: { ...message, content: Array.isArray(message.content) ? message.content.map((p) => ({ ...p })) : [] }, startedAt: now };
+    return;
+  }
+  const cur = s.streaming.message;
+  for (const key of Object.keys(message)) if (key !== 'content') cur[key] = message[key];
+  if (!Array.isArray(message.content)) return;
+  const parts = (Array.isArray(cur.content) ? cur.content : (cur.content = [])) as Part[];
+  const next = message.content;
+  // Patch in place: unchanged parts keep their identity (Solid re-renders the changed block only).
+  for (let i = 0; i < next.length; i++) {
+    const want = next[i]!;
+    const have = parts[i];
+    if (!have || have.type !== want.type) {
+      parts[i] = { ...want };
+      continue;
+    }
+    for (const key of Object.keys(want)) if (have[key] !== want[key]) have[key] = want[key];
+  }
+  if (parts.length > next.length) parts.length = next.length;
+}
+
+function setBanner(s: SessionState, kind: BannerKind, event: Record<string, unknown>, now: number): void {
+  const text = hostEventBanner({ type: kind, error: event.error, from: event.from ?? event.by }) ?? '';
+  s.banner = { kind, text, at: now, ...(typeof event.from === 'string' ? { from: event.from } : {}) };
+}
+
+function endRun(s: SessionState, phase: RunPhase = 'idle'): void {
+  s.run = { phase, running: false };
+  s.approvals = [];
+  delete s.streaming;
+  s.liveTools = {};
+}
+
+/** Applies one numbered event. */
+export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now()): ApplyResult {
+  const event = (dto.event ?? {}) as Record<string, unknown>;
+  if (dto.seq <= s.seq) return {};
+  // `fromSeq`: an event the hidden-window queue folded several into (lib/session/coalesce) starts there.
+  const firstSeq = (dto as { fromSeq?: number }).fromSeq ?? dto.seq;
+  if (firstSeq > s.seq + 1 && s.seq > 0 && !benignGap(s, event)) return { gap: true };
+  s.seq = dto.seq;
+  const hostKind = str(event.kind);
+  if (hostKind && !event.type) {
+    switch (hostKind) {
+      case 'crashed':
+        setBanner(s, 'crashed', event, now);
+        endRun(s);
+        return {};
+      case 'session_acquired':
+        // This stream owns the session. Only the losing stream is read-only.
+        if (s.banner?.kind === 'taken_over') delete s.banner;
+        return {};
+      case 'taken_over':
+        setBanner(s, 'taken_over', event, now);
+        endRun(s);
+        return { takenOver: true };
+      case 'reloaded':
+        setBanner(s, 'reloaded', event, now);
+        return {};
+      case 'woken':
+        return applyWoken(s, event);
+      case 'queue_restore_failed': {
+        // The host retains unreadable sidecars. Recoverable items remain visible even
+        // after an app restart (lost outbox entries are persisted by the store).
+        const items = Array.isArray(event.items) ? event.items : [];
+        s.queueRestoreError = str(event.error) ?? 'Some queued messages could not be read. You can send new messages.';
+        for (const [index, raw] of items.entries()) {
+          if (!raw || typeof raw !== 'object') continue;
+          const item = raw as Record<string, unknown>;
+          const id = str(item.messageId) ?? String(index);
+          const command = item.command && typeof item.command === 'object' ? item.command as Record<string, unknown> : undefined;
+          const text = command && str(command.message);
+          if (!id || text === undefined) continue;
+          const ref = `queue-restore:${id}`;
+          const existing = s.outbox.find((o) => o.ref === ref);
+          if (existing) continue;
+          s.outbox.push({
+            ref, text, mode: command?.type === 'steer' ? 'steer' : command?.type === 'follow_up' ? 'followUp' : 'prompt',
+            at: now, status: 'lost', queueRestoreFailed: true,
+            error: str(event.error) ?? 'The host could not restore the queued message',
+            ...(Array.isArray(command?.images) ? { images: command.images.filter((image): image is { mimeType: string; data: string } => !!image && typeof image === 'object' && typeof image.mimeType === 'string' && typeof image.data === 'string') } : {}),
+          });
+        }
+        return {};
+      }
+      case 'queued_send_failed': {
+        // Queue acceptance precedes runtime delivery. A later failure must leave
+        // the optimistic bubble retryable rather than silently dropping it.
+        const item = s.outbox.find((o) => o.text === event.message && (o.status === 'sending' || o.status === 'acked'));
+        if (item) {
+          item.status = 'lost';
+          item.error = str(event.error) ?? 'The queued message could not be sent';
+        }
+        return {};
+      }
+      case 'wake_failed':
+        delete s.waking;
+        setBanner(s, 'wake_failed', event, now);
+        return {};
+      default:
+        return {};
+    }
+  }
+  switch (event.type) {
+    case 'agent_start':
+      s.run = { phase: 'running', running: true, startedAt: s.run.startedAt ?? now };
+      return {};
+    case 'agent_end':
+      endRun(s, event.willRetry === true ? 'retrying' : 'idle');
+      return { reconcile: true };
+    case 'agent_settled':
+      if (s.run.running) endRun(s);
+      return { reconcile: true };
+    case 'message_start': {
+      const message = event.message as AgentMessage | undefined;
+      if (!isObject(message)) return {};
+      if (message.role === 'assistant') {
+        delete s.streaming;
+        takeMessage(s, message, now);
+      } else if (message.role === 'user') {
+        settleByMessage(s, message);
+      }
+      return {};
+    }
+    case 'message_update': {
+      const message = event.message as AgentMessage | undefined;
+      const full = isObject(message) && Array.isArray(message.content);
+      if (full) takeMessage(s, message!, now);
+      else {
+        if (!s.streaming) s.streaming = { message: { role: 'assistant', content: [] }, startedAt: now };
+        if (isObject(event.assistantMessageEvent)) applyDelta(s.streaming.message, event.assistantMessageEvent);
+      }
+      return {};
+    }
+    case 'message_end': {
+      const message = event.message as AgentMessage | undefined;
+      if (!isObject(message) || typeof message.role !== 'string') return {};
+      if (message.role === 'assistant') delete s.streaming;
+      if (message.role === 'user') {
+        settleByMessage(s, message);
+        // A catch-up reply can include this persisted message before its queued live event.
+        // Match its original timestamp and complete content, not text alone: repeated prompts
+        // and different images must remain separate messages.
+        if (typeof message.timestamp === 'number' && s.entries.some((e) =>
+          !isProvisional(e.id) && e.type === 'message' && e.message?.role === 'user' &&
+          e.message.timestamp === message.timestamp && JSON.stringify(e.message.content) === JSON.stringify(message.content))) return {};
+      }
+      // r5 D20: a custom message (memory recall…) is persisted BEFORE its live `message_end`, so
+      // a catch-up reply that raced the event already holds it under its real id; appending the
+      // live copy too showed the row twice until the next reconcile.
+      if (message.role === 'custom' && hasPersistedTwin(s, message)) return {};
+      if (message.role === 'toolResult' && typeof message.toolCallId === 'string') delete s.liveTools[message.toolCallId];
+      const entry = entryForMessage(message, `${LIVE_PREFIX}${dto.seq}`, s.leafId, now);
+      // A queued message was typed long before the host delivered it; its entry is appended NOW
+      // (the persisted entry will say so), and its turn is timed from here, not from the queueing.
+      if (message.role === 'user' && deliveredFromQueue(s, message, now)) entry.timestamp = new Date(now).toISOString();
+      appendEntry(s, entry);
+      return {};
+    }
+    case 'tool_execution_start': {
+      const id = str(event.toolCallId);
+      if (!id) return {};
+      const tool: LiveTool = { id, name: str(event.toolName) ?? '', args: isObject(event.args) ? event.args : {}, startedAt: now };
+      const parent = str(event.parentToolCallId);
+      if (parent) tool.parentId = parent;
+      s.liveTools[id] = tool;
+      return {};
+    }
+    case 'tool_execution_update': {
+      const id = str(event.toolCallId);
+      if (!id) return {};
+      const tool = (s.liveTools[id] ??= { id, name: str(event.toolName) ?? '', args: isObject(event.args) ? event.args : {}, startedAt: now });
+      const text = resultText(event.partialResult);
+      if (text !== undefined) tool.partial = text;
+      if (isObject(event.partialResult) && event.partialResult.details !== undefined) tool.details = event.partialResult.details;
+      return {};
+    }
+    case 'tool_execution_end': {
+      const id = str(event.toolCallId);
+      if (!id) return {};
+      // Its toolResult entry may already be there (pi orders end before the result message).
+      const tool = (s.liveTools[id] ??= { id, name: str(event.toolName) ?? '', args: isObject(event.args) ? event.args : {}, startedAt: now });
+      tool.done = true;
+      tool.isError = event.isError === true;
+      if (event.result !== undefined) tool.result = event.result;
+      if (typeof event.durationMs === 'number') tool.durationMs = event.durationMs;
+      return {};
+    }
+    case 'queue_update': {
+      const steering = Array.isArray(event.steering) ? event.steering.filter((t): t is string => typeof t === 'string') : [];
+      const followUp = Array.isArray(event.followUp) ? event.followUp.filter((t): t is string => typeof t === 'string') : [];
+      noteQueueLeft(s, [...steering, ...followUp], now);
+      s.queue = { steering, followUp, steeringIds: event.steeringIds as (string | null)[] | undefined, followUpIds: event.followUpIds as (string | null)[] | undefined };
+      settleByQueue(s, [...steering, ...followUp], alignedQueueIds(s.queue));
+      return {};
+    }
+    case 'compaction_start':
+      s.run = { ...s.run, phase: 'compacting' };
+      return {};
+    case 'compaction_end': {
+      s.run = { ...s.run, phase: s.run.running ? 'running' : 'idle' };
+      if (event.aborted === true) return {};
+      if (reconcileSince(s).needed) return { reconcile: true };
+      const since = lastConnectedConfirmedId(s);
+      return since ? { catchUp: since } : { reloadTail: true };
+    }
+    case 'auto_retry_start':
+      s.run = {
+        ...s.run,
+        phase: 'retrying',
+        retry: { attempt: Number(event.attempt ?? 0), maxAttempts: Number(event.maxAttempts ?? 0), delayMs: Number(event.delayMs ?? 0), error: str(event.errorMessage) ?? '' },
+      };
+      return {};
+    case 'auto_retry_end': {
+      const { retry: _retry, ...rest } = s.run;
+      s.run = { ...rest, phase: rest.running ? 'running' : 'idle' };
+      return {};
+    }
+    case 'entry_appended': {
+      const entry = event.entry as SessionEntry | undefined;
+      if (!isObject(entry) || typeof entry.id !== 'string') return {};
+      const missingParent =
+        typeof entry.parentId === 'string' &&
+        entry.parentId.length > 0 &&
+        !isProvisional(entry.parentId) &&
+        s.byId[entry.parentId] === undefined;
+      const anchor = missingParent && !reconcileSince(s).needed ? lastConnectedConfirmedId(s) : undefined;
+      appendEntry(s, entry);
+      // The user entry's id is the request's id: the bubble that sent it goes by identity (older hosts: `message_start`'s text match).
+      settleByEntry(s, entry);
+      if (missingParent && !reconcileSince(s).needed) {
+        return anchor ? { catchUp: anchor } : s.entries.length <= 1 ? { reloadTail: true } : {};
+      }
+      return {};
+    }
+    case 'session_info_changed': {
+      const name = str(event.name);
+      if (name === undefined) delete s.name;
+      else s.name = name;
+      return { nameChanged: name ?? '' };
+    }
+    case 'thinking_level_changed': {
+      if (typeof event.level === 'string') s.thinkingLevel = event.level;
+      if (!s.run.running && !reconcileSince(s).needed) {
+        const since = lastConnectedConfirmedId(s);
+        if (since) return { catchUp: since };
+      }
+      return {};
+    }
+    case 'model_changed': {
+      if (isObject(event.model)) s.model = event.model as SessionState['model'];
+      if (!s.run.running && !reconcileSince(s).needed) {
+        const since = lastConnectedConfirmedId(s);
+        if (since) return { catchUp: since };
+      }
+      return {};
+    }
+    case 'run_state': {
+      const phase = str(event.state) as RunPhase | undefined;
+      if (!phase) return {};
+      s.run = { ...s.run, phase };
+      if (Array.isArray(event.waitingOn)) s.run.waitingOn = event.waitingOn.filter((w): w is string => typeof w === 'string');
+      else delete s.run.waitingOn;
+      if (Array.isArray(event.backgroundOn)) s.run.backgroundOn = event.backgroundOn.filter((w): w is string => typeof w === 'string');
+      else delete s.run.backgroundOn;
+      return {};
+    }
+    case 'commands_changed':
+      return { commandsChanged: true };
+    case 'lagged':
+      return { resync: true };
+    case 'session_tree':
+      // [chat-tree] The host's notice that `_oino/navigate_tree` moved the leaf.
+      return { branchMoved: str(event.leafId) ?? null };
+    case 'session_replaced': {
+      const id = str(event.sessionId);
+      return id ? { replacedBy: id } : {};
+    }
+    case 'session_crashed':
+      setBanner(s, 'crashed', event, now);
+      endRun(s);
+      return {};
+    case 'topic': {
+      const topic = str(event.topic);
+      if (topic) s.topics[topic] = { data: event.data, sticky: event.sticky !== false, publisher: str(event.publisher) ?? '' };
+      return {};
+    }
+    case 'approval_cleared':
+    case 'approval_request':
+      return dto.session === s.sessionId ? applyRequest(s, event) : {};
+    case 'extension_ui_request':
+    case 'extension_ui_dismiss':
+      return applyRequest(s, event);
+    case 'oino_ui_patch':
+      return { ui: [event] };
+    default:
+      return {};
+  }
+}
+
+/**
+ * perf-open `{kind:"woken"}`: the runtime behind a file-read snapshot is up — its real
+ * state, commands, ui registry and topics replace the provisional ones. A leaf past ours
+ * (the wake appended, e.g. a repair) asks the store to catch up.
+ */
+function applyWoken(s: SessionState, event: Record<string, unknown>): ApplyResult {
+  delete s.waking;
+  if (isObject(event.state)) applyInfo(s, event.state);
+  if (Array.isArray(event.commands)) s.commands = event.commands.filter(isObject) as CommandInfo[];
+  if (Array.isArray(event.topics)) s.topics = { ...s.topics, ...topicsOf(event.topics) };
+  const out: ApplyResult = {};
+  if (isObject(event.ui)) {
+    out.ui = [{ type: 'oino_ui_snapshot', ...event.ui }];
+    mergeResult(out, reconcileRequests(s, event.ui.pending_requests as unknown[] | undefined));
+  }
+  if (s.name !== undefined) out.nameChanged = s.name;
+  const leaf = str(event.leafId);
+  const last = [...s.entries].reverse().find((e) => !isProvisional(e.id));
+  if (leaf && last && leaf !== s.leafId && s.byId[leaf] === undefined) out.catchUp = last.id;
+  return out;
+}
+
+/**
+ * Prepends an older page (`get_entries{before}` reply) to the loaded history; entries
+ * already present are skipped. The page's `cursor`/`hasMore` become the history's.
+ */
+export function prependEntries(
+  s: SessionState,
+  page: { entries?: readonly SessionEntry[]; total?: number; hasMore?: boolean; cursor?: string | null },
+): void {
+  const older = (page.entries ?? []).filter((e) => isObject(e) && typeof e.id === 'string' && s.byId[e.id] === undefined);
+  const prev = s.history;
+  s.history = {
+    total: typeof page.total === 'number' ? page.total : (prev?.total ?? s.entries.length + older.length),
+    hasMore: page.hasMore === true && older.length > 0,
+    ...(page.cursor ? { cursor: page.cursor } : {}),
+  };
+  if (!older.length) return;
+  s.entries = [...older, ...s.entries];
+  s.byId = indexEntries(s.entries);
+  s.entriesRev += 1;
+}
+
+/**
+ * [chat-tree] The branch moved (a tree jump: "Return here", Edit, Retry, the tree view):
+ * the loaded entries become the new branch's tail page (`get_entries{limit}`), its paging
+ * state follows. Entries both branches share keep their object, so the turns index keeps
+ * those turns' identity. Bumps `branchRev` (the tree view reloads on it).
+ */
+export function replaceBranch(
+  s: SessionState,
+  page: { entries?: readonly SessionEntry[]; leafId?: string | null; total?: number; hasMore?: boolean; cursor?: string | null },
+): void {
+  const prev = new Map<string, SessionEntry>();
+  for (const e of s.entries) if (!isProvisional(e.id)) prev.set(e.id, e);
+  const entries = (page.entries ?? [])
+    .filter((e) => isObject(e) && typeof e.id === 'string')
+    .map((e) => {
+      const old = prev.get(e.id);
+      return old && old.type === e.type && old.timestamp === e.timestamp && old.parentId === e.parentId ? old : e;
+    });
+  s.entries = entries;
+  s.byId = indexEntries(entries);
+  s.leafId = page.leafId === undefined ? (entries.at(-1)?.id ?? null) : page.leafId;
+  s.entriesRev += 1;
+  s.branchRev = (s.branchRev ?? 0) + 1;
+  const hasMore = page.hasMore === true && entries.length > 0;
+  s.history = { total: typeof page.total === 'number' ? page.total : entries.length, hasMore, ...(hasMore && page.cursor ? { cursor: page.cursor } : {}) };
+}
+
+/**
+ * perf-app: drops loaded history older than the newest `keep` entries (at least `keep`
+ * stay unless that turn alone is longer than `keep`), cut at the user message that starts
+ * the turn the cut falls in (turn-aligned), so a chat read back to its start does not hold
+ * every page forever. Only paged chats (`history` present) trim — the dropped
+ * part loads again through `get_entries{before}` (the cut entry becomes the
+ * cursor). Returns whether anything was dropped.
+ */
+export function trimHistory(s: SessionState, keep: number): boolean {
+  const h = s.history;
+  if (!h || h.loading || s.entries.length <= keep) return false;
+  // [chat-load] the cut is a TURN START (lib/session/chunks — never a steer inside a turn):
+  // back to the start of the turn the cut falls in, so at least `keep` entries stay; forward
+  // to the next start only when that turn alone is longer than `keep`.
+  const target = s.entries.length - keep;
+  let cut = turnStartAtOrBefore(s.entries, target);
+  if (cut <= 0 || target - cut > keep) {
+    cut = target;
+    while (cut < s.entries.length && !isTurnStart(s.entries, cut, false)) cut++;
+  }
+  // No user message to cut at (one giant turn): keep everything.
+  if (cut <= 0 || cut >= s.entries.length) return false;
+  const first = s.entries[cut]!;
+  s.entries = s.entries.slice(cut);
+  s.byId = indexEntries(s.entries);
+  s.history = { total: h.total, hasMore: true, cursor: first.id };
+  s.entriesRev += 1;
+  return true;
+}
+
+/** Last host-confirmed entry before any missing-parent gap in `s.entries`. */
+function lastConnectedConfirmedId(s: SessionState): string | undefined {
+  let gapAt = -1;
+  for (let i = 1; i < s.entries.length; i++) {
+    const e = s.entries[i]!;
+    if (isProvisional(e.id)) break;
+    if (typeof e.parentId === 'string' && e.parentId && s.byId[e.parentId] === undefined) {
+      gapAt = i;
+      break;
+    }
+  }
+  const end = gapAt > 0 ? gapAt : s.entries.length;
+  for (let i = end - 1; i >= 0; i--) {
+    const e = s.entries[i]!;
+    if (!isProvisional(e.id)) return e.id;
+  }
+  return undefined;
+}
+
+/** The last host-confirmed entry before the first provisional one (`get_entries{since}`); undefined = from the start. */
+export function reconcileSince(s: SessionState): { since?: string; needed: boolean } {
+  const first = s.entries.findIndex((e) => isProvisional(e.id));
+  if (first < 0) return { needed: false };
+  const prev = first > 0 ? s.entries[first - 1]!.id : undefined;
+  return prev ? { since: prev, needed: true } : { needed: true };
+}
+
+/**
+ * Replaces the provisional tail with the host's entries (`get_entries{since}` reply):
+ * everything after `since` is the host's truth.
+ */
+export function reconcileEntries(s: SessionState, since: string | undefined, fetched: readonly SessionEntry[], leafId: string | null | undefined): void {
+  const keep = since === undefined ? 0 : (s.byId[since] ?? -1) + 1;
+  if (since !== undefined && keep === 0) return; // `since` vanished (a reset raced us): the snapshot wins.
+  const next = s.entries.slice(0, keep);
+  for (const e of fetched) if (isObject(e) && typeof e.id === 'string') next.push(e);
+  s.entries = next;
+  s.byId = indexEntries(next);
+  s.leafId = leafId ?? next.at(-1)?.id ?? null;
+  s.entriesRev += 1;
+}
+
+/**
+ * The current branch: every entry when there is no fork in the list, else the
+ * chain from `leafId` to the root (snapshots may carry every branch).
+ */
+export function branchOf(entries: readonly SessionEntry[], leafId: string | null): SessionEntry[] {
+  if (!leafId || entries.length < 2) return entries as SessionEntry[];
+  const seen = new Set<string>();
+  let forked = false;
+  for (const e of entries) {
+    const p = e.parentId;
+    if (!p) continue;
+    if (seen.has(p)) {
+      forked = true;
+      break;
+    }
+    seen.add(p);
+  }
+  if (!forked) return entries as SessionEntry[];
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const indexOf = new Map(entries.map((e, i) => [e.id, i]));
+  const chain: SessionEntry[] = [];
+  let cur = byId.get(leafId);
+  const guard = new Set<string>();
+  while (cur && !guard.has(cur.id)) {
+    guard.add(cur.id);
+    chain.push(cur);
+    if (!cur.parentId) {
+      cur = undefined;
+      continue;
+    }
+    const parent = byId.get(cur.parentId);
+    if (parent) {
+      cur = parent;
+    } else {
+      // Bridge across an unannounced host entry (`model_change`, `thinking_level_change`,
+      // `compaction`) while `catchUp` is in flight so a forked chat never blanks out;
+      // stop at index 0 (whose parent lives on an older unloaded page).
+      const idx = indexOf.get(cur.id) ?? 0;
+      cur = idx > 0 ? entries[idx - 1] : undefined;
+    }
+  }
+  return chain.reverse();
+}
+
+/** Shared live/snapshot request reducer; snapshot reconciliation never advances the event seq. */
+function applyRequest(s: SessionState, event: Record<string, unknown>): ApplyResult {
+  switch (event.type) {
+    case 'approval_cleared': {
+      if (typeof event.requestId === 'string') {
+        s.approvals = (s.approvals ?? []).filter((r) => r.requestId !== event.requestId);
+      }
+      return {};
+    }
+    case 'approval_request': {
+      if (typeof event.sessionId !== 'string' || typeof event.requestId !== 'string' || typeof event.tool !== 'string'
+        || !isObject(event.arguments) || typeof event.reason !== 'string'
+        || !['low', 'medium', 'high'].includes(String(event.ceiling))) return {};
+      const requests = s.approvals ??= [];
+      if (!requests.some((r) => r.requestId === event.requestId)) requests.push(event as unknown as import('./autonomy').ApprovalRequest);
+      return {};
+    }
+    case 'extension_ui_request': {
+      const id = str(event.id);
+      if (id && DIALOG_METHODS.has(str(event.method) ?? '') && !s.dialogs.includes(id)) s.dialogs.push(id);
+      return { ui: [event] };
+    }
+    case 'extension_ui_dismiss': {
+      const id = str(event.id);
+      if (id) s.dialogs = s.dialogs.filter((d) => d !== id);
+      return { ui: [event] };
+    }
+    default: return {};
+  }
+}
+
+function reconcileRequests(s: SessionState, requests: unknown[] | undefined): ApplyResult {
+  if (!Array.isArray(requests)) return {};
+  const oldDialogs = [...s.dialogs];
+  s.dialogs = [];
+  s.approvals = [];
+  const out: ApplyResult = {};
+  const seen = new Set<string>();
+  for (const event of requests) {
+    if (!isObject(event)) continue;
+    const key = `${event.type}:${event.requestId ?? event.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    mergeResult(out, applyRequest(s, event));
+  }
+  const removed = oldDialogs.filter((id) => !s.dialogs.includes(id));
+  if (removed.length) out.ui = [
+    ...removed.map((id) => ({ type: 'extension_ui_dismiss', id, reason: 'answered' })),
+    ...(out.ui ?? []),
+  ];
+  return out;
+}

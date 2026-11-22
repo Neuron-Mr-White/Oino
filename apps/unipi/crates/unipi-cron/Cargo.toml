@@ -1,0 +1,38 @@
+[package]
+name = "unipi-cron"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The UniPi cron scheduler library: job files under ~/.oino/cron, the embedded single-owner scheduler unipi-host runs, the control ops behind the `unipi-host cron` CLI and the \"cron\" host service"
+
+[lib]
+name = "unipi_cron"
+path = "src/lib.rs"
+
+[dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+dirs.workspace = true
+fs4.workspace = true
+notify = "8"
+nix = { workspace = true, optional = true }
+oino-extension-api = { path = "../../../../crates/oino-extension-api", version = "1.0.2" }
+reqwest = { workspace = true, default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+unipi-cron-schedule = { path = "../unipi-cron-schedule" }
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

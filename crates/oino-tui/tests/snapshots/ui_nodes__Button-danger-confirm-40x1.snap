@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+[ Delete ]
+  ~ 0..10=fg=rgb(ea7f81)

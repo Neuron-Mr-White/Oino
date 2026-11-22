@@ -1,0 +1,24 @@
+{
+ "t": "Log",
+ "lines": [
+  {
+   "spans": [
+    {
+     "content": "2026-11-01 ",
+     "style": {
+      "fg": "dim"
+     }
+    },
+    {
+     "content": "started",
+     "style": {
+      "fg": "success"
+     }
+    }
+   ]
+  }
+ ],
+ "follow": false,
+ "wrap": true,
+ "lineNumbers": true
+}

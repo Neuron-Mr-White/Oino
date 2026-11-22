@@ -1,0 +1,12 @@
+[package]
+name = "unipi-remote-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+iroh.workspace = true
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+unipi-proto = { path = "../unipi-proto" }

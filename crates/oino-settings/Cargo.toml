@@ -1,0 +1,26 @@
+[package]
+name = "oino-settings"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Settings manager for Oino: global/project merge, typed getters, locking"
+readme = "README.md"
+keywords = ["settings", "config", "preferences"]
+categories = ["config"]
+
+[dependencies]
+dirs.workspace = true
+indexmap.workspace = true
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

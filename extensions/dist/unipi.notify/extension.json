@@ -1,0 +1,30 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.notify",
+  "name": "Notify",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Desktop and phone notifications (native, Gotify, Telegram, ntfy) for agent events, plus the notify_user tool.",
+  "license": "MIT",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "osNotify": true,
+    "network": {
+      "hosts": [
+        "*"
+      ]
+    },
+    "secrets": true,
+    "models": {
+      "complete": true
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:80826437773227ad401810122fb727d35eb3bcb684fb5f763f97663a46ae8fff"
+  }
+}

@@ -1,0 +1,11 @@
+{
+ "t": "Log",
+ "lines": [
+  "boot",
+  "ready"
+ ],
+ "maxLines": 500,
+ "follow": true,
+ "wrap": false,
+ "lineNumbers": false
+}

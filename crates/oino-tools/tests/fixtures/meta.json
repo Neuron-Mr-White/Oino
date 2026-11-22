@@ -1,0 +1,368 @@
+{
+  "read": {
+    "name": "read",
+    "label": "read",
+    "description": "Read a file using an absolute file_path. Bare reads of long files show a numbered declaration outline; use offset and limit (up to 2400 lines) to page. line_numbers prefixes text with 12→text. Images up to 5 MB and PDFs up to 3 MB are supported; image_quality=high preserves more detail.",
+    "promptSnippet": "Read file contents",
+    "promptGuidelines": [
+      "Use read instead of cat, nl or sed to read and number files."
+    ],
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2400
+        },
+        "line_numbers": {
+          "type": "boolean"
+        },
+        "image_quality": {
+          "type": "string",
+          "enum": [
+            "default",
+            "high"
+          ],
+          "default": "default"
+        }
+      },
+      "required": [
+        "file_path"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+    },
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "bash": {
+    "name": "bash",
+    "label": "bash",
+    "description": "Execute a bash command in a NEW shell in the session working directory. Shell state does not persist. Timeout defaults to 60 seconds. Output keeps its head and tail within 32 KiB, with the complete output in a log. Use fireAndForget for background work; its task id and log path return immediately and the exit result is delivered automatically. Declare riskLevel from plausible consequences: low for read-only local inspection, medium for bounded reversible changes, high for destructive, privileged, remote or hard-to-recover changes. Chained commands take the maximum risk; file redirection is at least medium. User authorization does not lower risk.",
+    "promptSnippet": "Execute bash commands (ls, grep, find, etc.)",
+    "promptGuidelines": [
+      "You can inspect PI_* environment variables for current model and session details."
+    ],
+    "parameters": {
+      "type": "object",
+      "required": [
+        "command",
+        "summary",
+        "riskLevel"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command to execute"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 60
+        },
+        "fireAndForget": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+    },
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "powershell": {
+    "name": "powershell",
+    "label": "powershell",
+    "description": "Execute a PowerShell command in a NEW shell in the session working directory. Shell state does not persist. Timeout defaults to 60 seconds. Output keeps its head and tail within 32 KiB, with the complete output in a log. Use fireAndForget for background work; its task id and log path return immediately and the exit result is delivered automatically. Declare riskLevel from plausible consequences: low for read-only local inspection, medium for bounded reversible changes, high for destructive, privileged, remote or hard-to-recover changes. Chained commands take the maximum risk; file redirection is at least medium. User authorization does not lower risk.",
+    "promptSnippet": "Execute PowerShell commands",
+    "promptGuidelines": [
+      "You can inspect PI_* environment variables for current model and session details."
+    ],
+    "parameters": {
+      "type": "object",
+      "required": [
+        "command",
+        "summary",
+        "riskLevel"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command to execute"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "timeout": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 60
+        },
+        "fireAndForget": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+    },
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "edit": {
+    "name": "edit",
+    "label": "edit",
+    "description": "Edit a file with batched exact replacements. All edits match the original file and must not overlap. Each oldText must be unique unless its change_all is true. Refuses files changed externally since last read. Writes atomically preserving encoding, BOM and line endings, returning a diff summary.",
+    "promptSnippet": "Make precise batched file edits",
+    "promptGuidelines": [
+      "Read files before editing. Merge overlapping or nearby changes into one edit."
+    ],
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "edits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              },
+              "change_all": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "oldText",
+              "newText"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "file_path",
+        "edits"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+    },
+    "executionMode": null,
+    "hasPrepareArguments": true
+  },
+  "write": {
+    "name": "write",
+    "label": "write",
+    "description": "Create or overwrite a file atomically, creating parent directories. Preserves existing encoding, BOM and line endings and ensures a trailing newline. Directory paths are refused.",
+    "promptSnippet": "Create or overwrite files",
+    "promptGuidelines": [
+      "Use write for new files or complete rewrites."
+    ],
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+    },
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "grep": {
+    "name": "grep",
+    "label": "grep",
+    "description": "Search file contents using in-process ripgrep. Defaults to files_with_matches; content returns matching lines and optional context, count returns counts per file. Supports file types, globs, literal and multiline searches. Respects ignore files.",
+    "promptSnippet": "Search file contents",
+    "promptGuidelines": null,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "glob_pattern": {
+          "type": "string"
+        },
+        "output_mode": {
+          "type": "string",
+          "enum": [
+            "content",
+            "files_with_matches",
+            "count"
+          ],
+          "default": "files_with_matches"
+        },
+        "case_insensitive": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "context_before": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context_after": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line_numbers": {
+          "type": "boolean"
+        },
+        "head_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "multiline": {
+          "type": "boolean"
+        },
+        "fixed_string": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": null,
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "glob": {
+    "name": "glob",
+    "label": "glob",
+    "description": "Find files by one or more glob patterns, excluding excludePatterns. Paths are relative to folder (default cwd). Respects ignore files.",
+    "promptSnippet": "Find files by glob patterns",
+    "promptGuidelines": null,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "folder": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "patterns"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": null,
+    "executionMode": null,
+    "hasPrepareArguments": false
+  },
+  "ls": {
+    "name": "ls",
+    "label": "ls",
+    "description": "List directory entries, sorted alphabetically, including dotfiles. Directories have a / suffix. Defaults to cwd; ignorePatterns excludes matching entries.",
+    "promptSnippet": "List directory contents",
+    "promptGuidelines": null,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "directory_path": {
+          "type": "string"
+        },
+        "ignorePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputSchema": null,
+    "constrainedSampling": null,
+    "executionMode": null,
+    "hasPrepareArguments": false
+  }
+}

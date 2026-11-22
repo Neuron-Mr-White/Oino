@@ -1,0 +1,39 @@
+[package]
+name = "unipi-kanboard"
+publish = false
+version = "1.0.0-alpha.5"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Kanboard for UniPi: task format, transition rules, dependency graph, in-process service and the `unipi-kanboard` CLI"
+keywords = ["kanboard", "unipi", "tasks"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "unipi-kanboard"
+path = "src/main.rs"
+
+[lib]
+name = "unipi_kanboard"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+mime_guess = "2"
+notify = "8"
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+sha2.workspace = true
+thiserror = "2"
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

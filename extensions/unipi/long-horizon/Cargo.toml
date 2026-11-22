@@ -1,0 +1,23 @@
+[package]
+name = "unipi-long-horizon"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.long-horizon: goal / ralph / swarm / graph owners, verifier, gate, agent graph over unipi.subagents, runaway guard"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+futures.workspace = true
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true

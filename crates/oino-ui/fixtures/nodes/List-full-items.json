@@ -1,0 +1,48 @@
+{
+ "t": "List",
+ "items": [
+  {
+   "key": "t-1",
+   "content": "First task",
+   "style": {
+    "fg": "text"
+   },
+   "detail": {
+    "spans": [
+     {
+      "content": "open",
+      "style": {
+       "fg": "muted"
+      }
+     }
+    ]
+   },
+   "badge": {
+    "spans": [
+     {
+      "content": " P1 ",
+      "style": {
+       "bg": "errorBg",
+       "fg": "error"
+      }
+     }
+    ]
+   },
+   "icon": "bolt",
+   "disabled": false
+  },
+  {
+   "content": "Second",
+   "key": "t-2"
+  }
+ ],
+ "highlightStyle": {
+  "bg": "selectedBg",
+  "addModifier": [
+   "BOLD"
+  ]
+ },
+ "highlightSymbol": "\u203a ",
+ "repeatHighlightSymbol": false,
+ "highlightSpacing": "Always"
+}

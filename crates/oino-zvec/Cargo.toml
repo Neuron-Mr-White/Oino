@@ -1,0 +1,18 @@
+[package]
+name = "oino-zvec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+oino-tools = { path = "../oino-tools", features = ["zvec"] }
+dirs.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-std"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

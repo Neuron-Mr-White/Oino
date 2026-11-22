@@ -1,0 +1,218 @@
+// @vitest-environment jsdom
+/**
+ * The A16 status sections (WP-A16 acceptance): the LH section follows owner
+ * enablement (LH off ⇒ gone), the Plan & todos section renders the todowrite
+ * checklist + plan mode, the Running summary's counts equal the Session
+ * modal's (shared selectors over the same mock data) and the capsule shows
+ * branch ± / LH / running and opens the pane.
+ */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
+import { setHostClientFactory } from '../../lib/host/factory';
+import { resetSessions } from '../../lib/session/store';
+import { resetHubs } from '../../lib/session/hub';
+import { setDesktopOverride, resetLayout } from '../../lib/layout';
+import { createMockHost, type MockScenario } from '../../dev/mock/host';
+import { SCENARIOS } from '../../dev/mock/scenarios';
+import { StatusSections } from './StatusPane';
+import { TodoCapsule } from './TodoParts';
+import { Capsule, capsuleVisible } from './Capsule';
+import { fetchRunning } from '../session/RunningTab';
+import { openSessionModal, sessionModal } from '../session/modalTarget';
+import { runningCounts, runningTotal } from '../../lib/status/running';
+import { sessions } from '../../lib/session/store';
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** A world booted from a scenario (desktop shell). */
+async function boot(name: keyof typeof SCENARIOS | MockScenario) {
+  const scenario = typeof name === 'string' ? SCENARIOS[name]! : name;
+  const world = createMockHost({ ...scenario, speed: 0 });
+  setHostClientFactory(world.client);
+  scenario.setup?.();
+  await tick();
+  return world;
+}
+
+/** The same scenario without long-horizon in the extension list (LH off). */
+function withoutLh(scenario: MockScenario): MockScenario {
+  return {
+    ...scenario,
+    hosts: scenario.hosts.map((h) => ({
+      ...h,
+      sessions: h.sessions && Object.fromEntries(Object.entries(h.sessions).map(([id, s]) => [id, { ...s, cmd: { ...s.cmd, '_oino/extensions': () => ({ extensions: [] }) } }])),
+    })),
+  };
+}
+
+beforeEach(() => {
+  setDesktopOverride(true);
+});
+
+afterEach(() => {
+  cleanup();
+  resetSessions();
+  resetHubs();
+  resetLayout();
+  setHostClientFactory(undefined);
+  window.localStorage.clear();
+});
+
+describe('LH section', () => {
+  it('renders from the LH topics + the graph service (counts, task, phase, History)', async () => {
+    await boot('lh-history');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('lh-section')).toBeTruthy());
+    expect(screen.getByTestId('lh-phase').textContent).toBe('Running');
+    await waitFor(() => expect(screen.getByTestId('lh-counts').textContent).toContain('3/7'));
+    expect(screen.getByTestId('lh-counts').textContent).toContain('3 done');
+    expect(screen.getByTestId('lh-section').textContent).toContain('Land the status pane sections');
+    expect(screen.getByTestId('lh-counts').textContent).toContain('still running');
+    expect(screen.getByTestId('lh-history')).toBeTruthy();
+  });
+
+  it('a host without the graph service keeps the older inspector (fallback)', async () => {
+    await boot('status-lh-graph');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('lh-graph-inspector')).toBeTruthy());
+  });
+
+  it('LH disabled ⇒ the section is gone (owner enablement)', async () => {
+    const world = await boot(withoutLh(SCENARIOS['status-lh-graph']!));
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await tick();
+    await waitFor(() => expect(world.log.some((l) => l.op === '_oino/extensions')).toBe(true));
+    expect(screen.queryByTestId('lh-section')).toBeNull();
+  });
+
+  it('Stop asks for a second tap, then sends the mode command as a prompt', async () => {
+    const world = await boot('status-lh-graph');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('lh-stop')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('lh-stop'));
+    expect(world.log.filter((l) => l.op === 'prompt')).toHaveLength(0);
+    expect(screen.getByTestId('lh-stop').textContent).toContain('Tap again');
+    fireEvent.click(screen.getByTestId('lh-stop'));
+    await waitFor(() => expect(world.log.some((l) => l.op === 'prompt' && (l.args as { message?: string }).message === '/graph stop')).toBe(true));
+  });
+});
+
+describe('Plan & todos section', () => {
+  it('renders the plan-mode chip, the plan file and the todowrite checklist', async () => {
+    await boot('status-todos');
+    render(() => <StatusSections section="plan" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('plan-section')).toBeTruthy());
+    expect(screen.getByTestId('plan-mode').textContent).toContain('Plan mode');
+    expect(screen.getByTestId('plan-mode').textContent).toContain('2026-02-14-a16status.md');
+    const items = screen.getAllByTestId('todo-item');
+    expect(items).toHaveLength(6);
+    expect(items[0]!.dataset.status).toBe('completed');
+    expect(items[1]!.dataset.status).toBe('in_progress');
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/5');
+  });
+});
+
+describe('Todo section (Graph tab) + capsule', () => {
+  it('the Graph tab leads with "Todo · done/total" (cancelled excluded) and the checklist', async () => {
+    await boot('status-todos');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('todo-section')).toBeTruthy());
+    expect(screen.getByTestId('todo-section-title').textContent).toContain('Todo · 1/5');
+    const items = screen.getAllByTestId('todo-item');
+    expect(items).toHaveLength(6);
+    expect(items[5]!.dataset.status).toBe('cancelled');
+  });
+
+  it('a chat without todos has no Todo section', async () => {
+    await boot('capsule');
+    render(() => <StatusSections section="lh" hostId="this-pc" sessionId="s001" />);
+    await tick();
+    expect(screen.queryByTestId('todo-section')).toBeNull();
+  });
+
+  it('the capsule shows progress + the current item; click opens the checklist, Esc / outside click close it', async () => {
+    await boot('todo-capsule');
+    render(() => (
+      <div>
+        <button data-testid="outside">outside</button>
+        <TodoCapsule hostId="this-pc" sessionId="s001" />
+      </div>
+    ));
+    await waitFor(() => expect(screen.getByTestId('todo-capsule')).toBeTruthy());
+    expect(screen.getByTestId('todo-capsule-label').textContent).toBe('1/5 \u00b7 Feed it from the sticky topics');
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.getByTestId('todo-drawer')).toBeTruthy();
+    expect(screen.getByTestId('todo-capsule-btn').getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByTestId('todo-item')).toHaveLength(6);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.getByTestId('todo-drawer')).toBeTruthy();
+    fireEvent.pointerDown(screen.getByTestId('outside'));
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    fireEvent.click(screen.getByTestId('todo-capsule-btn'));
+    expect(screen.queryByTestId('todo-drawer')).toBeNull();
+  });
+
+  it('no todos → no capsule', async () => {
+    await boot('capsule');
+    render(() => <TodoCapsule hostId="this-pc" sessionId="s001" />);
+    await tick();
+    expect(screen.queryByTestId('todo-capsule')).toBeNull();
+  });
+});
+
+describe('Running section ≡ Session modal', () => {
+  it("renders the modal's shared Running view (one row component, no monospace summary rows)", async () => {
+    const world = await boot('status-running');
+    render(() => <StatusSections section="running" hostId="this-pc" sessionId="s001" />);
+    await waitFor(() => expect(screen.getByTestId('sm-running')).toBeTruthy());
+    await waitFor(() => expect(screen.queryByTestId('sm-running-loading')).toBeNull());
+    expect(screen.queryByTestId('running-row')).toBeNull();
+    expect(world.log.some((l) => l.op === '_oino/running_bash')).toBe(true);
+    // every Subagents / Background row is the shared WorkRow
+    for (const r of [...screen.queryAllByTestId('sm-run-row'), ...screen.queryAllByTestId('sm-bg-row')]) expect(r.classList.contains('sm-run')).toBe(true);
+  });
+});
+
+describe('capsule', () => {
+  it('visible when the pane is closed or overlaying, hidden when it pushes (Z-95)', () => {
+    // desktop, pane open, pushing (≥ 1280 px): the pane owns the status
+    expect(capsuleVisible(true, true, 'push')).toBe(false);
+    // desktop, pane open, overlaying (< 1280 px): the capsule stays (QA#12)
+    expect(capsuleVisible(true, true, 'overlay')).toBe(true);
+    // desktop, pane closed
+    expect(capsuleVisible(true, false, 'push')).toBe(true);
+    // the phone always has the capsule (the pane there is a layer)
+    expect(capsuleVisible(false, false, 'push')).toBe(true);
+    expect(capsuleVisible(false, true, 'full')).toBe(true);
+  });
+  it('shows branch ±, LH progress and the running count; opens the pane', async () => {
+    const world = await boot('capsule');
+    // the workspace's conversation holds the session open; do the same here
+    sessions().ensure('this-pc', 's001');
+    render(() => <Capsule hostId="this-pc" sessionId="s001" cwd="/home/you/projects/unipi" />);
+    await waitFor(() => expect(screen.getByTestId('cap-branch')).toBeTruthy(), { timeout: 3000 });
+    expect(screen.getByTestId('cap-branch').textContent).toContain('v2/status');
+    expect(screen.getByTestId('cap-branch').textContent).toContain('+268');
+    expect(screen.getByTestId('cap-lh').textContent).toContain('Graph');
+    expect(screen.getByTestId('cap-lh').textContent).toContain('3/7');
+    expect(screen.getByTestId('cap-running').textContent).toContain('running');
+    fireEvent.click(screen.getByTestId('status-capsule').querySelector('button')!);
+    // desktop: the side pane's git tab opens (one Git UI, Z-100)
+    await waitFor(() => expect(world.log.some((l) => l.op === 'git_op')).toBe(true));
+  });
+
+  it('renders nothing without data (no redundant UI)', async () => {
+    const capsule = SCENARIOS['capsule']!;
+    await boot({ ...capsule, hosts: capsule.hosts.map((h) => ({ ...h, git: undefined })) });
+    // no repo at this path, no session topics reachable
+    const { container } = render(() => <Capsule hostId="this-pc" sessionId="s999" cwd="/tmp" />);
+    await waitFor(() => expect(container.querySelector('.status-capsule')).toBeNull());
+  });
+});

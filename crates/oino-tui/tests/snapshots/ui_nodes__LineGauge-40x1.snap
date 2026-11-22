@@ -1,0 +1,6 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+done ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ~ 5..13=fg=rgb(68b78d) 13..40=fg=rgb(5fa8cc)

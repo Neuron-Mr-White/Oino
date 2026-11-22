@@ -1,0 +1,10 @@
+{
+ "t": "Block",
+ "title": "Tasks",
+ "borders": "ALL",
+ "borderType": "Rounded",
+ "child": {
+  "t": "Paragraph",
+  "text": "inside"
+ }
+}

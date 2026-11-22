@@ -1,0 +1,195 @@
+{
+ "name": "c_thinking",
+ "model": {
+  "id": "gpt-5.5",
+  "name": "GPT-5.5",
+  "api": "azure-openai-responses",
+  "provider": "azure",
+  "baseUrl": "",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 5,
+   "output": 30,
+   "cacheRead": 0.5,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1050000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "off": null,
+   "xhigh": "xhigh"
+  },
+  "compat": {
+   "supportsOpenAIGrammarTools": true
+  },
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "env": {
+   "AZURE_OPENAI_RESOURCE_NAME": "my-resource"
+  },
+  "reasoning": "high"
+ },
+ "apiKey": "azure-key",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_3\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[]}}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"item_id\":\"rs_1\",\"summary_index\":0,\"delta\":\"ponder\"}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"item_id\":\"rs_1\",\"summary_index\":0,\"delta\":\"ing\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"msg_o3\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"delta\":\"an\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"item_id\":\"msg_o3\",\"content_index\":0,\"delta\":\"swer\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"msg_o3\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"annotations\":[]}]}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_3\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}],\"usage\":{\"input_tokens\":20,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":40,\"output_tokens_details\":{\"reasoning_tokens\":25},\"total_tokens\":60}}}\n\n",
+ "request": {
+  "url": "https://my-resource.openai.azure.com/openai/v1/responses?api-version=v1",
+  "headers": {
+   "accept": "application/json",
+   "api-key": "azure-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.22.1"
+  },
+  "body": {
+   "model": "gpt-5.5",
+   "input": [
+    {
+     "role": "developer",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "q"
+      }
+     ]
+    }
+   ],
+   "stream": true,
+   "prompt_cache_key": "sess-1234",
+   "store": false,
+   "max_output_tokens": 128000,
+   "reasoning": {
+    "effort": "high",
+    "summary": "auto"
+   },
+   "include": [
+    "reasoning.encrypted_content"
+   ]
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ponder"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "pondering"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "an"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "swer"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"pondering\"}],\"encrypted_content\":\"enc_abc\"}"
+     },
+     {
+      "type": "text",
+      "text": "answer",
+      "textSignature": "{\"v\":1,\"id\":\"msg_o3\"}"
+     }
+    ],
+    "api": "azure-openai-responses",
+    "provider": "azure",
+    "model": "gpt-5.5",
+    "usage": {
+     "input": 20,
+     "output": 40,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 25,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.0001,
+      "output": 0.0012000000000000001,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.0013000000000000002
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "resp_3",
+    "rawStopReason": "completed",
+    "durationMs": 0
+   }
+  }
+ ]
+}

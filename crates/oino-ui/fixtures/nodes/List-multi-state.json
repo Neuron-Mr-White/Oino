@@ -1,0 +1,21 @@
+{
+ "t": "List",
+ "multi": true,
+ "items": [
+  {
+   "key": "a",
+   "content": "A"
+  },
+  {
+   "key": "b",
+   "content": "B"
+  }
+ ],
+ "state": {
+  "selected": [
+   "a",
+   "b"
+  ],
+  "offset": 1
+ }
+}

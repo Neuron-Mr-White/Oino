@@ -1,0 +1,7 @@
+{
+  "identifier": "dev.unipi.app",
+  "productName": "Unipi",
+  "bundle": {
+    "externalBin": []
+  }
+}

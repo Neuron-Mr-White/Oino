@@ -1,0 +1,1221 @@
+//! Host operations performed by extensions against this session (`ExtensionActions`,
+//! `ExtensionContextActions`, `ExtensionCommandContextActions`, UI context).
+
+use oino_ai::{ImageContent, JsonValue, ThinkingLevel, UserContent, UserContentField};
+use oino_session::EntryId;
+use serde_json::json;
+
+use super::{AgentSession, lock};
+use crate::events::OinoEvent;
+use crate::extensions::api::{CallContext, CallKind};
+use crate::extensions::host::{HostError, HostOp, SessionQuery};
+use crate::ui::{UiAnswer, is_dialog, prompt_kind};
+
+fn to_json<T: serde::Serialize>(value: T) -> Result<JsonValue, HostError> {
+    serde_json::to_value(value).map_err(|e| HostError::Failed(e.to_string()))
+}
+
+fn failed(error: impl std::fmt::Display) -> HostError {
+    HostError::Failed(error.to_string())
+}
+
+/// `content` with `images` appended as image blocks (unchanged when there are none).
+fn with_images(content: UserContentField, images: Vec<ImageContent>) -> UserContentField {
+    if images.is_empty() {
+        return content;
+    }
+    let mut blocks = match content {
+        UserContentField::Text(text) => vec![UserContent::text(text)],
+        UserContentField::Blocks(blocks) => blocks,
+    };
+    blocks.extend(images.into_iter().map(UserContent::Image));
+    UserContentField::Blocks(blocks)
+}
+
+/// A render spec for one of the built-in tools is a *render-only override* (U1–U2): it needs the
+/// manifest's `tools.override` for that name, and registers no tool.
+pub(crate) fn check_render_override(
+    spec: &JsonValue,
+    overrides: &[String],
+) -> Result<(), HostError> {
+    let field = |name: &str| {
+        spec.get(name)
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+    };
+    if field("target") != "tool" {
+        return Ok(());
+    }
+    let key = field("key");
+    if oino_tools::BuiltinToolName::parse(key).is_none() {
+        return Ok(());
+    }
+    if overrides.iter().any(|name| name == "*" || name == key) {
+        return Ok(());
+    }
+    Err(HostError::Invalid(format!(
+        "rendering the built-in tool `{key}` needs the manifest permission tools.override"
+    )))
+}
+
+/// `query-entries` over the live session (perf-fix #1): filters on the typed entries and
+/// serializes only the matches, so neither the host nor the guest builds the whole transcript.
+fn find_entries(
+    manager: &oino_session::SessionManager,
+    query: &oino_extension_api::ops::EntryQuery,
+) -> Result<JsonValue, HostError> {
+    use oino_extension_api::ops::QueryScope;
+    use oino_session::EntryKind;
+    let base: Vec<&oino_session::SessionEntry> = match query.scope {
+        QueryScope::All => manager.entries().iter().collect(),
+        // Wake retains every custom record except subagent-step. A filtered metadata
+        // query can use those original entries without materializing the discarded
+        // transcript again after every append. Unfiltered/history queries (including
+        // subagent-step and the internal placeholder name) keep the full-history path.
+        QueryScope::Branch
+            if !query.since_compaction
+                && query.types == ["custom"]
+                && !query.custom_types.is_empty()
+                && query
+                    .custom_types
+                    .iter()
+                    .all(|kind| kind != "subagent-step" && kind != "oino.index-placeholder") =>
+        {
+            manager.wake_branch()
+        }
+        QueryScope::Branch => manager.branch(None),
+    };
+    let start = if query.since_compaction {
+        oino_extension_api::ops::compaction_start(
+            base.len(),
+            |i| matches!(base[i].kind, EntryKind::Compaction(_)),
+            |i| match &base[i].kind {
+                EntryKind::Compaction(compaction) => {
+                    Some(compaction.first_kept_entry_id.as_str().to_owned())
+                }
+                _ => None,
+            },
+            |i| Some(base[i].id.as_str().to_owned()),
+        )
+    } else {
+        0
+    };
+    let matched: Vec<&oino_session::SessionEntry> = base[start..]
+        .iter()
+        .copied()
+        .filter(|entry| {
+            let custom_type = match &entry.kind {
+                EntryKind::Custom { custom_type, .. }
+                | EntryKind::CustomMessage { custom_type, .. } => Some(custom_type.as_str()),
+                _ => None,
+            };
+            query.matches(
+                entry.type_name(),
+                custom_type,
+                entry.message().map(oino_ai::AgentMessage::role),
+            )
+        })
+        .collect();
+    let skip = query
+        .last
+        .map_or(0, |last| matched.len().saturating_sub(last));
+    let mut out = Vec::with_capacity(matched.len() - skip);
+    for entry in &matched[skip..] {
+        let mut value = to_json(entry)?;
+        if let Some(max) = query.max_string {
+            oino_extension_api::ops::clip_strings(&mut value, max);
+        }
+        out.push(value);
+    }
+    Ok(JsonValue::Array(out))
+}
+
+impl AgentSession {
+    /// Performs one host operation for `extension` (runtime §7.3 context rules apply).
+    ///
+    /// # Errors
+    ///
+    /// [`HostError::StaleContext`] after replacement, [`HostError::CommandContextRequired`] for
+    /// session-replacing operations outside commands, and operation failures.
+    #[allow(clippy::too_many_lines, reason = "one arm per host operation")]
+    pub async fn host_call(
+        &self,
+        extension: &str,
+        cx: &CallContext,
+        op: HostOp,
+    ) -> Result<JsonValue, HostError> {
+        let runner = self.runner();
+        if let Some(message) = runner.stale_message() {
+            return Err(HostError::StaleContext(message));
+        }
+        let command_context = matches!(cx.call_kind, CallKind::Command | CallKind::Shortcut);
+        let loaded = runner.set().get(extension).cloned();
+        let registry_changed = matches!(
+            op,
+            HostOp::RegisterTool(_)
+                | HostOp::UnregisterTool(_)
+                | HostOp::Subscribe(_)
+                | HostOp::Unsubscribe(_)
+        );
+        let commands_changed = matches!(
+            op,
+            HostOp::RegisterCommand(_) | HostOp::UnregisterCommand(_)
+        );
+        let shortcuts_changed = matches!(
+            op,
+            HostOp::RegisterShortcut(_) | HostOp::UnregisterShortcut(_)
+        );
+        let result = match op {
+            HostOp::CheckProcess { command, args } => {
+                // argv is not shell source. Quote each token to avoid interpreting
+                // semicolons within arguments as separate commands during policy.
+                let quote = |s: &str| format!("'{}'", s.replace('\'', "'\"'\"'"));
+                let source = std::iter::once(quote(&command))
+                    .chain(args.iter().map(|a| quote(a)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let args =
+                    json!({"command":source,"summary":"extension process","riskLevel":"high"})
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default();
+                // N6: the user's answer time must not count against the handler's deadline.
+                let _waiting = runner.approval_wait(extension);
+                self.check_permission("bash", &args)
+                    .await
+                    .map_err(HostError::Failed)?;
+                Ok(JsonValue::Null)
+            }
+            HostOp::Subscribe(kinds) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.events.extend(kinds));
+                Ok(JsonValue::Null)
+            }
+            HostOp::Unsubscribe(kinds) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.events.retain(|k| !kinds.contains(k)));
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterTool(spec) => {
+                let owner = runner
+                    .tools()
+                    .into_iter()
+                    .find(|t| t.spec.name == spec.name)
+                    .map(|t| t.extension.instance.id().to_owned());
+                let builtin = self
+                    .all_tools()
+                    .iter()
+                    .any(|t| t.name == spec.name && t.source_info.source == "builtin");
+                if owner.as_deref().is_some_and(|o| o != extension) || builtin {
+                    return Err(HostError::Conflict(format!(
+                        "Tool \"{}\" is already registered",
+                        spec.name
+                    )));
+                }
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.tools.insert(spec.name.clone(), spec));
+                Ok(JsonValue::Null)
+            }
+            HostOp::UnregisterTool(name) => {
+                if let Some(loaded) = loaded {
+                    loaded.update(|state| state.tools.shift_remove(&name));
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterCommand(spec) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                let name = spec.name.clone();
+                loaded.update(|state| {
+                    state.commands.retain(|c| c.name != spec.name);
+                    state.commands.push(spec);
+                });
+                let invocation = runner
+                    .commands()
+                    .into_iter()
+                    .find(|c| c.extension.instance.id() == extension && c.spec.name == name)
+                    .map_or(name, |c| c.invocation_name);
+                Ok(json!(invocation))
+            }
+            HostOp::UnregisterCommand(name) => {
+                if let Some(loaded) = loaded {
+                    loaded.update(|state| state.commands.retain(|c| c.name != name));
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterShortcut(spec) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.shortcuts.insert(spec.id.clone(), spec));
+                Ok(JsonValue::Null)
+            }
+            HostOp::UnregisterShortcut(id) => {
+                if let Some(loaded) = loaded {
+                    loaded.update(|state| state.shortcuts.shift_remove(&id));
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterFlag(spec) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.flags.insert(spec.name.clone(), spec));
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetFlag(name) => Ok(runner.flag_value(&name).unwrap_or(JsonValue::Null)),
+            HostOp::RegisterRenderer(spec) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                check_render_override(&spec, &loaded.instance.tool_overrides())?;
+                if spec.get("target").and_then(JsonValue::as_str) == Some("turn-footer")
+                    && let Some(key) = spec.get("key").and_then(JsonValue::as_str)
+                {
+                    self.ui_register_turn_footer(extension, key);
+                }
+                loaded.update(|state| state.renderers.push(spec));
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterProvider(config) => {
+                let registration: oino_models::ProviderRegistration =
+                    serde_json::from_value(config)
+                        .map_err(|e| HostError::Invalid(e.to_string()))?;
+                self.inner
+                    .models
+                    .register_provider(extension, registration)
+                    .map_err(failed)?;
+                self.refresh_current_model();
+                Ok(JsonValue::Null)
+            }
+            HostOp::UnregisterProvider(id) => {
+                self.inner.models.unregister_provider(&id);
+                self.refresh_current_model();
+                Ok(JsonValue::Null)
+            }
+            HostOp::RegisterVirtualModel(definition) => {
+                let definition = serde_json::from_value(definition)
+                    .map_err(|e| HostError::Invalid(e.to_string()))?;
+                self.inner
+                    .models
+                    .register_virtual_model(extension, definition)
+                    .map_err(failed)?;
+                self.refresh_current_model();
+                Ok(JsonValue::Null)
+            }
+            HostOp::UnregisterVirtualModel { provider, id } => {
+                self.inner.models.unregister_virtual_model(&provider, &id);
+                self.refresh_current_model();
+                Ok(JsonValue::Null)
+            }
+            HostOp::SessionsList(_) => Err(HostError::Invalid(
+                "sessions index must be routed by HostRouter".into(),
+            )),
+            HostOp::SessionRead(query) => self.session_read(&query),
+            HostOp::AppendEntry { custom_type, data } => {
+                if custom_type == "oino.tool-declarations" {
+                    return Err(HostError::Invalid("reserved host declaration state".into()));
+                }
+                let id = lock(&self.inner.manager)
+                    .append_custom_entry(&custom_type, data)
+                    .map_err(failed)?;
+                self.publish_entry(&id);
+                Ok(json!(id.as_str()))
+            }
+            HostOp::AppendReminder { key, text } => to_json(
+                self.append_reminder(extension, &key, &text)
+                    .map_err(failed)?,
+            ),
+            HostOp::SendMessage {
+                message,
+                trigger_turn,
+                deliver_as,
+            } => {
+                let session = if extension == "unipi.subagents"
+                    && message.custom_type == "subagent-completion"
+                {
+                    AgentSession::from_inner(crate::agents::root_of(&self.inner))
+                } else {
+                    self.clone()
+                };
+                tokio::spawn(async move {
+                    if let Err(error) = session
+                        .send_custom_message(message, trigger_turn, deliver_as)
+                        .await
+                    {
+                        session
+                            .runner()
+                            .emit_error("<runtime>", "send_message", error.to_string());
+                    }
+                });
+                Ok(JsonValue::Null)
+            }
+            HostOp::SendUserMessage {
+                content,
+                deliver_as,
+            } => {
+                // A `/command` typed with images: its first user message carries them.
+                let images = std::mem::take(&mut lock(&self.inner.book).command_images);
+                let content = with_images(content, images);
+                // This synchronous durable admission precedes the extension's return,
+                // hence also the handled command's ACK and queue removal. Never await
+                // prompt execution here: it may reenter this same extension instance.
+                let handoff = self
+                    .admit_extension_handoff(&content, deliver_as)
+                    .map_err(failed)?;
+                if matches!(handoff, Some((_, false))) {
+                    return Ok(JsonValue::Null);
+                }
+                let session = self.clone();
+                tokio::spawn(async move {
+                    let id = handoff.map(|(id, _)| id).unwrap_or_default();
+                    if let Err(error) = super::delivery::EXTENSION_MESSAGE_ID
+                        .scope(id, session.send_user_message(content, deliver_as, false))
+                        .await
+                    {
+                        session.runner().emit_error(
+                            "<runtime>",
+                            "send_user_message",
+                            error.to_string(),
+                        );
+                    }
+                });
+                Ok(JsonValue::Null)
+            }
+            HostOp::SetSessionName(name) => {
+                self.set_session_name(Some(name)).await.map_err(failed)?;
+                Ok(JsonValue::Null)
+            }
+            HostOp::SetLabel { entry_id, label } => {
+                self.set_label(&EntryId::new(entry_id), label)
+                    .await
+                    .map_err(failed)?;
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetActiveTools => to_json(self.active_tool_names()),
+            HostOp::GetAllTools => to_json(self.all_tools()),
+            HostOp::SetActiveTools(names) => {
+                self.set_active_tools_from_extension(extension, &names);
+                Ok(JsonValue::Null)
+            }
+            HostOp::UpdateActiveTools { enable, disable } => {
+                self.update_active_tools(&enable, &disable);
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetCommands => to_json(self.commands()),
+            HostOp::SetModel { provider, id } => {
+                let Some(model) = self.inner.models.find(&provider, &id) else {
+                    return Ok(json!(false));
+                };
+                if !self.inner.models.has_configured_auth(&model.provider) {
+                    return Ok(json!(false));
+                }
+                self.set_model_from_extension(model, false, Some(extension))
+                    .await
+                    .map_err(failed)?;
+                Ok(json!(true))
+            }
+            HostOp::SetDefaultModel {
+                provider,
+                id,
+                thinking,
+            } => {
+                let Some(model) = self.inner.models.find(&provider, &id) else {
+                    return Ok(json!(false));
+                };
+                if !self.inner.models.has_configured_auth(&model.provider) {
+                    return Ok(json!(false));
+                }
+                let written = self.with_settings(|s| {
+                    s.set_default_model_and_provider(&model.provider, &model.id)
+                        .and_then(|()| match thinking {
+                            Some(level) => {
+                                s.set_model_thinking_level(&model.provider, &model.id, level)
+                            }
+                            None => Ok(()),
+                        })
+                });
+                written.map_err(failed)?;
+                Ok(json!(true))
+            }
+            HostOp::GetModel => to_json(self.model()),
+            HostOp::GetThinkingLevel => to_json(self.thinking_level()),
+            HostOp::SetThinkingLevel(level) => {
+                let level: ThinkingLevel = level;
+                to_json(self.set_thinking_level(level, false).await)
+            }
+            HostOp::IsIdle => Ok(json!(self.is_idle())),
+            HostOp::Abort => {
+                let session = self.clone();
+                tokio::spawn(async move { session.abort().await });
+                Ok(JsonValue::Null)
+            }
+            HostOp::HasPendingMessages => Ok(json!(self.pending_message_count() > 0)),
+            HostOp::GetContextUsage => to_json(self.context_usage()),
+            HostOp::Compact {
+                custom_instructions,
+            } => {
+                let session = self.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = session.compact(custom_instructions).await {
+                        tracing::debug!("extension compaction failed: {error}");
+                    }
+                });
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetSystemPrompt => Ok(json!(self.system_prompt())),
+            HostOp::GetSettings => {
+                Ok(JsonValue::Object(self.with_settings(|settings| {
+                    settings.settings().merged().clone()
+                })))
+            }
+            HostOp::GetAvailableModels => to_json(self.inner.models.available()),
+            HostOp::GetScopedModels => to_json(self.scoped_models()),
+            HostOp::GetRoutedModel => to_json(self.routed_model()),
+            HostOp::GetSessionStats => to_json(self.session_stats()),
+            HostOp::EditorText => Ok(json!(self.editor_text())),
+            HostOp::CredentialFor(provider) => self.credential_for(&provider).await,
+            HostOp::RunningBash => to_json(self.running_bash().await),
+            HostOp::GetFrontends => Ok(json!(self.frontends())),
+            op @ (HostOp::BusPublish { .. } | HostOp::BusGet(_)) => {
+                let router = self
+                    .inner
+                    .agents
+                    .router()
+                    .ok_or_else(|| HostError::Failed("the bus is not available".into()))?;
+                router.bus_call(extension, op)
+            }
+            HostOp::ModelComplete {
+                model,
+                context,
+                options,
+                cancel,
+            } => {
+                self.model_complete(model.as_deref(), context, options, cancel)
+                    .await
+            }
+            HostOp::SummarizeDefault {
+                messages,
+                custom_instructions,
+                previous_summary,
+            } => {
+                let messages: Vec<oino_ai::AgentMessage> = serde_json::from_value(messages)
+                    .map_err(|e| HostError::Invalid(format!("messages: {e}")))?;
+                let model = self
+                    .model()
+                    .ok_or_else(|| HostError::Failed("No model selected".into()))?;
+                let summarizer = self
+                    .summarizer(
+                        &model,
+                        tokio_util::sync::CancellationToken::new(),
+                        crate::events::SummarizationSource::BranchSummary,
+                    )
+                    .await
+                    .map_err(HostError::Failed)?;
+                let output = if let Ok(output) = crate::compaction::summarize_default(
+                    &messages,
+                    custom_instructions.as_deref(),
+                    previous_summary.as_deref(),
+                    &summarizer,
+                )
+                .await
+                {
+                    output
+                } else {
+                    let mut main = summarizer;
+                    main.retry = None;
+                    main.single_attempt = true;
+                    crate::compaction::summarize_default(
+                        &messages,
+                        custom_instructions.as_deref(),
+                        previous_summary.as_deref(),
+                        &main,
+                    )
+                    .await
+                    .map_err(failed)?
+                };
+                to_json(output)
+            }
+            HostOp::IsProjectTrusted => Ok(json!(
+                self.with_settings(|settings| settings.is_project_trusted())
+            )),
+            HostOp::WaitForIdle => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                self.wait_for_idle().await;
+                Ok(JsonValue::Null)
+            }
+            HostOp::NavigateTree {
+                target_id,
+                summarize,
+                custom_instructions,
+                replace_instructions,
+                label,
+            } => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                let result = self
+                    .navigate_tree(
+                        &EntryId::new(target_id),
+                        super::NavigateTreeOptions {
+                            summarize,
+                            custom_instructions,
+                            replace_instructions,
+                            label,
+                        },
+                    )
+                    .await
+                    .map_err(failed)?;
+                Ok(json!({"cancelled": result.cancelled}))
+            }
+            HostOp::UiDialog {
+                method,
+                params,
+                cancel,
+            } => {
+                if !is_dialog(&method) {
+                    return Err(HostError::Invalid(format!("{method} is not a dialog")));
+                }
+                if let Some(link) = &self.inner.agents.link {
+                    return Ok(child_dialog(link, extension, &method, params, cancel).await);
+                }
+                Ok(self.ui_dialog(extension, &method, params, cancel).await)
+            }
+            HostOp::UiFire { method, params } => {
+                match &self.inner.agents.link {
+                    None => {
+                        self.ui_fire(extension, &method, params)
+                            .map_err(|error| HostError::Invalid(error.to_string()))?;
+                    }
+                    Some(link) => child_fire(link, extension, &method, params),
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::ExecuteTool {
+                parent_tool_call_id,
+                name,
+                args,
+            } => {
+                let outcome = self
+                    .execute_nested_tool(
+                        &parent_tool_call_id,
+                        &name,
+                        args,
+                        tokio_util::sync::CancellationToken::new(),
+                    )
+                    .await;
+                let mut value = json!({
+                    "toolCall": {"type": "toolCall", "id": outcome.tool_call.id, "name": outcome.tool_call.name, "arguments": outcome.tool_call.arguments},
+                    "result": outcome.result,
+                    "isError": outcome.is_error,
+                });
+                if let Some(duration) = outcome.duration_ms {
+                    value["durationMs"] = json!(duration);
+                }
+                Ok(value)
+            }
+            HostOp::InvokeCommand { name, args } => {
+                self.invoke_command(&name, &args, command_context).await
+            }
+            HostOp::SetArbiterRoles(roles) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.arbiter = roles);
+                Ok(JsonValue::Null)
+            }
+            HostOp::ListAgents => Ok(self.agents_list()),
+            HostOp::GetRunState => {
+                let mut value = json!({"state": self.run_state()});
+                let waiting = self.waiting_on();
+                if !waiting.is_empty() {
+                    value["waitingOn"] = json!(waiting);
+                }
+                let background = self.background_on();
+                if !background.is_empty() {
+                    value["backgroundOn"] = json!(background);
+                }
+                Ok(value)
+            }
+            HostOp::Shutdown => {
+                if let Some(runtime) = self.runtime_core() {
+                    runtime.request_shutdown();
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetSystemPromptOptions => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                to_json(self.system_prompt_options())
+            }
+            HostOp::NewSession { parent_session } => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let replaced = runtime.new_session(parent_session).await.map_err(failed)?;
+                Ok(json!({"cancelled": replaced.cancelled}))
+            }
+            HostOp::Fork { entry_id, at } => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let position = if at {
+                    crate::runtime::ForkPosition::At
+                } else {
+                    crate::runtime::ForkPosition::Before
+                };
+                let replaced = runtime
+                    .fork_with_reason(
+                        &EntryId::new(entry_id),
+                        position,
+                        crate::events::ReplaceReason::Fork,
+                    )
+                    .await
+                    .map_err(failed)?;
+                let mut value = json!({"cancelled": replaced.cancelled});
+                if let Some(text) = replaced.selected_text {
+                    value["selectedText"] = json!(text);
+                }
+                Ok(value)
+            }
+            HostOp::SwitchSession(path) => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let replaced = runtime.switch_session(path, None).await.map_err(failed)?;
+                Ok(json!({"cancelled": replaced.cancelled}))
+            }
+            HostOp::Reload => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                self.reload().await.map_err(failed)?;
+                Ok(JsonValue::Null)
+            }
+            op @ (HostOp::RegisterSettings(_)
+            | HostOp::GetExtensionSettings { .. }
+            | HostOp::SetExtensionSetting { .. }
+            | HostOp::GetAllExtensionSettings) => {
+                let router = self
+                    .inner
+                    .agents
+                    .router
+                    .get()
+                    .and_then(std::sync::Weak::upgrade)
+                    .ok_or_else(|| {
+                        HostError::Failed("extension settings are not available".into())
+                    })?;
+                router.settings_call(extension, op)
+            }
+        };
+        if registry_changed {
+            self.refresh_tool_registry(None, false);
+        }
+        if commands_changed {
+            self.inner.hub.publish(OinoEvent::CommandsChanged);
+        }
+        if shortcuts_changed {
+            self.publish_shortcuts();
+        }
+        result
+    }
+
+    /// The runtime for session-replacing operations (command contexts of root sessions).
+    fn replacement_runtime(
+        &self,
+        command_context: bool,
+    ) -> Result<std::sync::Arc<crate::runtime::RuntimeCore>, HostError> {
+        if !command_context {
+            return Err(HostError::CommandContextRequired);
+        }
+        self.runtime_core().ok_or_else(|| {
+            HostError::Failed("Session replacement is not available in this session".into())
+        })
+    }
+
+    /// `models.complete`: resolves the model (`provider/id`, default the session model) and
+    /// its credentials, then runs one request without retry events or prompt-cache writes.
+    async fn model_complete(
+        &self,
+        model: Option<&str>,
+        context: JsonValue,
+        options: JsonValue,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<JsonValue, HostError> {
+        let model = match model {
+            Some(spec) => spec
+                .split_once('/')
+                .and_then(|(provider, id)| self.inner.models.find(provider, id))
+                .ok_or_else(|| HostError::Invalid(format!("Unknown model {spec}")))?,
+            None => self
+                .model()
+                .ok_or_else(|| HostError::Failed("No model selected".into()))?,
+        };
+        let context: oino_ai::Context = serde_json::from_value(context)
+            .map_err(|e| HostError::Invalid(format!("context: {e}")))?;
+        let options: oino_ai::StreamOptions = if options.is_null() {
+            oino_ai::StreamOptions::default()
+        } else {
+            serde_json::from_value(options)
+                .map_err(|e| HostError::Invalid(format!("options: {e}")))?
+        };
+        let mut summarizer = self
+            .summarizer(
+                &model,
+                cancel.unwrap_or_default(),
+                crate::events::SummarizationSource::BranchSummary,
+            )
+            .await
+            .map_err(HostError::Failed)?;
+        summarizer.observer = None;
+        summarizer.thinking_level = None;
+        to_json(summarizer.complete(context, options).await)
+    }
+
+    /// Resolves a `provider/id` spec or the session model.
+    fn request_model(&self, spec: Option<&str>) -> Result<oino_ai::Model, HostError> {
+        match spec {
+            Some(spec) => spec
+                .split_once('/')
+                .and_then(|(provider, id)| self.inner.models.find(provider, id))
+                .ok_or_else(|| HostError::Invalid(format!("Unknown model {spec}"))),
+            None => self
+                .model()
+                .ok_or_else(|| HostError::Failed("No model selected".into())),
+        }
+    }
+
+    /// `models.stream`: one provider request (credentials and virtual routing as for
+    /// [`HostOp::ModelComplete`], no retries) as `AssistantMessageEvent` JSON items.
+    pub(crate) async fn model_stream(
+        &self,
+        request: crate::extensions::host::ModelRequest,
+    ) -> Result<futures::stream::BoxStream<'static, JsonValue>, HostError> {
+        use futures::StreamExt;
+        let model = self.request_model(request.model.as_deref())?;
+        let context: oino_ai::Context = serde_json::from_value(request.context)
+            .map_err(|e| HostError::Invalid(format!("context: {e}")))?;
+        let mut options: oino_ai::StreamOptions = if request.options.is_null() {
+            oino_ai::StreamOptions::default()
+        } else {
+            serde_json::from_value(request.options)
+                .map_err(|e| HostError::Invalid(format!("options: {e}")))?
+        };
+        let summarizer = self
+            .summarizer(
+                &model,
+                request.cancel.unwrap_or_default(),
+                crate::events::SummarizationSource::BranchSummary,
+            )
+            .await
+            .map_err(HostError::Failed)?;
+        options.cache_retention = Some(oino_ai::CacheRetention::None);
+        if options.headers.is_none() {
+            options.headers.clone_from(&summarizer.headers);
+        }
+        let events = summarizer.stream.stream(oino_agent::StreamRequest {
+            model: summarizer.model.clone(),
+            context,
+            options,
+            api_key: summarizer.api_key.clone(),
+            cancel: summarizer.cancel.clone(),
+        });
+        Ok(events
+            .map(|event| serde_json::to_value(event).unwrap_or(JsonValue::Null))
+            .boxed())
+    }
+
+    /// `models.credential-for`: `{provider, headers, baseUrl?}` of the first model of
+    /// `provider` (bearer header from the resolved key), or `null` when unconfigured.
+    async fn credential_for(&self, provider: &str) -> Result<JsonValue, HostError> {
+        let Some(model) = self
+            .inner
+            .models
+            .all()
+            .into_iter()
+            .find(|m| m.provider == provider)
+        else {
+            return Ok(JsonValue::Null);
+        };
+        let Ok(auth) = self
+            .inner
+            .models
+            .get_api_key_and_headers(&model, &oino_models::AuthOverrides::default())
+            .await
+        else {
+            return Ok(JsonValue::Null);
+        };
+        let mut headers: Vec<(String, String)> =
+            auth.headers.unwrap_or_default().into_iter().collect();
+        match auth.api_key {
+            Some(key) => headers.push(("Authorization".to_owned(), format!("Bearer {key}"))),
+            None if headers.is_empty() => return Ok(JsonValue::Null),
+            None => {}
+        }
+        let mut value = json!({"provider": provider, "headers": headers});
+        if !model.base_url.is_empty() {
+            value["baseUrl"] = json!(model.base_url);
+        }
+        Ok(value)
+    }
+
+    async fn ui_dialog(
+        &self,
+        extension: &str,
+        method: &str,
+        params: oino_ai::JsonObject,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> JsonValue {
+        let kind = prompt_kind(method);
+        let title = params
+            .get("title")
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned);
+        let runner = self.runner();
+        let prompt_event = |kind_name: &str| {
+            let mut payload = json!({"type": kind_name, "reason": "ui_prompt", "kind": kind});
+            if let Some(title) = &title {
+                payload["title"] = json!(title);
+            }
+            payload
+        };
+        if runner.has_handlers("ui_prompt_start") {
+            runner.emit(prompt_event("ui_prompt_start")).await;
+        }
+        let answer = self
+            .inner
+            .ui
+            .dialog(Some(extension), method, params, cancel)
+            .await;
+        if runner.has_handlers("ui_prompt_end") {
+            runner.emit(prompt_event("ui_prompt_end")).await;
+        }
+        match answer {
+            UiAnswer::Value(value) => json!({"value": value}),
+            UiAnswer::Confirmed(confirmed) => json!({"confirmed": confirmed}),
+            UiAnswer::Cancelled => json!({"cancelled": true}),
+        }
+    }
+
+    async fn invoke_command(
+        &self,
+        name: &str,
+        args: &str,
+        inline: bool,
+    ) -> Result<JsonValue, HostError> {
+        let runner = self.runner();
+        let command = runner
+            .command(name)
+            .ok_or_else(|| HostError::Invalid(format!("Unknown command {name}")))?;
+        if !inline {
+            let session = self.clone();
+            let text = if args.is_empty() {
+                format!("/{name}")
+            } else {
+                format!("/{name} {args}")
+            };
+            tokio::spawn(async move {
+                session.wait_for_idle().await;
+                let _ = session.prompt(text, super::PromptOptions::default()).await;
+            });
+            return Ok(JsonValue::Null);
+        }
+        let cx = runner.call_context().with_kind(CallKind::Command);
+        command
+            .extension
+            .instance
+            .run_command(
+                &command.spec.name,
+                args,
+                tokio_util::sync::CancellationToken::new(),
+                cx,
+            )
+            .await
+            .map(|value| value.unwrap_or(JsonValue::Null))
+            .map_err(|e| HostError::Failed(e.message))
+    }
+
+    fn session_read(&self, query: &SessionQuery) -> Result<JsonValue, HostError> {
+        if matches!(query, SessionQuery::Header) {
+            let root = AgentSession::from_inner(crate::agents::root_of(&self.inner));
+            let root_id = root.session_id();
+            let mut header = to_json(lock(&self.inner.manager).header())?;
+            if let Some(object) = header.as_object_mut() {
+                object.insert("rootSessionId".into(), json!(root_id));
+                object.insert("rootCwd".into(), json!(root.work_cwd()));
+            }
+            return Ok(header);
+        }
+        let manager = lock(&self.inner.manager);
+        match query {
+            SessionQuery::Header => unreachable!(),
+            SessionQuery::Entries => to_json(manager.entries()),
+            SessionQuery::Branch => to_json(manager.branch(None)),
+            SessionQuery::Entry { id } => to_json(manager.entry(&EntryId::new(id.clone()))),
+            SessionQuery::Tree => to_json(manager.tree_flat()),
+            SessionQuery::Projection => to_json(manager.build_session_projection()),
+            SessionQuery::ContextEntries => to_json(manager.build_context_entries()),
+            SessionQuery::Label { id } => to_json(manager.label(&EntryId::new(id.clone()))),
+            SessionQuery::Name => to_json(manager.session_name()),
+            SessionQuery::Leaf => to_json(manager.leaf_id().map(EntryId::as_str)),
+            SessionQuery::Id => to_json(manager.session_id()),
+            SessionQuery::File => to_json(manager.session_file()),
+            SessionQuery::Find(query) => find_entries(&manager, query),
+        }
+    }
+
+    /// Refreshes the current model from the registry.
+    pub(crate) fn refresh_current_model(&self) {
+        let Some(current) = self.model() else {
+            return;
+        };
+        if let Some(refreshed) = self.inner.models.find(&current.provider, &current.id)
+            && refreshed != current
+        {
+            self.inner.agent.set_model(refreshed);
+        }
+    }
+
+    /// Slash commands: extension commands, prompt templates, skills.
+    #[must_use]
+    pub fn commands(&self) -> Vec<SlashCommandInfo> {
+        let resolved = self.runner().commands();
+        let resources = self
+            .inner
+            .resources
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        slash_commands(resolved, &resources)
+    }
+}
+
+/// Build a catalogue without starting a session or firing session hooks.
+#[must_use]
+pub fn slash_commands(
+    resolved: Vec<crate::extensions::runner::ResolvedCommand>,
+    resources: &oino_resources::ResourceLoader,
+) -> Vec<SlashCommandInfo> {
+    let mut commands: Vec<SlashCommandInfo> = resolved
+        .into_iter()
+        .filter(|c| !c.spec.hidden)
+        .map(|c| SlashCommandInfo {
+            surfaces: c.extension.instance.command_surfaces(&c.spec.name),
+            name: c.invocation_name,
+            description: c.spec.description,
+            source: "extension".to_owned(),
+            source_info: json!({"path": c.extension.instance.path(), "source": format!("extension:{}", c.extension.instance.id())}),
+        })
+        .collect();
+    commands.extend(resources.prompts().iter().map(|t| SlashCommandInfo {
+        name: t.name.clone(),
+        description: Some(t.description.clone()).filter(|d| !d.is_empty()),
+        source: "prompt".to_owned(),
+        source_info: serde_json::to_value(&t.source_info).unwrap_or(JsonValue::Null),
+        surfaces: None,
+    }));
+    commands.extend(resources.skills().iter().map(|s| SlashCommandInfo {
+        name: format!("skill:{}", s.name),
+        description: Some(s.description.clone()),
+        source: "skill".to_owned(),
+        source_info: serde_json::to_value(&s.source_info).unwrap_or(JsonValue::Null),
+        surfaces: None,
+    }));
+    commands
+}
+
+/// Metadata of one slash command.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlashCommandInfo {
+    /// Invocation name.
+    pub name: String,
+    /// Description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// `extension` | `prompt` | `skill`.
+    pub source: String,
+    /// Provenance.
+    pub source_info: JsonValue,
+    /// The clients that list the command (`None` = every client); from the extension
+    /// manifest's `ui.commands.<name>.surfaces`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surfaces: Option<Vec<oino_ui::settings::Surface>>,
+}
+
+/// Dialog of a nested agent, routed by its [`UiPolicy`](crate::agents::UiPolicy).
+async fn child_dialog(
+    link: &crate::agents::ChildLink,
+    extension: &str,
+    method: &str,
+    mut params: oino_ai::JsonObject,
+    cancel: Option<tokio_util::sync::CancellationToken>,
+) -> JsonValue {
+    use crate::agents::UiPolicy;
+    match &link.ui {
+        UiPolicy::Forward => {
+            let Some(parent) = link.parent.upgrade().map(AgentSession::from_inner) else {
+                return json!({"cancelled": true});
+            };
+            if let Some(title) = params.get("title").and_then(JsonValue::as_str) {
+                let title = format!("[{}] {title}", link.label);
+                params.insert("title".into(), json!(title));
+            }
+            parent.ui_dialog(extension, method, params, cancel).await
+        }
+        UiPolicy::AutoDeny { note } if method == "approval" => {
+            let options = params
+                .get("options")
+                .and_then(JsonValue::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let kind = |o: &JsonValue| o.get("kind").and_then(JsonValue::as_str).map(str::to_owned);
+            let reject = options
+                .iter()
+                .find(|o| kind(o).as_deref() == Some("reject_once"))
+                .or_else(|| {
+                    options
+                        .iter()
+                        .find(|o| kind(o).is_some_and(|k| k.starts_with("reject")))
+                });
+            match reject.and_then(|o| o.get("optionId")).cloned() {
+                Some(id) => json!({"value": {"optionId": id, "feedback": note}}),
+                None => json!({"cancelled": true}),
+            }
+        }
+        UiPolicy::AutoDeny { .. } | UiPolicy::None => json!({"cancelled": true}),
+    }
+}
+
+/// Fire-and-forget request of a nested agent: forwarded notifications only.
+fn child_fire(
+    link: &crate::agents::ChildLink,
+    extension: &str,
+    method: &str,
+    params: oino_ai::JsonObject,
+) {
+    if !matches!(link.ui, crate::agents::UiPolicy::Forward) || method != "notify" {
+        return;
+    }
+    if let Some(parent) = link.parent.upgrade() {
+        let _ = parent.ui.fire(Some(extension), method, params);
+    }
+}
+
+#[cfg(test)]
+mod query_tests {
+    #![allow(clippy::unwrap_used, clippy::print_stderr)]
+    use super::*;
+    use oino_extension_api::ops::{EntryQuery, QueryScope};
+    use oino_session::{CompactionDraft, EntryId, SessionManager};
+    use std::io::Write;
+
+    fn fixture(size: usize) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("query.jsonl");
+        let mut file = std::io::BufWriter::new(std::fs::File::create(&path).unwrap());
+        writeln!(
+            file,
+            "{}",
+            json!({"type":"session", "version":3, "id":"query",
+            "timestamp":"2026-01-01T00:00:00.000Z", "cwd":"/tmp"})
+        )
+        .unwrap();
+        for n in 0..size {
+            writeln!(
+                file,
+                "{}",
+                json!({"type":"custom", "id":format!("e{n}"),
+                "parentId":n.checked_sub(1).map(|i| format!("e{i}")),
+                "timestamp":"2026-01-01T00:00:00.000Z",
+                "customType":if n % 100 == 0 { "skills-revealed" } else { "subagent-step" },
+                "data":{"n":n,"text":"x".repeat(1800)}})
+            )
+            .unwrap();
+        }
+        drop(file);
+        (dir, path)
+    }
+
+    fn metadata_query() -> EntryQuery {
+        EntryQuery {
+            scope: QueryScope::Branch,
+            types: vec!["custom".into()],
+            custom_types: vec!["skills-revealed".into()],
+            ..EntryQuery::default()
+        }
+    }
+
+    #[test]
+    fn filtered_metadata_matches_full_history_after_reopen_append_and_branch() {
+        let (dir, path) = fixture(1000);
+        let mut manager = SessionManager::open(&path, dir.path(), None).unwrap();
+        let anchor = manager
+            .append_message(oino_ai::AgentMessage::User(oino_ai::UserMessage {
+                author: None,
+                content: UserContentField::Text("anchor".into()),
+                timestamp: 1000,
+            }))
+            .unwrap();
+        manager
+            .append_compaction(CompactionDraft {
+                summary: "checkpoint".into(),
+                first_kept_entry_id: Some(anchor),
+                ..Default::default()
+            })
+            .unwrap();
+        manager.sync().unwrap();
+        drop(manager);
+        let mut manager = SessionManager::open(&path, dir.path(), None).unwrap();
+        let mut query = metadata_query();
+        for round in 0..3 {
+            let actual = find_entries(&manager, &query).unwrap();
+            let expected: Vec<_> = manager
+                .branch(None)
+                .into_iter()
+                .map(|entry| serde_json::to_value(entry).unwrap())
+                .filter(|entry| query.matches_value(entry))
+                .collect();
+            let skip = query.last.map_or(0, |n| expected.len().saturating_sub(n));
+            let mut expected = json!(&expected[skip..]);
+            if let Some(max) = query.max_string {
+                oino_extension_api::ops::clip_strings(&mut expected, max);
+            }
+            assert_eq!(actual, expected, "round {round}");
+            if round == 0 {
+                manager
+                    .append_custom_entry("skills-revealed", Some(json!({"n":1001})))
+                    .unwrap();
+                query.last = Some(3);
+                query.max_string = Some(20);
+            } else {
+                manager.set_leaf(&EntryId::new("e500")).unwrap();
+            }
+        }
+        // The excluded placeholder and discarded steps must still read original data.
+        query.custom_types = vec!["subagent-step".into()];
+        query.last = Some(1);
+        query.max_string = None;
+        assert_eq!(find_entries(&manager, &query).unwrap()[0]["data"]["n"], 499);
+        query.custom_types = vec!["oino.index-placeholder".into()];
+        assert_eq!(find_entries(&manager, &query).unwrap(), json!([]));
+    }
+
+    #[test]
+    #[ignore = "release 72 MB filtered query guard"]
+    fn filtered_metadata_query_avoids_per_append_history_parse() {
+        for size in [100, 40_000] {
+            let (dir, path) = fixture(size);
+            let mut manager = SessionManager::open(&path, dir.path(), None).unwrap();
+            let query = metadata_query();
+            let start = std::time::Instant::now();
+            for n in 0..50 {
+                manager
+                    .append_custom_entry("unrelated", Some(json!({"n":n})))
+                    .unwrap();
+                let entries = find_entries(&manager, &query).unwrap();
+                assert_eq!(entries.as_array().unwrap().len(), size / 100);
+            }
+            eprintln!(
+                "filtered_query size={size} per_append_us={:.1}",
+                start.elapsed().as_secs_f64() * 1e6 / 50.0
+            );
+            assert!(start.elapsed() < std::time::Duration::from_secs(5));
+        }
+    }
+}

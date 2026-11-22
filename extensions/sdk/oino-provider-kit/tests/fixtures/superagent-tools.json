@@ -1,0 +1,420 @@
+[
+  {
+    "name": "ask_user",
+    "description": "Ask the user one free-text question and wait for the answer. Only for a genuinely ambiguous project, an irreversible action, or when the user asked you to check first; never to re-confirm an instruction they already gave.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "global_memory_list",
+    "description": "List all memories across all projects with project names.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "global_memory_search",
+    "description": "Alias for memory_search with scope='all'.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "limit": {
+          "type": "number",
+          "default": 10
+        }
+      }
+    }
+  },
+  {
+    "name": "kanboard",
+    "description": "Read and edit a project's board. argv is the board CLI command with no `task` prefix; always pass projectId (except for `project list`). Commands: list [--all | --status LANE | --ready] (bare list hides backlog); show ID; search TEXT; chain ID; next; status; add TITLE [--body TEXT] [--priority none|low|medium|high|urgent] [--after ID] [--status backlog|todo] [--label L]; edit ID [--title T] [--body B] [--priority P] [--labels A,B]; move ID backlog|todo|cancelled [--comment why] (one ticket per call; cancelled needs --comment and an unclaimed backlog/todo ticket); link ID --after DEP; unlink ID --after DEP; order ID --top|--bottom|--before ID|--after-pos ID; note ID TEXT; project list; project show (lane counts); project add /abs/path; project unarchive (with projectId; both ask the user to confirm). Examples: [\"list\",\"--status\",\"backlog\"], [\"move\",\"OIN-12\",\"todo\"], [\"move\",\"OIN-13\",\"cancelled\",\"--comment\",\"filed on the wrong board\"]. Lanes past todo belong to workers: use superagent_start to get tickets worked.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "description": "Registered project slug from project_resolver, e.g. oino-f6a9c2."
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Board CLI arguments, first element is the command, e.g. [\"list\",\"--all\"]."
+        }
+      },
+      "required": [
+        "argv"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "memory_delete",
+    "description": "Delete a memory by title or ID from the current project.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Memory title to delete"
+        },
+        "id": {
+          "type": "string",
+          "description": "Memory ID to delete"
+        },
+        "project": {
+          "type": "string",
+          "description": "Project bucket (default: the current project)"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_list",
+    "description": "List all memories for the current project.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string",
+          "description": "Project bucket to list (default: the current project)"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_search",
+    "description": "IMPORTANT: Call BEFORE starting work to check for existing context. Searches memories by keyword across ALL projects — pi memories plus drawers written by other tools (Devin, zcode, diaries). Results show [project] title, score, and snippet. Use scope='project' for current project only.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Max results (default 10)",
+          "default": 10
+        },
+        "scope": {
+          "type": "string",
+          "description": "'all' (default) or 'project'",
+          "enum": [
+            "all",
+            "project"
+          ],
+          "default": "all"
+        }
+      }
+    }
+  },
+  {
+    "name": "memory_store",
+    "description": "Store or update a memory for cross-session recall — user preferences, project decisions, code patterns, and conversation summaries. Update existing memories instead of creating duplicates.",
+    "parameters": {
+      "type": "object",
+      "required": [
+        "title",
+        "content"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Memory title in <most_important>_<less_important>_<lesser> format (e.g., 'auth_jwt_prefer_refresh_tokens')"
+        },
+        "content": {
+          "type": "string",
+          "description": "Full memory content (markdown supported)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for categorization"
+        },
+        "type": {
+          "type": "string",
+          "description": "Memory type",
+          "enum": [
+            "preference",
+            "decision",
+            "pattern",
+            "summary"
+          ]
+        },
+        "project": {
+          "type": "string",
+          "description": "Project bucket (default: the current project). Set it only to file the memory under another project."
+        },
+        "merge_from": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Titles or ids of overlapping memories in the same project that this one replaces; they are deleted and their usage history carries over"
+        }
+      }
+    }
+  },
+  {
+    "name": "project_resolver",
+    "description": "List registered projects (slug = projectId, name, root folder), recent workspaces and frequent folders. Use it to map the project the user names to a projectId; when exactly one project fits, use it without asking.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Why project discovery is needed."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_lead_model",
+    "description": "Set a project lead's model when the user asks. Validates the model (E_UNKNOWN_MODEL for an unknown id), switches the running lead to it, and with remember:true also saves it as the project's lead model so the next launch keeps it. Never guess a model id: use one the user named (or one from the model picker).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string",
+          "description": "provider/id, e.g. ors/cc/claude-opus-5-5."
+        },
+        "remember": {
+          "type": "boolean",
+          "description": "Also save it as the project's lead model for future launches (default false)."
+        }
+      },
+      "required": [
+        "projectId",
+        "model"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_relay",
+    "description": "Send a message to the project's running lead. delivery queue = after its current step (follow-on or dependent work); steer = adjust what it is doing now; priority true = urgent. Fails with E_WORKER_CLAIM when the project has no lead: then use superagent_start, and read the board yourself instead of relaying read-only questions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tickets the message is about (the message is also logged on them)."
+        },
+        "text": {
+          "type": "string"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "queue",
+            "steer"
+          ]
+        },
+        "priority": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "text",
+        "delivery"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_set_mode",
+    "description": "Switch a running lead's long-horizon mode for its next turn: none, goal, ralph, swarm or graph. Ask the user first when practical (skip asking only when they already named the mode); the switch itself is not gated. Fails when the project has no lead.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "goal",
+            "ralph",
+            "swarm",
+            "graph"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_start",
+    "description": "Hand tickets to the project's lead so they get worked. Launches a lead when none is running, otherwise queues the tickets to the running lead. Accepts backlog, todo or blocked tickets (no need to move them to todo first) and works even when the project's Auto is off. Put every ticket for one project in ONE call. Pick the mode for the batch: none = one focused ticket; swarm = independent tickets in parallel (with maxParallel); graph = dependent or multi-step work; goal = one verified outcome; ralph = long checklist. Presets: quick-fix, bug-batch (swarm x4), feature (graph x3), urgent, research. overrides: model \"provider/id\", thinking, autonomy (default high), mode, maxParallel, review none|light|full, profiles, priority. Unregistered or archived projects ask the user to confirm. E_LEAD_RUNNING means a lead with a different model/mode runs: stop it first to switch.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Every ticket id to hand over, e.g. [\"OIN-12\",\"OIN-13\"]."
+        },
+        "presetId": {
+          "type": "string",
+          "description": "quick-fix | bug-batch | feature | urgent | research, or a user preset."
+        },
+        "lead": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "reuse",
+            "new"
+          ],
+          "description": "auto (default) wakes the project's lead chat; new starts a fresh chat; reuse reopens the last stopped lead's chat."
+        },
+        "overrides": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "thinking": {
+              "type": "string",
+              "enum": [
+                "off",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            },
+            "autonomy": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "none",
+                "goal",
+                "ralph",
+                "swarm",
+                "graph"
+              ]
+            },
+            "maxParallel": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "review": {
+              "type": "string",
+              "enum": [
+                "none",
+                "light",
+                "full"
+              ]
+            },
+            "profiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "priority": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "taskIds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_status",
+    "description": "Read-only snapshot of every project lead (state, health, open owner questions) and of what waits for the owner. Use it when the user asks how work is going or what needs them. It never changes anything.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "description": "Limit to one project (optional)."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "superagent_stop",
+    "description": "Stop the lead that holds this ticket. Use when the user asks, or before restarting a lead with a different model, mode or thinking level.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "taskId"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

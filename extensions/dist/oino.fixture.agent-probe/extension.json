@@ -1,0 +1,20 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "oino.fixture.agent-probe",
+  "name": "Agent probe fixture",
+  "version": "1.0.0",
+  "kind": "extension",
+  "description": "Spawns nested agents, proposes arbiter nudges, reports wait reasons and drives control operations.",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true,
+    "agents": {
+      "spawn": true,
+      "maxDepth": 2
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:c4fc2903ab86156b2e347966f8d068353a8d87295afc4b97905c4228826dbf1d"
+  }
+}

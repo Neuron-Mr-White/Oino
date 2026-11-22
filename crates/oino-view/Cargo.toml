@@ -1,0 +1,28 @@
+[package]
+name = "oino-view"
+version = "1.0.2"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Frontend-agnostic view models for Oino clients: transcript, extension UI state, tree, sessions, composer, keybindings"
+readme = "README.md"
+keywords = ["view", "frontend", "agent", "tui"]
+categories = ["gui"]
+
+[dependencies]
+indexmap.workspace = true
+oino-agent = { path = "../oino-agent", version = "1.0.2" }
+oino-ai = { path = "../oino-ai", version = "1.0.2" }
+oino-core = { path = "../oino-core", version = "1.0.1" }
+oino-session = { path = "../oino-session", version = "1.0.2", default-features = false }
+oino-ui.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+unicode-width.workspace = true
+
+[dev-dependencies]
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,102 @@
+# v3-perf acceptance budgets (docs/dev/v3/perf/00-spec.md §3), read by
+# `cargo xtask bench <scenario> --gate`. Each table is one T-budget; every other key is a
+# metric id the oino-bench host scenarios emit, with its limit in the metric's unit
+# (ms / MB / % / count). The gated statistic (p95, p99, max, value) is fixed per metric
+# in the scenario code and shown in the record's "gated" column.
+#
+# Scope: oino-bench measures the HOST side. App-side parts (paint, one-frame optimistic
+# bubble, webview frame time) are measured by the app perf overlay; the host-side rows
+# below are the host's share of those budgets (the host must leave the app its frame).
+
+[T1]
+title = "app launch -> sidebar with sessions <= 400 ms p95 (warm host); host share = sessions_list"
+"list.first_ms" = 400
+"list.warm_ms" = 100
+
+[T2]
+title = "open chat, already live -> timeline painted <= 100 ms p95; host share = snapshot reply"
+"open.live.100.snapshot_ms" = 50
+"open.live.40k.snapshot_ms" = 50
+
+[T3]
+title = "open record-only chat: last page <= 200 ms p95; runtime ready <= 1.0 s p95 (40k: 1.5 s)"
+"open.cold.100.page_ms" = 200
+"open.cold.5k.page_ms" = 200
+"open.cold.40k.page_ms" = 200
+"open.cold.real72mb.page_ms" = 200
+"open.cold.100.ready_ms" = 1000
+"open.cold.5k.ready_ms" = 1000
+"open.cold.40k.ready_ms" = 1500
+"open.cold.real72mb.ready_ms" = 1500
+
+[T4]
+title = "send -> own bubble <= 16 ms (optimistic in the app); WIRE PROXY ONLY = prompt -> ack (not optimistic bubble paint)"
+"send.100.prompt_ack_ms" = 16
+"send.40k.prompt_ack_ms" = 16
+"send.real72mb.prompt_ack_ms" = 16
+
+[T5]
+title = "send -> provider request leaves the host (40k chat, all extensions on) <= 150 ms p95"
+"send.100.to_request_ms" = 150
+"send.40k.to_request_ms" = 150
+"send.real72mb.to_request_ms" = 150
+
+[T6]
+title = "open model picker <= 50 ms, never waits for the network"
+"model.picker_list_ms" = 50
+
+[T7]
+title = "switch model: host ack <= 100 ms p95; no wake for an idle chat"
+"model.switch.live_ack_ms" = 100
+"model.switch.record_only_ack_ms" = 100
+"model.switch.record_only_wakes" = 0
+
+[T8]
+title = "ping / control op p99 <= 50 ms under heavy load L1; 0 supervisor kills (8 h soak)"
+"ping.big_wake.app_ms" = 50
+"ping.big_wake.live_ms" = 50
+"ping.big_wake.failures" = 0
+"l1.ping.app_ms" = 50
+"l1.ping.live_ms" = 50
+"l1.ping.failures" = 0
+
+[T9]
+title = "UNMEASURED here: <= 8 ms main-thread frame p95; use apps/unipi/scripts/perf-webview.mjs. Wire frame rate is diagnostic only."
+
+[T10]
+title = "host idle CPU <= 1 %"
+"idle.empty.host_cpu_pct" = 1.0
+"idle.after_work.host_cpu_pct" = 1.0
+
+[T11]
+title = "Wave 1 memory under L1: total <= 3584 MiB; control share deferred to wave 2"
+"l1.second_half.rss_growth_pct_per_hour" = 10
+"l1.total_rss_peak_mb" = 3584
+
+[T12]
+title = "Memory 600 seconds after work stops <= 600 MB total"
+"l1.after_work.total_rss_mb" = 600
+"idle.after_work.total_rss_mb" = 600
+
+[T13]
+title = "1.0.7 whole-host crash: interrupted marker within 2 seconds after kill and resume; worker isolation deferred"
+"crash.chats_not_marked_interrupted" = 0
+
+"crash.kill_to_marker_ms" = 2000
+"crash.chats_not_resumed" = 0
+
+"crash.markers_not_durable" = 0
+"crash.restart_to_marker_ms" = 2000
+"crash.restart_to_durable_and_pushed_ms" = 2000
+"crash.delayed.chats_not_marked_interrupted" = 0
+"crash.delayed.markers_not_durable" = 0
+"crash.delayed.restart_to_marker_ms" = 2000
+"crash.delayed.restart_to_durable_and_pushed_ms" = 2000
+"crash.delayed.chats_not_resumed" = 0
+
+[T14]
+title = "Disk hygiene via isolated host startup and browser launch"
+"disk.tmp_failures" = 0
+"disk.log_failures" = 0
+"disk.trash_failures" = 0
+"disk.browser_cache_bytes" = 314572800

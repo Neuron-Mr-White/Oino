@@ -1,0 +1,34 @@
+[
+  { "name": "sessions_archive request", "schema": "Request", "ok": true, "value": { "op": "sessions_archive", "sessions": ["01a1-aaaa", "01a1-bbbb"] } },
+  { "name": "sessions_archive empty", "schema": "Request", "ok": false, "value": { "op": "sessions_archive", "sessions": [] } },
+  { "name": "sessions_restore request", "schema": "Request", "ok": true, "value": { "op": "sessions_restore", "sessions": ["01a1-aaaa"] } },
+  { "name": "sessions_query minimal", "schema": "Request", "ok": true, "value": { "op": "sessions_query" } },
+  {
+    "name": "sessions_query full",
+    "schema": "Request",
+    "ok": true,
+    "value": {
+      "op": "sessions_query", "query": "fix parser", "scope": "all", "sort": "updated", "limit": 50, "cursor": "50",
+      "filters": { "workspaces": ["", "/home/u/p"], "automation": ["cron"], "status": ["running"], "models": [""], "created": { "from": 1 }, "updated": { "to": 2 } }
+    }
+  },
+  { "name": "sessions_query bad scope", "schema": "Request", "ok": false, "value": { "op": "sessions_query", "scope": "trash" } },
+  { "name": "batch data", "schema": "SessionsBatchData", "ok": true, "value": { "done": ["a", "b"], "failed": [{ "session": "c", "message": "the session is running" }] } },
+  { "name": "batch data minimal", "schema": "SessionsBatchData", "ok": true, "value": { "done": [] } },
+  {
+    "name": "query data",
+    "schema": "SessionsQueryData",
+    "ok": true,
+    "value": {
+      "hits": [
+        { "card": { "session_id": "a", "file": "/x/a.jsonl", "cwd": "/home/u/p", "updated_at": 1, "message_count": 2, "run_state": "idle", "last_activity": 1 } },
+        { "card": { "session_id": "b", "file": "/t/b.jsonl", "cwd": "", "updated_at": 1, "message_count": 0, "run_state": "idle", "last_activity": 1 }, "archived": true, "snippet": "…find the needle…" }
+      ],
+      "total": 120,
+      "next_cursor": "50"
+    }
+  },
+  { "name": "sessions_removed event", "schema": "HubEvent", "ok": true, "value": { "kind": "sessions_removed", "sessions": ["a", "b"], "archived": true } },
+  { "name": "sessions_changed event", "schema": "HubEvent", "ok": true, "value": { "kind": "sessions_changed", "cards": [{ "session_id": "a", "file": "/x/a.jsonl", "cwd": "/p", "updated_at": 1, "message_count": 2, "run_state": "idle", "last_activity": 1 }] } },
+  { "name": "resync event", "schema": "HubEvent", "ok": true, "value": { "kind": "resync" } }
+]

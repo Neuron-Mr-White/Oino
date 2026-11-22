@@ -1,0 +1,12 @@
+[
+  {"name":"push_list without wait","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_list"}}},
+  {"name":"push_list wait 25","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_list","wait":25}}},
+  {"name":"push_list wait over the cap","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_list","wait":31}}},
+  {"name":"push_done installed","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_done","id":"p_18f2a-1","outcome":"installed"}}},
+  {"name":"push_done failed with detail","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_done","id":"p1","outcome":"failed","detail":"checksum mismatch"}}},
+  {"name":"push_done unknown outcome","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_done","id":"p1","outcome":"exploded"}}},
+  {"name":"push_done id with a slash","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.7.0","req":{"op":"push_done","id":"../x","outcome":"saved"}}},
+  {"name":"list data, off","schema":"PushListData","ok":true,"value":{"enabled":false,"host_name":"coffee","pushes":[]}},
+  {"name":"list data, one apk","schema":"PushListData","ok":true,"value":{"enabled":true,"host_name":"coffee","pushes":[{"id":"p1","name":"app.apk","size":12582912,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","mime":"application/vnd.android.package-archive","path":"/home/me/app.apk","note":"try this build","created_at":1760000000000}]}},
+  {"name":"list data, bad sha","schema":"PushListData","ok":false,"value":{"enabled":true,"host_name":"coffee","pushes":[{"id":"p1","name":"a","size":1,"sha256":"XYZ","mime":"x","path":"/a","created_at":1}]}}
+]

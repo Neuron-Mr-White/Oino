@@ -1,0 +1,13 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.file-summary",
+  "name": "File Summary",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Snapshots files before write/edit, summarizes the files a turn touched (+added −removed) in a turn footer, and undoes a turn or a range of turns.",
+  "license": "MIT",
+  "permissions": {
+    "fs": { "project": "write" }
+  },
+  "ui": { "reserved": ["unipi.file-summary/turn-files"] }
+}

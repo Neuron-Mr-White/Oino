@@ -1,0 +1,162 @@
+{
+ "name": "k_stream_exception",
+ "model": {
+  "id": "global.anthropic.claude-sonnet-4-6",
+  "name": "Claude Sonnet 4.6 (Global)",
+  "api": "bedrock-converse-stream",
+  "provider": "amazon-bedrock",
+  "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 3,
+   "output": 15,
+   "cacheRead": 0.3,
+   "cacheWrite": 3.75
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 128000,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "thinkingLevelMap": {
+   "max": "max"
+  },
+  "inputLimits": {
+   "images": {
+    "maxPerMessage": 20,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "bedrock-token",
+ "status": 200,
+ "sseBase64": "AAAAdgAAAFKW1freCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicm9sZSI6ImFzc2lzdGFudCJ9b6jFmQAAAJUAAABXicuzXgs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiJwYXIifX3JfKTaAAAAsAAAAGFPUIazDzpleGNlcHRpb24tdHlwZQcAE3Rocm90dGxpbmdFeGNlcHRpb24NOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcACWV4Y2VwdGlvbnsibWVzc2FnZSI6IlRvbyBtYW55IHRva2VucywgcGxlYXNlIHdhaXQgYmVmb3JlIHRyeWluZyBhZ2Fpbi4iffcK5X8=",
+ "request": {
+  "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/converse-stream",
+  "headers": {
+   "content-type": "application/json",
+   "content-length": "189",
+   "x-amz-user-agent": "aws-sdk-js/3.1126.0 pi/1.4.0",
+   "user-agent": "aws-sdk-js/3.1126.0 ua/2.1 os/linux#7.0.0-38-generic lang/js md/nodejs#24.22.1 api/bedrock-runtime#3.1126.0 m/N,E pi/1.4.0",
+   ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
+   "amz-sdk-invocation-id": "5649dab4-60ac-418d-8590-6b9818bdb117",
+   "amz-sdk-request": "attempt=1; max=3",
+   "authorization": "Bearer bedrock-token"
+  },
+  "body": {
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": "hi"
+      },
+      {
+       "cachePoint": {
+        "type": "default"
+       }
+      }
+     ]
+    }
+   ],
+   "system": [
+    {
+     "text": "Sys"
+    },
+    {
+     "cachePoint": {
+      "type": "default"
+     }
+    }
+   ],
+   "inferenceConfig": {
+    "maxTokens": 128000
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "par"
+  },
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "par"
+     }
+    ],
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "global.anthropic.claude-sonnet-4-6",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "Throttling error: Too many tokens, please wait before trying again.",
+    "diagnostics": [
+     {
+      "type": "bedrock_response_failure",
+      "timestamp": 1793016000000,
+      "details": {
+       "errorCode": "ThrottlingException",
+       "requestId": "req-1"
+      }
+     }
+    ],
+    "durationMs": 1
+   }
+  }
+ ]
+}

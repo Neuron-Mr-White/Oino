@@ -1,0 +1,40 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.subagents",
+  "name": "Subagents",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Hand self-contained tasks to independent child agents (foreground, background, resume).",
+  "license": "MIT",
+  "resources": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "permissions": {
+    "process": {
+      "spawn": true,
+      "allow": [
+        "*"
+      ]
+    },
+    "agents": {
+      "spawn": true,
+      "maxDepth": 2
+    },
+    "fs": {
+      "project": "write"
+    },
+    "sessionControl": true,
+    "services": {
+      "call": [
+        "unipi.core/core.open-tray",
+        "*/subagent-reader.read"
+      ]
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:1236f9b4618e08631aa6dea3b5f830afdf569f1ca06176cb51f15270222dc49c"
+  }
+}

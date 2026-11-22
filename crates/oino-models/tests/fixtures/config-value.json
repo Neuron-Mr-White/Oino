@@ -1,0 +1,254 @@
+{
+  "env": {
+    "ORACLE_A": "alpha",
+    "ORACLE_B": "beta",
+    "ORACLE_EMPTY": ""
+  },
+  "cases": [
+    {
+      "config": "literal",
+      "resolved": "literal",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "literal"
+      }
+    },
+    {
+      "config": "$ORACLE_A",
+      "resolved": "alpha",
+      "envVarName": "ORACLE_A",
+      "envVarNames": [
+        "ORACLE_A"
+      ],
+      "configured": true,
+      "strict": {
+        "ok": "alpha"
+      }
+    },
+    {
+      "config": "${ORACLE_A}",
+      "resolved": "alpha",
+      "envVarName": "ORACLE_A",
+      "envVarNames": [
+        "ORACLE_A"
+      ],
+      "configured": true,
+      "strict": {
+        "ok": "alpha"
+      }
+    },
+    {
+      "config": "x-$ORACLE_A-${ORACLE_B}",
+      "resolved": "x-alpha-beta",
+      "envVarName": null,
+      "envVarNames": [
+        "ORACLE_A",
+        "ORACLE_B"
+      ],
+      "configured": true,
+      "strict": {
+        "ok": "x-alpha-beta"
+      }
+    },
+    {
+      "config": "$$ORACLE_A",
+      "resolved": "$ORACLE_A",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "$ORACLE_A"
+      }
+    },
+    {
+      "config": "$!bang",
+      "resolved": "!bang",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "!bang"
+      }
+    },
+    {
+      "config": "$ORACLE_MISSING",
+      "resolved": null,
+      "envVarName": "ORACLE_MISSING",
+      "envVarNames": [
+        "ORACLE_MISSING"
+      ],
+      "configured": false,
+      "strict": {
+        "error": "Failed to resolve API key from environment variable: ORACLE_MISSING"
+      }
+    },
+    {
+      "config": "$ORACLE_EMPTY",
+      "resolved": null,
+      "envVarName": "ORACLE_EMPTY",
+      "envVarNames": [
+        "ORACLE_EMPTY"
+      ],
+      "configured": false,
+      "strict": {
+        "error": "Failed to resolve API key from environment variable: ORACLE_EMPTY"
+      }
+    },
+    {
+      "config": "${not valid}",
+      "resolved": "${not valid}",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "${not valid}"
+      }
+    },
+    {
+      "config": "${ORACLE_A",
+      "resolved": "${ORACLE_A",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "${ORACLE_A"
+      }
+    },
+    {
+      "config": "trailing$",
+      "resolved": "trailing$",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "trailing$"
+      }
+    },
+    {
+      "config": "$1abc",
+      "resolved": "$1abc",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "$1abc"
+      }
+    },
+    {
+      "config": "${ORACLE_MISSING}${ORACLE_OTHER}",
+      "resolved": null,
+      "envVarName": null,
+      "envVarNames": [
+        "ORACLE_MISSING",
+        "ORACLE_OTHER"
+      ],
+      "configured": false,
+      "strict": {
+        "error": "Failed to resolve API key from environment variables: ORACLE_MISSING, ORACLE_OTHER"
+      }
+    },
+    {
+      "config": "pre${ORACLE_B}post",
+      "resolved": "prebetapost",
+      "envVarName": null,
+      "envVarNames": [
+        "ORACLE_B"
+      ],
+      "configured": true,
+      "strict": {
+        "ok": "prebetapost"
+      }
+    },
+    {
+      "config": "$ORACLE_A$ORACLE_B",
+      "resolved": "alphabeta",
+      "envVarName": null,
+      "envVarNames": [
+        "ORACLE_A",
+        "ORACLE_B"
+      ],
+      "configured": true,
+      "strict": {
+        "ok": "alphabeta"
+      }
+    },
+    {
+      "config": "a$$b$!c",
+      "resolved": "a$b!c",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "a$b!c"
+      }
+    },
+    {
+      "config": "!printf ' cmd \\n'",
+      "resolved": "cmd",
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "ok": "cmd"
+      }
+    },
+    {
+      "config": "!exit 3",
+      "resolved": null,
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "error": "Failed to resolve API key from shell command: exit 3"
+      }
+    },
+    {
+      "config": "!true",
+      "resolved": null,
+      "envVarName": null,
+      "envVarNames": [],
+      "configured": true,
+      "strict": {
+        "error": "Failed to resolve API key from shell command: true"
+      }
+    }
+  ],
+  "explicitCases": [
+    {
+      "config": "$ORACLE_A",
+      "explicit": {
+        "ORACLE_A": "explicit"
+      },
+      "resolved": "explicit"
+    },
+    {
+      "config": "$ORACLE_A",
+      "explicit": {
+        "ORACLE_A": ""
+      },
+      "resolved": "alpha"
+    },
+    {
+      "config": "$ORACLE_X",
+      "explicit": {
+        "ORACLE_X": "x"
+      },
+      "resolved": "x"
+    }
+  ],
+  "headers": {
+    "X-A": "$ORACLE_A",
+    "X-Missing": "$ORACLE_MISSING",
+    "X-Lit": "lit",
+    "X-Empty": "$ORACLE_EMPTY"
+  },
+  "resolvedHeaders": {
+    "X-A": "alpha",
+    "X-Lit": "lit"
+  },
+  "strictHeaders": {
+    "error": "Failed to resolve provider \"p\" header \"X-Missing\" from environment variable: ORACLE_MISSING"
+  }
+}

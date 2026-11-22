@@ -1,0 +1,338 @@
+{
+ "name": "i_tool_stream",
+ "model": {
+  "id": "gemini-3.1-pro-preview",
+  "name": "Gemini 3.1 Pro Preview",
+  "api": "google-generative-ai",
+  "provider": "google",
+  "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "reasoning": true,
+  "thinkingLevelMap": {
+   "off": null,
+   "minimal": null,
+   "low": "low",
+   "medium": "medium",
+   "high": "high",
+   "xhigh": null,
+   "max": null
+  },
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 12,
+   "cacheRead": 0.2,
+   "cacheWrite": 0,
+   "tiers": [
+    {
+     "inputTokensAbove": 200000,
+     "input": 4,
+     "output": 18,
+     "cacheRead": 0.4,
+     "cacheWrite": 0
+    }
+   ]
+  },
+  "contextWindow": 1048576,
+  "maxTokens": 65536,
+  "inputLimits": {
+   "maxRequestBytes": 20971520,
+   "images": {
+    "maxPerRequest": 3600,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "toolsAdded": [
+     {
+      "name": "lookup",
+      "description": "Look up a value",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "q": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "q"
+       ]
+      }
+     },
+     {
+      "name": "write_file",
+      "description": "Write a file",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "data": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     },
+     {
+      "name": "strict_lookup",
+      "description": "Look up a value",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "q": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "q"
+       ]
+      },
+      "constrainedSampling": {
+       "type": "json_schema",
+       "strict": "prefer"
+      }
+     }
+    ],
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "go",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "gem-key",
+ "status": 200,
+ "sse": "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Looking.\"}],\"role\":\"model\"}}],\"responseId\":\"resp-g3\"}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"id\":\"fc-1\",\"name\":\"lookup\",\"args\":{\"q\":\"x\"}},\"thoughtSignature\":\"dG9vbA==\"},{\"functionCall\":{\"id\":\"fc-2\",\"name\":\"write_file\",\"args\":{\"path\":\"a\"}}}],\"role\":\"model\"},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":30,\"candidatesTokenCount\":9,\"totalTokenCount\":39}}\r\n\r\n",
+ "request": {
+  "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent?alt=sse",
+  "headers": {
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-goog-api-client": "google-genai-sdk/2.21.0 gl-node/v24.22.1",
+   "x-goog-api-key": "gem-key"
+  },
+  "body": {
+   "contents": [
+    {
+     "parts": [
+      {
+       "text": "go"
+      }
+     ],
+     "role": "user"
+    }
+   ],
+   "systemInstruction": {
+    "parts": [
+     {
+      "text": "Sys"
+     }
+    ],
+    "role": "user"
+   },
+   "tools": [
+    {
+     "functionDeclarations": [
+      {
+       "name": "lookup",
+       "description": "Look up a value",
+       "parametersJsonSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "q"
+        ]
+       }
+      },
+      {
+       "name": "write_file",
+       "description": "Write a file",
+       "parametersJsonSchema": {
+        "type": "object",
+        "properties": {
+         "path": {
+          "type": "string"
+         },
+         "data": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "path"
+        ]
+       }
+      },
+      {
+       "name": "strict_lookup",
+       "description": "Look up a value",
+       "parametersJsonSchema": {
+        "type": "object",
+        "properties": {
+         "q": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "q"
+        ],
+        "additionalProperties": false
+       }
+      }
+     ]
+    }
+   ],
+   "toolConfig": {
+    "functionCallingConfig": {
+     "mode": "VALIDATED"
+    }
+   },
+   "generationConfig": {
+    "maxOutputTokens": 65536,
+    "thinkingConfig": {
+     "thinkingLevel": "LOW"
+    }
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Looking."
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Looking."
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "{\"q\":\"x\"}"
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 1,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "fc-1",
+    "name": "lookup",
+    "arguments": {
+     "q": "x"
+    },
+    "thoughtSignature": "dG9vbA=="
+   }
+  },
+  {
+   "type": "toolcall_start",
+   "contentIndex": 2
+  },
+  {
+   "type": "toolcall_delta",
+   "contentIndex": 2,
+   "delta": "{\"path\":\"a\"}"
+  },
+  {
+   "type": "toolcall_end",
+   "contentIndex": 2,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "fc-2",
+    "name": "write_file",
+    "arguments": {
+     "path": "a"
+    }
+   }
+  },
+  {
+   "type": "done",
+   "reason": "toolUse",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Looking."
+     },
+     {
+      "type": "toolCall",
+      "id": "fc-1",
+      "name": "lookup",
+      "arguments": {
+       "q": "x"
+      },
+      "thoughtSignature": "dG9vbA=="
+     },
+     {
+      "type": "toolCall",
+      "id": "fc-2",
+      "name": "write_file",
+      "arguments": {
+       "path": "a"
+      }
+     }
+    ],
+    "api": "google-generative-ai",
+    "provider": "google",
+    "model": "gemini-3.1-pro-preview",
+    "usage": {
+     "input": 30,
+     "output": 9,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 39,
+     "cost": {
+      "input": 0.000059999999999999995,
+      "output": 0.000108,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000168
+     }
+    },
+    "stopReason": "toolUse",
+    "timestamp": 0,
+    "responseId": "resp-g3",
+    "rawStopReason": "STOP",
+    "durationMs": 0
+   }
+  }
+ ]
+}

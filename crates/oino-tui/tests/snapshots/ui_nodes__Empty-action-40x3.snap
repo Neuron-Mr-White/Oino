@@ -1,0 +1,7 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+                No tasks
+  ~ 16..24=mods=BOLD
+[ New task ]

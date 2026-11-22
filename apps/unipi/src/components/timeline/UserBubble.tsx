@@ -1,0 +1,347 @@
+/**
+ * User bubble (WP-A6, moved+adapted from Transcript.tsx `UserBubble`; WP-A7
+ * adds the fold, Edit and the row menu):
+ *
+ * - inline chips (`[file: name]@path`, `/commands`, skills, `[image N]`) via
+ *   the same tokenizer, verified `@path` mentions (`paths_stat` through the
+ *   `RefChat` adapter), task refs, image chips, pending/waiting outbox notes;
+ * - **120 px fold** (Z-29, ZCode `v4-user-message-display`): body capped at
+ *   120 px with a bottom fade; a centred chevron expands/collapses with a
+ *   300 ms height transition (no motion when `prefers-reduced-motion`). The
+ *   image/attachment chips sit *outside* the folded body, and the fold resets
+ *   when the virtualizer reuses the row for another message;
+ * - **Edit** (Z-28): a pencil on the user bubble (hover-revealed on the
+ *   desktop, always visible on the phone) tree-jumps into the composer;
+ *   [chat-tree] a timeline bubble gets the whole action row instead (`actions`);
+ * - **row menu** (Z-17/Z-27): right-click / long-press gives Copy, Quote,
+ *   Fork and Edit for this message;
+ * - **swipe right = Quote** on the phone (Z-30 keeps it).
+ */
+import { expansionOpen, setExpansion } from '../../lib/timeline/expansion';
+import type { JSX } from 'solid-js';
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, Show } from 'solid-js';
+import { ChevronDown, ChevronUp, FileText, FolderOpen, Image as ImageIcon, Pencil, Sparkles, SquareSlash } from 'lucide-solid';
+import type { RefChat } from '../../lib/chat/pathStat';
+import { lookupPaths } from '../../lib/chat/pathStat';
+import { fileRefLabel } from '../../lib/chat/fileRefs';
+import { attachFileRefGestures } from '../../lib/chat/fileRefGestures';
+import { openFileRef } from '../../lib/chat/fileRefOpen';
+import { openFilePath, resolvePathToken } from '../../lib/media/pathTokens';
+import { tokenize, type Chip, type Seg } from '../../lib/composer/chips';
+import type { ImageRef } from '../../lib/chat/model';
+import { knownPrefixes, splitTaskRefs } from '../../lib/board/portal';
+import { openTaskFromChat } from '../../lib/session/open';
+import { attachMessageMenu, attachQuoteSwipe, type MessageTarget } from '../../lib/timeline/actions';
+import { FileRefText } from '../chat/FileRefText';
+import { ImageChipRow, openImagePreviewer } from '../chat/ImageChip';
+
+/** Longest collapsed body (Z-29; ZCode folds when `scrollHeight > 121`). */
+export const FOLD_PX = 120;
+/** The error of a lost message: one short line (the full text is in the tooltip). */
+const ERROR_MAX = 90;
+
+/** Shortens an error to one muted line (the tooltip keeps the whole text). */
+export function truncateError(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > ERROR_MAX ? `${flat.slice(0, ERROR_MAX - 1)}…` : flat;
+}
+/** Motion 120–200 ms ease-out (ui-bar.md Global). */
+const FOLD_MS = 180;
+
+/** A sent message's text as plain runs + inline chips (UNI-212): the same
+ * tokenizer as the composer — attachments (`[file: name]@path`), a
+ * leading `/skill:x` or `/command` from this session's list, pi's
+ * expanded `<skill …>` block, and (UNI-285) an `[image N]` back to that
+ * image. Whitespace between two file chips collapses to one space. */
+export function bubbleSegments(text: string, commands: ReadonlySet<string>, verified?: (token: string) => boolean): Seg[] {
+  let segs = tokenize(text, { commands, skillBlocks: true, verified, imageLabels: true });
+  // A `$skill` chip sent mid-text became pi's leading invocation too (composer `serializeSkills`):
+  // the bubble shows it once, where the user put it.
+  const lead = segs[0];
+  if (lead && 'chip' in lead && lead.chip.kind === 'skill' && !lead.chip.form) {
+    const name = lead.chip.name;
+    if (segs.some((s, i) => i > 0 && 'chip' in s && s.chip.kind === 'skill' && s.chip.form === 'dollar' && s.chip.name === name)) {
+      segs = segs.slice(1);
+      const first = segs[0];
+      if (first && 'text' in first) segs[0] = { text: first.text.replace(/^\s+/, '') };
+    }
+  }
+  return segs.map((seg, i) => {
+    if ('chip' in seg || seg.text.trim()) return seg;
+    const prev = segs[i - 1];
+    const next = segs[i + 1];
+    const between = prev && 'chip' in prev && prev.chip.kind === 'file' && next && 'chip' in next && next.chip.kind === 'file';
+    return between ? { text: ' ' } : seg;
+  });
+}
+
+/** `@path` / `@"a path"` tokens in a sent message (UNI-204): the ones the PC confirms become path chips. */
+export function mentionTokens(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/(^|[\s(\[{])(@"[^"\n]+"|@[^\s"]+)/g)) {
+    const token = m[2]!;
+    if (token.length > 1 && !token.startsWith('@att:')) out.add(token);
+  }
+  return [...out];
+}
+const mentionPath = (token: string) => token.replace(/^@"?|"$/g, '');
+
+/** Task refs (UNI-181) in a plain run, tappable. */
+function TaskRefRun(props: { chat: RefChat; text: string; prefixes?: Set<string> }) {
+  const parts = () => (props.prefixes ? splitTaskRefs(props.text, props.prefixes) : [props.text]);
+  return (
+    <For each={parts()}>
+      {(value) =>
+        typeof value === 'string' ? (
+          value
+        ) : (
+          <span
+            class="task-ref"
+            role="link"
+            data-task={value.ref}
+            onClick={(event) => {
+              event.stopPropagation();
+              openTaskFromChat(props.chat.hostId, value.ref, props.chat.cwd?.());
+            }}
+          >
+            {value.ref}
+          </span>
+        )
+      }
+    </For>
+  );
+}
+
+/** Plain text with tappable task refs and verified file refs. */
+function BubbleText(props: { chat: RefChat; text: string }) {
+  const [prefixes] = createResource(() => props.chat.hostId, knownPrefixes);
+  return <FileRefText chat={props.chat} text={props.text} mode="prose" plain={(text) => <TaskRefRun chat={props.chat} text={text} prefixes={prefixes()} />} />;
+}
+
+export function BubbleChip(props: { chat: RefChat; chip: Chip; resolved?: { resolved: string; kind: 'file' | 'dir' }; images?: readonly ImageRef[] }) {
+  const [failed, setFailed] = createSignal(false);
+  const c = props.chip;
+  const label = c.kind === 'file' ? c.name : c.kind === 'image' ? `image ${c.n}` : c.kind === 'path' ? fileRefLabel(c.path.replace(/\/+$/, '')).label + (props.resolved?.kind === 'dir' ? '/' : '') : c.kind === 'skill' ? c.name : `/${c.name}`;
+  const path = c.kind === 'file' ? c.path : c.kind === 'path' ? c.path : undefined;
+  const open = async (event: MouseEvent) => {
+    event.stopPropagation();
+    if (c.kind === 'image') {
+      const index = (c.n ?? 1) - 1;
+      if (index >= 0 && index < (props.images?.length ?? 0)) void openImagePreviewer(props.chat, props.images!, index);
+      return;
+    }
+    if (!path) return;
+    setFailed(false);
+    try {
+      if (props.resolved) await openFileRef(props.chat, props.resolved);
+      else await openFilePath(props.chat, resolvePathToken(path, props.chat.cwd?.()));
+    } catch {
+      setFailed(true);
+    }
+  };
+  const clickable = () => !!path || (c.kind === 'image' && !!props.images?.length);
+  return (
+    <span
+      class="ichip"
+      data-kind={c.kind}
+      data-status={failed() ? 'error' : undefined}
+      data-file-ref={props.resolved?.resolved}
+      data-file-kind={props.resolved?.kind}
+      role={clickable() ? 'link' : undefined}
+      title={props.resolved?.resolved ?? path ?? c.raw.slice(0, 80)}
+      aria-label={`${c.kind === 'command' ? 'command' : c.kind === 'skill' ? 'skill' : c.kind === 'image' ? 'open image' : 'open file'} ${label}`}
+      onClick={clickable() ? (e) => void open(e) : undefined}
+    >
+      {c.kind === 'skill' ? <Sparkles size={13} /> : c.kind === 'command' ? <SquareSlash size={13} /> : c.kind === 'image' ? <ImageIcon size={13} /> : props.resolved?.kind === 'dir' ? <FolderOpen size={13} /> : <FileText size={13} />}
+      <span class="ichip-label">{label}</span>
+    </span>
+  );
+}
+
+export function UserBubble(props: {
+  chat: RefChat;
+  text: string;
+  images?: ImageRef[];
+  /** 'sending': the host hasn't confirmed it yet; 'waiting': the stream is down (Z-50);
+   *  'lost': the send failed — the note shows the real error, never "Waiting for connection…". */
+  pending?: 'sending' | 'waiting' | 'lost' | 'queued';
+  /** The error of a lost message (one short muted line, the full text in the tooltip). */
+  error?: string;
+  /** ✕ on a waiting outbox bubble. */
+  onDismiss?: () => void;
+  /** A steered message (Z-54) — smaller, marked. */
+  steer?: boolean;
+  commands: () => ReadonlySet<string>;
+  /** Edit this message (Z-28): receives the pencil's anchor rect. */
+  onEdit?: (anchor: DOMRect) => void;
+  /** [chat-tree] The message's action row (Copy · Quote · Edit · Fork · Retry); replaces the lone Edit pencil. */
+  actions?: JSX.Element;
+  /** The row menu's payload for this message (Copy/Quote/Fork/Edit). */
+  menu?: () => MessageTarget | undefined;
+  /** Where Quote puts the chip (the session's composer key). */
+  composerKey?: string;
+  /**
+   * The fold's open state by MESSAGE (session id + entry id), kept in the
+   * expansion store. Without it the state lived in the row component, and the
+   * virtualizer's slots (Index by position) hand a slot another turn whenever
+   * the window shifts — which an expand itself causes — so the click was
+   * undone and it took several clicks to "stick".
+   */
+  foldKey?: { sessionId: string; key: string };
+}) {
+  const [localExpanded, setLocalExpanded] = createSignal(false);
+  /** The fold animates only on the reader's own toggle — never on the first paint. */
+  const [animate, setAnimate] = createSignal(false);
+  const expanded = () => (props.foldKey ? expansionOpen(props.foldKey.sessionId, props.foldKey.key, false) : localExpanded());
+  const setExpanded = (open: boolean) => (props.foldKey ? setExpansion(props.foldKey.sessionId, props.foldKey.key, open) : setLocalExpanded(open));
+  const [folds, setFolds] = createSignal(false);
+  const [fullHeight, setFullHeight] = createSignal(FOLD_PX);
+  const [bodyEl, setBodyEl] = createSignal<HTMLSpanElement>();
+  const [rootEl, setRootEl] = createSignal<HTMLDivElement>();
+
+  const [mentions] = createResource(
+    () => {
+      const tokens = mentionTokens(props.text);
+      return tokens.length ? tokens : undefined;
+    },
+    async (tokens) => {
+      const stats = await lookupPaths(props.chat, tokens.map(mentionPath));
+      const out = new Map<string, { resolved: string; kind: 'file' | 'dir' }>();
+      for (const t of tokens) {
+        const s = stats.get(mentionPath(t));
+        if (s && s.kind !== 'missing') out.set(t, { resolved: s.resolved, kind: s.kind });
+      }
+      return out;
+    },
+  );
+  const segs = createMemo(() => {
+    const known = mentions.latest;
+    return bubbleSegments(props.text, props.commands(), known?.size ? (token) => known.has(token) : undefined);
+  });
+  const resolvedFor = (chip: Chip) => (chip.kind === 'path' ? mentions.latest?.get(chip.raw) : undefined);
+
+  createEffect(() => {
+    const el = rootEl();
+    if (!el) return;
+    const menu = attachMessageMenu(el, () => props.menu?.());
+    const swipe = props.composerKey ? attachQuoteSwipe(el, () => props.text, () => props.composerKey!) : undefined;
+    onCleanup(() => {
+      menu();
+      swipe?.();
+    });
+  });
+
+  // Measure the body; reset to the collapsed state whenever the virtualizer
+  // hands this row a different message (ZCode: reuse must not keep expansion).
+  const measure = () => {
+    const el = bodyEl();
+    if (!el) return;
+    setFullHeight(el.scrollHeight);
+    setFolds(el.scrollHeight > FOLD_PX + 1);
+  };
+  createEffect(
+    on(
+      () => props.text,
+      () => {
+        if (!props.foldKey) setLocalExpanded(false);
+        requestAnimationFrame(measure);
+      },
+    ),
+  );
+  createEffect(() => {
+    const el = bodyEl();
+    if (!el) return;
+    // [chat-load] measured before the first paint (the row is in the document by now), so a
+    // long bubble is drawn folded from its first frame instead of full height, then shrinking.
+    measure();
+    requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
+    observer.observe(el);
+    onCleanup(() => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    });
+  });
+
+  const bodyStyle = () =>
+    !folds()
+      ? undefined
+      : { 'max-height': expanded() ? `${fullHeight()}px` : `${FOLD_PX}px`, ...(animate() ? { transition: `max-height ${FOLD_MS}ms ease-out` } : {}) };
+
+  return (
+    <div
+      class="chat-user tl-user"
+      ref={setRootEl}
+      data-pending={props.pending === 'sending' ? '' : undefined}
+      data-waiting={props.pending === 'waiting' ? '' : undefined}
+      data-lost={props.pending === 'lost' ? '' : undefined}
+      data-steer={props.steer ? '' : undefined}
+    >
+      <div class="chat-bubble tl-bubble" data-foldable={folds() ? '' : undefined} data-folded={folds() && !expanded() ? '' : undefined}>
+        <span class="tl-bubble-body" ref={setBodyEl} style={bodyStyle()}>
+          <For each={segs()}>{(seg) => ('chip' in seg ? <BubbleChip chat={props.chat} chip={seg.chip} resolved={resolvedFor(seg.chip)} images={props.images} /> : <BubbleText chat={props.chat} text={seg.text} />)}</For>
+        </span>
+        <Show when={folds()}>
+          <button
+            type="button"
+            class="tl-fold-btn"
+            data-testid="tl-bubble-fold"
+            aria-expanded={expanded()}
+            aria-label={expanded() ? 'Collapse message' : 'Expand message'}
+            title={expanded() ? 'Collapse message' : 'Show the whole message'}
+            onClick={() => (setAnimate(true), setExpanded(!expanded()))}
+          >
+            <Show when={expanded()} fallback={<ChevronDown size={15} />}>
+              <ChevronUp size={15} />
+            </Show>
+          </button>
+        </Show>
+      </div>
+      <ImageChipRow chat={props.chat} images={props.images ?? []} />
+      {props.actions}
+      <Show when={!props.actions && props.onEdit}>
+        <div class="tl-user-actions">
+          <button
+            type="button"
+            class="tl-act"
+            data-testid="tl-user-edit"
+            aria-label="Edit message"
+            data-tip="Edit"
+            onClick={(event) => props.onEdit?.(event.currentTarget.getBoundingClientRect())}
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
+      </Show>
+      <Show when={props.pending === 'waiting'}>
+        <span class="chat-user-note">
+          Waiting for connection…
+          <Show when={props.onDismiss}>
+            <button type="button" class="chat-outbox-remove" aria-label="Remove from outbox" onClick={() => props.onDismiss?.()}>
+              ✕
+            </button>
+          </Show>
+        </span>
+      </Show>
+      <Show when={props.pending === 'queued'}>
+        <span class="chat-user-note">Queued</span>
+      </Show>
+      <Show when={props.pending === 'sending'}>
+        <span class="chat-user-note">Sending…</span>
+      </Show>
+      <Show when={props.pending === 'lost'}>
+        <span class="chat-user-note chat-user-error" data-testid="tl-outbox-error" title={props.error}>
+          <span class="chat-user-error-label">Not sent</span>
+          <Show when={props.error}>
+            <span class="chat-user-error-text">{truncateError(props.error!)}</span>
+          </Show>
+        </span>
+      </Show>
+    </div>
+  );
+}

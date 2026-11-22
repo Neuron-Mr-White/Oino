@@ -1,0 +1,13 @@
+/* The reply dock (ReviewDock): the note field and the buttons that act on it, pinned under the ticket. */
+.review-dock { display: flex; flex-direction: column; gap: 8px; }
+.review-dock .dock-hint { margin: 0; padding: 0 4px; font-size: calc(13px * var(--ui-font-scale)); line-height: 1.4; color: var(--color-amber, #f0a818); }
+.dock-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+/* Look comes from the shared .btn / .btn-primary / .btn-secondary / .btn-ghost (ui.css); only the dock's layout is here. */
+.dock-btn[data-kind=ghost] { border: 1px solid var(--color-line); margin-right: auto; }
+.btn.dock-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.btn.dock-btn:focus-visible { outline: 2px solid var(--color-wm-cyan); outline-offset: 2px; }
+/* The report card is read-only now: expanded in place (phone Workbench) it shows everything. */
+.report-card[data-open] .report-card-body { max-height: none; -webkit-mask-image: none; mask-image: none; }
+html[data-shell=phone] .dock-btn { height: 44px; min-height: 44px; flex: 1 1 auto; }
+html[data-shell=phone] .dock-btn[data-kind=ghost] { flex: 0 0 auto; margin-right: 0; }
+html[data-shell=phone] .dock-actions { justify-content: stretch; }

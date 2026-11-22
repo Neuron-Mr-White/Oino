@@ -1,0 +1,8 @@
+{
+ "t": "Image",
+ "src": {
+  "path": "assets/logo.png"
+ },
+ "alt": "logo",
+ "fit": "Cover"
+}

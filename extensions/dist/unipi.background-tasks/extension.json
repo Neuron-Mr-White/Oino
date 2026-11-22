@@ -1,0 +1,28 @@
+{
+  "apiVersion": "oino.extension/2",
+  "id": "unipi.background-tasks",
+  "name": "Background tasks",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Run shell commands in the background and wake the agent when they finish.",
+  "license": "MIT",
+  "permissions": {
+    "process": {
+      "spawn": true,
+      "allow": [
+        "*"
+      ]
+    },
+    "sessionControl": true,
+    "services": {
+      "call": [
+        "unipi.core/core.open-tray",
+        "unipi.subagents/subagents.cancel"
+      ]
+    }
+  },
+  "component": "component.wasm",
+  "checksums": {
+    "component.wasm": "sha256:4083412962fb4f87115ccfe3a257261cbd588248d0d48349e90b2c198f136624"
+  }
+}

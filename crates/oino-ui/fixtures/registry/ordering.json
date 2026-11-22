@@ -1,0 +1,79 @@
+{
+ "scope": "session",
+ "sessionId": "s-2",
+ "rev": 1,
+ "entries": [
+  {
+   "id": "ext/panel-a",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "overlay",
+   "order": 0,
+   "seq": 2,
+   "title": "A",
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "a"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/panel-b",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "overlay",
+   "order": 0,
+   "seq": 5,
+   "title": "B",
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "b"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/panel-c",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "overlay",
+   "order": 0,
+   "seq": 1,
+   "title": "C",
+   "focus": true,
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "c"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/side-x",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "sidePane",
+   "order": 5,
+   "seq": 3,
+   "title": "X",
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "x"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/side-y",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "sidePane",
+   "order": 0,
+   "seq": 1,
+   "title": "Y",
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "y"}},
+   "rev": 1
+  },
+  {
+   "id": "ext/side-z",
+   "extensionId": "ext",
+   "scope": "session",
+   "slot": "sidePane",
+   "order": 5,
+   "seq": 2,
+   "title": "Z",
+   "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "z"}},
+   "rev": 1
+  }
+ ],
+ "dialogs": [
+  {"id": "dlg-1", "method": "select", "title": "Pick", "options": ["a", "b"], "timeout": 5000},
+  {"id": "dlg-2", "method": "confirm", "title": "Sure?", "message": "really"}
+ ],
+ "meta": {"title": "ordering", "workingMessage": "running", "workingVisible": true}
+}

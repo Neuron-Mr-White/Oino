@@ -1,0 +1,17 @@
+{
+ "t": "Scrollbar",
+ "orientation": "VerticalRight",
+ "state": {
+  "contentLength": 500,
+  "position": 120,
+  "viewportContentLength": 40
+ },
+ "thumbStyle": {
+  "fg": "muted"
+ },
+ "trackStyle": {
+  "fg": "border"
+ },
+ "beginSymbol": "\u2191",
+ "endSymbol": "\u2193"
+}

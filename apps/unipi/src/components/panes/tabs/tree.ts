@@ -1,0 +1,439 @@
+/**
+ * Session tree helpers (WP-A10, Z-18): the `get_tree` reply → flat rows in
+ * pi's `/tree` layout. Ports the unipi 1.0 TreeSheet logic (itself a port of
+ * pi's TUI `tree-selector.js`): pre-order flattening with the active branch
+ * first among siblings, fork connectors, the five pi filter modes with hidden
+ * rows' children re-attached to their nearest visible ancestor, and depth
+ * compression past 6 levels.
+ */
+import { textOf, type Part } from '../../../lib/chat/model';
+import { modelDisplayName } from '../../../lib/model/displayName';
+import type { SessionEntry } from '../../../lib/session/types';
+import { toAppError } from '@unipi/protocol';
+
+/** One tree node as the rows see it (the unipi 1.0 `TreeNode` shape). */
+export type TreeNode = {
+  id: string;
+  parentId: string | null;
+  kind: string;
+  preview: string;
+  timestamp?: string;
+  label?: string;
+  onPath: boolean;
+  current: boolean;
+};
+
+/** Max indent levels drawn before the depth is compressed into a badge. */
+export const TREE_MAX_DEPTH = 6;
+
+/** One row of the flattened tree. */
+export type TreeRow = { node: TreeNode; depth: number; cells: string[] };
+
+const KIND_OF_SETTINGS = new Set([
+  'system',
+  'label',
+  'context_edit',
+  'custom',
+  'custom_message',
+  'model_change',
+  'thinking_level_change',
+  'session_info',
+  'branch_summary',
+  'compaction',
+]);
+
+const KIND_LABELS: Record<string, string> = {
+  user: 'User',
+  assistant: 'Assistant',
+  toolResult: 'Tool result',
+  bash: 'Command',
+  compaction: 'Compaction',
+  branch_summary: 'Branch summary',
+  model_change: 'Model',
+  thinking_level_change: 'Thinking',
+  session_info: 'Session',
+  system: 'System',
+  context_edit: 'Context',
+  label: 'Bookmark',
+  custom: 'Note',
+  custom_message: 'Note',
+};
+
+/** Human-readable subtitle label for a tree node's `kind` (D-14: never raw snake_case internals). */
+export function treeKindLabel(kind: string): string {
+  return KIND_LABELS[kind] ?? (kind ? `${kind[0]!.toUpperCase()}${kind.slice(1).replace(/_/g, ' ')}` : 'Entry');
+}
+
+/** The display kind of an entry (pi's kinds; settings kinds filter out by default). */
+export function kindOfEntry(entry: SessionEntry): string {
+  if (entry.type === 'message') {
+    const role = String(entry.message?.role ?? '');
+    return role === 'bashExecution' ? 'bash' : role;
+  }
+  if (
+    entry.type === 'usage' ||
+    entry.type === 'compaction' ||
+    entry.type === 'branch_summary' ||
+    entry.type === 'model_change' ||
+    entry.type === 'thinking_level_change' ||
+    entry.type === 'session_info' ||
+    entry.type === 'context_edit' ||
+    entry.type === 'label' ||
+    entry.type === 'custom_message'
+  ) {
+    return entry.type;
+  }
+  return 'custom';
+}
+
+const excerptOf = (text: string, max = 120): string => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+};
+
+const KNOWN_CUSTOM_TITLES: Record<string, string> = {
+  'unipi-memory-session-card': 'Memory · session context',
+  'unipi-memory-save-card': 'Memory · saved',
+  'unipi-memory-recall-reminder': 'Memory · recall',
+  'unipi-memory-retro-reminder': 'Memory · retrospective',
+  'unipi-skills-revealed': 'Skills loaded',
+  'unipi-compaction': 'Context compacted',
+  'unipi-watchdog': 'Watchdog notice',
+  'unipi-response': 'Unipi notice',
+  'unipi:bg-tasks': 'Background tasks',
+  'unipi:plan-mode': 'Plan mode',
+  'unipi:plan-mode-message': 'Plan mode',
+  'unipi:permission-mode': 'Permission mode',
+  'unipi:attachments': 'Attachments',
+  'background-task-notification': 'Background task finished',
+  'subagent-completion': 'Subagent finished',
+  'sidekick-completion': 'Sidekick finished',
+};
+
+function humanizeCustomType(raw: string): string {
+  const known = KNOWN_CUSTOM_TITLES[raw];
+  if (known) return known;
+  const cleaned = raw.replace(/^(?:unipi|oino)[-:._]+/i, '').replace(/[-_:._]+/g, ' ').trim();
+  if (!cleaned) return 'Extension note';
+  return `${cleaned[0]!.toUpperCase()}${cleaned.slice(1)}`;
+}
+
+function previewOfEntry(entry: SessionEntry): string {
+  if (entry.type === 'compaction') return excerptOf(String(entry.summary ?? 'Context compacted'));
+  if (entry.type === 'branch_summary') return excerptOf(String((entry as { summary?: unknown }).summary ?? 'Branch summary'));
+  if (entry.type === 'model_change') {
+    const model = String((entry as { modelId?: unknown; model?: unknown }).modelId ?? (entry as { model?: unknown }).model ?? '').trim();
+    return model ? `Model → ${modelDisplayName({ id: model })}` : 'Model changed';
+  }
+  if (entry.type === 'thinking_level_change') {
+    const level = String((entry as { thinkingLevel?: unknown; level?: unknown }).thinkingLevel ?? (entry as { level?: unknown }).level ?? '').trim();
+    return level ? `Thinking → ${level}` : 'Thinking level changed';
+  }
+  if (entry.type === 'session_info') {
+    const name = String((entry as { name?: unknown }).name ?? '').trim();
+    return name ? `Renamed to “${excerptOf(name, 80)}”` : 'Session updated';
+  }
+  if (entry.type === 'context_edit') return 'Context trimmed';
+  if (entry.type === 'label') {
+    const lbl = String((entry as { label?: unknown }).label ?? '').trim();
+    return lbl ? `Bookmark · ${excerptOf(lbl, 80)}` : 'Bookmark';
+  }
+  if (entry.type === 'message') {
+    const role = String(entry.message?.role ?? '');
+    const text = excerptOf(textOf(entry.message?.content as string | Part[] | undefined));
+    if (text) return text;
+    if (role === 'system') return 'System prompt';
+    if (role === 'toolResult') {
+      const toolName = String((entry.message as { toolName?: unknown } | undefined)?.toolName ?? '').trim();
+      return toolName ? `Result · ${toolName}` : 'Tool output';
+    }
+    return '';
+  }
+  const rawContent = (entry as { content?: unknown }).content ?? entry.message?.content;
+  if (typeof rawContent === 'string' && rawContent.includes('<background-task-notification>')) {
+    const m = /<summary>([\s\S]*?)<\/summary>/.exec(rawContent) ?? /<task-name>([\s\S]*?)<\/task-name>/.exec(rawContent);
+    if (m?.[1]?.trim()) return excerptOf(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+  }
+  const details = (entry.message?.details ?? entry.details ?? entry.data ?? {}) as Record<string, unknown>;
+  const harness = (details.unipiHarness ?? details.oinoProvenance ?? {}) as { source?: unknown; title?: unknown };
+  if (typeof harness.title === 'string' && harness.title.trim()) {
+    const src = typeof harness.source === 'string' && harness.source.trim() ? `${harness.source.trim()} · ` : '';
+    return excerptOf(`${src}${harness.title.trim()}`);
+  }
+  const msgText = excerptOf(textOf((rawContent ?? entry.message?.content) as string | Part[] | undefined));
+  if (msgText) return msgText;
+  const customType = String((entry as { customType?: unknown }).customType ?? '').trim();
+  return customType ? humanizeCustomType(customType) : 'Note';
+}
+
+/**
+ * The `get_tree` reply → the flat node list. The reply's `tree` list is either
+ * the flat wire form (`{entry, label?}` linked by `entry.parentId`, the host
+ * since [tree-flat] — the old nested serialization recursed one level per
+ * entry and overflowed the host worker's stack) or the older nested one
+ * (`children` arrays). One explicit-stack walk for both — a linear chain
+ * thousands deep must not recurse here either. Children by timestamp,
+ * `onPath` = on the leaf's branch, `current` = the leaf.
+ */
+export function buildTreeNodes(
+  tree: Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>,
+  leafId: string | null | undefined,
+): TreeNode[] {
+  const out: TreeNode[] = [];
+  const ids = new Set<string>();
+  for (const n of tree) {
+    const id = n?.entry?.id;
+    if (typeof id === 'string') ids.add(id);
+  }
+  const nested = tree.some((n) => Array.isArray(n?.children));
+  type Item = { node: (typeof tree)[number]; parentId: string | null };
+  const stack: Item[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) stack.push({ node: tree[i]!, parentId: null });
+  while (stack.length) {
+    const { node, parentId } = stack.pop()!;
+    const entry = node?.entry;
+    if (!entry || typeof entry.id !== 'string') continue;
+    ids.add(entry.id);
+    const raw = nested
+      ? parentId
+      : typeof entry.parentId === 'string' && entry.parentId !== entry.id
+        ? entry.parentId
+        : null;
+    const parent = raw !== null && ids.has(raw) ? raw : null;
+    out.push({
+      id: entry.id,
+      parentId: parent,
+      kind: kindOfEntry(entry),
+      preview: previewOfEntry(entry),
+      ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
+      ...(typeof node.label === 'string' && node.label ? { label: node.label } : {}),
+      onPath: false,
+      current: entry.id === leafId,
+    });
+    const kids = nested && Array.isArray(node.children) ? (node.children as Array<{ entry: SessionEntry; children?: unknown[]; label?: unknown }>) : [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]!, parentId: entry.id });
+  }
+  const byId = new Map(out.map((n) => [n.id, n]));
+  let cur = leafId ? byId.get(leafId) : undefined;
+  const path = new Set<string>();
+  while (cur) {
+    path.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  for (const n of out) n.onPath = path.has(n.id);
+  return out;
+}
+
+/**
+ * The flat entries (`get_entries`: `{entries, leafId}`) → the same node list as
+ * `buildTreeNodes`, with no nesting. A long chat is one chain thousands of
+ * nodes deep, which the nested `get_tree` reply cannot carry (JSON parsers cap
+ * nesting depth, so the reply never arrived); parent links rebuild the tree.
+ * Label entries (`targetId` + `label`) set the target's label, the last one wins.
+ */
+export function buildTreeNodesFromEntries(entries: SessionEntry[], leafId: string | null | undefined): TreeNode[] {
+  const out: TreeNode[] = [];
+  const ids = new Set<string>();
+  for (const e of entries) if (e && typeof e.id === 'string') ids.add(e.id);
+  const labels = new Map<string, string>();
+  for (const e of entries) {
+    if (!e || e.type !== 'label') continue;
+    const target = (e as { targetId?: unknown }).targetId;
+    if (typeof target !== 'string') continue;
+    const label = (e as { label?: unknown }).label;
+    if (typeof label === 'string' && label.trim()) labels.set(target, label.trim());
+    else labels.delete(target);
+  }
+  for (const entry of entries) {
+    if (!entry || typeof entry.id !== 'string') continue;
+    const parent = typeof entry.parentId === 'string' && entry.parentId !== entry.id && ids.has(entry.parentId) ? entry.parentId : null;
+    const label = labels.get(entry.id);
+    out.push({
+      id: entry.id,
+      parentId: parent,
+      kind: kindOfEntry(entry),
+      preview: previewOfEntry(entry),
+      ...(typeof entry.timestamp === 'string' ? { timestamp: entry.timestamp } : {}),
+      ...(label ? { label } : {}),
+      onPath: false,
+      current: entry.id === leafId,
+    });
+  }
+  const byId = new Map(out.map((n) => [n.id, n]));
+  const path = new Set<string>();
+  let cur = leafId ? byId.get(leafId) : undefined;
+  while (cur && !path.has(cur.id)) {
+    path.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  for (const n of out) n.onPath = path.has(n.id);
+  return out;
+}
+
+/** pi /tree filter modes (tree-selector.js filterMode). */
+export type TreeFilter = 'default' | 'no-tools' | 'user-only' | 'labeled-only' | 'all';
+export const TREE_FILTERS: Array<{ id: TreeFilter; label: string }> = [
+  { id: 'default', label: 'Default' },
+  { id: 'no-tools', label: 'No tools' },
+  { id: 'user-only', label: 'User' },
+  { id: 'labeled-only', label: 'Labeled' },
+  { id: 'all', label: 'All' },
+];
+export const TREE_FILTER_KEY = 'unipi.chat.treeFilter';
+
+export function readTreeFilter(): TreeFilter {
+  try {
+    const v = localStorage.getItem(TREE_FILTER_KEY);
+    return TREE_FILTERS.some((f) => f.id === v) ? (v as TreeFilter) : 'default';
+  } catch {
+    return 'default';
+  }
+}
+export function rememberTreeFilter(mode: TreeFilter): void {
+  try {
+    localStorage.setItem(TREE_FILTER_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * A real message for whatever a promise rejected with — `stream.cmd` rejects
+ * plain `{code, message}` objects, which `String()` renders as
+ * `[object Object]`.
+ */
+export function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  if (typeof message === 'string' && message.trim()) return message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return toAppError(error).message || 'The host could not answer.';
+}
+
+/**
+ * pi's filter, then hidden rows' children re-attach to their nearest visible
+ * ancestor so the layout stays a real tree. Usage entries never show, an
+ * assistant row with no text hides unless it is the current leaf, and the
+ * current leaf always shows.
+ */
+export function filterTree(nodes: TreeNode[], mode: TreeFilter): TreeNode[] {
+  const keep = (n: TreeNode): boolean => {
+    if (n.kind === 'usage') return false;
+    const settings = KIND_OF_SETTINGS.has(n.kind);
+    if (n.current && !settings) return true;
+    if (n.kind === 'assistant' && !n.preview.trim() && mode !== 'all') return false;
+    switch (mode) {
+      case 'user-only':
+        return n.kind === 'user';
+      case 'no-tools':
+        return !settings && n.kind !== 'toolResult';
+      case 'labeled-only':
+        return n.label !== undefined;
+      case 'all':
+        return n.kind !== 'system' && n.kind !== 'context_edit';
+      default:
+        return !settings;
+    }
+  };
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const visible = new Set(nodes.filter(keep).map((n) => n.id));
+  // If the raw leaf is a hidden internal/settings entry (`model_change`, `unipi-memory-session-card`, …),
+  // promote the current-leaf marker to its nearest visible conversation ancestor.
+  let promotedLeafId: string | undefined;
+  const rawLeaf = nodes.find((n) => n.current);
+  if (rawLeaf && !visible.has(rawLeaf.id)) {
+    let cur = rawLeaf.parentId ? byId.get(rawLeaf.parentId) : undefined;
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      if (visible.has(cur.id)) {
+        promotedLeafId = cur.id;
+        break;
+      }
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+  }
+  const out: TreeNode[] = [];
+  for (const n of nodes) {
+    if (!visible.has(n.id)) continue;
+    let parent = n.parentId ? byId.get(n.parentId) : undefined;
+    const guard = new Set<string>();
+    while (parent && !visible.has(parent.id) && !guard.has(parent.id)) {
+      guard.add(parent.id);
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+    const nextParentId = parent && visible.has(parent.id) ? parent.id : null;
+    const nextCurrent = n.current || n.id === promotedLeafId;
+    out.push(n.parentId === nextParentId && n.current === nextCurrent ? n : { ...n, parentId: nextParentId, current: nextCurrent });
+  }
+  return out;
+}
+
+/**
+ * The flattening (pi's TUI layout): pre-order, the branch holding the current
+ * leaf first among siblings; a fork's children step in +1 and so does the
+ * first generation after a fork; single-child chains stay flat; several roots
+ * hang off a virtual root. Connectors (├ └) mark each fork child and gutters
+ * (│) carry a still-open sibling branch down past it.
+ */
+export function flattenTree(nodes: TreeNode[]): TreeRow[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const children = new Map<string, TreeNode[]>();
+  const roots: TreeNode[] = [];
+  for (const n of nodes) {
+    const parent = n.parentId ? byId.get(n.parentId) : undefined;
+    if (!parent) roots.push(n);
+    else children.set(parent.id, [...(children.get(parent.id) ?? []), n]);
+  }
+  // Which subtrees hold the current leaf (iterative post-order, cycle-safe).
+  const hasActive = new Map<string, boolean>();
+  const order: TreeNode[] = [];
+  const seen = new Set<string>();
+  const pre = [...roots];
+  while (pre.length) {
+    const n = pre.pop()!;
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    order.push(n);
+    for (const c of children.get(n.id) ?? []) pre.push(c);
+  }
+  for (let i = order.length - 1; i >= 0; i--) {
+    const n = order[i]!;
+    hasActive.set(n.id, n.current || (children.get(n.id) ?? []).some((c) => hasActive.get(c.id)));
+  }
+  const activeFirst = (list: TreeNode[]) => [...list.filter((c) => hasActive.get(c.id)), ...list.filter((c) => !hasActive.get(c.id))];
+
+  type Gutter = { position: number; show: boolean };
+  type Item = [TreeNode, number, boolean, boolean, boolean, Gutter[], boolean];
+  const multipleRoots = roots.length > 1;
+  const stack: Item[] = [];
+  const orderedRoots = activeFirst(roots);
+  for (let i = orderedRoots.length - 1; i >= 0; i--) {
+    stack.push([orderedRoots[i]!, multipleRoots ? 1 : 0, multipleRoots, multipleRoots, i === orderedRoots.length - 1, [], multipleRoots]);
+  }
+  const out: TreeRow[] = [];
+  const emitted = new Set<string>();
+  while (stack.length) {
+    const [node, indent, justBranched, showConnector, isLast, gutters, virtualRootChild] = stack.pop()!;
+    if (emitted.has(node.id)) continue; // malformed (cyclic) host data
+    emitted.add(node.id);
+    const depth = multipleRoots ? Math.max(0, indent - 1) : indent;
+    const connector = showConnector && !virtualRootChild;
+    const cells: string[] = [];
+    for (let level = 0; level < depth; level++) {
+      const gutter = gutters.find((g) => g.position === level);
+      if (gutter) cells.push(gutter.show ? '│' : '');
+      else if (connector && level === depth - 1) cells.push(isLast ? '└' : '├');
+      else cells.push('');
+    }
+    out.push({ node, depth, cells });
+    const kids = activeFirst(children.get(node.id) ?? []);
+    const forks = kids.length > 1;
+    const childIndent = forks || (justBranched && indent > 0) ? indent + 1 : indent;
+    const childGutters = connector ? [...gutters, { position: Math.max(0, depth - 1), show: !isLast }] : gutters;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push([kids[i]!, childIndent, forks, forks, i === kids.length - 1, childGutters, false]);
+    }
+  }
+  return out;
+}

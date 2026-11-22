@@ -1,0 +1,403 @@
+/**
+ * One session row of the sidebar / phone Chat list (Z-12, WP-A4): state glyph
+ * + word (DESIGN §1.3 colour+icon+word), mode badge, title with a fade mask
+ * (no marquee, no ellipsis — full title in the tooltip), relative time (Z-10),
+ * `+N −M` changes, the unread dot (wm-green, "done unseen") and the cron
+ * clock badge slot.
+ *
+ * [sidebar-ui] Normal rows are two lines — the title (always visible, ellipsis, wins the space) with
+ * the live state word, then a quiet meta line (chips the Properties menu turns on + the age). Compact
+ * rows are ONE line: title + the state word or age only. Older note: ONE line — a fixed 16 px
+ * gutter that is empty for a normal chat (no chat bubble) and only shows a KIND or STATE icon
+ * (cron clock; Working spinner, Needs you, failed / timed out), the title (fade mask), the chips
+ * the Properties menu turns on, and the age right-aligned and muted ("63d"; a live state word
+ * like "Working" takes its place). Compact view only tightens the row height.
+ */
+import { createEffect, Match, onCleanup, Show, Switch, type JSX } from 'solid-js';
+import { composerDraft, hasLiveDraft } from '../../lib/composer/drafts';
+import { pendingAttachmentsFor } from '../../lib/composer/attachments';
+import { Archive, Circle, CircleAlert, CircleDashed, Clock, Cpu, Folder, LoaderCircle, MessageCircleQuestion, Pin, PinOff, TimerOff } from 'lucide-solid';
+import type { SessionCard } from '../../lib/host/client';
+import { hostClient } from '../../lib/host/factory';
+import { LONG_PRESS_MS } from '../../lib/gestures';
+import { menuAnchor } from '../../lib/layout';
+import { changesOf, isHomeCwd, sessionTitle } from '../../lib/session/selectors';
+import type { SessionMeta } from '../../lib/session/hub';
+import { sessions, type SessionHandle } from '../../lib/session/store';
+import { openRowMenu } from '../../lib/session/actions';
+import { connDown } from '../../lib/session/selectors';
+import { shortAge } from '../../lib/time';
+import { cronRunFailed, cronRunLabel } from '../../lib/cronRunLabels';
+import { DEFAULT_PROPS, type PropKey } from '../../lib/session/listView';
+import { activityTitle, cardActivity, liveActivity, type ActivityFacts } from '../../lib/session/activity';
+
+export type RowVariant = 'sidebar' | 'page';
+
+/** A row's state (DESIGN §1.3, [status] activity states): needs-you beats working (a run, or
+ *  work that will wake the session) beats crashed/taken-over beats the quiet background marker. */
+export type RowState = 'needs-you' | 'working' | 'crashed' | 'taken-over' | 'background' | 'reconnecting' | 'idle';
+
+/** r5 D24: after a host restart the card says `crashed` for a chat the host has not resumed yet. While the
+ *  open chat's own stream is still coming back (reconnecting, or waking behind its file snapshot) that is
+ *  not known to be a crash: the row says "Reconnecting" until the host state lands. */
+function reconnectingCrash(card: SessionCard, open: SessionHandle | undefined): boolean {
+  return card.run_state === 'crashed' && !!open && (open.state.conn !== 'live' || open.state.waking === true);
+}
+
+function withCardFailure(card: SessionCard, facts: ActivityFacts, open?: SessionHandle): RowState {
+  if (facts.activity === 'needs-you') return facts.activity;
+  // r8 P2-A: "Working" from a card the host can no longer update is stale while the open chat's own link is down.
+  if (facts.activity === 'working') return open && connDown(open.state) ? 'reconnecting' : facts.activity;
+  if (reconnectingCrash(card, open)) return 'reconnecting';
+  if (card.run_state === 'crashed') return 'crashed';
+  if (card.run_state === 'taken_over') return 'taken-over';
+  return facts.activity;
+}
+
+/** The row's state from the host card alone. */
+export function rowState(card: SessionCard): RowState {
+  return withCardFailure(card, cardActivity(card));
+}
+
+/** The card reconciled with a live open session stream (`lib/session/activity.ts`): a parent
+ *  waiting on subagents / graph nodes stays "Working" even between turns. */
+export function liveRowState(card: SessionCard, open: SessionHandle | undefined): RowState {
+  return withCardFailure(card, liveActivity(card, open?.state), open);
+}
+
+/** {@link liveRowState} plus the tooltip of the state (what it waits on / runs). */
+export function liveRowFacts(card: SessionCard, open: SessionHandle | undefined): { state: RowState; title?: string } {
+  const facts = liveActivity(card, open?.state);
+  const state = withCardFailure(card, facts, open);
+  return { state, ...(state === facts.activity && activityTitle(facts) ? { title: activityTitle(facts) } : {}) };
+}
+
+export const STATE_WORD: Record<RowState, string> = {
+  'needs-you': 'Needs you',
+  working: 'Working',
+  crashed: 'Crashed',
+  reconnecting: 'Reconnecting',
+  'taken-over': 'Taken over',
+  // The quiet marker: a glyph and a tooltip, never a word (the age stays).
+  background: '',
+  idle: '',
+};
+
+/** Shared ResizeObserver so `.srow-title` only fades when text genuinely overflows. */
+let titleRo: ResizeObserver | undefined;
+export function syncTitleOverflow(el: HTMLElement): void {
+  const over = el.scrollWidth > el.clientWidth + 1;
+  if (over !== el.hasAttribute('data-overflow')) el.toggleAttribute('data-overflow', over);
+}
+export function observeTitleOverflow(el: HTMLElement): void {
+  if (typeof ResizeObserver === 'undefined') return;
+  titleRo ??= new ResizeObserver((entries) => {
+    for (const entry of entries) syncTitleOverflow(entry.target as HTMLElement);
+  });
+  titleRo.observe(el);
+  onCleanup(() => titleRo?.unobserve(el));
+}
+
+/** The working mode badge (Z-12 keeps unipi's): a slot until A16's status pane exposes the live mode. */
+export type ModeBadge = { mode: string; label: string; paused?: boolean };
+
+/** Which meta chips a row shows (the Properties menu's "Property visibility"). */
+export type RowProps = Record<PropKey, boolean>;
+
+/** The status a row's glyph + chip show: the live state, refined by a cron run's outcome. */
+export type RowStatus = RowState | 'failed' | 'timed-out';
+
+const STATUS_WORD: Record<RowStatus, string> = { ...STATE_WORD, failed: 'Failed', 'timed-out': 'Timed out' };
+
+export function SessionRow(props: {
+  hostId: string;
+  card: SessionCard;
+  meta?: SessionMeta;
+  active?: boolean;
+  variant: RowVariant;
+  /** The open session's live mode badge, when the app knows it (LRU sessions). */
+  mode?: ModeBadge;
+  /** Show the project folder chip even when the Workspace property is off (the Pinned group
+   *  spans projects; the phone always does, §3.9). */
+  showFolder?: boolean;
+  /** Meta chips to show (default: time, status, automation, archived). */
+  show?: RowProps;
+  /** One line per row: title + icon chips (the Properties menu's Compact view). */
+  compact?: boolean;
+  /** An archived chat (the Archived filter lists the trash too). */
+  archived?: boolean;
+  onPin?: (card: SessionCard, pinned: boolean) => void;
+}): JSX.Element {
+  const open = () => sessions().peek(props.hostId, props.card.session_id);
+  const facts = () => liveRowFacts(props.card, open());
+  const state = () => facts().state;
+  const show = (k: PropKey) => (props.show ?? DEFAULT_PROPS)[k];
+  const changes = () => changesOf(props.card);
+  const at = () => props.card.last_activity ?? props.card.updated_at;
+  /** [ux-sessions] "63d": the Task list's compact age (the exact time is the tooltip). */
+  const age = () => shortAge(at());
+  /** The exact moment behind the relative time (hover). */
+  const stamp = () => {
+    const ms = at();
+    return ms ? `Updated ${new Date(ms).toLocaleString()}` : undefined;
+  };
+  const pin = () => (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    props.onPin?.(props.card, !props.meta?.pinned);
+  };
+  // Z-16 (WP-A5): right-click (desktop, at pointer, D-16) / long-press (phone) opens the row's
+  // context menu — one menu app-wide.
+  const menuAt = (el: HTMLElement) => openRowMenu(props.hostId, props.card, el.getBoundingClientRect());
+  const onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    if (props.archived) return;
+    openRowMenu(props.hostId, props.card, menuAnchor(e, e.currentTarget as HTMLElement));
+  };
+  let pressTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelPress = () => {
+    if (pressTimer !== undefined) clearTimeout(pressTimer);
+    pressTimer = undefined;
+  };
+  const onPointerDown = (e: PointerEvent & { currentTarget: HTMLElement }) => {
+    if (props.archived || e.pointerType !== 'touch' || e.button !== 0) return;
+    const row = e.currentTarget;
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressTimer = undefined;
+      menuAt(row);
+    }, LONG_PRESS_MS);
+  };
+  const pinTitle = () => (props.meta?.pinned ? `Unpin "${titleText()}"` : `Pin "${titleText()}"`);
+  const cron = () => props.card.source === 'cron';
+  /** F-11: a cron run's job name and outcome. */
+  const cronRun = () => (cron() ? cronRunLabel(props.hostId, props.card.session_id) : undefined);
+  /** needs-you / working win; an idle cron run that failed or timed out says so. */
+  const status = (): RowStatus => {
+    const s = state();
+    if (s !== 'idle' && s !== 'background') return s;
+    const run = cronRun();
+    if (run?.status === 'timeout') return 'timed-out';
+    if (cronRunFailed(run)) return 'failed';
+    return s;
+  };
+  const statusWord = () => STATUS_WORD[status()];
+  const statusTip = () => {
+    if (status() === 'background' || status() === 'working') return facts().title ?? (statusWord() || undefined);
+    const word = statusWord();
+    if (!word) return undefined;
+    if ((status() === 'failed' || status() === 'timed-out') && cronRun()?.reason) return `${word}: ${cronRun()!.reason}`;
+    if (status() === 'crashed' && props.card.error) return `${word}: ${props.card.error}`;
+    return word;
+  };
+  const titleText = () => {
+    const named = open()?.state.name?.trim() || props.card.name?.trim();
+    return !named && cronRun() ? cronRun()!.jobName : sessionTitle(props.card, open()?.state, 'New chat');
+  };
+  const folder = () => (!isHomeCwd(props.card.cwd) ? props.card.cwd?.split(/[\\/]/).filter(Boolean).pop() : undefined);
+  const folderChip = () => {
+    const f = folder();
+    if (!f || f === titleText()) return undefined;
+    return show('workspace') || props.showFolder ? f : undefined;
+  };
+  const model = () => {
+    if (!show('model')) return undefined;
+    const live = open()?.state.model;
+    const id = (live?.id ? String(live.id) : '') || props.card.model || '';
+    return id ? (id.includes('/') ? id.split('/').pop() : id) : undefined;
+  };
+  const cronTip = () => {
+    const run = cronRun();
+    return run ? `Automation · ${run.jobName}` : 'Automation (run by the scheduler)';
+  };
+  let titleEl: HTMLSpanElement | undefined;
+  createEffect(() => {
+    titleText();
+    if (titleEl && typeof ResizeObserver !== 'undefined') queueMicrotask(() => titleEl && syncTitleOverflow(titleEl));
+  });
+  /** The meta chips (comfortable: the second line; compact: icons after the title). */
+  /** Owner 2026-11-06: an unsent draft — this run's own (in memory), else the PC's (`draft_at`). */
+  const hasDraft = () => {
+    const k = `${props.hostId}/${props.card.session_id}`;
+    if (!hasLiveDraft(k)) return (props.card.draft_at ?? 0) > 0;
+    const d = composerDraft(k);
+    return !!(d.text.trim() || d.quotes.length || d.chips.length || pendingAttachmentsFor(k).length);
+  };
+  const word = () => (
+    <Show
+      when={show('status') && statusWord()}
+      fallback={
+        <Show when={!props.archived && hasDraft()}>
+          <span class="srow-word srow-draft" data-testid={`srow-draft-${props.card.session_id}`} title="Unsent draft">
+            Draft
+          </span>
+        </Show>
+      }
+    >
+      <span class="srow-word" data-state={status()} title={statusTip()}>
+        {statusWord()}
+      </span>
+    </Show>
+  );
+  const chips = () => (
+    <>
+      <Show when={props.card.worker}>
+        {(worker) => <span class="srow-chip">Lead · {worker().projectName || worker().projectId}</span>}
+      </Show>
+      <Show when={show('automation') && cron() && status() !== 'idle' && status() !== 'background'}>
+        <span class="srow-chip srow-cron" data-failed={status() === 'failed' || status() === 'timed-out' ? '' : undefined} title={cronTip()} aria-label={cronTip()}>
+          <Clock size={12} />
+        </span>
+      </Show>
+      {/* Compact rows keep every chosen property as an icon chip (full value in the tooltip);
+          normal rows show the full text and wrap to another line instead of truncating. */}
+      <Show when={folderChip()}>
+        {(f) => (
+          <span class="srow-chip srow-cwd" data-icon-only={props.compact ? '' : undefined} title={`Workspace: ${props.card.cwd}`} aria-label={`Workspace ${f()}`}>
+            <Folder size={11} />
+            <Show when={!props.compact}>
+              <span class="srow-chip-text">{f()}</span>
+            </Show>
+          </span>
+        )}
+      </Show>
+      <Show when={model()}>
+        {(m) => (
+          <span class="srow-chip srow-model" data-icon-only={props.compact ? '' : undefined} title={`Model: ${m()}`} aria-label={`Model ${m()}`}>
+            <Cpu size={11} />
+            <Show when={!props.compact}>
+              <span class="srow-chip-text">{m()}</span>
+            </Show>
+          </span>
+        )}
+      </Show>
+      <Show when={!props.compact && props.mode}>
+        <span class="srow-mode" data-paused={props.mode!.paused ? '' : undefined} title={`Working mode: ${props.mode!.label}`}>
+          {props.mode!.label}
+        </span>
+      </Show>
+      <Show when={!props.compact && changes()}>
+        <span class="srow-changes" aria-label={`${changes()!.add} lines added, ${changes()!.del} removed`}>
+          <span class="add">+{changes()!.add}</span>
+          <span class="del">−{changes()!.del}</span>
+        </span>
+      </Show>
+      <Show when={props.archived && show('archived')}>
+        <span class="srow-chip srow-archived" title="Archived — restore it from Archived">
+          <Archive size={11} />
+        </span>
+      </Show>
+    </>
+  );
+  /** Normal rows keep the age on the meta line; compact rows show it only when no state word takes the slot. */
+  const timeEl = () => (
+    <Show when={show('updated') && age() && (!props.compact || !(show('status') && statusWord()))}>
+      <span class="srow-time" title={stamp()}>{age()}</span>
+    </Show>
+  );
+  /**
+   * [ux-sessions] The row icon only tells session KINDS apart (owner 2026-11-03): a normal chat has
+   * none; a cron run shows its clock; a live state (Working spinner, Needs you, failed…) shows its
+   * glyph. The gutter keeps its width, so titles stay aligned either way.
+   */
+  const glyphKind = (): 'state' | 'cron' | undefined => (status() !== 'idle' && !(status() === 'background' && cron()) ? 'state' : cron() ? 'cron' : undefined);
+  return (
+    <a
+      href={`#/s/${encodeURIComponent(props.hostId)}/${encodeURIComponent(props.card.session_id)}`}
+      class="srow"
+      data-variant={props.variant}
+      data-state={state()}
+      data-status={status()}
+      data-compact={props.compact ? '' : undefined}
+      data-unread={props.meta?.unread ? '' : undefined}
+      data-cron={cron() ? '' : undefined}
+      data-archived={props.archived ? '' : undefined}
+      data-lead={props.card.worker ? '' : undefined}
+      aria-current={props.active ? 'page' : undefined}
+      data-testid={`srow-${props.card.session_id}`}
+      title={titleText()}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerLeave={cancelPress}
+    >
+      <Show when={props.card.worker}>
+        {/* OIN-37: a Lead (dispatcher worker) session wears a themed strip on its left edge. */}
+        <span class="srow-lead-strip" role="img" aria-label="Lead session" title="Lead session" data-testid={`srow-lead-strip-${props.card.session_id}`} />
+      </Show>
+      <span class="srow-glyph" data-state={status()} data-kind={glyphKind()} aria-hidden={statusTip() || cron() ? undefined : 'true'} title={statusTip() ?? (cron() ? cronTip() : undefined)} aria-label={statusTip() ?? (cron() ? cronTip() : undefined)} role={statusTip() || cron() ? 'img' : undefined}>
+        <Switch>
+          <Match when={status() === 'working'}>
+            <LoaderCircle size={14} class="srow-spin" />
+          </Match>
+          <Match when={status() === 'needs-you'}>
+            <MessageCircleQuestion size={14} />
+          </Match>
+          <Match when={status() === 'timed-out'}>
+            <TimerOff size={14} />
+          </Match>
+          <Match when={(status() === 'background' && !cron()) || status() === 'reconnecting'}>
+            <CircleDashed size={13} class="srow-bg" />
+          </Match>
+          <Match when={status() !== 'idle' && status() !== 'background'}>
+            <CircleAlert size={14} />
+          </Match>
+          <Match when={cron()}>
+            <Clock size={13} />
+          </Match>
+          {/* Owner 2026-11-06: a live (open) chat that is idle shows a muted ring where the
+              Working spinner would be; a chat that isn't loaded shows nothing. */}
+          <Match when={status() === 'idle' && open()}>
+            <Circle size={11} class="srow-idle" data-testid={`srow-idle-${props.card.session_id}`} />
+          </Match>
+        </Switch>
+      </span>
+      <span class="srow-body">
+        <span class="srow-line">
+          <span
+            ref={(el) => {
+              titleEl = el;
+              observeTitleOverflow(el);
+            }}
+            class="srow-title"
+          >
+            {titleText()}
+          </span>
+          <Show when={props.meta?.unread}>
+            <span class="srow-unread" title="Unread" aria-label="Unread" />
+          </Show>
+          {word()}
+          {/* [owner-fix-8] The compact row is the title and nothing else: no
+              stats, no age — the comfortable row carries them. */}
+        </span>
+        <Show when={!props.compact}>
+          <span class="srow-meta">
+            <span class="srow-chips">{chips()}</span>
+            {timeEl()}
+          </span>
+        </Show>
+      </span>
+      <Show when={props.onPin && !props.archived}>
+        <button
+          type="button"
+          class="srow-pin"
+          data-pinned={props.meta?.pinned ? '' : undefined}
+          aria-label={props.meta?.pinned ? 'Unpin session' : 'Pin session'}
+          title={pinTitle()}
+          data-testid={`srow-pin-${props.card.session_id}`}
+          onClick={pin()}
+        >
+          <Show when={props.meta?.pinned} fallback={<Pin size={13} />}>
+            <PinOff size={13} />
+          </Show>
+        </button>
+      </Show>
+    </a>
+  );
+}
+
+/** The host connection dot's state (offline hosts show it in their header). */
+export function hostConnOf(hostId: string): 'connected' | 'connecting' | 'offline' {
+  return hostClient(hostId).conn().state;
+}

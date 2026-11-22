@@ -1,0 +1,9 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+Title
+  ~ 0..5=fg=rgb(cd9a22),mods=BOLD+UNDERLINED
+
+bold body
+  ~ 0..4=mods=BOLD

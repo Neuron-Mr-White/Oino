@@ -1,0 +1,22 @@
+{
+ "scope": "session",
+ "sessionId": "s-1",
+ "rev": 5,
+ "ops": [
+  {"op": "put", "entry": {"id": "ext/panel-1", "extensionId": "ext", "scope": "session", "slot": "sidePane", "order": 0, "seq": 7, "title": "Tasks", "icon": "list", "view": {"kind": "tree", "root": {"t": "Paragraph", "text": "hi"}}, "rev": 1}},
+  {"op": "tree", "id": "ext/panel-1", "rev": 2, "ops": [
+    {"op": "replace", "path": [], "node": {"t": "Paragraph", "text": "replaced"}},
+    {"op": "set", "path": [], "props": {"alignment": "Center"}},
+    {"op": "append", "path": [], "field": "lines", "items": ["new line"]},
+    {"op": "splice", "path": ["main"], "field": "items", "index": 0, "remove": 1, "insert": [{"key": "x", "content": "X"}]},
+    {"op": "item", "path": [], "field": "rows", "key": "r1", "value": {"cells": ["a"]}}
+  ]},
+  {"op": "meta", "id": "ext/panel-1", "set": {"order": 5, "focus": true}},
+  {"op": "invalidate", "id": "ext/turnFooter:files", "turns": ["t-9"]},
+  {"op": "dialog", "request": {"id": "9", "method": "confirm", "title": "Sure?"}},
+  {"op": "dismiss", "id": "9", "reason": "answered"},
+  {"op": "sessionMeta", "set": {"workingVisible": false}},
+  {"op": "effect", "request": {"id": "10", "method": "notify", "message": "done"}},
+  {"op": "del", "id": "ext/panel-1"}
+ ]
+}

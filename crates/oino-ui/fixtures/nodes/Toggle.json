@@ -1,0 +1,8 @@
+{
+ "t": "Toggle",
+ "key": "verbose",
+ "label": "Verbose",
+ "value": true,
+ "disabled": false,
+ "onChange": "set-verbose"
+}

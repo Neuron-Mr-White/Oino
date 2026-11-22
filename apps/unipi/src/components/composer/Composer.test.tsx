@@ -1,0 +1,957 @@
+// @vitest-environment jsdom
+/**
+ * The composer (WP-A12 acceptance): placeholder by state (Z-57), ↑/↓ prompt
+ * history per workspace with the walk rules (Z-58), persisted drafts (Z-59),
+ * the 5119/5120 paste threshold with inline expansion in the sent `prompt`
+ * (Z-61, MockHost log), the `/` and `@` menus (Z-62), the `+` menu (Z-63) and
+ * undo/redo kept. Runs over a real `createSession` on the mock host.
+ */
+import { cleanup, fireEvent, render, waitFor } from '@solidjs/testing-library';
+import { createRoot, createSignal } from 'solid-js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockHost, type MockScenario, type MockWorld } from '../../dev/mock/host';
+import { genFsTree, genLiveRun, genSession } from '../../dev/mock/gen';
+import { setHostClientFactory } from '../../lib/host/factory';
+import { createSession, type SessionHandle } from '../../lib/session/store';
+import { resetPanes } from '../../lib/panes';
+import { setDesktopOverride, resetLayout } from '../../lib/layout';
+import { resetComposerDrafts, flushComposerDrafts, composerDraft, addComposerChip, addComposerQuote } from '../../lib/composer/drafts';
+import { installEscapeStop } from '../../lib/composer/escapeStop';
+import { Composer } from './Composer';
+import { shortcutsOpen } from '../shell/ShortcutsDialog';
+import { actionNotice, clearActionNotice } from '../../lib/timeline/actions';
+import { registerPendingAsk } from '../../lib/chat/askPending';
+import { noteMode, setNoteMode } from '../../lib/composer/noteMode';
+
+vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockRejectedValue(new Error('no tauri in tests')), transformCallback: () => 0 }));
+
+const HOST = 'pc-one';
+const CWD = '/home/you/projects/unipi';
+const SESSION = 's-composer';
+
+const COMMANDS = [
+  { name: 'model', description: 'Pick the model', source: 'builtin' },
+  { name: 'unipi:goal', description: 'Set a goal for this session', source: 'extension' },
+  { name: 'fix-typo', description: 'Fix the typo under the caret', source: 'prompt' },
+  { name: 'skill:review', description: 'Review the diff like a senior', source: 'skill' },
+];
+
+function scenario(turns: number, running: boolean): MockScenario {
+  const session = genSession(SESSION, { seed: 3, turns, toolsPerTurn: 1, cwd: CWD });
+  session.snapshot.commands = COMMANDS as never;
+  // P1-01: the goal extension completes its sub-commands after `/unipi:goal `.
+  session.cmd = {
+    '_oino/get_completions': (cmd: { text?: unknown }) =>
+      String(cmd.text).startsWith('/unipi:goal ')
+        ? { groups: [{ source: 'command:unipi:goal', from: 12, items: [{ value: 'status', description: 'Show the goal' }, { value: 'clear' }] }] }
+        : { groups: [] },
+  } as never;
+  session.events = running ? genLiveRun(SESSION, { seq: 1, running: true, at: 0 }) : [];
+  return {
+    name: 'composer-test',
+    hosts: [
+      {
+        id: HOST,
+        name: 'coffee',
+        conn: { state: 'connected' },
+        sessions: { [SESSION]: session, 's-other': genSession('s-other', { seed: 4, turns: 1, toolsPerTurn: 1, cwd: CWD }) },
+        fs: genFsTree(CWD),
+      },
+    ],
+  };
+}
+
+let world: MockWorld;
+let disposers: Array<() => void> = [];
+
+async function openSession(turns: number, running = false): Promise<SessionHandle> {
+  world = createMockHost(scenario(turns, running));
+  setHostClientFactory(world.client);
+  const handle = createRoot((dispose) => {
+    disposers.push(dispose);
+    return createSession(HOST, SESSION, { client: world.client(HOST) });
+  });
+  await waitFor(() => expect(handle.state.conn).toBe('live'));
+  await new Promise((r) => setTimeout(r, 20));
+  return handle;
+}
+
+function mountComposer(session: SessionHandle, opts: { phone?: boolean } = {}) {
+  const view = render(() => <Composer session={session} cwd={() => CWD} phone={opts.phone} />);
+  const field = () => view.container.querySelector('.chip-field') as HTMLDivElement;
+  /** Places the caret at the field's end (jsdom focus() selects offset 0). */
+  const caretEnd = (el: HTMLDivElement) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+  /** Drives the contenteditable the way the browser would (text → input). */
+  const type = (text: string) => {
+    const el = field();
+    el.focus();
+    caretEnd(el);
+    el.append(document.createTextNode(text));
+    fireEvent.input(el);
+  };
+  const setText = (text: string) => {
+    const el = field();
+    el.focus();
+    el.textContent = text;
+    caretEnd(el);
+    fireEvent.input(el);
+  };
+  const key = (k: Partial<{ key: string; shiftKey: boolean; ctrlKey: boolean; code: string }>) =>
+    fireEvent.keyDown(field(), { key: k.key ?? '', ...k });
+  return { view, field, type, setText, key };
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  setDesktopOverride(true);
+});
+
+afterEach(() => {
+  cleanup();
+  for (const dispose of disposers) dispose();
+  disposers = [];
+  resetComposerDrafts();
+  resetPanes();
+  resetLayout();
+  setDesktopOverride(undefined);
+  setHostClientFactory(undefined);
+  localStorage.clear();
+  location.hash = '';
+});
+
+describe('placeholder by state (Z-57)', () => {
+  it('an empty session shows the capability hint; with history, the follow-up hint', async () => {
+    const empty = await openSession(0);
+    const a = mountComposer(empty);
+    expect(a.field().getAttribute('data-placeholder')).toBe('Ask anything — / for commands, $ for skills, @ for files');
+
+    const full = await openSession(2);
+    const b = mountComposer(full);
+    expect(b.field().getAttribute('data-placeholder')).toBe('Ask for follow-up changes');
+  });
+
+  it('a running turn shows "Keep typing — sent after this turn…" (never locks the field)', async () => {
+    const s = await openSession(2, true);
+    await waitFor(() => expect(s.state.run.running).toBe(true));
+    const c = mountComposer(s);
+    expect(c.field().getAttribute('data-placeholder')).toBe('Keep typing — sent after this turn…');
+    expect(c.field().getAttribute('contenteditable')).toBe('true');
+  });
+
+  it('the phone short form on an empty session', async () => {
+    const empty = await openSession(0);
+    const c = mountComposer(empty, { phone: true });
+    expect(c.view.container.querySelector('textarea.ph-field')!.getAttribute('placeholder')).toBe('Ask anything…');
+  });
+});
+
+describe('phone field (phone spec §3.5, PH-11)', () => {
+  it('is a native textarea: the typed text is exactly what is sent, Enter on touch is a newline, Send sends', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s, { phone: true });
+    const field = c.view.container.querySelector('textarea.ph-field') as HTMLTextAreaElement;
+    expect(field).not.toBeNull();
+    expect(c.view.container.querySelector('.chip-field')).toBeNull();
+    // An IME composition (Gboard): intermediate inputs while composing, then the final text.
+    fireEvent.compositionStart(field);
+    field.value = 'Give me an overview';
+    fireEvent.input(field);
+    field.value = 'Give me an overview of this project';
+    fireEvent.input(field);
+    fireEvent.compositionEnd(field);
+    expect(composerDraft(s.key).text).toBe('Give me an overview of this project');
+    expect(field.value).toBe('Give me an overview of this project');
+    // A touch keyboard's Enter is a newline (default action), not a send.
+    const had = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes('coarse'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    fireEvent.keyDown(field, { key: 'Enter' });
+    window.matchMedia = had;
+    expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(0);
+    fireEvent.click(c.view.container.querySelector('[data-testid="send-button"]') ?? c.view.container.querySelector('.tl-composer-send')!);
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(1));
+    const cmd = world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message?: string };
+    expect(cmd.message).toBe('Give me an overview of this project');
+    await waitFor(() => expect(field.value).toBe(''));
+  });
+
+  it('keeps Plan in the sheet and shows thinking on the phone when supported', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s, { phone: true });
+    expect(c.view.container.querySelector('[data-testid="plan-toggle"]')).toBeNull();
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="thinking-chip"]')).not.toBeNull());
+  });
+});
+
+describe('owner-fix-9: the note goes with the answer', () => {
+  it('a waiting question card: the placeholder asks for a note, Send submits the card first, then the text', async () => {
+    const s = await openSession(1);
+    const order: string[] = [];
+    const send = vi.spyOn(s, 'send').mockImplementation(((text: string) => {
+      order.push(`send:${text}`);
+      return { ref: 'r1', text, mode: 'prompt', at: 0, status: 'sending' };
+    }) as never);
+    const off = registerPendingAsk(s.key, { id: 'a1', submit: () => { order.push('answer'); } });
+    const c = mountComposer(s);
+    expect(c.field().getAttribute('data-placeholder')).toBe('Add a note to your answer…');
+    c.type('use the cheaper one');
+    c.key({ key: 'Enter' });
+    expect(order).toEqual(['answer', 'send:use the cheaper one']);
+    off();
+    send.mockClear();
+    order.length = 0;
+    expect(c.field().getAttribute('data-placeholder')).toBe('Ask for follow-up changes');
+    c.type('plain');
+    c.key({ key: 'Enter' });
+    expect(order).toEqual(['send:plain']);
+  });
+
+  it('OIN-29: when the card takes the typed text as its answer, it is not also sent as a message', async () => {
+    const s = await openSession(1);
+    const send = vi.spyOn(s, 'send');
+    const notes: Array<string | undefined> = [];
+    const off = registerPendingAsk(s.key, { id: 'a2', submit: (note) => { notes.push(note); return true; } });
+    const c = mountComposer(s);
+    c.type('my own answer');
+    c.key({ key: 'Enter' });
+    expect(notes).toEqual(['my own answer']);
+    expect(send).not.toHaveBeenCalled();
+    await waitFor(() => expect(composerDraft(s.key).text).toBe(''));
+    off();
+  });
+});
+
+describe('owner5 #25: chips above the field', () => {
+  it('Backspace at caret 0 removes the last chip, one per press', async () => {
+    const session = await openSession(1);
+    const k = `${HOST}/${SESSION}`;
+    addComposerQuote(k, 'quoted line');
+    addComposerChip(k, { kind: 'paste', label: 'Pasted text · 3 lines' });
+    const { field, key } = mountComposer(session);
+    field().focus();
+    key({ key: 'Backspace' });
+    expect(composerDraft(k).chips).toHaveLength(0);
+    expect(composerDraft(k).quotes).toHaveLength(1);
+    key({ key: 'Backspace' });
+    expect(composerDraft(k).quotes).toHaveLength(0);
+  });
+});
+
+describe('prompt history ↑/↓ (Z-58)', () => {
+  it('walks on an empty draft, ↓ returns to the draft being typed', async () => {
+    localStorage.setItem(`unipi:composer:history:${encodeURIComponent(`${HOST}:${CWD}`)}`, JSON.stringify(['one', 'two', 'three']));
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.key({ key: 'ArrowUp' });
+    expect(composerDraft(s.key).text).toBe('three');
+    c.key({ key: 'ArrowUp' });
+    expect(composerDraft(s.key).text).toBe('two');
+    c.key({ key: 'ArrowDown' });
+    expect(composerDraft(s.key).text).toBe('three');
+    c.key({ key: 'ArrowDown' });
+    // leaving the walk restores what was being typed
+    expect(composerDraft(s.key).text).toBe('');
+  });
+
+  it('a non-empty draft keeps normal cursor keys until the walk is entered', async () => {
+    localStorage.setItem(`unipi:composer:history:${encodeURIComponent(`${HOST}:${CWD}`)}`, JSON.stringify(['one']));
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('half');
+    c.key({ key: 'ArrowUp' });
+    expect(composerDraft(s.key).text).toBe('half');
+  });
+
+  it('a send records the prompt (no consecutive dup), a failed send rolls it back', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('first prompt');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(true));
+    const store = JSON.parse(localStorage.getItem(`unipi:composer:history:${encodeURIComponent(`${HOST}:${CWD}`)}`) ?? '[]');
+    expect(store).toEqual(['first prompt']);
+  });
+});
+
+describe('long paste → chip (Z-61)', () => {
+  const paste = (field: HTMLDivElement, text: string) => {
+    field.focus();
+    const ev = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(ev, 'clipboardData', { value: { types: ['text/plain'], getData: () => text, files: [] } });
+    field.dispatchEvent(ev);
+  };
+
+  it('5119 chars stay inline text', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    paste(c.field(), 'x'.repeat(5119));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(composerDraft(s.key).text).toBe('x'.repeat(5119));
+    expect(c.view.container.querySelector('[data-testid="pasted-chip"]')).toBeNull();
+  });
+
+  it('5120 chars become a "Pasted text · N lines" chip, expanded inline in the sent prompt', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    const pasted = `${'lorem ipsum dolor sit amet consectetur adipiscing elit\n'.repeat(127)}last line`;
+    expect(pasted.split('\n')).toHaveLength(128);
+    expect(pasted.length).toBeGreaterThanOrEqual(5120);
+    paste(c.field(), pasted);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(composerDraft(s.key).text).toBe('');
+    const chip = c.view.container.querySelector('[data-testid="pasted-chip"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain('Pasted text · 128 lines');
+    // ✕ removes it again
+    fireEvent.click(chip!.querySelector('button')!);
+    expect(c.view.container.querySelector('[data-testid="pasted-chip"]')).toBeNull();
+
+    paste(c.field(), pasted);
+    await new Promise((r) => setTimeout(r, 10));
+    c.type('summarize this');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(1));
+    const cmd = world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message?: string };
+    expect(cmd.message).toContain(pasted.slice(0, 40));
+    expect(cmd.message).toContain('summarize this');
+    // the chip is gone after the send
+    expect(c.view.container.querySelector('[data-testid="pasted-chip"]')).toBeNull();
+  });
+});
+
+describe('draft persistence across reload (Z-59)', () => {
+  it('text survives an unmount → remount', async () => {
+    const s = await openSession(1);
+    const a = mountComposer(s);
+    a.setText('still typing this');
+    flushComposerDrafts();
+    cleanup();
+    const b = mountComposer(s);
+    expect(b.field().textContent).toBe('still typing this');
+    expect(composerDraft(s.key).text).toBe('still typing this');
+  });
+});
+
+describe('undo/redo kept', () => {
+  it('Ctrl+Z steps back through the draft, Ctrl+Shift+Z forward', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('ab');
+    c.setText('abcd');
+    c.key({ key: 'z', ctrlKey: true });
+    expect(composerDraft(s.key).text).toBe('ab');
+    c.key({ key: 'z', ctrlKey: true, shiftKey: true });
+    expect(composerDraft(s.key).text).toBe('abcd');
+  });
+});
+
+describe('the / menu (Z-62)', () => {
+  it('shows commands, prompt templates and skills with source labels; Enter picks', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    const labels = [...c.view.container.querySelectorAll('.cmenu-src')].map((el) => el.textContent);
+    expect(labels).toContain('app');
+    expect(labels).toContain('command');
+    expect(labels).toContain('prompt');
+    // Skills have the `$` menu (owner spec 2026-11-03); pi's `/skill:` form still lists them.
+    expect(labels).not.toContain('skill');
+
+    c.setText('/skill:rev');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')!.textContent).toContain('/skill:review'));
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('/skill:review '));
+    expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull();
+  });
+
+  it('a picked mode command is a mode chip and is sent as the command with its task', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/unipi:go');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    c.key({ key: 'Tab' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('/unipi:goal '));
+    await waitFor(() => expect(c.field().querySelector('.ichip[data-kind=command][data-mode]')).not.toBeNull());
+    c.type('ship it');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(true));
+    expect((world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message: string }).message).toBe('/unipi:goal ship it');
+  });
+
+  it('an unknown /command is never sent as a prompt', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/nosuch command here');
+    await new Promise((r) => setTimeout(r, 10));
+    c.key({ key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(false);
+  });
+
+  it('Esc closes the menu; typing reopens it', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    c.key({ key: 'Escape' });
+    expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull();
+    c.setText('/m');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+  });
+});
+
+describe('the $ skills menu (owner spec 2026-11-03)', () => {
+  it('$ anywhere lists the skills; Enter or Tab makes a skill chip that is sent as pi\'s /skill: invocation', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('fix the bug with $re');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="skill-menu"]')).not.toBeNull());
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')!.textContent).toContain('$review');
+    c.key({ key: 'Tab' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('fix the bug with $review '));
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')).toBeNull();
+    await waitFor(() => expect(c.field().querySelector('.ichip[data-kind=skill]')?.textContent).toContain('review'));
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt')).toBe(true));
+    expect((world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message: string }).message).toBe('/skill:review fix the bug with $review');
+  });
+
+  it('a price like $5 never opens it', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('costs $5');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(c.view.container.querySelector('[data-testid="skill-menu"]')).toBeNull();
+  });
+});
+
+describe('the @ menu (Z-62)', () => {
+  it('lists files from the project (fs), Enter picks an @path mention', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('@rea');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="mention-menu"]')).not.toBeNull(), { timeout: 3000 });
+    const rows = [...c.view.container.querySelectorAll('[data-testid="mention-menu"] .cmenu-row')];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some((r) => r.textContent!.includes('readme') || r.textContent!.includes('README'))).toBe(true);
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(composerDraft(s.key).text).toMatch(/^@\S+ $/));
+    expect(c.view.container.querySelector('[data-testid="mention-menu"]')).toBeNull();
+  });
+});
+
+describe('the + menu (Z-63)', () => {
+  it('offers Photo, Camera, File, Side question and Board task… (no New session / Resume)', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    fireEvent.click(c.view.getByLabelText('Add'));
+    // AnchoredMenu portals into document.body.
+    await waitFor(() => expect(document.body.querySelector('[role="menu"]')).not.toBeNull());
+    const menu = document.body.querySelector('[role="menu"]')!;
+    for (const label of ['Photo', 'File', 'Side question', 'Board task…']) expect(menu.textContent).toContain(label);
+    expect(menu.textContent).not.toContain('New session');
+    expect(menu.textContent).not.toContain('Resume');
+  });
+
+  it('Side question opens the btw side-chat tab with the draft as its question', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('what does this repo do?');
+    fireEvent.click(c.view.getByLabelText('Add'));
+    await waitFor(() => expect(document.body.querySelector('[role="menu"]')).not.toBeNull());
+    fireEvent.click([...document.body.querySelectorAll('[role="menu"] button')].find((b) => b.textContent!.includes('Side question'))!);
+    const { panes } = await import('../../lib/panes');
+    const set = panes().set({ hostId: HOST, projectKey: CWD }, 'side');
+    const btw = set.tabs.find((t) => t.kind === 'btw');
+    expect(btw).toBeDefined();
+    expect((btw!.params as { question?: string }).question).toBe('what does this repo do?');
+    // The draft stays in the composer (only a sent /btw consumes it).
+    expect(composerDraft(s.key).text).toBe('what does this repo do?');
+  });
+
+  it('/btw opens the side chat instead of sending to the main session', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/btw quick aside');
+    c.key({ key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(world.log.some((e) => e.kind === 'cmd' && (e.op === 'prompt' || e.op === 'steer'))).toBe(false);
+    const { panes } = await import('../../lib/panes');
+    const set = panes().set({ hostId: HOST, projectKey: CWD }, 'side');
+    expect((set.tabs.find((t) => t.kind === 'btw')!.params as { question?: string }).question).toBe('quick aside');
+  });
+});
+
+describe('send ↔ stop (WP-A11 matrix: Enter = default, Cmd/Ctrl+Enter the opposite)', () => {
+  it('Enter sends a prompt; while running Enter queues and Cmd+Enter steers; dock-root Esc stops', async () => {
+    const s = await openSession(2, true);
+    await waitFor(() => expect(s.state.run.running).toBe(true));
+    const c = mountComposer(s);
+    c.setText('a queued follow-up');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt' && (e.args as { streamingBehavior?: string }).streamingBehavior === 'followUp')).toBe(true));
+    expect(composerDraft(s.key).text).toBe('');
+    c.setText('a steer via modifier');
+    c.key({ key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'prompt' && (e.args as { streamingBehavior?: string }).streamingBehavior === 'steer')).toBe(true));
+  });
+
+  it('D23: between Send and the host ACK the composer shows Stop, and a second Enter queues a follow-up', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const sc = scenario(2, false);
+    const spec = sc.hosts[0]!.sessions![SESSION]!;
+    spec.cmd = { ...spec.cmd, prompt: () => (++calls === 1 ? gate.then(() => ({})) : {}) } as never;
+    world = createMockHost(sc);
+    setHostClientFactory(world.client);
+    const s = createRoot((dispose) => (disposers.push(dispose), createSession(HOST, SESSION, { client: world.client(HOST) })));
+    await waitFor(() => expect(s.state.conn).toBe('live'));
+    await new Promise((r) => setTimeout(r, 20));
+    const c = mountComposer(s);
+    c.setText('first');
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(c.view.queryByTestId('send-stop')).not.toBeNull());
+    expect(s.state.run.running).toBe(false);
+    c.setText('second');
+    c.key({ key: 'Enter' });
+    release();
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt').length).toBe(2));
+    const sent = world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt').map((e) => e.args as { streamingBehavior?: string });
+    expect(sent[0]!.streamingBehavior).toBeUndefined();
+    expect(sent[1]!.streamingBehavior).toBe('followUp');
+  });
+
+  it('r8 T4: the Send → Stop swap does not land in the Send frame, yet an Enter in that gap still queues a follow-up', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const sc = scenario(2, false);
+    const spec = sc.hosts[0]!.sessions![SESSION]!;
+    spec.cmd = { ...spec.cmd, prompt: () => (++calls === 1 ? gate.then(() => ({})) : {}) } as never;
+    world = createMockHost(sc);
+    setHostClientFactory(world.client);
+    const s = createRoot((dispose) => (disposers.push(dispose), createSession(HOST, SESSION, { client: world.client(HOST) })));
+    await waitFor(() => expect(s.state.conn).toBe('live'));
+    await new Promise((r) => setTimeout(r, 20));
+    const c = mountComposer(s);
+    c.setText('first');
+    c.key({ key: 'Enter' });
+    // The composer is exact about what it does, lazy about what it shows: no Stop in this frame …
+    expect(c.view.queryByTestId('send-stop')).toBeNull();
+    // … but a second Enter is already a queued follow-up, never a second prompt.
+    c.setText('second');
+    c.key({ key: 'Enter' });
+    release();
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt').length).toBe(2));
+    const sent = world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt').map((e) => e.args as { streamingBehavior?: string });
+    expect(sent[0]!.streamingBehavior).toBeUndefined();
+    expect(sent[1]!.streamingBehavior).toBe('followUp');
+  });
+
+  it('Esc stops the run through the dock root (Z-55), not the composer itself', async () => {
+    const s = await openSession(2, true);
+    await waitFor(() => expect(s.state.run.running).toBe(true));
+    const view = render(() => (
+      <div ref={(el) => installEscapeStop({ root: el, running: () => !!s.state.run.running, stop: () => void s.abort() })}>
+        <Composer session={s} cwd={() => CWD} />
+      </div>
+    ));
+    const field = view.container.querySelector('.chip-field') as HTMLDivElement;
+    field.focus();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'abort')).toBe(true));
+  });
+});
+
+describe('pi built-ins route to app surfaces (WP-A25, G-15)', () => {
+  it('/hotkeys opens the keyboard list and clears the draft (never a prompt)', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/hotkeys');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).not.toBeNull());
+    c.key({ key: 'Escape' });
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="slash-menu"]')).toBeNull());
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(shortcutsOpen()).toBe(true));
+    expect(composerDraft(s.key).text).toBe('');
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('/share and /trust explain themselves instead of a prompt', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/share');
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(actionNotice() ?? '').toMatch(/Export/));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('an extension command of the same name wins over the app route', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    // The mock session lists `model` as a builtin; `settings` is not listed, so
+    // the app route handles it — and never sends it as a prompt.
+    c.setText('/settings');
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(location.hash).toBe('#/settings/general'));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+});
+
+describe('P0-02: engine built-ins run, never reach the model as text', () => {
+  const sendCommand = async (text: string) => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText(text);
+    c.key({ key: 'Escape' });
+    c.key({ key: 'Enter' });
+    return { s, c };
+  };
+  const prompted = () => world.log.some((e) => e.kind === 'cmd' && (e.op === 'prompt' || e.op === 'steer' || e.op === 'follow_up'));
+
+  it('/compact <focus> runs the compact RPC with the focus text', async () => {
+    await sendCommand('/compact keep the API notes');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'compact')).toBe(true));
+    const cmd = world.log.find((e) => e.kind === 'cmd' && e.op === 'compact')!.args as { customInstructions?: string };
+    expect(cmd.customInstructions).toBe('keep the API notes');
+    expect(prompted()).toBe(false);
+  });
+
+  it('/copy asks for the last reply', async () => {
+    await sendCommand('/copy');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'get_last_assistant_text')).toBe(true));
+    expect(prompted()).toBe(false);
+  });
+
+  it('/thinking <level> sets it; /model opens the picker; /session opens Info', async () => {
+    const { s } = await sendCommand('/thinking high');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'get_available_thinking_levels')).toBe(true));
+    expect(prompted()).toBe(false);
+    expect(composerDraft(s.key).text).toBe('');
+  });
+
+  it('/new goes to a new chat in this folder; /resume opens the sessions list', async () => {
+    await sendCommand('/new');
+    await waitFor(() => expect(location.hash).toContain(`/new/${HOST}`));
+    expect(decodeURIComponent(location.hash)).toContain(CWD);
+    expect(prompted()).toBe(false);
+  });
+
+  it('/reload sends `reload` (settings, models, extensions, skills) and never prompts', async () => {
+    await sendCommand('/reload');
+    await waitFor(() => expect(world.log.some((e) => e.kind === 'cmd' && e.op === 'reload')).toBe(true));
+    expect(prompted()).toBe(false);
+  });
+
+  it('/model still opens the picker though the session lists it as a builtin', async () => {
+    await sendCommand('/model');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(prompted()).toBe(false);
+  });
+});
+
+
+describe('P0-07/P0-08: Mention in chat and insertEditorToken reach the mounted composer', () => {
+  it('a mention lands at the caret, space-separated; an editor token too', async () => {
+    const { queueMention, resetMentions } = await import('../../lib/chat/mention');
+    const { insertEditorToken, resetEditorTokens } = await import('../../lib/composer/tokens');
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('look at');
+    queueMention(`${HOST}:${SESSION}`, '@src/app.ts');
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('look at @src/app.ts '));
+    insertEditorToken(s.key, { kind: 'text', label: 'and this' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('look at @src/app.ts and this '));
+    insertEditorToken(s.key, { kind: 'file', label: '', path: 'docs/my notes.md' });
+    await waitFor(() => expect(composerDraft(s.key).text).toContain('@"docs/my notes.md"'));
+    resetMentions();
+    resetEditorTokens();
+  });
+});
+
+describe('P1-01: /cmd <arg> completions from the extension', () => {
+  it('asks _oino/get_completions after `/unipi:goal ` and Enter applies the pick', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/unipi:goal ');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="arg-menu"]')).not.toBeNull());
+    expect(c.view.getByRole('option', { name: /status/ })).toBeTruthy();
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(composerDraft(s.key).text).toBe('/unipi:goal status '));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === 'prompt')).toBe(false);
+  });
+
+  it('w5-ui D5: `/unipi:goal ` + a long paste chip counts the chip as args — no subcommand menu, Enter sends the command then the paste', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/unipi:goal ');
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="arg-menu"]')).not.toBeNull());
+    const pasted = `${'lorem ipsum dolor sit amet consectetur adipiscing elit\n'.repeat(127)}last line`;
+    c.field().focus();
+    const ev = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+    Object.defineProperty(ev, 'clipboardData', { value: { types: ['text/plain'], getData: () => pasted, files: [] } });
+    c.field().dispatchEvent(ev);
+    await waitFor(() => expect(c.view.container.querySelector('[data-testid="pasted-chip"]')).not.toBeNull());
+    expect(c.view.container.querySelector('[data-testid="arg-menu"]')).toBeNull();
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(world.log.filter((e) => e.kind === 'cmd' && e.op === 'prompt')).toHaveLength(1));
+    const message = (world.log.find((e) => e.kind === 'cmd' && e.op === 'prompt')!.args as { message?: string }).message!;
+    expect(message.startsWith('/unipi:goal lorem ipsum')).toBe(true);
+    expect(message).not.toContain('status');
+    expect(message.trimEnd().endsWith('last line')).toBe(true);
+  });
+
+  it('built-ins (no extension completer) never ask', async () => {
+    const s = await openSession(1);
+    const c = mountComposer(s);
+    c.setText('/model ');
+    await new Promise((r) => setTimeout(r, 150));
+    expect(world.log.some((entry) => entry.kind === 'cmd' && entry.op === '_oino/get_completions')).toBe(false);
+  });
+});
+
+describe('the deep-thinking glow (X-high / Max)', () => {
+  it('toggles data-think-glow on the card with the thinking level', async () => {
+    const session = await openSession(1);
+    const { view } = mountComposer(session);
+    const card = () => view.getByTestId('tl-composer');
+    // the decorative ring is in the card, hidden from assistive tech
+    expect(card().querySelector(':scope > .think-glow')?.getAttribute('aria-hidden')).toBe('true');
+    await session.cmd({ type: 'set_thinking_level', level: 'high' });
+    await waitFor(() => expect(session.state.thinkingLevel).toBe('high'));
+    expect(card().hasAttribute('data-think-glow')).toBe(false);
+    await session.cmd({ type: 'set_thinking_level', level: 'xhigh' });
+    await waitFor(() => expect(card().getAttribute('data-think-glow')).toBe('xhigh'));
+    await session.cmd({ type: 'set_thinking_level', level: 'max' });
+    await waitFor(() => expect(card().getAttribute('data-think-glow')).toBe('max'));
+    await session.cmd({ type: 'set_thinking_level', level: 'medium' });
+    await waitFor(() => expect(card().hasAttribute('data-think-glow')).toBe(false));
+  });
+});
+
+describe('Send as note', () => {
+  const NOTE_PLACEHOLDER = 'Note to yourself — the agent won’t see this';
+  const cmds = (op: string) => world.log.filter((e) => e.kind === 'cmd' && e.op === op);
+  const toggleFromMenu = (view: ReturnType<typeof mountComposer>['view']) => {
+    fireEvent.click(view.getByTestId('send-chevron'));
+    fireEvent.click(view.getByTestId('send-as-note'));
+  };
+
+  it('the send menu toggles the mode: data-note, the note placeholder, a Note chip, "Save note"', async () => {
+    const session = await openSession(1);
+    const { view, field } = mountComposer(session);
+    const card = () => view.getByTestId('tl-composer');
+    expect(card().hasAttribute('data-note')).toBe(false);
+    expect(view.queryByTestId('composer-note-chip')).toBeNull();
+    toggleFromMenu(view);
+    expect(card().hasAttribute('data-note')).toBe(true);
+    expect(field().getAttribute('data-placeholder')).toBe(NOTE_PLACEHOLDER);
+    expect(view.getByTestId('composer-note-chip').textContent).toContain('Note');
+    expect(view.getByLabelText('Save note')).toBe(view.getByTestId('send-send'));
+    fireEvent.click(view.getByTestId('send-chevron'));
+    expect(view.getByTestId('send-as-note').getAttribute('aria-checked')).toBe('true');
+    // the menu item again turns it off …
+    fireEvent.click(view.getByTestId('send-as-note'));
+    expect(card().hasAttribute('data-note')).toBe(false);
+    expect(field().getAttribute('data-placeholder')).not.toBe(NOTE_PLACEHOLDER);
+    // … and so does the chip's ✕
+    toggleFromMenu(view);
+    expect(card().hasAttribute('data-note')).toBe(true);
+    fireEvent.click(view.getByTestId('composer-note-off'));
+    expect(card().hasAttribute('data-note')).toBe(false);
+    expect(view.queryByTestId('composer-note-chip')).toBeNull();
+  });
+
+  it('Enter saves the note — verbatim, not a prompt / steer / follow-up — even while a run is going', async () => {
+    const session = await openSession(1, true);
+    await waitFor(() => expect(session.state.run.running).toBe(true));
+    const { view, setText, key, field } = mountComposer(session);
+    toggleFromMenu(view);
+    setText('check $review and /model later');
+    key({ key: 'Enter' });
+    await waitFor(() => expect(cmds('append_note')).toHaveLength(1));
+    expect((cmds('append_note')[0]!.args as { text: string }).text).toBe('check $review and /model later');
+    expect(world.log.some((e) => e.kind === 'cmd' && (e.op === 'prompt' || e.op === 'steer' || e.op === 'follow_up'))).toBe(false);
+    expect(session.state.outbox).toHaveLength(0);
+    // the composer clears after the save, the mode stays on
+    await waitFor(() => expect(composerDraft(session.key).text).toBe(''));
+    expect(field().textContent).toBe('');
+    expect(view.getByTestId('tl-composer').hasAttribute('data-note')).toBe(true);
+    // the run was not touched
+    expect(cmds('abort')).toHaveLength(0);
+  });
+
+  it('the Save note button saves too', async () => {
+    const session = await openSession(1);
+    const { view, setText } = mountComposer(session);
+    toggleFromMenu(view);
+    setText('a quick reminder');
+    fireEvent.click(view.getByTestId('send-send'));
+    await waitFor(() => expect(cmds('append_note')).toHaveLength(1));
+    expect(cmds('prompt')).toHaveLength(0);
+  });
+
+  it('a normal send is unchanged when the mode is off', async () => {
+    const session = await openSession(1);
+    const { setText, key } = mountComposer(session);
+    setText('hello');
+    key({ key: 'Enter' });
+    await waitFor(() => expect(cmds('prompt')).toHaveLength(1));
+    expect(cmds('append_note')).toHaveLength(0);
+  });
+
+  it('the mode is per chat: switching to another chat (or unmounting) turns it off', async () => {
+    const a = await openSession(1);
+    const b = createRoot((dispose) => {
+      disposers.push(dispose);
+      return createSession(HOST, 's-other', { client: world.client(HOST) });
+    });
+    await waitFor(() => expect(b.state.conn).toBe('live'));
+    const [current, setCurrent] = createSignal(a);
+    const view = render(() => <Composer session={current()} cwd={() => CWD} />);
+    fireEvent.click(view.getByTestId('send-chevron'));
+    fireEvent.click(view.getByTestId('send-as-note'));
+    expect(noteMode(a.key)).toBe(true);
+    setCurrent(b);
+    await waitFor(() => expect(view.getByTestId('tl-composer').hasAttribute('data-note')).toBe(false));
+    expect(noteMode(a.key)).toBe(false);
+    expect(noteMode(b.key)).toBe(false);
+    // back in the first chat: still off (not persisted)
+    setCurrent(a);
+    expect(view.getByTestId('tl-composer').hasAttribute('data-note')).toBe(false);
+    setNoteMode(a.key, true);
+    view.unmount();
+    expect(noteMode(a.key)).toBe(false);
+  });
+
+  it('the new-chat draft has no note mode (no session yet)', async () => {
+    const session = await openSession(0);
+    const view = render(() => <Composer session={session} cwd={() => CWD} draft />);
+    expect(view.queryByTestId('send-chevron')).toBeNull();
+    expect(view.queryByTestId('composer-note-chip')).toBeNull();
+  });
+
+  it('while in note mode, `/command` and `$skill` text stays plain (no menus)', async () => {
+    const session = await openSession(1);
+    const { view, setText } = mountComposer(session);
+    setText('/model');
+    expect(view.container.querySelector('.cmenu')).not.toBeNull();
+    setText('');
+    toggleFromMenu(view);
+    setText('/model');
+    expect(view.container.querySelector('[data-testid="slash-menu"], .cmenu')).toBeNull();
+    setText('use $review');
+    expect(view.container.querySelector('[data-testid="skill-menu"], .cmenu')).toBeNull();
+  });
+});
+
+
+describe('OIN-100: refused graph commands retain the complete draft', () => {
+  it.each(['swarm', 'graph'])('/%s keeps text and two images until accepted', async (command) => {
+    const { addReadyImage, pendingAttachmentsFor } = await import('../../lib/composer/attachments');
+    const { setBlobTransport, devBlobTransport } = await import('../../lib/blob');
+    const blobs = new Map<string, Uint8Array>();
+    setBlobTransport({ ...devBlobTransport, putBytes: async (_host, bytes) => {
+      const sha256 = String(bytes[0]).padStart(64, '0');
+      blobs.set(sha256, bytes);
+      let text = '';
+      for (const byte of bytes) text += String.fromCharCode(byte);
+      world.client(HOST).blobs.set(sha256, { text });
+      return { sha256, size: bytes.length, deduped: false, path: `/blobs/${sha256}` };
+    } });
+    const { imageToken } = await import('../../lib/composer/chips');
+    const { setComposerText } = await import('../../lib/composer/drafts');
+    const spec = scenario(1, false);
+    const mock = spec.hosts[0]!.sessions![SESSION]!;
+    mock.snapshot.commands = [...COMMANDS, { name: command, source: 'extension' }] as never;
+    let answer!: (value: unknown) => void;
+    let sent: unknown;
+    mock.cmd = { ...mock.cmd, prompt: (cmd: unknown) => {
+      sent = cmd;
+      return new Promise((resolve) => { answer = resolve; });
+    } } as never;
+    world = createMockHost(spec);
+    setHostClientFactory(world.client);
+    const session = createRoot((dispose) => {
+      disposers.push(dispose);
+      return createSession(HOST, SESSION, { client: world.client(HOST) });
+    });
+    await waitFor(() => expect(session.state.conn).toBe('live'));
+    const c = mountComposer(session);
+    const first = addReadyImage(session.key, { mime: 'image/png', data: btoa('a'.repeat(300_000)) })!;
+    const second = addReadyImage(session.key, { mime: 'image/png', data: btoa('b'.repeat(300_000)) })!;
+    const text = `/${command} keep exactly this\n${imageToken(first.id)} ${imageToken(second.id)}`;
+    setComposerText(session.key, text);
+    const original = pendingAttachmentsFor(session.key).map((a) => ({ ...a }));
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(sent).toBeTruthy());
+    expect(composerDraft(session.key).text).toBe(text);
+    expect(pendingAttachmentsFor(session.key)).toEqual(original);
+    expect(blobs.size).toBe(2);
+    expect((sent as { images: Array<{ data: string }> }).images.map((i) => i.data)).toEqual([first.data, second.data]);
+    answer({ disposition: 'refused', reason: 'Another live graph owns this folder' });
+    await waitFor(() => expect(JSON.stringify(actionNotice())).toContain('Another live graph'));
+    expect(composerDraft(session.key).text).toBe(text);
+    expect(pendingAttachmentsFor(session.key)).toEqual(original);
+    await waitFor(() => expect(session.state.outbox).toHaveLength(0));
+    // Retry uses the same images, and acceptance alone clears them.
+    sent = undefined;
+    c.key({ key: 'Enter' });
+    await waitFor(() => expect(sent).toBeTruthy());
+    expect((sent as { images: unknown[] }).images).toHaveLength(2);
+    answer({ disposition: 'handled' });
+    await waitFor(() => expect(composerDraft(session.key).text).toBe(''));
+    expect(pendingAttachmentsFor(session.key)).toHaveLength(0);
+    setBlobTransport(undefined);
+  });
+});
+
+describe('N8: a refused /swarm from the new-chat draft is explained once', () => {
+  async function refusedFrom(draft: boolean, result: { accepted: false; reason?: string }) {
+    const spec = scenario(1, false);
+    spec.hosts[0]!.sessions![SESSION]!.snapshot.commands = [...COMMANDS, { name: 'swarm', source: 'extension' }] as never;
+    world = createMockHost(spec);
+    setHostClientFactory(world.client);
+    const session = createRoot((dispose) => {
+      disposers.push(dispose);
+      return createSession(HOST, SESSION, { client: world.client(HOST) });
+    });
+    await waitFor(() => expect(session.state.conn).toBe('live'));
+    // The draft's stand-in answers a refusal the way DraftView does: false, with the reason shown inline there.
+    const stub = { ...session, send: (_text: string, opts?: { onResult?: (r: unknown) => void }) => { queueMicrotask(() => opts?.onResult?.(result)); return undefined as never; } } as SessionHandle;
+    const view = render(() => <Composer session={stub} cwd={() => CWD} draft={draft} />);
+    const field = view.container.querySelector('.chip-field') as HTMLDivElement;
+    field.focus();
+    field.textContent = '/swarm do it';
+    fireEvent.input(field);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+
+  it('the draft shows no "Command refused" notice: the inline reason is the one message', async () => {
+    clearActionNotice();
+    await refusedFrom(true, { accepted: false });
+    expect(actionNotice()).toBeUndefined();
+  });
+
+  it('a draft failure that carries its own reason, and a chat\'s refusal, still notify', async () => {
+    clearActionNotice();
+    await refusedFrom(true, { accepted: false, reason: 'boom' });
+    expect(JSON.stringify(actionNotice())).toContain('boom');
+    clearActionNotice();
+    cleanup();
+    await refusedFrom(false, { accepted: false });
+    expect(JSON.stringify(actionNotice())).toContain('Command refused');
+  });
+});

@@ -1,0 +1,5 @@
+---
+source: crates/oino-tui/tests/ui_nodes.rs
+expression: rendered
+---
+x

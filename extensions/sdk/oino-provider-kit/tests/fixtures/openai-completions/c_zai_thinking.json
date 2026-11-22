@@ -1,0 +1,181 @@
+{
+ "name": "c_zai_thinking",
+ "model": {
+  "id": "glm-5.2",
+  "name": "GLM-5.2",
+  "api": "openai-completions",
+  "provider": "zai",
+  "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+  "reasoning": true,
+  "thinkingLevelMap": {
+   "off": "none",
+   "minimal": null,
+   "low": null,
+   "medium": null,
+   "high": "high",
+   "xhigh": null,
+   "max": "max"
+  },
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 1.4,
+   "output": 4.4,
+   "cacheRead": 0.26,
+   "cacheWrite": 0
+  },
+  "compat": {
+   "supportsStore": false,
+   "supportsDeveloperRole": false,
+   "supportsReasoningEffort": true,
+   "maxTokensField": "max_tokens",
+   "thinkingFormat": "zai",
+   "supportsStrictMode": true,
+   "zaiToolStream": true
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 131072,
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "reasoning": "medium"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"think\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"ing\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":40,\"total_tokens\":60,\"prompt_tokens_details\":{\"cached_tokens\":4},\"completion_tokens_details\":{\"reasoning_tokens\":25}}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://api.z.ai/api/coding/paas/v4/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "glm-5.2",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "max_tokens": 131072,
+   "thinking": {
+    "type": "enabled",
+    "clear_thinking": false
+   },
+   "reasoning_effort": "high"
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "think"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "answer"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "thinking"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "thinking",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "text",
+      "text": "answer"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "zai",
+    "model": "glm-5.2",
+    "usage": {
+     "input": 16,
+     "output": 40,
+     "cacheRead": 4,
+     "cacheWrite": 0,
+     "reasoning": 25,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.0000224,
+      "output": 0.000176,
+      "cacheRead": 0.00000104,
+      "cacheWrite": 0,
+      "total": 0.00019944
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "stop",
+    "durationMs": 24
+   }
+  }
+ ]
+}
