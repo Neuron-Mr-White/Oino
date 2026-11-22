@@ -70,6 +70,8 @@ jobs:
         with:
           name: dist
           path: extensions/dist
+      - name: Test tools (pdftotext for the read tool's PDF tests)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: Runtime acquisition regression tests
         run: python3 scripts/release/test-prepare-ort.py
       - name: Verified ONNX runtime (root includes the semantic helper)
