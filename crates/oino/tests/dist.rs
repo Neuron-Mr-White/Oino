@@ -40,6 +40,7 @@ struct Sandbox {
 
 impl Sandbox {
     fn new() -> Self {
+        static COMPILED: std::sync::Once = std::sync::Once::new();
         let dir = tempfile::Builder::new()
             .prefix("oino-dist-")
             .tempdir_in(env!("CARGO_TARGET_TMPDIR"))
@@ -76,7 +77,18 @@ impl Sandbox {
             r#"{"faux":{"type":"api_key","key":"k"}}"#,
         )
         .unwrap();
-        Self { dir }
+        let sandbox = Self { dir };
+        // Component compilation is a prerequisite, not ACP response latency. On a
+        // fresh four-CPU runner competing cold starts can exceed the protocol
+        // deadline. Wait for one real CLI startup to populate this test binary's
+        // shared cache before any timed protocol exchange (or parallel startup).
+        COMPILED.call_once(|| {
+            if let Some(package) = faux_package() {
+                let output = sandbox.run(&package, &["--help"], &[]);
+                assert!(output.status.success(), "{}", stderr(&output));
+            }
+        });
+        sandbox
     }
 
     fn share(&self) -> PathBuf {
@@ -368,7 +380,10 @@ fn acp_round_trip_through_the_share_dir() {
                 return found.clone();
             }
             let left = deadline.saturating_duration_since(Instant::now());
-            seen.push(rx.recv_timeout(left).expect("ACP response"));
+            seen.push(
+                rx.recv_timeout(left)
+                    .unwrap_or_else(|error| panic!("ACP response {id}: {error}; seen: {seen:#?}")),
+            );
         }
     };
     send(

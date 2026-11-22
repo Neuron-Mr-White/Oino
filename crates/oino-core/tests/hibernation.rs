@@ -542,11 +542,10 @@ async fn wake_repairs_a_damaged_child_file() {
 }
 
 /// Hibernation is not observable while a shutdown handler is still blocked.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test]
 async fn hibernated_is_published_only_after_shutdown_finishes() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    let entered = Arc::new(AtomicBool::new(false));
-    let release = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
     let seen = entered.clone();
     let gate = release.clone();
     let probe = Arc::new(
@@ -557,20 +556,18 @@ async fn hibernated_is_published_only_after_shutdown_finishes() {
                 ..Default::default()
             },
         )
-        .on_event(move |kind, payload| {
-            if kind == "session_shutdown" && payload["reason"] == "hibernate" {
-                seen.store(true, Ordering::SeqCst);
-                let (lock, ready) = &*gate;
-                let guard = lock.lock().unwrap();
-                let (guard, timeout) = ready
-                    .wait_timeout_while(guard, Duration::from_secs(10), |released| !*released)
-                    .unwrap();
-                assert!(
-                    *guard && !timeout.timed_out(),
-                    "test did not release shutdown"
-                );
-            }
-            Ok(None)
+        .on_event_async(move |kind, payload| {
+            let seen = seen.clone();
+            let gate = gate.clone();
+            Box::pin(async move {
+                if kind == "session_shutdown" && payload["reason"] == "hibernate" {
+                    seen.notify_one();
+                    tokio::time::timeout(Duration::from_secs(10), gate.notified())
+                        .await
+                        .expect("test did not release shutdown");
+                }
+                Ok(None)
+            })
         }),
     );
     let dir = tempfile::tempdir().unwrap();
@@ -585,13 +582,11 @@ async fn hibernated_is_published_only_after_shutdown_finishes() {
     let child = spawn_child(&services, &rt.session(), "shutdown-barrier").await;
     child.prompt("one run".into(), None).await.unwrap();
     child.wait_idle().await;
-    until("blocked shutdown", || entered.load(Ordering::SeqCst)).await;
+    tokio::time::timeout(Duration::from_secs(15), entered.notified())
+        .await
+        .expect("blocked shutdown");
     let prematurely_hibernated = child.is_hibernated();
-    {
-        let (lock, ready) = &*release;
-        *lock.lock().unwrap() = true;
-        ready.notify_all();
-    }
+    release.notify_one();
     assert!(
         !prematurely_hibernated,
         "published hibernation before shutdown returned"

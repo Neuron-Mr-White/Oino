@@ -344,6 +344,12 @@ impl ExtensionInstance for FauxComponent {
 /// Event handler of a [`FakeExtension`].
 pub type EventHandler =
     Arc<dyn Fn(&str, JsonValue) -> Result<Option<JsonValue>, String> + Send + Sync>;
+/// Yielding event handler of a [`FakeExtension`].
+pub type AsyncEventHandler = Arc<
+    dyn Fn(String, JsonValue) -> BoxFuture<'static, Result<Option<JsonValue>, String>>
+        + Send
+        + Sync,
+>;
 /// Tool body of a [`FakeExtension`].
 pub type ToolHandler =
     Arc<dyn Fn(&str, JsonObject) -> Result<AgentToolResult, String> + Send + Sync>;
@@ -364,6 +370,7 @@ pub struct FakeExtension {
     id: String,
     registration: Registration,
     on_event: EventHandler,
+    on_event_async: Option<AsyncEventHandler>,
     on_tool: ToolHandler,
     on_command: CommandHandler,
     on_nudge: Option<NudgeHandler>,
@@ -392,6 +399,7 @@ impl FakeExtension {
             id: id.to_owned(),
             registration,
             on_event: Arc::new(|_, _| Ok(None)),
+            on_event_async: None,
             on_tool: Arc::new(|_, _| Ok(AgentToolResult::text("ok"))),
             on_command: Arc::new(|_, _| Ok(None)),
             on_nudge: None,
@@ -468,6 +476,19 @@ impl FakeExtension {
         self
     }
 
+    /// Sets a yielding event handler for tests that await an external event.
+    #[must_use]
+    pub fn on_event_async(
+        mut self,
+        handler: impl Fn(String, JsonValue) -> BoxFuture<'static, Result<Option<JsonValue>, String>>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.on_event_async = Some(Arc::new(handler));
+        self
+    }
+
     /// Sets the tool handler.
     #[must_use]
     pub fn on_tool(
@@ -525,6 +546,10 @@ impl ExtensionInstance for FakeExtension {
     ) -> BoxFuture<'_, Result<Option<JsonValue>, ExtensionCallError>> {
         lock(&self.events).push((kind.to_owned(), payload.clone()));
         lock(&self.contexts).push((kind.to_owned(), cx));
+        if let Some(handler) = &self.on_event_async {
+            let future = handler(kind.to_owned(), payload);
+            return Box::pin(async move { future.await.map_err(ExtensionCallError::new) });
+        }
         let result = (self.on_event)(kind, payload).map_err(ExtensionCallError::new);
         Box::pin(async move { result })
     }

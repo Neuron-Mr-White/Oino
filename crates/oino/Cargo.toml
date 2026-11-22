@@ -58,6 +58,7 @@ oino = { package = "oino-cli", path = ".", features = ["faux"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = { workspace = true, features = ["term", "fs"] }
+vt100 = "0.15"
 
 [lints]
 workspace = true

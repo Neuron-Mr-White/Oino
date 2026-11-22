@@ -66,8 +66,23 @@ fn visible(raw: &[u8]) -> String {
 
 fn wait_for(output: &Mutex<Vec<u8>>, needle: &str, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
+    let mut terminal = vt100::Parser::new(30, 100, 0);
+    let mut consumed = 0;
     while Instant::now() < deadline {
-        if visible(&output.lock().unwrap()).contains(needle) {
+        {
+            let bytes = output.lock().unwrap();
+            terminal.process(&bytes[consumed..]);
+            consumed = bytes.len();
+        }
+        // Ratatui emits cell diffs, not complete lines. Redraws between key
+        // events may interleave footer/status bytes with the typed characters.
+        // Assert against the terminal screen, not concatenated output history.
+        let screen = terminal.screen().contents();
+        if screen
+            .split_whitespace()
+            .collect::<String>()
+            .contains(needle)
+        {
             return true;
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -125,7 +140,11 @@ fn interactive_mode_runs_a_prompt_and_exits() {
         visible(&output.lock().unwrap())
     );
     master.write_all(b"hi there").unwrap();
-    assert!(wait_for(&output, "hithere", timeout));
+    assert!(
+        wait_for(&output, "hithere", timeout),
+        "editor echo: {}",
+        visible(&output.lock().unwrap())
+    );
     master.write_all(b"\r").unwrap();
     assert!(
         wait_for(&output, "Hellofromfaux", timeout),
