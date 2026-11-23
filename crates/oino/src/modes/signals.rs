@@ -3,6 +3,8 @@
 /// A signal that ends the process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signal {
+    /// SIGINT (Ctrl+C).
+    Interrupt,
     /// SIGHUP (not on Windows).
     Hangup,
     /// SIGTERM (Ctrl+Break on Windows).
@@ -14,6 +16,7 @@ impl Signal {
     #[must_use]
     pub const fn exit_code(self) -> i32 {
         match self {
+            Self::Interrupt => 130,
             Self::Hangup => 129,
             Self::Terminate => 143,
         }

@@ -15,7 +15,7 @@ import { setHostClientFactory } from '../../lib/host/factory';
 import { createSession, type SessionHandle } from '../../lib/session/store';
 import { resetPanes } from '../../lib/panes';
 import { setDesktopOverride, resetLayout } from '../../lib/layout';
-import { resetComposerDrafts, flushComposerDrafts, composerDraft, addComposerChip, addComposerQuote } from '../../lib/composer/drafts';
+import { resetComposerDrafts, flushComposerDrafts, composerDraft, setComposerText, addComposerChip, addComposerQuote } from '../../lib/composer/drafts';
 import { installEscapeStop } from '../../lib/composer/escapeStop';
 import { Composer } from './Composer';
 import { shortcutsOpen } from '../shell/ShortcutsDialog';
@@ -65,8 +65,13 @@ function scenario(turns: number, running: boolean): MockScenario {
 let world: MockWorld;
 let disposers: Array<() => void> = [];
 
-async function openSession(turns: number, running = false): Promise<SessionHandle> {
-  world = createMockHost(scenario(turns, running));
+async function openSession(turns: number, running = false, scheduled = false): Promise<SessionHandle> {
+  const spec = scenario(turns, running);
+  if (scheduled) {
+    const snapshot = spec.hosts[0]!.sessions![SESSION]!.snapshot;
+    snapshot.state = { ...(snapshot.state as Record<string, unknown>), isStreaming: true, cronRunId: SESSION };
+  }
+  world = createMockHost(spec);
   setHostClientFactory(world.client);
   const handle = createRoot((dispose) => {
     disposers.push(dispose);
@@ -125,6 +130,41 @@ afterEach(() => {
   setHostClientFactory(undefined);
   localStorage.clear();
   location.hash = '';
+});
+
+describe('scheduled-run composer', () => {
+  it.each([false, true])('locks sending but keeps Stop usable (phone=%s)', async (phone) => {
+    const s = await openSession(2, true, true);
+    setComposerText(s.key, 'draft kept while the schedule runs');
+    const abort = vi.spyOn(s, 'abort').mockResolvedValue();
+    const send = vi.spyOn(s, 'send');
+    const c = mountComposer(s, { phone });
+    expect(c.view.getByTestId('scheduled-run-note').textContent).toBe('This chat is a scheduled run. Stop it to continue here.');
+    const field = phone ? c.view.container.querySelector('textarea') : c.field();
+    expect(field?.getAttribute(phone ? 'disabled' : 'contenteditable')).toBe(phone ? '' : 'false');
+    expect(c.view.queryByTestId('send-chevron')).toBeNull();
+    const stop = c.view.getByTestId('send-stop') as HTMLButtonElement;
+    expect(stop.disabled).toBe(false);
+    fireEvent.click(stop);
+    await waitFor(() => expect(abort).toHaveBeenCalledOnce());
+    expect(send).not.toHaveBeenCalled();
+    expect(composerDraft(s.key).text).toBe('draft kept while the schedule runs');
+    // The host's woken event replaces the provisional cron-owned state.
+    world.push(HOST, SESSION, [{ session: SESSION, seq: s.state.seq + 1, event: { kind: 'woken', state: { isStreaming: false } } }]);
+    await waitFor(() => expect(c.view.queryByTestId('scheduled-run-note')).toBeNull());
+    expect(field?.getAttribute(phone ? 'disabled' : 'contenteditable')).toBe(phone ? null : 'true');
+    expect(c.view.queryByTestId('send-stop')).toBeNull();
+  });
+});
+
+describe('scheduled-run Stop errors', () => {
+  it('shows a rejected Stop as a plain action notice', async () => {
+    const s = await openSession(2, true, true);
+    vi.spyOn(s, 'abort').mockRejectedValue(new Error('The PC could not stop this run'));
+    const c = mountComposer(s);
+    fireEvent.click(c.view.getByTestId('send-stop'));
+    await waitFor(() => expect(actionNotice()).toContain('The PC could not stop this run'));
+  });
 });
 
 describe('placeholder by state (Z-57)', () => {

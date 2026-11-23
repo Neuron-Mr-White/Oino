@@ -56,6 +56,7 @@ pub mod notify;
 pub mod paths;
 pub mod scheduler;
 pub mod store;
+pub mod supervisor;
 
 pub use unipi_cron_schedule as schedule;
 

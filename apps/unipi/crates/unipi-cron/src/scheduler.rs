@@ -209,6 +209,7 @@ impl std::fmt::Debug for Clock {
 struct Active {
     job_id: String,
     pid: Option<u32>,
+    stop: tokio_util::sync::CancellationToken,
 }
 
 struct SchedulerState {
@@ -321,6 +322,67 @@ impl Scheduler {
         store::close_stale_runs(&self.paths, self.clock.now_ms())
     }
 
+    /// Adopt verified live supervisors before accepting new fires or Stop requests.
+    ///
+    /// # Errors
+    /// Store errors while reading or ending orphaned records.
+    pub async fn reconcile(&self) -> Result<()> {
+        let jobs = store::load_jobs(&self.paths)?;
+        for mut run in store::load_all_runs(&self.paths)? {
+            if run.status.is_finished() || self.state.lock().await.active.contains_key(&run.id) {
+                continue;
+            }
+            let job = jobs
+                .iter()
+                .find(|job| job.id == run.job_id)
+                .filter(|_| crate::supervisor::live(&run))
+                .cloned();
+            let Some(job) = job else {
+                run.status = RunStatus::Failed;
+                run.ended_at = Some(self.clock.now_ms());
+                run.reason = Some("The scheduled run ended while the app was closed".into());
+                store::save_run(&self.paths, &run)?;
+                continue;
+            };
+            let stop = tokio_util::sync::CancellationToken::new();
+            {
+                let mut state = self.state.lock().await;
+                if state.active.contains_key(&run.id) {
+                    continue;
+                }
+                state.gate.in_flight += 1;
+                state.active.insert(
+                    run.id.clone(),
+                    Active {
+                        job_id: job.id.clone(),
+                        pid: run.pid,
+                        stop: stop.clone(),
+                    },
+                );
+            }
+            let this = self.clone();
+            tokio::spawn(async move {
+                let mut run = crate::supervisor::watch(&this.paths, &job, run, stop).await;
+                let settings = this.settings();
+                run.notify_errors = if let Some(sink) = &this.notify_sink {
+                    sink(&job, &run, &settings).await
+                } else {
+                    let channels = crate::notify::Channels::load(&this.paths, &settings);
+                    crate::notify::dispatch(&job, &run, &channels).await
+                };
+                let _ = store::save_run(&this.paths, &run);
+                if Schedule::parse(&job.schedule).is_ok_and(|s| s.is_one_time()) {
+                    let _ = this.set_enabled(&job.id, false);
+                }
+                if let Some(sink) = &this.event_sink {
+                    sink(&job, &run);
+                }
+                this.release(&run.id).await;
+            });
+        }
+        Ok(())
+    }
+
     /// One scheduling pass: checks every enabled job, starts due fires (respecting
     /// overlap/pause/concurrency). Called on a timer by [`crate::embedded`]; harmless to call
     /// back-to-back in tests.
@@ -386,6 +448,7 @@ impl Scheduler {
                 cost_usd: None,
                 missed,
                 pid: None,
+                process_identity: None,
                 notify_errors: Vec::new(),
                 wake: None,
             };
@@ -398,6 +461,7 @@ impl Scheduler {
             Active {
                 job_id: job.id.clone(),
                 pid: None,
+                stop: tokio_util::sync::CancellationToken::new(),
             },
         );
         let go = state.gate.try_start(&run_id);
@@ -419,6 +483,7 @@ impl Scheduler {
                 cost_usd: None,
                 missed,
                 pid: None,
+                process_identity: None,
                 notify_errors: Vec::new(),
                 wake: None,
             };
@@ -441,6 +506,14 @@ impl Scheduler {
         clippy::unused_async,
         reason = "spawned from the boxed `start_run` future; making it sync would need another spawn"
     )]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one linear run lifecycle: reserve, record, spawn, watch and settle"
+    )]
+    #[allow(
+        clippy::expect_used,
+        reason = "the run id is inserted into `state.active` before this task is spawned"
+    )]
     async fn start_run_inner(&self, job: Job, run_id: String, fired_at: u64, missed: bool) {
         let started_at = self.clock.now_ms();
         let run = Run {
@@ -457,6 +530,7 @@ impl Scheduler {
             cost_usd: None,
             missed,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         };
@@ -469,6 +543,15 @@ impl Scheduler {
             sink(&job, &run);
         }
 
+        let stop = {
+            let state = self.state.lock().await;
+            state
+                .active
+                .get(&run_id)
+                .expect("reserved run")
+                .stop
+                .clone()
+        };
         let this = self.clone();
         let job_for_run = job.clone();
         let run_id_for_run = run_id.clone();
@@ -481,18 +564,41 @@ impl Scheduler {
                 time_limit_s: job_for_run.time_limit_s,
                 cost_cap_usd: job_for_run.cost_cap_usd,
             };
-            let outcome = exec::run(&this.paths, &job_for_run.id, &run_id_for_run, &spec, {
-                let recorder = this.clone();
-                let run_id_for_pid = run_id_for_run.clone();
-                move |pid| {
-                    let recorder = recorder.clone();
-                    let run_id_for_pid = run_id_for_pid.clone();
-                    tokio::spawn(async move {
-                        recorder.record_pid(&run_id_for_pid, pid).await;
-                    });
+            #[cfg(target_os = "linux")]
+            let supervised =
+                crate::supervisor::launch(&this.paths, &job_for_run, &run, stop.clone()).await;
+            #[cfg(not(target_os = "linux"))]
+            let supervised: Option<Run> = None;
+            let outcome = if let Some(saved) = supervised {
+                exec::Outcome {
+                    status: saved.status,
+                    exit_code: saved.exit_code,
+                    summary: saved.summary,
+                    reason: saved.reason,
+                    session_path: saved.session_path,
+                    cost_usd: saved.cost_usd,
                 }
-            })
-            .await;
+            } else {
+                exec::run(
+                    &this.paths,
+                    &job_for_run.id,
+                    &run_id_for_run,
+                    &spec,
+                    stop,
+                    {
+                        let recorder = this.clone();
+                        let run_id_for_pid = run_id_for_run.clone();
+                        move |pid| {
+                            let recorder = recorder.clone();
+                            let run_id_for_pid = run_id_for_pid.clone();
+                            tokio::spawn(async move {
+                                recorder.record_pid(&run_id_for_pid, pid).await;
+                            });
+                        }
+                    },
+                )
+                .await
+            };
             let ended_at = this.clock.now_ms();
             let mut run = store::load_run(&this.paths, &job_for_run.id, &run_id_for_run)
                 .ok()
@@ -578,32 +684,67 @@ impl Scheduler {
             .await;
     }
 
-    /// Records the pid of a just-started run so [`Scheduler::stop`] can kill it.
+    /// Records the pid of a just-started run.
     async fn record_pid(&self, run_id: &str, pid: u32) {
         let mut state = self.state.lock().await;
         if let Some(active) = state.active.get_mut(run_id) {
             active.pid = Some(pid);
+            if let Ok(Some(mut run)) = store::load_run(&self.paths, &active.job_id, run_id) {
+                run.pid = Some(pid);
+                run.process_identity = crate::supervisor::identity(pid);
+                let _ = store::save_run(&self.paths, &run);
+            }
         }
     }
 
-    /// Kills every running run of a job (its process groups). Returns whether anything
-    /// was killed.
-    pub async fn stop(&self, job_id: &str) -> bool {
+    /// Requests a graceful stop of a single run, or every running run of a job.
+    /// Cancellation is remembered even if the subprocess has not spawned yet.
+    pub async fn stop(&self, id: &str) -> bool {
+        // Also cover a command arriving before the startup ticker gets CPU.
+        let _ = self.reconcile().await;
         let state = self.state.lock().await;
-        let pids: Vec<u32> = state
-            .active
-            .values()
-            .filter(|a| a.job_id == job_id)
-            .filter_map(|a| a.pid)
-            .collect();
-        drop(state);
-        if pids.is_empty() {
-            return false;
+        let mut stopped = false;
+        for (run_id, active) in &state.active {
+            if run_id == id || active.job_id == id {
+                active.stop.cancel();
+                stopped = true;
+            }
         }
-        for pid in pids {
-            exec::kill_pid(pid);
+        stopped
+    }
+
+    /// Stop with immediate, user-facing signal errors (chat and Cron controls).
+    ///
+    /// # Errors
+    /// A plain explanation if the OS refuses to signal a verified supervisor.
+    pub async fn request_stop(&self, id: &str) -> std::result::Result<bool, String> {
+        let _ = self.reconcile().await;
+        let state = self.state.lock().await;
+        let mut stopped = false;
+        for (run_id, active) in &state.active {
+            if run_id != id && active.job_id != id {
+                continue;
+            }
+            if let Ok(Some(run)) = store::load_run(&self.paths, &active.job_id, run_id)
+                && crate::supervisor::live(&run)
+                && run
+                    .process_identity
+                    .as_ref()
+                    .is_some_and(|identity| identity.supervisor)
+            {
+                #[cfg(unix)]
+                if let Some(pid) = run.pid {
+                    nix::sys::signal::kill(
+                        nix::unistd::Pid::from_raw(pid.cast_signed()),
+                        nix::sys::signal::Signal::SIGUSR1,
+                    )
+                    .map_err(|error| format!("Couldn't stop the scheduled run: {error}"))?;
+                }
+            }
+            active.stop.cancel();
+            stopped = true;
         }
-        true
+        Ok(stopped)
     }
 
     /// Job ids with a live (running or queued) reservation.
@@ -635,6 +776,7 @@ impl Scheduler {
             Active {
                 job_id: job.id.clone(),
                 pid: None,
+                stop: tokio_util::sync::CancellationToken::new(),
             },
         );
         let go = state.gate.try_start(&run_id);
@@ -658,6 +800,7 @@ impl Scheduler {
                 cost_usd: None,
                 missed: false,
                 pid: None,
+                process_identity: None,
                 notify_errors: Vec::new(),
                 wake: None,
             };
@@ -866,6 +1009,7 @@ mod tests {
                 Active {
                     job_id: "j".into(),
                     pid: None,
+                    stop: tokio_util::sync::CancellationToken::new(),
                 },
             );
         }

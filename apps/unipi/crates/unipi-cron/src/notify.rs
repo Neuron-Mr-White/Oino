@@ -36,7 +36,7 @@ pub fn event_for_status(status: RunStatus) -> Option<&'static str> {
         RunStatus::Ok => Some("done"),
         RunStatus::Failed | RunStatus::Timeout => Some("failed"),
         RunStatus::Skipped => Some("skipped"),
-        RunStatus::Running | RunStatus::Queued => None,
+        RunStatus::Running | RunStatus::Queued | RunStatus::Stopped => None,
     }
 }
 
@@ -429,6 +429,7 @@ mod tests {
             cost_usd: Some(0.0123),
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         }

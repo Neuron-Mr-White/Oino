@@ -113,7 +113,7 @@ pub struct JsonStream {
     pub cost_usd: f64,
     /// The latest assistant turn's text.
     pub summary: Option<String>,
-    /// The last turn's error (`stopReason: "error"`), if any.
+    /// The last turn's error or external abort, if any.
     pub error: Option<String>,
 }
 
@@ -174,20 +174,24 @@ impl JsonStream {
         }
     }
 
-    /// Records an assistant message's verdict (`stopReason`): an `error` turn keeps the
+    /// Records an assistant message's verdict (`stopReason`): error/aborted keeps the
     /// provider's words, any other ended turn clears an earlier failure — the run's
     /// verdict is its LAST turn, so a retry that succeeds succeeds (F-03).
     fn add_turn_error(&mut self, message: Option<&Value>) {
         let stop = message
             .and_then(|m| m.get("stopReason"))
             .and_then(Value::as_str);
-        if stop == Some("error") {
+        if matches!(stop, Some("error" | "aborted")) {
             self.error = Some(
                 message
                     .and_then(|m| m.get("errorMessage"))
                     .and_then(Value::as_str)
                     .filter(|e| !e.is_empty())
-                    .unwrap_or("the agent turn ended in an error")
+                    .unwrap_or(if stop == Some("aborted") {
+                        "Request aborted"
+                    } else {
+                        "the agent turn ended in an error"
+                    })
                     .to_owned(),
             );
         } else if stop.is_some() {
@@ -251,7 +255,7 @@ pub struct Outcome {
     pub exit_code: Option<i32>,
     /// Assistant summary text.
     pub summary: Option<String>,
-    /// Why the run failed or was skipped.
+    /// Why the run failed, was stopped or skipped.
     pub reason: Option<String>,
     /// The run's session file.
     pub session_path: Option<String>,
@@ -291,8 +295,19 @@ pub async fn run(
     job_id: &str,
     run_id: &str,
     spec: &RunSpec,
+    stop: tokio_util::sync::CancellationToken,
     on_spawned: impl FnOnce(u32) + Send + 'static,
 ) -> Outcome {
+    if stop.is_cancelled() {
+        return Outcome {
+            status: RunStatus::Stopped,
+            exit_code: None,
+            summary: None,
+            reason: Some("Stopped by you".to_owned()),
+            session_path: None,
+            cost_usd: None,
+        };
+    }
     let Some(oino) = resolve_oino(
         std::env::var_os(OINO_BIN_VAR),
         std::env::var_os("PATH").as_deref(),
@@ -419,18 +434,62 @@ pub async fn run(
         run_id.to_owned(),
     ));
 
+    let pid = child.id();
     let limit = Duration::from_secs(spec.time_limit_s.max(1));
-    let wait = tokio::time::timeout(limit, child.wait()).await;
-    // On a timeout the child (and anything it spawned) is still alive, so its pipes are
-    // still open: the pump tasks would never see EOF. Kill the process group *before*
-    // waiting for them.
-    if wait.is_err() {
-        kill_group(&child);
-        let _ = child.wait().await;
+    let mut stopped = false;
+    #[cfg(target_os = "linux")]
+    let mut descendants = Vec::new();
+    let wait = tokio::select! {
+        biased;
+        () = stop.cancelled() => {
+            stopped = true;
+            if let Some(pid) = pid {
+                #[cfg(target_os = "linux")]
+                { descendants = descendant_processes(pid); }
+                interrupt_pid(pid);
+            }
+            tokio::time::timeout(Duration::from_secs(5), child.wait()).await
+        }
+        result = tokio::time::timeout(limit, child.wait()) => result,
+    };
+    // Always clean the run group after a stop, even when the leader exited gracefully:
+    // descendants may still hold its pipes open. The PID remains reserved until wait.
+    if stopped || wait.is_err() {
+        if let Some(pid) = pid {
+            kill_pid(pid);
+        }
+        if wait.is_err() {
+            let _ = child.wait().await;
+        }
     }
-    let _ = out_task.await;
-    let _ = err_task.await;
+    #[cfg(target_os = "linux")]
+    for (pid, start) in descendants {
+        // Tools create their own groups. Match process start time before signalling
+        // a captured descendant: a PID reused during grace belongs to somebody else.
+        if process_identity(pid).is_some_and(|(_, now)| now == start) {
+            kill_pid(pid);
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid.cast_signed()),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+    }
+    // Tools may deliberately start a new process group. Never let inherited pipes
+    // keep a finished run's record stuck forever.
+    for mut task in [out_task, err_task] {
+        if tokio::time::timeout(Duration::from_secs(1), &mut task)
+            .await
+            .is_err()
+        {
+            task.abort();
+            let _ = task.await;
+        }
+    }
 
+    {
+        let mut s = stream.lock().await;
+        s.feed(b"\n");
+    }
     let (summary, cost_usd) = {
         let s = stream.lock().await;
         (s.summary.clone().filter(|s| !s.is_empty()), s.cost_usd)
@@ -440,6 +499,21 @@ pub async fn run(
     let turn_error = stream.lock().await.error.clone();
     let session_path = find_session_file(&paths.agent_dir, &spec.cwd, run_id)
         .map(|p| p.to_string_lossy().into_owned());
+
+    if stopped {
+        return Outcome {
+            status: RunStatus::Stopped,
+            exit_code: wait
+                .as_ref()
+                .ok()
+                .and_then(|r| r.as_ref().ok())
+                .and_then(std::process::ExitStatus::code),
+            summary,
+            reason: Some("Stopped by you".to_owned()),
+            session_path,
+            cost_usd: Some(cost_usd),
+        };
+    }
 
     // The cost cap is checked after the process ends: refuse to record the run as `ok`
     // once it is known to have gone over.
@@ -568,6 +642,11 @@ pub fn log_error_hint(paths: &CronPaths, job_id: &str, run_id: &str) -> Option<S
         .rev()
         .map(str::trim)
         .filter(|line| !line.is_empty())
+        .filter(|line| {
+            serde_json::from_str::<Value>(line)
+                .ok()
+                .is_none_or(|value| value.get("type").is_none())
+        })
         .find(|line| {
             let lower = line.to_lowercase();
             lower.contains("error")
@@ -589,6 +668,55 @@ pub fn log_error_hint(paths: &CronPaths, job_id: &str, run_id: &str) -> Option<S
         })
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn process_identity(pid: u32) -> Option<(u32, String)> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let fields: Vec<_> = stat.rsplit_once(") ")?.1.split_whitespace().collect();
+    Some((fields.get(1)?.parse().ok()?, fields.get(19)?.to_string()))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn descendant_processes(parent: u32) -> Vec<(u32, String)> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let processes: Vec<_> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let pid = e.file_name().to_str()?.parse::<u32>().ok()?;
+            let (parent_pid, started) = process_identity(pid)?;
+            Some((pid, parent_pid, started))
+        })
+        .collect();
+    let mut parents = vec![parent];
+    let mut found = Vec::new();
+    let mut at = 0;
+    while at < parents.len() {
+        for (pid, ppid, start) in &processes {
+            if *ppid == parents[at] && !parents.contains(pid) {
+                parents.push(*pid);
+                found.push((*pid, start.clone()));
+            }
+        }
+        at += 1;
+    }
+    found
+}
+
+/// Interrupts only the leader: Oino owns cancellation of the current tool and
+/// writes its normal aborted turn before exiting. The group is killed after grace.
+pub fn interrupt_pid(pid: u32) {
+    #[cfg(unix)]
+    {
+        let _ = nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(pid.cast_signed()),
+            nix::sys::signal::Signal::SIGINT,
+        );
+    }
+    #[cfg(not(unix))]
+    kill_pid(pid);
+}
+
 /// Kills a run's process group (UNIX) or process tree (Windows).
 pub fn kill_pid(pid: u32) {
     #[cfg(unix)]
@@ -603,20 +731,6 @@ pub fn kill_pid(pid: u32) {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
-    }
-}
-
-#[cfg(unix)]
-fn kill_group(child: &tokio::process::Child) {
-    if let Some(pid) = child.id() {
-        kill_pid(pid);
-    }
-}
-
-#[cfg(not(unix))]
-fn kill_group(child: &tokio::process::Child) {
-    if let Some(pid) = child.id() {
-        kill_pid(pid);
     }
 }
 
@@ -636,6 +750,28 @@ pub fn finish_run(run: &mut crate::model::Run, outcome: Outcome, started_at: u64
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
+
+    #[tokio::test]
+    async fn cancellation_before_spawn_is_stopped_without_launching() {
+        let tmp = tempfile::tempdir().unwrap();
+        let stop = tokio_util::sync::CancellationToken::new();
+        stop.cancel();
+        let spec = RunSpec {
+            prompt: "do not launch".into(),
+            cwd: tmp.path().to_string_lossy().into_owned(),
+            model: None,
+            thinking: None,
+            time_limit_s: 30,
+            cost_cap_usd: None,
+        };
+        let outcome = run(&CronPaths::new(tmp.path()), "j", "r", &spec, stop, |_| {
+            panic!("cancelled run spawned a process")
+        })
+        .await;
+        assert_eq!(outcome.status, RunStatus::Stopped);
+        assert_eq!(outcome.reason.as_deref(), Some("Stopped by you"));
+        assert_eq!(outcome.session_path, None);
+    }
 
     #[test]
     fn resolves_env_override_first() {
@@ -759,6 +895,25 @@ mod tests {
         assert!(hint.chars().count() <= 300, "{}", hint.chars().count());
         // No log, no hint.
         assert_eq!(log_error_hint(&paths, "j1", "r-missing"), None);
+    }
+
+    #[test]
+    fn structured_events_never_become_log_error_reasons() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = CronPaths::new(tmp.path());
+        store::append_log(&paths, "j", "r", b"Error: request interrupted\n{\"type\":\"turn_end\",\"message\":{\"stopReason\":\"aborted\",\"errorMessage\":\"Request aborted\"}}\n").unwrap();
+        assert_eq!(
+            log_error_hint(&paths, "j", "r").as_deref(),
+            Some("Error: request interrupted")
+        );
+        store::append_log(
+            &paths,
+            "j",
+            "only-json",
+            b"{\"type\":\"turn_end\",\"message\":{\"stopReason\":\"error\"}}\n",
+        )
+        .unwrap();
+        assert_eq!(log_error_hint(&paths, "j", "only-json"), None);
     }
 
     /// The `oino` file name `resolve_oino` looks for on this platform.
@@ -898,6 +1053,27 @@ mod tests {
         assert_eq!(outcome.reason, None);
     }
 
+    #[test]
+    fn externally_aborted_turn_has_a_readable_reason() {
+        let mut stream = JsonStream::default();
+        stream.feed(b"{\"type\":\"turn_end\",\"message\":{\"stopReason\":\"aborted\"}}\n");
+        assert_eq!(stream.error.as_deref(), Some("Request aborted"));
+        let outcome = exit_outcome(
+            false,
+            Some(130),
+            stream.error,
+            None,
+            0.0,
+            None,
+            "exit status: 130",
+            None,
+        );
+        assert_eq!(
+            outcome.reason.as_deref(),
+            Some("agent turn failed: Request aborted (oino exited with status exit status: 130)")
+        );
+    }
+
     /// The settle summary's last assistant message counts too: an `agent_end` whose last
     /// turn errored fails the run even without a `turn_end` carrying it.
     #[test]
@@ -948,6 +1124,7 @@ mod tests {
             cost_usd: None,
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         };

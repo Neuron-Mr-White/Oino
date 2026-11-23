@@ -275,7 +275,7 @@ pub async fn cron_open_session(
     let data = simple_op(&app, &state, &host_id, Request::CronLog { run_id }).await?;
     let log: CronLogData = serde_json::from_value(data)
         .map_err(|e| unipi_proto::ProtoError::Internal(e.to_string()).to_app_error())?;
-    if log.run.session_path.is_none() {
+    if log.run.session_path.is_none() && log.run.status != unipi_proto::CronRunStatus::Running {
         return Err(unipi_proto::AppErrorDto::new(
             unipi_proto::AppErrorCode::E_NOT_FOUND,
             "This run saved no session.",

@@ -56,6 +56,7 @@ fn run(status: RunStatus) -> Run {
         cost_usd: Some(0.02),
         missed: false,
         pid: None,
+        process_identity: None,
         notify_errors: Vec::new(),
         wake: None,
     }

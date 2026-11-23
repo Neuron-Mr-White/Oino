@@ -8,8 +8,8 @@
 //! directly.)
 //!
 //! **Startup:** a legacy `jobs.json` is migrated into `jobs/*.json`, runs left
-//! `running`/`queued` by a previous owner whose process is gone are closed as `failed`
-//! ("interrupted"), and one full scan runs.
+//! `running` by a previous owner are adopted by verified boot/start identity. Missing
+//! processes and queued records are ended with a plain reason, then a full scan runs.
 //!
 //! **Watching:** `jobs/` is watched (notify); any change triggers an immediate rescan
 //! tick, so edits by the extension, the CLI or the user land without a restart (the
@@ -18,7 +18,7 @@
 //! are picked up by the startup scan.
 //!
 //! **Shutdown:** [`Embedded::shutdown`] stops the tick task; running jobs are not
-//! killed — the next owner closes them as interrupted.
+//! killed — their detached supervisors keep enforcing limits and saving results.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -93,13 +93,12 @@ impl Embedded {
     pub fn start_with(scheduler: Scheduler) -> Result<Self> {
         let owner = acquire_owner_lock(scheduler.paths())?;
         let scheduler = Arc::new(scheduler);
-        // Migrate + a full first scan, then close whatever a previous owner left.
+        // Migrate before the startup reconcile and first scan.
         let _ = store::load_jobs(scheduler.paths())?;
-        let closed = scheduler.close_stale_runs().unwrap_or(0);
-        let _ = closed; // best effort: already persisted as `failed` on each run record
         let (shutdown, rx) = watch::channel(());
         let sched = Arc::clone(&scheduler);
         let ticker = tokio::spawn(async move {
+            let _ = sched.reconcile().await;
             let mut shutdown = rx;
             // A rescan tick also runs whenever jobs/ changes (ext-abi §6.2).
             let (tx, mut changes) = mpsc::channel::<()>(8);
@@ -143,7 +142,7 @@ impl Embedded {
         })
     }
 
-    /// Stops ticking (running jobs are not killed; the next owner closes them).
+    /// Stops ticking; detached run supervisors continue until completion or their deadline.
     pub fn shutdown(&self) {
         let _ = self.shutdown.send(());
         self.ticker.abort();

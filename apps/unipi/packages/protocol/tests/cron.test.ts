@@ -74,6 +74,12 @@ describe('cron_* contract fixtures (WP-A23 over the H8 job-file wire)', () => {
     const run = CronRunSchema.parse(fixtures.find((f) => f.name === 'CronRun with the fired session (the run id is the session id)')!.value);
     expect(run.session_path).toContain(run.id);
   });
+  it('accepts stopped runs with the user-facing reason', () => {
+    const fixture = fixtures.find((f) => f.name === 'CronRun with the fired session (the run id is the session id)')!.value as Record<string, unknown>;
+    const run = CronRunSchema.parse({ ...fixture, status: 'stopped', reason: 'Stopped by you' });
+    expect(run.status).toBe('stopped');
+    expect(run.reason).toBe('Stopped by you');
+  });
   it('control fixtures speak the 2.0.0 proto', () => {
     const hellos = fixtures.filter((f) => f.schema === 'Control').map((f) => f.value as { proto: string });
     expect(hellos.length).toBeGreaterThan(10);

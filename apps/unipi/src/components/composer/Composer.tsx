@@ -193,6 +193,8 @@ export function Composer(props: ComposerProps) {
   // Send → Stop): for a prompt that is only going out it waits `BUSY_SHOW_AFTER_MS`, so the swap does
   // not land in the frame that draws the optimistic bubble (r8 T4); the run's own start shows it at once.
   const [commandPending, setCommandPending] = createSignal(false);
+  const scheduled = () => typeof props.session.state.info.cronRunId === 'string';
+  const inputDisabled = () => props.readOnly || scheduled();
   const busy = () => commandPending() || (composerBusy(props.session.state) && !connDown(props.session.state));
   const [shown, setShown] = createSignal(busy());
   createEffect(() => {
@@ -219,6 +221,7 @@ export function Composer(props: ComposerProps) {
   /* ── placeholder by state (Z-57) ──────────────────────────────────── */
   const hasHistory = createMemo(() => props.session.turns().some((t) => !!t.user));
   const placeholder = () =>
+    (scheduled() ? 'Scheduled run' : undefined) ??
     props.placeholder ??
     (props.readOnly
       ? 'Read-only — this session is open elsewhere'
@@ -507,7 +510,7 @@ export function Composer(props: ComposerProps) {
 
   /* ── paste → chip (Z-61) ──────────────────────────────────────────── */
   const onPasteText = (text: string): boolean => {
-    if (props.readOnly || !isLongPaste(text)) return false;
+    if (inputDisabled() || !isLongPaste(text)) return false;
     addComposerChip(key(), { kind: 'paste', label: pastedTextLabel(text), detail: pasteHead(text), markdown: text });
     return true;
   };
@@ -531,7 +534,7 @@ export function Composer(props: ComposerProps) {
    *  channel) and says so when something does not fit. Each one lands as an
    *  inline chip at the caret (`placeAttachments`). */
   const attachPicked = (files: readonly File[]) => {
-    if (props.readOnly || !files.length) return;
+    if (inputDisabled() || !files.length) return;
     // Attachments whose chip was deleted (kept for Undo) make room first.
     if (attachmentRoom(key()) < files.length) prunePlaced(key(), referencedIds(draft().text));
     const { overLimit, refused } = attach(key(), hostId(), files);
@@ -551,7 +554,7 @@ export function Composer(props: ComposerProps) {
   };
   /** UNI-256: WebKitGTK hides a clipboard image from the page — the core reads it. */
   const pasteNative = async (): Promise<boolean> => {
-    if (props.readOnly) return false;
+    if (inputDisabled()) return false;
     const files = await clipboardFiles();
     if (!files.length) return false;
     return attachLocal(files);
@@ -563,13 +566,13 @@ export function Composer(props: ComposerProps) {
   const dragHasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types ?? []).includes('Files');
   const dropHandlers = {
     onDragEnter: (e: DragEvent) => {
-      if (props.readOnly || !dragHasFiles(e)) return;
+      if (inputDisabled() || !dragHasFiles(e)) return;
       e.preventDefault();
       dragDepth += 1;
       setDropOver(true);
     },
     onDragOver: (e: DragEvent) => {
-      if (props.readOnly || !dragHasFiles(e)) return;
+      if (inputDisabled() || !dragHasFiles(e)) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
     },
@@ -580,7 +583,7 @@ export function Composer(props: ComposerProps) {
     onDrop: (e: DragEvent) => {
       dragDepth = 0;
       setDropOver(false);
-      if (props.readOnly || !dragHasFiles(e)) return;
+      if (inputDisabled() || !dragHasFiles(e)) return;
       e.preventDefault();
       const files = [...(e.dataTransfer?.files ?? [])];
       if (files.length) attachPicked(files);
@@ -591,7 +594,7 @@ export function Composer(props: ComposerProps) {
     void startNativeDrop();
     const off = registerDropZone({
       el: () => wrap,
-      enabled: () => !props.readOnly,
+      enabled: () => !inputDisabled(),
       hover: setDropOver,
       drop: (paths) => {
         void describeLocal(paths)
@@ -667,7 +670,7 @@ export function Composer(props: ComposerProps) {
   /** A rich paste: chips this box still holds stay; images from elsewhere are attached again
    *  (their chips placed by the pasted text, not at the caret). */
   const pasteClip = (clip: ComposerClip): string | undefined => {
-    if (props.readOnly) return undefined;
+    if (inputDisabled()) return undefined;
     const known = (id: string) => attachments().some((a) => a.id === id);
     const missing = clip.attachments.filter((a) => a.kind === 'image' && a.data && !known(a.id));
     const files = missing.flatMap((a) => {
@@ -725,7 +728,7 @@ export function Composer(props: ComposerProps) {
   /* ── "Mention in chat" and `insertEditorToken` (P0-07 / P0-08) ────── */
   /** Inserts text at the caret (or the end), space-separated from its neighbours, as one undo step. */
   const insertAtCaret = (insert: string) => {
-    if (props.readOnly || !insert) return;
+    if (inputDisabled() || !insert) return;
     const text = draft().text;
     const at = Math.max(0, Math.min(editor?.getCaret() ?? text.length, text.length));
     const before = text.slice(0, at);
@@ -924,7 +927,7 @@ export function Composer(props: ComposerProps) {
   /** Note mode: saves the text verbatim as a note — at once, also mid-run; it never queues, steers
    *  or reaches the agent, and nothing in it is expanded (no `$skill`, no `/command`). */
   const saveNote = () => {
-    if (props.readOnly || props.busy || noting) return;
+    if (inputDisabled() || props.busy || noting) return;
     if (!attachmentsReady(key(), referencedIds(draft().text))) return;
     const current = draft();
     const { text, images } = outgoingMessage(composerSendText(current), attachments(), new Set());
@@ -945,7 +948,7 @@ export function Composer(props: ComposerProps) {
   };
   const send = (mode?: 'prompt' | 'steer' | 'followUp') => {
     if (note()) return saveNote();
-    if (props.readOnly || props.busy) return;
+    if (inputDisabled() || props.busy) return;
     // Z-60: nothing leaves until every attachment the draft's chips name is ready.
     if (!attachmentsReady(key(), referencedIds(draft().text))) return;
     if (commandPending()) return;
@@ -1060,7 +1063,7 @@ export function Composer(props: ComposerProps) {
   /** A workflow control's command (`/permission …`, `/plan …`, G-6): sent as a
    *  prompt straight to the session — it never touches the draft or history. */
   const runCommand = (command: string) => {
-    if (props.readOnly) return;
+    if (inputDisabled()) return;
     props.session.send(command, { mode: 'prompt' });
     focusComposer(key());
   };
@@ -1089,11 +1092,11 @@ export function Composer(props: ComposerProps) {
     queueMicrotask(() => editor?.syncFromStore());
   };
   const stop = () => {
-    if (!props.readOnly) void props.session.abort();
+    if (!props.readOnly) void props.session.abort().catch((error: unknown) => showActionNotice(`Couldn’t stop the run: ${errorText(error)}`));
   };
   /** "Send now (stops run)" (Z-52): stop, then send the text as a prompt. */
   const sendNow = () => {
-    if (props.readOnly || !attachmentsReady(key(), referencedIds(draft().text))) return;
+    if (inputDisabled() || !attachmentsReady(key(), referencedIds(draft().text))) return;
     const current = draft();
     const { text, images } = outgoingMessage(composerSendText(current), attachments(), commands());
     if (!text.trim() && !images.length) return;
@@ -1213,7 +1216,7 @@ export function Composer(props: ComposerProps) {
   const empty = () => !draft().text.trim() && !draft().quotes.length && !draft().chips.length;
   /** Z-60: Send waits for the attachments its chips name; a failed one keeps it closed. */
   const held = () => (/^\/\S/.test(draft().text.trim()) ? props.commandHold?.() : props.sendHold?.());
-  const canSend = () => props.readOnly || (!commandPending() && attachmentsReady(key(), referencedIds(draft().text)) && !props.busy && !held());
+  const canSend = () => !scheduled() && (props.readOnly || (!commandPending() && attachmentsReady(key(), referencedIds(draft().text)) && !props.busy && !held()));
   onMount(() => {
     if (props.autofocus && !props.readOnly) queueMicrotask(() => editor?.focus());
   });
@@ -1251,6 +1254,7 @@ export function Composer(props: ComposerProps) {
       <Show when={menuItems()}>
         <MentionMenu items={menuItems()!} selected={Math.min(sel(), menuItems()!.length - 1)} onPick={pickMention} onHover={setSel} />
       </Show>
+      <Show when={scheduled()}><p class="text-xs text-text-dim" role="status" data-testid="scheduled-run-note">This chat is a scheduled run. Stop it to continue here.</p></Show>
       <div
         class="tl-composer tl-composer-dock"
         data-testid="tl-composer"
@@ -1332,7 +1336,7 @@ export function Composer(props: ComposerProps) {
             <ChipEditor
               class="tl-composer-field"
               value={draft().text}
-              disabled={props.readOnly}
+              disabled={inputDisabled()}
               placeholder={placeholder()}
               ariaLabel="Message"
               opts={tokenOpts}
@@ -1365,7 +1369,7 @@ export function Composer(props: ComposerProps) {
           <PhoneField
             class="tl-composer-field"
             value={draft().text}
-            disabled={props.readOnly}
+            disabled={inputDisabled()}
             placeholder={placeholder()}
             ariaLabel="Message"
             opts={tokenOpts}
@@ -1398,7 +1402,7 @@ export function Composer(props: ComposerProps) {
                 class="composer-plus-btn"
                 aria-label="Add"
                 aria-expanded={plusAnchor() !== null}
-                disabled={props.readOnly}
+                disabled={inputDisabled()}
                 onClick={(e) => setPlusAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
                 data-testid="composer-plus"
               >
@@ -1422,38 +1426,38 @@ export function Composer(props: ComposerProps) {
               <SendButton
                 running={running()}
                 disabled={props.readOnly}
-                empty={empty()}
+                empty={scheduled() || empty()}
                 blocked={!canSend()}
                 blockedReason={props.busy ? 'Starting the chat…' : held() ? held() : 'Waiting for the attachments — Send unlocks when they are ready'}
                 onSend={() => send(busy() ? (followUpMode() === 'steer' ? 'steer' : 'followUp') : undefined)}
                 onStop={stop}
                 onSendNow={sendNow}
-                options={!props.draft}
+                options={!props.draft && !scheduled()}
                 note={note()}
-                onToggleNote={props.draft ? undefined : toggleNote}
+                onToggleNote={props.draft || scheduled() ? undefined : toggleNote}
               />
             </span>
           }
         >
           <ToolbarSlot slot="permission">
-            <Show when={!props.superagent}><PermissionControl session={props.session} onCommand={runCommand} disabled={props.readOnly} phone={props.phone} /></Show>
+            <Show when={!props.superagent}><PermissionControl session={props.session} onCommand={runCommand} disabled={inputDisabled()} phone={props.phone} /></Show>
           </ToolbarSlot>
           {/* Phone (§3.5): Plan lives in the Mode sheet, thinking in the model sheet's footer. */}
           <Show when={!props.phone}>
             <ToolbarSlot slot="plan">
-              <Show when={!props.superagent}><PlanToggle session={props.session} onCommand={runCommand} disabled={props.readOnly} /></Show>
+              <Show when={!props.superagent}><PlanToggle session={props.session} onCommand={runCommand} disabled={inputDisabled()} /></Show>
             </ToolbarSlot>
           </Show>
           <ToolbarSlot slot="think">
-            <ThinkingChip session={props.session} disabled={props.readOnly} />
+            <ThinkingChip session={props.session} disabled={inputDisabled()} />
           </ToolbarSlot>
           {/* Owner 2026-11-04: the flexible slot — ring · model in one capsule, wide up to
               its cap, down to a floor before the other chips fold. */}
           <ToolbarSlot slot="model" min={props.phone ? CAPSULE_MIN_PHONE : CAPSULE_MIN}>
-            {props.modelSlot ?? <ModelCapsule session={props.session} disabled={props.readOnly} />}
+            {props.modelSlot ?? <ModelCapsule session={props.session} disabled={inputDisabled()} />}
           </ToolbarSlot>
           <ToolbarItem>
-            <Show when={!props.superagent}><PlugMenu session={props.session} cwd={cwd() || undefined} disabled={props.readOnly} draft={props.draft} /></Show>
+            <Show when={!props.superagent}><PlugMenu session={props.session} cwd={cwd() || undefined} disabled={inputDisabled()} draft={props.draft} /></Show>
           </ToolbarItem>
         </Toolbar>
       </div>

@@ -20,14 +20,14 @@ use unipi_cron::model::{CronSettings, Job, Run, RunStatus};
 
 /// The event name a finished run's status maps to, for matching against
 /// `notify.events`. `None` for statuses that never trigger a notification
-/// (still running/queued — there's nothing to report yet).
+/// (running/queued, or explicitly stopped by the user).
 #[must_use]
 pub fn event_for_status(status: RunStatus) -> Option<&'static str> {
     match status {
         RunStatus::Ok => Some("done"),
         RunStatus::Failed | RunStatus::Timeout => Some("failed"),
         RunStatus::Skipped => Some("skipped"),
-        RunStatus::Running | RunStatus::Queued => None,
+        RunStatus::Running | RunStatus::Queued | RunStatus::Stopped => None,
     }
 }
 
@@ -263,6 +263,7 @@ mod tests {
             cost_usd: Some(0.0123),
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         }

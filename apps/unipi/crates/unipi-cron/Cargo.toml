@@ -24,7 +24,7 @@ reqwest = { workspace = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal"] }
 tokio-util.workspace = true
 unipi-cron-schedule = { path = "../unipi-cron-schedule" }
 

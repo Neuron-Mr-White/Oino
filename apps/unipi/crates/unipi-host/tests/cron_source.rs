@@ -148,6 +148,7 @@ fn run(id: &str, job_id: &str, session_path: Option<&str>) -> Run {
         cost_usd: None,
         missed: false,
         pid: None,
+        process_identity: None,
         notify_errors: Vec::new(),
         wake: None,
     }

@@ -58,7 +58,7 @@ pub enum CronControl {
     },
     /// Kill a job's running runs (needs a live scheduler).
     Stop {
-        /// Job id.
+        /// Job id (all its runs) or a single run id.
         id: String,
     },
     /// Run history, one job's or all, newest first.
@@ -537,7 +537,10 @@ pub async fn handle_control(
             let Some(scheduler) = scheduler else {
                 return Err(crate::error::CronError::NotRunning);
             };
-            let stopped = scheduler.stop(&id).await;
+            let stopped = scheduler
+                .request_stop(&id)
+                .await
+                .map_err(crate::error::CronError::control)?;
             Ok(json!({ "id": id, "stopped": stopped }))
         }
         CronControl::Runs { job_id, limit } => {
@@ -648,6 +651,7 @@ pub async fn handle_control(
                 cost_usd: None,
                 missed: false,
                 pid: None,
+                process_identity: None,
                 notify_errors: Vec::new(),
                 wake: None,
             };

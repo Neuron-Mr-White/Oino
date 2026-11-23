@@ -219,6 +219,8 @@ export function humanCronRunReason(reason: string | undefined, cause?: string, j
   if (cause) return cause;
   const r = (reason ?? '').trim();
   if (!r) return undefined;
+  const turnError = /^agent turn failed:\s*(.*?)\s*(?:\(oino exited with status.*)?$/i.exec(r);
+  if (turnError?.[1]) return humanProviderError(turnError[1], providerOfModelKey(jobModel));
   const exit = /(?:oino\s+)?exited with status(?:\s+exit status:)?\s*(\d+)/i.exec(r);
   if (exit) return `Exited with code ${exit[1]}`;
   if (/^\d{3}\b|\{.*"message"/i.test(r)) return humanProviderError(r, providerOfModelKey(jobModel));

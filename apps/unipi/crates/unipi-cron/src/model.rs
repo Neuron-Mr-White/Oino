@@ -210,6 +210,8 @@ pub enum RunStatus {
     Ok,
     /// Failed (non-zero exit, spawn error, cost cap).
     Failed,
+    /// Stopped by the user.
+    Stopped,
     /// Killed at its time limit.
     Timeout,
     /// Not run (overlap policy, or validation).
@@ -226,6 +228,7 @@ impl RunStatus {
             Self::Running => "running",
             Self::Ok => "ok",
             Self::Failed => "failed",
+            Self::Stopped => "stopped",
             Self::Timeout => "timeout",
             Self::Skipped => "skipped",
             Self::Queued => "queued",
@@ -277,6 +280,9 @@ pub struct Run {
     /// The child's pid while it runs (adoption / liveness checks after a restart).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
+    /// Kernel boot/start identity for the process group leader.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_identity: Option<crate::supervisor::Identity>,
     /// Per-channel notification failures; never fails the run.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notify_errors: Vec<String>,

@@ -32,7 +32,7 @@ export const CronNameSchema = z.string().min(1).max(CRON_NAME_MAX);
 export const CronPromptSchema = z.string().min(1).max(CRON_PROMPT_MAX);
 export const CronRunsLimitSchema = z.number().int().min(1).max(CRON_RUNS_LIMIT_MAX);
 
-export const CronRunStatusSchema = z.enum(["running", "ok", "failed", "timeout", "skipped", "queued"]);
+export const CronRunStatusSchema = z.enum(["running", "ok", "failed", "stopped", "timeout", "skipped", "queued"]);
 export type CronRunStatus = z.infer<typeof CronRunStatusSchema>;
 
 /** UNI-319: a job's notify choice; each half absent = the PC's default. */

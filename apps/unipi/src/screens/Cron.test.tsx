@@ -2,8 +2,8 @@
 import { render, screen, waitFor, cleanup, fireEvent } from '@solidjs/testing-library';
 import { HashRouter, Route } from '@solidjs/router';
 import { vi, it, describe, expect, afterEach, beforeEach } from 'vitest';
-import Cron, { humanSchedule, jobState, lastRunChip, nextFireText, runDurationText, runWhenText, scheduleText, wakeText } from './Cron';
-import { notifyFromForm, notifyModeOf, notifyText, parseCronRunLog } from '../lib/cron';
+import Cron, { RunStatusChip, humanSchedule, jobState, lastRunChip, nextFireText, runDurationText, runWhenText, scheduleText, wakeText } from './Cron';
+import { notifyFromForm, notifyModeOf, notifyText, parseCronRunLog, humanCronRunReason } from '../lib/cron';
 import { openChatState, closeChat } from '../lib/session/open';
 import { HostsProvider } from '../hosts/context';
 import { SettingsProvider } from '../settings/context';
@@ -87,6 +87,15 @@ describe('Cron on the phone (§3.10)', () => {
 });
 
 describe('Cron screen (UNI-317)', () => {
+  it('refreshes the visible row when a run ends without navigating away', async () => {
+    const result = { cron_list: { ok: true, value: { jobs: [{ ...job, running: true, last_run_status: 'running' }], paused: false } } };
+    mockIpc(result);
+    mount();
+    expect(await screen.findByTestId('cron-job-last-digest')).toHaveTextContent('Running');
+    result.cron_list.value.jobs = [{ ...job, running: false, last_run_status: 'failed' }];
+    await waitFor(() => expect(screen.getByTestId('cron-job-last-digest')).toHaveTextContent('Failed'), { timeout: 4000 });
+  });
+
   it('no PC paired: the shared no-host state', async () => {
     vi.mocked(call).mockImplementation(async (cmd: string) => (cmd === 'list_hosts' ? { ok: true, value: [] } : { ok: true, value: null }));
     mount();
@@ -160,6 +169,13 @@ describe('Cron screen (UNI-317)', () => {
   });
 });
 
+describe('Cron failure history', () => {
+  it('keeps the readable provider cause ahead of an exit code', () => {
+    expect(humanCronRunReason('agent turn failed: Mock reported insufficient credits (400). (oino exited with status exit status: 1)')).toContain('insufficient credits');
+    expect(humanCronRunReason('oino exited with status exit status: 1')).toBe('Exited with code 1');
+  });
+});
+
 describe('Cron notify, wake and Open session (UNI-319)', () => {
   const run = { id: 'r1', job_id: 'digest', status: 'ok' as const, fired_at: 1700000000000, summary: 'did it', session_path: '/home/me/.pi/agent/sessions/--x--/r1.jsonl', missed: false };
   const settings = { concurrency: 2, missed_window_s: 3600, retention_runs: 50, retention_days: 30, default_time_limit_s: 1800, paused: false, enabled: true, devices: [], notify_default_events: ['failed'], notify_channels: ['ntfy', 'telegram'] };
@@ -221,6 +237,23 @@ describe('Cron notify, wake and Open session (UNI-319)', () => {
     );
   });
 
+  it('Stop on the Cron screen targets the scheduler job', async () => {
+    routes({ cron_show: { ok: true, value: { job: { ...job, running: false }, runs: [{ ...run, status: 'running' }] } }, cron_stop: { ok: true, value: { id: job.id, stopped: true } } });
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-job-digest'));
+    fireEvent.click(await screen.findByTestId('cron-stop'));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('cron_stop', { hostId: 'host-1', id: job.id }, expect.anything()));
+  });
+
+  it('shows a Stop failure as a plain message on the Cron screen', async () => {
+    routes({ cron_show: { ok: true, value: { job, runs: [{ ...run, status: 'running' }] } }, cron_stop: { ok: false, error: { code: 'E_INTERNAL', message: 'Could not signal this run', retryable: true } } });
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-job-digest'));
+    fireEvent.click(await screen.findByTestId('cron-stop'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not signal this run');
+    await waitFor(() => expect(screen.getByTestId('cron-stop')).not.toBeDisabled());
+  });
+
   it("Open session routes to the run's session (the conversation route, G-12)", async () => {
     routes({ cron_open_session: { ok: true, value: { session: 'sess-42' } } });
     mount();
@@ -230,6 +263,19 @@ describe('Cron notify, wake and Open session (UNI-319)', () => {
     await waitFor(() => expect(location.hash).toBe('#/s/host-1/sess-42'));
     expect(call).toHaveBeenCalledWith('cron_open_session', { hostId: 'host-1', runId: 'r1' }, expect.anything());
     await waitFor(() => expect(screen.queryByTestId('cron-detail-sheet')).toBeNull());
+  });
+
+  it('opens a running session from the run sheet, even before its path is cached', async () => {
+    routes({
+      cron_show: { ok: true, value: { job, runs: [{ ...run, status: 'running' }] } },
+      cron_log: { ok: true, value: { job_id: job.id, run: { ...run, status: 'running', session_path: undefined }, log: '' } },
+      cron_open_session: { ok: true, value: { session: 'live-run' } },
+    });
+    mount();
+    fireEvent.click(await screen.findByTestId('cron-job-digest'));
+    fireEvent.click(await screen.findByTestId('cron-run-r1'));
+    fireEvent.click(await screen.findByTestId('cron-open-session'));
+    await waitFor(() => expect(location.hash).toBe('#/s/host-1/live-run'));
   });
 
   it('Open session errors stay in the sheet, in words', async () => {
@@ -481,4 +527,10 @@ describe('cron search + pagination (200 jobs)', () => {
     expect(pageButtons(5, 8)).toEqual([1, '…', 4, 5, 6, '…', 8]);
     expect(pageButtons(1, 3)).toEqual([1, 2, 3]);
   });
+});
+
+it('a user-stopped run is Stopped, never Failed', () => {
+  const view = render(() => <RunStatusChip status="stopped" testId="stopped-chip" />);
+  expect(view.getByTestId('stopped-chip')).toHaveTextContent('Stopped');
+  expect(view.getByTestId('stopped-chip')).not.toHaveTextContent('Failed');
 });

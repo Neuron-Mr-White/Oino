@@ -18,6 +18,7 @@ import type { SessionEventDto, SessionSnapshot } from '../host/client';
 import { hostEventBanner } from '@unipi/protocol';
 import { textOf, type Part as ModelPart } from '../chat/model';
 import { settleByEntry, settleByMessage, settleByQueue } from './outbox';
+import { hasPersistedMessage } from './sameMessage';
 import { isTurnStart, turnStartAtOrBefore } from './chunks';
 import { parseTrust } from './trust';
 import {
@@ -305,6 +306,8 @@ function appendEntry(s: SessionState, entry: SessionEntry): void {
     // Not an append: the turns index must rebuild (it reuses unchanged turns).
     s.entries[at] = entry;
     s.entriesRev += 1;
+    // An entry the app already holds (a catch-up read raced its `entry_appended`) must not move the leaf back from the tail.
+    if (at !== s.entries.length - 1) return;
   } else {
     s.byId[entry.id] = s.entries.length;
     s.entries.push(entry);
@@ -521,20 +524,17 @@ export function applyEvent(s: SessionState, dto: SessionEventDto, now = Date.now
       const message = event.message as AgentMessage | undefined;
       if (!isObject(message) || typeof message.role !== 'string') return {};
       if (message.role === 'assistant') delete s.streaming;
-      if (message.role === 'user') {
-        settleByMessage(s, message);
-        // A catch-up reply can include this persisted message before its queued live event.
-        // Match its original timestamp and complete content, not text alone: repeated prompts
-        // and different images must remain separate messages.
-        if (typeof message.timestamp === 'number' && s.entries.some((e) =>
-          !isProvisional(e.id) && e.type === 'message' && e.message?.role === 'user' &&
-          e.message.timestamp === message.timestamp && JSON.stringify(e.message.content) === JSON.stringify(message.content))) return {};
-      }
+      if (message.role === 'user') settleByMessage(s, message);
+      if (message.role === 'toolResult' && typeof message.toolCallId === 'string') delete s.liveTools[message.toolCallId];
+      // A catch-up reply can include this persisted message before its queued live event. Pair them by the message's own
+      // instant and parts, not text alone (repeated prompts and different images must remain separate messages) and not
+      // by raw JSON either: the host bounds the persisted copy differently from the live one (images ≥ 16 KiB become
+      // `mediaRef`s, long text is clipped) — see `sameMessage.ts`.
+      if (hasPersistedMessage(s.entries, message)) return {};
       // r5 D20: a custom message (memory recall…) is persisted BEFORE its live `message_end`, so
       // a catch-up reply that raced the event already holds it under its real id; appending the
       // live copy too showed the row twice until the next reconcile.
       if (message.role === 'custom' && hasPersistedTwin(s, message)) return {};
-      if (message.role === 'toolResult' && typeof message.toolCallId === 'string') delete s.liveTools[message.toolCallId];
       const entry = entryForMessage(message, `${LIVE_PREFIX}${dto.seq}`, s.leafId, now);
       // A queued message was typed long before the host delivered it; its entry is appended NOW
       // (the persisted entry will say so), and its turn is timed from here, not from the queueing.
@@ -744,6 +744,7 @@ export function replaceBranch(
       const old = prev.get(e.id);
       return old && old.type === e.type && old.timestamp === e.timestamp && old.parentId === e.parentId ? old : e;
     });
+  for (const e of entries) settleByEntry(s, e);
   s.entries = entries;
   s.byId = indexEntries(entries);
   s.leafId = page.leafId === undefined ? (entries.at(-1)?.id ?? null) : page.leafId;
@@ -819,6 +820,8 @@ export function reconcileEntries(s: SessionState, since: string | undefined, fet
   if (since !== undefined && keep === 0) return; // `since` vanished (a reset raced us): the snapshot wins.
   const next = s.entries.slice(0, keep);
   for (const e of fetched) if (isObject(e) && typeof e.id === 'string') next.push(e);
+  // A user entry the host already holds settles the outbox bubble that sent it, by its id — whichever read brought it.
+  for (const e of fetched) if (isObject(e) && typeof e.id === 'string') settleByEntry(s, e);
   s.entries = next;
   s.byId = indexEntries(next);
   s.leafId = leafId ?? next.at(-1)?.id ?? null;

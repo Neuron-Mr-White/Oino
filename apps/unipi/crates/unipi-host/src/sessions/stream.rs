@@ -683,6 +683,7 @@ async fn is_busy(backend: &Arc<dyn SessionBackend>) -> bool {
 pub struct SessionService {
     hub: Arc<SessionHub>,
     feeds: Mutex<HashMap<String, Arc<Feed>>>,
+    cron: Mutex<Option<Arc<unipi_cron::Scheduler>>>,
 }
 
 static SHARED: OnceLock<Arc<SessionService>> = OnceLock::new();
@@ -692,6 +693,7 @@ impl std::fmt::Debug for SessionService {
         f.debug_struct("SessionService")
             .field("hub", &self.hub)
             .field("feeds", &lock(&self.feeds).len())
+            .field("cron", &lock(&self.cron).is_some())
             .finish()
     }
 }
@@ -703,7 +705,14 @@ impl SessionService {
         Arc::new(Self {
             hub,
             feeds: Mutex::new(HashMap::new()),
+            cron: Mutex::new(None),
         })
+    }
+
+    /// The same scheduler that serves Cron-screen Stop; session aborts must reach it
+    /// before the cron file follower waits for the external process to finish.
+    pub fn set_cron_scheduler(&self, scheduler: Option<Arc<unipi_cron::Scheduler>>) {
+        *lock(&self.cron) = scheduler;
     }
 
     /// Installs the process's session service (the `serve` daemon does this once); a second
@@ -1630,6 +1639,7 @@ where
     let mut provisional = fast::provisional_state(&card, &page.entries);
     if follow.is_some() {
         provisional["isStreaming"] = json!(true);
+        provisional["cronRunId"] = json!(card.session_id);
     }
     snapshot.project_trust = Some(
         oino_resources::trust::project_trust_snapshot(
@@ -1966,6 +1976,12 @@ where
 {
     let started = std::time::Instant::now();
     let mut data = data;
+    let cron_run = data
+        .state
+        .as_ref()
+        .and_then(|s| s.get("cronRunId"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     if let Some(strong) = service.upgrade() {
         let cwd = match &session {
             Live::Ready(session) => session.card().cwd.clone(),
@@ -2057,6 +2073,38 @@ where
                 match serde_json::from_slice::<Control>(&bytes) {
                     Ok(Control::Exit { .. }) => return Ok(()),
                     Ok(Control::SessionCmd { id, cmd }) => {
+                        // A scheduled turn is owned by a separate print-mode process.
+                        // Never queue abort behind its wake (which waits for that turn).
+                        if let Some(run_id) = cron_run.as_deref().filter(|_| session.ready().is_none()) {
+                            let ty = cmd.get("type").and_then(Value::as_str).unwrap_or("");
+                            let reply = if ty == "abort" {
+                                let scheduler = service.upgrade().and_then(|s| lock(&s.cron).clone());
+                                Some(match scheduler {
+                                    Some(scheduler) => {
+                                        match scheduler.request_stop(run_id).await {
+                                            Ok(true) => SessionReply::ok(id.clone(), None),
+                                            Ok(false) => SessionReply::failed(id.clone(), internal("The scheduled run has ended. Reopen the chat to continue.")),
+                                            Err(message) => SessionReply::failed(id.clone(), internal(message)),
+                                        }
+                                    },
+                                    _ => SessionReply::failed(id.clone(), internal("The scheduler is unavailable. Reconnect to this computer and try Stop again.")),
+                                })
+                            } else if matches!(ty, "prompt" | "steer" | "follow_up") {
+                                Some(SessionReply::failed(id.clone(), AppErrorDto::new(
+                                    AppErrorCode::E_UNSUPPORTED,
+                                    "This chat is a scheduled run. Stop it to continue here.",
+                                    false,
+                                )))
+                            } else {
+                                None
+                            };
+                            if let Some(reply) = reply {
+                                flush_batch(write, &mut batch, &mut seen_through).await?;
+                                flush_at = None;
+                                write_json(write, &reply).await?;
+                                continue;
+                            }
+                        }
                         // The app's image fetch (`sessionRefChat.media`): a bounded
                         // snapshot's `mediaRef` images load through this command, from
                         // the same blob store the reference points into.

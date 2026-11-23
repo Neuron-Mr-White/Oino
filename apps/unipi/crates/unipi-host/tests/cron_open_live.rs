@@ -230,6 +230,7 @@ fn run_record(file: &Path, status: RunStatus) -> Run {
         cost_usd: None,
         missed: false,
         pid: None,
+        process_identity: None,
         notify_errors: Vec::new(),
         wake: None,
     }
@@ -284,6 +285,24 @@ async fn opening_a_running_cron_chat_joins_the_run_instead_of_taking_it_over() {
         "the run is in flight: {data}"
     );
 
+    assert_eq!(data["state"]["cronRunId"], ID);
+    // Sending/steering into a file follower must fail immediately, never queue a
+    // surprise prompt to run after the scheduled process ends.
+    for (id, ty) in [(10, "prompt"), (11, "steer"), (12, "follow_up")] {
+        let reply = client
+            .cmd(id, json!({"type": ty, "message": "do not queue me"}))
+            .await;
+        assert_eq!(reply["type"], "err", "{reply}");
+        assert_eq!(
+            reply["error"]["message"],
+            "This chat is a scheduled run. Stop it to continue here."
+        );
+    }
+    // No scheduler in this fixture: abort still answers promptly, rather than
+    // waiting on the cron wake queue. Real scheduler termination is covered in cron.rs.
+    let reply = client.cmd(13, json!({"type": "abort"})).await;
+    assert_eq!(reply["type"], "err", "{reply}");
+
     // The run keeps its session: no takeover request, no wake while it runs.
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(
@@ -331,4 +350,93 @@ async fn opening_a_running_cron_chat_joins_the_run_instead_of_taking_it_over() {
         .expect("no wake after the run ended");
     assert_eq!(woken["kind"], "woken", "{woken}");
     client.close().await;
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chat_stop_reaches_scheduler_before_file_follower_wakes() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = fixture();
+    let cron = CronPaths::new(fixture.agent_dir.clone());
+    let scheduler = Arc::new(unipi_cron::Scheduler::with_paths(cron.clone()));
+    fixture
+        .service
+        .set_cron_scheduler(Some(Arc::clone(&scheduler)));
+    let bin = fixture.project.join("fake-oino");
+    std::fs::write(&bin, "#!/usr/bin/python3\nimport signal,time\nsignal.signal(signal.SIGINT, lambda *_: exit(130))\nopen('ready','w').close()\nwhile True: time.sleep(.05)\n").unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let previous = std::env::var_os("OINO_CRON_BIN");
+    std::env::set_var("OINO_CRON_BIN", &bin);
+    let job = unipi_cron::model::Job::new(
+        "stop-chat",
+        "Stop chat",
+        "sleep",
+        "at:2000-01-01T00:00:00Z",
+        "UTC",
+        fixture.project.to_str().unwrap(),
+    );
+    store::save_job(&cron, &job).unwrap();
+    let id = scheduler.run_now(&job).await.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !fixture.project.join("ready").exists() {
+        assert!(Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let old_file = run_session(&fixture.sessions, &fixture.project);
+    let file = old_file.with_file_name(
+        old_file
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace(ID, &id),
+    );
+    let content = std::fs::read_to_string(&old_file).unwrap().replace(ID, &id);
+    std::fs::write(&file, content).unwrap();
+    std::fs::remove_file(old_file).unwrap();
+    let holder = oino_session::LeaseInfo::for_process("oino json", &fixture.agent_dir);
+    let lease = oino_session::SessionLease::acquire(&file, &holder).unwrap();
+    let mut client = Client::open(
+        &fixture.service,
+        Request::SessionOpen {
+            session: id.clone().try_into().unwrap(),
+            since_seq: None,
+        },
+    );
+    let snapshot = client.snapshot().await;
+    assert_eq!(snapshot["data"]["state"]["cronRunId"], id);
+    let started = Instant::now();
+    let reply = client.cmd(1, json!({"type": "abort"})).await;
+    assert_eq!(reply["type"], "ok", "{reply}");
+    let record = loop {
+        let record = store::load_run(&cron, &job.id, &id).unwrap().unwrap();
+        if record.status.is_finished() {
+            break record;
+        }
+        assert!(started.elapsed() < Duration::from_secs(4));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    assert_eq!(record.status, RunStatus::Stopped);
+    assert_eq!(record.reason.as_deref(), Some("Stopped by you"));
+    assert!(!oino_session::takeover_path(&file).exists());
+    lease.release();
+    fixture.hub.announce_cron_run(&id).await;
+    let event = client
+        .event_where(Duration::from_secs(20), |e| {
+            e["kind"] == "woken" || e["kind"] == "wake_failed"
+        })
+        .await
+        .unwrap();
+    assert_eq!(event["kind"], "woken", "{event}");
+    assert!(event["state"].get("cronRunId").is_none());
+    println!(
+        "chat stop → stopped record and normal chat wake: {} ms",
+        started.elapsed().as_millis()
+    );
+    client.close().await;
+    if let Some(previous) = previous {
+        std::env::set_var("OINO_CRON_BIN", previous);
+    } else {
+        std::env::remove_var("OINO_CRON_BIN");
+    }
 }

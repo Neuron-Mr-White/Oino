@@ -11,6 +11,7 @@ describe('selectors', () => {
     expect(sessionTitle(card('a', { name: ' Fix ', cwd: '/x/proj' }))).toBe('Fix');
     expect(sessionTitle(card('a', { cwd: '/x/proj/' }))).toBe('proj');
     expect(sessionTitle(card('a', { cwd: '/home/example' }))).toBe('New chat');
+    expect(sessionTitle(card('a', { cwd: '/rig/home', cron_job_name: 'Daily digest' }))).toBe('Daily digest');
     expect(sessionTitle(card('a', { name: 'Card' }), { name: 'Live' })).toBe('Live');
     expect(isHomeCwd('/home/example')).toBe(true);
     expect(isHomeCwd('/home/example/qa1ws')).toBe(false);

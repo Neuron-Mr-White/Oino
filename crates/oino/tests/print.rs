@@ -446,3 +446,92 @@ fn continue_and_session_flags_reopen_sessions() {
         "No session found matching 'ffffffff'"
     );
 }
+
+/// A scheduler SIGINT is the same user abort as a normal chat, including the
+/// interrupted tool result and settled event, before the JSONL lease is released.
+#[cfg(unix)]
+#[test]
+fn sigint_interrupts_bash_and_flushes_a_balanced_session() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    let sandbox = Sandbox::new();
+    let sessions = sandbox.dir.path().join("stop-sessions");
+    let responses = json!([{"toolCalls": [{"id": "sleep-call", "name": "bash", "arguments": {"command": "echo $$ > tool.pid; sleep 300", "timeout": 600, "riskLevel": "medium", "summary": "Long cancellable test tool"}}]}]);
+    let mut cmd = sandbox.command(
+        &responses,
+        &[
+            "--mode",
+            "json",
+            "--session-dir",
+            sessions.to_str().unwrap(),
+            "-p",
+            "sleep",
+        ],
+    );
+    let log = std::fs::File::create(sandbox.dir.path().join("stop.log")).unwrap();
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    let tool_pid = sandbox.cwd().join("tool.pid");
+    while !tool_pid.exists() {
+        assert!(Instant::now() < deadline, "tool never started");
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "print exited before tool"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(child.id().cast_signed()),
+        nix::sys::signal::Signal::SIGINT,
+    )
+    .unwrap();
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            panic!("SIGINT failed to settle");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(status.code(), Some(130));
+    let log = std::fs::File::open(sandbox.dir.path().join("stop.log")).unwrap();
+    let events: Vec<Value> = BufReader::new(log)
+        .lines()
+        .map(|s| serde_json::from_str(&s.unwrap()).unwrap())
+        .collect();
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "agent_settled" && e["aborted"] == true),
+        "{events:?}"
+    );
+    let file = walk(&sessions)
+        .into_iter()
+        .find(|p| p.extension().is_some_and(|e| e == "jsonl"))
+        .unwrap();
+    let records = support::jsonl(&file);
+    assert!(
+        records
+            .iter()
+            .any(|e| e["message"]["role"] == "toolResult"
+                && e["message"]["toolCallId"] == "sleep-call"),
+        "{records:?}"
+    );
+    let pid = std::fs::read_to_string(tool_pid).unwrap();
+    assert!(
+        std::fs::read_to_string(format!("/proc/{}/stat", pid.trim())).map_or(true, |s| s
+            .rsplit_once(") ")
+            .unwrap()
+            .1
+            .starts_with('Z'))
+    );
+}

@@ -13,7 +13,7 @@ import { settingsSchema } from '../ui/settings/data';
 import type { Namespace } from '../ui/settings/types';
 import { useNavigate, useParams, useSearchParams } from '@solidjs/router';
 import { Bell, CalendarClock, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CirclePause, ClockAlert, Cpu, Hourglass, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, Settings2, SkipForward, Square, Trash2 } from 'lucide-solid';
-import { appError, type AppError } from '@unipi/protocol';
+import { appError, toAppError, type AppError } from '@unipi/protocol';
 import type { CronJob, CronRun } from '../lib/cron';
 import {
   cronAdd,
@@ -78,6 +78,7 @@ const STATUS_LABEL: Record<string, string> = {
   running: 'running',
   ok: 'ok',
   failed: 'failed',
+  stopped: 'Stopped',
   timeout: 'timed out',
   skipped: 'skipped',
   queued: 'queued',
@@ -179,6 +180,7 @@ export function runDurationText(run: Pick<CronRun, 'started_at' | 'ended_at'>): 
 const RUN_STATUS: Record<string, { label: string; icon: typeof CircleCheck }> = {
   ok: { label: 'OK', icon: CircleCheck },
   failed: { label: 'Failed', icon: CircleAlert },
+  stopped: { label: 'Stopped', icon: CirclePause },
   timeout: { label: 'Timed out', icon: ClockAlert },
   skipped: { label: 'Skipped', icon: SkipForward },
   queued: { label: 'Queued', icon: Hourglass },
@@ -340,18 +342,18 @@ export default function Cron() {
 
         <Show when={view().kind === 'ready'}>
           {(() => {
-            const v = view() as { kind: 'ready'; jobs: CronJob[]; paused: boolean };
+            const v = () => view() as { kind: 'ready'; jobs: CronJob[]; paused: boolean };
             return (
               <div class="cron-body">
                 <div class="cron-pause-row settings-row">
-                  <span class="settings-icon">{v.paused ? <Play size={18} /> : <Pause size={18} />}</span>
+                  <span class="settings-icon">{v().paused ? <Play size={18} /> : <Pause size={18} />}</span>
                   <div class="min-w-0 flex-1">
                     <p class="text-[15px] text-text">Pause all</p>
                     <p class="text-xs text-text-dim mt-0.5">No new runs start; running ones finish.</p>
                   </div>
                   <SwitchField
                     label="Pause all"
-                    checked={v.paused}
+                    checked={v().paused}
                     testId="cron-pause-all"
                     onChange={(checked) => {
                       const id = hostId();
@@ -361,12 +363,12 @@ export default function Cron() {
                   />
                 </div>
 
-                <Show when={v.jobs.length > 0}>
+                <Show when={v().jobs.length > 0}>
                   <div class="cron-search-row">
                     <input
                       type="search"
                       class="cron-search"
-                      placeholder={`Search ${v.jobs.length} job${v.jobs.length === 1 ? '' : 's'}…`}
+                      placeholder={`Search ${v().jobs.length} job${v().jobs.length === 1 ? '' : 's'}…`}
                       aria-label="Search automations"
                       value={query()}
                       onInput={(e) => setQuery(e.currentTarget.value)}
@@ -374,8 +376,8 @@ export default function Cron() {
                     />
                   </div>
                 </Show>
-                <Show when={v.jobs.length === 0} fallback={(() => {
-                  const shown = () => filterJobs(v.jobs, query());
+                <Show when={v().jobs.length === 0} fallback={(() => {
+                  const shown = () => filterJobs(v().jobs, query());
                   const pg = () => pageOf(shown(), page(), pageSize());
                   return (
                     <>
@@ -678,6 +680,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
   const [pcDefault, setPcDefault] = createSignal<string[]>([]);
   void cronSettingsGet(props.hostId).then((r) => r.ok && r.value && setPcDefault(r.value.notify_default_events ?? []));
   const [busy, setBusy] = createSignal(false);
+  const [actionError, setActionError] = createSignal<string>();
   const [openRun, setOpenRun] = createSignal<CronRun | undefined>(undefined);
 
   async function load() {
@@ -688,7 +691,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
   const [justRan, setJustRan] = createSignal(false);
   createEffect(() => {
     const d = data();
-    const live = (d?.ok && d.value.job.running) || justRan();
+    const live = (d?.ok && (d.value.job.running || d.value.runs.some((r) => r.status === 'running'))) || justRan();
     if (!live) return;
     const t = setInterval(() => {
       void load();
@@ -700,10 +703,15 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
-    await fn();
-    setBusy(false);
-    await load();
-    props.onChanged();
+    setActionError(undefined);
+    try {
+      const result = await fn() as { ok?: boolean; error?: { message: string } } | undefined;
+      if (result?.ok === false) setActionError(result.error?.message || "Couldn’t change this job");
+      await load();
+      props.onChanged();
+    } catch (error) {
+      setActionError(toAppError(error).message);
+    } finally { setBusy(false); }
   }
 
   const jobTitle = () => {
@@ -744,7 +752,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
                 <button type="button" disabled={busy()} onClick={() => (setJustRan(true), void run(() => cronRun(props.hostId, job.id)))} data-testid="cron-run-now">
                   <Play size={16} /> Run now
                 </button>
-                <Show when={job.running}>
+                <Show when={job.running || runs.some((r) => r.status === 'running')}>
                   <button type="button" disabled={busy()} onClick={() => void run(() => cronStop(props.hostId, job.id))} data-testid="cron-stop">
                     <Square size={16} /> Stop
                   </button>
@@ -776,6 +784,7 @@ function JobDetailSheet(props: { hostId: string; hostName: string; id: string; o
                 </button>
               </div>
 
+              <Show when={actionError()}>{(message) => <p role="alert" class="cron-form-error">{message()}</p>}</Show>
               <h3 class="cron-runs-heading">Run history</h3>
               <Show when={runs.length > 0} fallback={<p class="text-text-muted text-sm">No runs yet.</p>}>
                 <ul class="cron-runs-list">
@@ -866,7 +875,7 @@ function RunLogSheet(props: { hostId: string; hostName: string; job: CronJob; ru
                   {run.status === 'timeout' ? 'Timed out' : 'Failed'} — {parsed.cause}
                 </p>
               </Show>
-              <Show when={run.session_path && run.status !== 'running'}>
+              <Show when={run.session_path || run.status === 'running'}>
                 <button type="button" class="cron-open-session" disabled={opening()} onClick={() => void openSession()} data-testid="cron-open-session">
                   <MessageSquare size={16} /> {opening() ? 'Starting the agent…' : 'Open session'}
                 </button>

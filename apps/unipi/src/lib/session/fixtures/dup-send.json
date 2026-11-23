@@ -1,0 +1,1564 @@
+{
+ "about": "DUP-SEND: a real 1.0.13 host, session with the mode flipped beforehand (long-horizon-decision published before the user message), ONE prompt of multi-line text + one pasted JPEG (~70 KB: inline in the live event, mediaRef in get_entries). Recorded over app.sock; text replaced by a neutral text of the same shape, base64 cut to 2000 chars (still inline), ui events dropped. Events renumbered 1..n after dropping the ui ones (the app treats a hole in seq as a gap).",
+ "messageId": "05f52ed8-4cba-4713-b049-9aace6a2f90e",
+ "snapshot": {
+  "project_trust": {
+   "state": "undecided",
+   "path": "/home/user/.local/share/oino/scratch/01a207e7-c862-7799-90a9-1d889424896d",
+   "protected": []
+  },
+  "session_id": "01a207e7-c862-7799-90a9-1d889424896d",
+  "reset": true,
+  "seq": 0,
+  "state": {
+   "model": {
+    "id": "mock-1",
+    "name": "Rig mock",
+    "api": "openai-completions",
+    "provider": "mock",
+    "baseUrl": "http://127.0.0.1:51521/v1",
+    "input": [
+     "text"
+    ],
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0
+    },
+    "reasoning": false,
+    "contextWindow": 2000000,
+    "maxTokens": 8192,
+    "compat": {
+     "supportsDeveloperRole": false,
+     "supportsReasoningEffort": false,
+     "supportsUsageInStreaming": true,
+     "maxTokensField": "max_tokens"
+    }
+   },
+   "thinkingLevel": "off",
+   "isStreaming": false,
+   "isCompacting": false,
+   "steeringMode": "one-at-a-time",
+   "followUpMode": "one-at-a-time",
+   "sessionFile": "/home/user/.cache/oino-work/rig/dup-b/agent/sessions/--home-user-.cache-oino-work-rig-dup-b-xdg-data-oino-scratch-01a207e7-c862-7799-90a9-1d889424896d--/2026-11-23T10-16-00-354Z_01a207e7-c862-7799-90a9-1d889424896d.jsonl",
+   "sessionId": "01a207e7-c862-7799-90a9-1d889424896d",
+   "cwd": "/home/user/.local/share/oino/scratch/01a207e7-c862-7799-90a9-1d889424896d",
+   "autoCompactionEnabled": true,
+   "messageCount": 2,
+   "pendingMessageCount": 0,
+   "autonomy": "medium"
+  },
+  "entries": [
+   {
+    "id": "6a9b3858",
+    "parentId": null,
+    "timestamp": "2026-11-23T10:16:00.358Z",
+    "type": "model_change",
+    "provider": "mock",
+    "modelId": "mock-1"
+   },
+   {
+    "id": "aa7d2b30",
+    "parentId": "6a9b3858",
+    "timestamp": "2026-11-23T10:16:00.358Z",
+    "type": "thinking_level_change",
+    "thinkingLevel": "off"
+   },
+   {
+    "id": "48986a6e",
+    "parentId": "aa7d2b30",
+    "timestamp": "2026-11-23T10:16:00.358Z",
+    "type": "custom",
+    "customType": "oino.search-snapshot",
+    "data": {
+     "semanticEnabled": false
+    }
+   },
+   {
+    "id": "383246ce",
+    "parentId": "48986a6e",
+    "timestamp": "2026-11-23T10:16:00.360Z",
+    "type": "custom",
+    "customType": "oino.tool-declarations",
+    "data": [
+     {
+      "name": "read"
+     },
+     {
+      "name": "bash"
+     }
+    ]
+   },
+   {
+    "id": "4703ad6f",
+    "parentId": "383246ce",
+    "timestamp": "2026-11-23T10:16:00.361Z",
+    "type": "system_snapshot",
+    "text": "You are Oino, an AI software engineering assistant operating inside the Oino harness.\nYou are direct, plain-spoken, and precise. Complete the user's request within its stated scope.\n\n# Harness\n- Text outside tool calls is shown to the user as GitHub-flavored Markdown. Put literal commands in code an",
+    "version": 3
+   },
+   {
+    "id": "8d6dea5e",
+    "parentId": "4703ad6f",
+    "timestamp": "2026-11-23T10:16:00.361Z",
+    "type": "custom_message",
+    "customType": "oino.session-start",
+    "content": "<system-reminder>\nUnified tool catalog:\nread\nbash\nedit\nwrite\ngrep\nglob\nls\ncodemode\ntool_search\nagent_output\nagent_swarm_status\nask_user\nbg_kill\nbg_logs\nbg_run\nbg_status\nbrowser_click\nbrowser_downloads\nbrowser_drag\nbrowser_evaluate\nbrowser_file_upload\nbrowser_handle_dialog\nbrowser_handoff\nbrowser_hover\nbrowser_logs\nbrowser_navigate\nbrowser_press_key\nbrowser_profile\nbrowser_scroll\nbrowser_select_option\nbrowser_snapshot\nbrowser_tabs\nbrowser_take_screenshot\nbrowser_type\nbrowser_wait_for\ncontext_budget\ncreate_goal\ncron_add\ncron_list\ncron_remove\ncron_run\ncron_update\nget_goal\nglobal_memory_list\nglobal_memory_search\nimage_edit\nimage_generate\nimage_recognize\nkanboard\nloop_status\nmemory_delete\nmemory_list\nmemory_search\nmemory_store\nmulti_web_content_read\nnotify_user\nplan_submit\nralph_done\nread_subagent\nrename_session\nrun_subagent\nsession_recall\nsidekick\ntask_output\ntask_stop\ntodowrite\nupdate_agent_graph\nupdate_goal\nview_agent_graph\nweb_llm_summarize\nweb_search\nyield_agent_graph\n\nLoad deferred schemas with tool_search using select:<name> or keywords. Never invent tool names.\n\nDeferred tools:\nbg_kill\nbg_logs\nbg_run\nbg_status\n</system-reminder>\n\n<system-reminder>\nAvailable subagents:\n[]\n</system-reminder>\n\n<system-reminder>\nUser system info (linux/x86_64)\nSession working directory: /home/user/.local/share/oino/scratch/01a207e7-c862-7799-90a9-1d889424896d\n</system-reminder>\n\n<system-reminder>\nCurrent date: 2026-11-23\n</system-reminder>\n\n<system-reminder>\nWorkspace snapshot captured once at session start:\n% ls\n\n% git status --short --branch\nfatal: not a git repository (or any of the parent directories): .git\n\n</system-reminder>",
+    "display": false
+   }
+  ],
+  "leaf_id": "8d6dea5e",
+  "commands": [],
+  "topics": [],
+  "page": {
+   "total": 6,
+   "has_more": false,
+   "cursor": "6a9b3858"
+  }
+ },
+ "events": [
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 1,
+   "event": {
+    "type": "entry_appended",
+    "entry": {
+     "id": "20fa29bb",
+     "parentId": "ea797de4",
+     "timestamp": "2026-11-23T10:16:00.429Z",
+     "type": "custom",
+     "customType": "long-horizon-decision",
+     "data": {
+      "mode": "none",
+      "source": "default"
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 2,
+   "event": {
+    "type": "entry_appended",
+    "entry": {
+     "id": "9a7ba53d",
+     "parentId": "1375806a",
+     "timestamp": "2026-11-23T10:16:00.431Z",
+     "type": "custom",
+     "customType": "unipi-memory-session-card",
+     "data": {
+      "project": "01a207e7_c862_7799_90a9_1d889424896d",
+      "count": 0,
+      "issue": "MemPalace isn't installed \u2014 install uv (https://docs.astral.sh/uv/) for semantic search"
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 3,
+   "event": {
+    "type": "entry_appended",
+    "entry": {
+     "id": "a055d566",
+     "parentId": "9a7ba53d",
+     "timestamp": "2026-11-23T10:16:00.434Z",
+     "type": "custom",
+     "customType": "unipi:skills-judged",
+     "data": {
+      "kept": [
+       "ask-user",
+       "browser",
+       "btw",
+       "compactor",
+       "cron",
+       "craft-skill",
+       "mcp",
+       "memory",
+       "configure-notify",
+       "notify",
+       "subagents",
+       "configure-updater",
+       "image",
+       "summarize",
+       "utility",
+       "web"
+      ],
+      "hidden": [],
+      "index": "",
+      "failOpen": true
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 4,
+   "event": {
+    "type": "entry_appended",
+    "entry": {
+     "id": "22f040e2",
+     "parentId": "bbc760ab",
+     "timestamp": "2026-11-23T10:16:00.436Z",
+     "type": "custom",
+     "customType": "unipi:skills-revealed",
+     "data": {
+      "names": [
+       "ask-user",
+       "browser",
+       "btw",
+       "compactor",
+       "cron",
+       "craft-skill",
+       "mcp",
+       "memory",
+       "configure-notify",
+       "notify",
+       "subagents",
+       "configure-updater",
+       "image",
+       "summarize",
+       "utility",
+       "web"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 5,
+   "event": {
+    "type": "agent_start"
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 6,
+   "event": {
+    "type": "turn_start"
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 7,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "system",
+     "content": "",
+     "toolsRemoved": [
+      {
+       "name": "agent_output"
+      },
+      {
+       "name": "agent_swarm_status"
+      },
+      {
+       "name": "ask_user"
+      },
+      {
+       "name": "create_goal"
+      },
+      {
+       "name": "get_goal"
+      },
+      {
+       "name": "kanboard"
+      },
+      {
+       "name": "loop_status"
+      },
+      {
+       "name": "ralph_done"
+      },
+      {
+       "name": "sidekick"
+      },
+      {
+       "name": "update_agent_graph"
+      },
+      {
+       "name": "update_goal"
+      },
+      {
+       "name": "view_agent_graph"
+      },
+      {
+       "name": "web_llm_summarize"
+      },
+      {
+       "name": "yield_agent_graph"
+      }
+     ],
+     "timestamp": 1795428960440
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 8,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "system",
+     "content": "",
+     "toolsRemoved": [
+      {
+       "name": "agent_output"
+      },
+      {
+       "name": "agent_swarm_status"
+      },
+      {
+       "name": "ask_user"
+      },
+      {
+       "name": "create_goal"
+      },
+      {
+       "name": "get_goal"
+      },
+      {
+       "name": "kanboard"
+      },
+      {
+       "name": "loop_status"
+      },
+      {
+       "name": "ralph_done"
+      },
+      {
+       "name": "sidekick"
+      },
+      {
+       "name": "update_agent_graph"
+      },
+      {
+       "name": "update_goal"
+      },
+      {
+       "name": "view_agent_graph"
+      },
+      {
+       "name": "web_llm_summarize"
+      },
+      {
+       "name": "yield_agent_graph"
+      }
+     ],
+     "timestamp": 1795428960440
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 9,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Please look at the attached screenshot and help me clean up the sign-up flow.\n\n- Rename the first step to \"Create your account\" and the last one to \"Confirm your email\".\n- Raise the limit of the notes field to 3,000 characters.\n- Add an info icon next to \"Quiet hours\" that opens its tooltip on press (not on hover).\n- Show a progress bar on step 2 and make the \"Open chat\" button easier to see.\n- After the last step suggest a \"Next: send a test message\" button.\n- Show the countdown to the next QR refresh while the code is on screen.\n[image 1] is the current layout.\n\nSorry for the long list, I also pasted the old copy below so you can compare it with the new wording.\nOld copy: Welcome back. Your workspace is ready. Pick a name for the new project, choose who can see it, then press Continue.\nNothing else changes in this pass."
+      },
+      {
+       "type": "image",
+       "data": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCADzAVQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCKx8OLq0HjG5MOiXXibUdHY/bLuOaNIWRppWDJKSHwkWMZaQbYyxKphbfhq8l13w3o0d3f2+o21752n6c+taU8ssgG+VFmZSxj8uNZCwVNoDgJtOQG3GtTw3+keG7eTyNHv5VW3lt7G2tZLaGS5Z1jhjEiq4lDMy8Ku2UhlLKwfEubzXdWj8Qz24ePQtP00tYanJ5ltBa+Sw84x9JQTPKQv3g2zGXGcgHSNaaZoHi/SdQSzhudOvPEUlqsqThp7pFXEkrb2QTSqUDkKp2bOWUYjkz47lb7xlrmneHpLfxLrl7cR6ZcWEt2J22O4LTwg8xYUyO0bbSryAkoVxWvHcPqmpxXM2kWerQxR2ltYRrGSUj8xwqPIiuJN8kUYKuTnKpzvNYC6hK/g/xKbrTLOyTy7oXJvsvBezybYoz9oMiEPEoQK2JIztZikYyQAaHgbVNe1C+1vxSdVOrX9kj29r9klknSIPAitClsIlKISsLxbH4MJO9cqKxNT8PXllc6JrenFZte0TT5Lh7S3iKM4ni+zR74ZcygIFdTvVzvglO4YFamgN4cm+H15ZvZXOm+EReG4E14sJmTy7Scx74w2ZFMiMgdN24rhThcrSmn0/WLvStBZbe70m5sljhgsrWSW1FwpZm8yeQK5QpNHuVDkhQCR5hJAI7/AFvW9ettZ8W6NqgsLa20u6kS6g0oyQxDeWnhXejnbJ5StkbiDIQcqqmt29g1TxZrmnrrep339lTQWt1f2cVyEkfY0pkgjhEeJohMcHJXhXwGytYeqX3ijWvDtj4emgs7rS9StBqjzwbZrOSFWIWNJH2GWNo0CEEhgxlP7wFjW+/ha88RT6dp2p6HczwXGq3zz2dhchrOxtHgaMRxo2yXcZnjQxqFjCFsFiGYAFPTvCl9cWMllpdrbzXnhzUGm0i7OIZLdGjVWldoWBl8pw21WTeAcBmMny6a+LNf8NaBqum2UF3per6u0V6lm9oJJB5/ls1tazbFVFMVvIQ2ZNhQblUqQMAi10fVYdT06wWfTLa2hklXxJFJKjQI0bRb4pzucx7XXG0Z2g7TgsL/AIK8QHwveXl1dSXX9lwmGxBE3nCC+midZIiyOkdoFEhzGmQ2/uFWgCt4Pu7PxZpFpqfg7XJrNks7eXUZdVubmOO6mE+5XYkfMFcu",
+       "mimeType": "image/jpeg"
+      }
+     ],
+     "timestamp": 1795428960439
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 10,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Please look at the attached screenshot and help me clean up the sign-up flow.\n\n- Rename the first step to \"Create your account\" and the last one to \"Confirm your email\".\n- Raise the limit of the notes field to 3,000 characters.\n- Add an info icon next to \"Quiet hours\" that opens its tooltip on press (not on hover).\n- Show a progress bar on step 2 and make the \"Open chat\" button easier to see.\n- After the last step suggest a \"Next: send a test message\" button.\n- Show the countdown to the next QR refresh while the code is on screen.\n[image 1] is the current layout.\n\nSorry for the long list, I also pasted the old copy below so you can compare it with the new wording.\nOld copy: Welcome back. Your workspace is ready. Pick a name for the new project, choose who can see it, then press Continue.\nNothing else changes in this pass."
+      },
+      {
+       "type": "image",
+       "data": "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",
+       "mimeType": "image/jpeg"
+      }
+     ],
+     "timestamp": 1795428960439
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 11,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "custom",
+     "customType": "unipi-memory-recall-reminder",
+     "content": "## \ud83e\udde0 Memory System Active\n\nYou have 0 memories stored for project \"01a207e7_c862_7799_90a9_1d889424896d\".\n\n**AFTER completing the task**, if you learned something non-obvious,\ncall `memory_store` to save it for future sessions.\n\nGuardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+     "display": true,
+     "details": {
+      "oinoProvenance": {
+       "source": "Memory",
+       "title": "Memory recall",
+       "synopsis": "Recalled at session start"
+      }
+     },
+     "timestamp": 1795428960439
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 12,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "custom",
+     "customType": "unipi-memory-recall-reminder",
+     "content": "## \ud83e\udde0 Memory System Active\n\nYou have 0 memories stored for project \"01a207e7_c862_7799_90a9_1d889424896d\".\n\n**AFTER completing the task**, if you learned something non-obvious,\ncall `memory_store` to save it for future sessions.\n\nGuardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+     "display": true,
+     "details": {
+      "oinoProvenance": {
+       "source": "Memory",
+       "title": "Memory recall",
+       "synopsis": "Recalled at session start"
+      }
+     },
+     "timestamp": 1795428960439
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 13,
+   "event": {
+    "type": "message_start",
+    "message": {
+     "role": "assistant",
+     "content": [],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "pending",
+     "timestamp": 1795428960446
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 14,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": ""
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "pending",
+     "timestamp": 1795428960446
+    },
+    "assistantMessageEvent": {
+     "type": "text_start",
+     "contentIndex": 0,
+     "partial": {
+      "content": [
+       {
+        "type": "text",
+        "text": ""
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "mock",
+      "model": "mock-1",
+      "usage": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 0,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0
+       }
+      },
+      "stopReason": "pending",
+      "timestamp": 1795428960446
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 15,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Offline rig reply. Ready for desktop QA."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "pending",
+     "timestamp": 1795428960446
+    },
+    "assistantMessageEvent": {
+     "type": "text_delta",
+     "contentIndex": 0,
+     "delta": "Offline rig reply. Ready for desktop QA.",
+     "partial": {
+      "content": [
+       {
+        "type": "text",
+        "text": "Offline rig reply. Ready for desktop QA."
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "mock",
+      "model": "mock-1",
+      "usage": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 0,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0
+       }
+      },
+      "stopReason": "pending",
+      "timestamp": 1795428960446
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 16,
+   "event": {
+    "type": "message_update",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Offline rig reply. Ready for desktop QA."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 0,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "pending",
+     "timestamp": 1795428960446
+    },
+    "assistantMessageEvent": {
+     "type": "text_end",
+     "contentIndex": 0,
+     "content": "Offline rig reply. Ready for desktop QA.",
+     "partial": {
+      "content": [
+       {
+        "type": "text",
+        "text": "Offline rig reply. Ready for desktop QA."
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "mock",
+      "model": "mock-1",
+      "usage": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "totalTokens": 0,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0
+       }
+      },
+      "stopReason": "pending",
+      "timestamp": 1795428960446
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 17,
+   "event": {
+    "type": "message_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Offline rig reply. Ready for desktop QA."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "responseId": "rig-offline",
+     "thinkingLevel": "off",
+     "usage": {
+      "input": 10,
+      "output": 10,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 20,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "rawStopReason": "stop",
+     "timestamp": 1795428960447
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 18,
+   "event": {
+    "type": "turn_end",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Offline rig reply. Ready for desktop QA."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "responseId": "rig-offline",
+     "thinkingLevel": "off",
+     "usage": {
+      "input": 10,
+      "output": 10,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 20,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "rawStopReason": "stop",
+     "timestamp": 1795428960447
+    },
+    "toolResults": []
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 19,
+   "event": {
+    "type": "agent_end",
+    "messages": [
+     {
+      "role": "system",
+      "content": "",
+      "toolsRemoved": [
+       {
+        "name": "agent_output"
+       },
+       {
+        "name": "agent_swarm_status"
+       },
+       {
+        "name": "ask_user"
+       },
+       {
+        "name": "create_goal"
+       },
+       {
+        "name": "get_goal"
+       },
+       {
+        "name": "kanboard"
+       },
+       {
+        "name": "loop_status"
+       },
+       {
+        "name": "ralph_done"
+       },
+       {
+        "name": "sidekick"
+       },
+       {
+        "name": "update_agent_graph"
+       },
+       {
+        "name": "update_goal"
+       },
+       {
+        "name": "view_agent_graph"
+       },
+       {
+        "name": "web_llm_summarize"
+       },
+       {
+        "name": "yield_agent_graph"
+       }
+      ],
+      "timestamp": 1795428960440
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "Please look at the attached screenshot and help me clean up the sign-up flow.\n\n- Rename the first step to \"Create your account\" and the last one to \"Confirm your email\".\n- Raise the limit of the notes field to 3,000 characters.\n- Add an info icon next to \"Quiet hours\" that opens its tooltip on press (not on hover).\n- Show a progress bar on step 2 and make the \"Open chat\" button easier to see.\n- After the last step suggest a \"Next: send a test message\" button.\n- Show the countdown to the next QR refresh while the code is on screen.\n[image 1] is the current layout.\n\nSorry for the long list, I also pasted the old copy below so you can compare it with the new wording.\nOld copy: Welcome back. Your workspace is ready. Pick a name for the new project, choose who can see it, then press Continue.\nNothing else changes in this pass."
+       },
+       {
+        "type": "image",
+        "data": "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",
+        "mimeType": "image/jpeg"
+       }
+      ],
+      "timestamp": 1795428960439
+     },
+     {
+      "role": "custom",
+      "customType": "unipi-memory-recall-reminder",
+      "content": "## \ud83e\udde0 Memory System Active\n\nYou have 0 memories stored for project \"01a207e7_c862_7799_90a9_1d889424896d\".\n\n**AFTER completing the task**, if you learned something non-obvious,\ncall `memory_store` to save it for future sessions.\n\nGuardrails: read max 10 memory results per search. Update existing memories instead of creating duplicates.",
+      "display": true,
+      "details": {
+       "oinoProvenance": {
+        "source": "Memory",
+        "title": "Memory recall",
+        "synopsis": "Recalled at session start"
+       }
+      },
+      "timestamp": 1795428960439
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "text",
+        "text": "Offline rig reply. Ready for desktop QA."
+       }
+      ],
+      "api": "openai-completions",
+      "provider": "mock",
+      "model": "mock-1",
+      "responseId": "rig-offline",
+      "thinkingLevel": "off",
+      "usage": {
+       "input": 10,
+       "output": 10,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "reasoning": 0,
+       "totalTokens": 20,
+       "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "total": 0
+       }
+      },
+      "stopReason": "stop",
+      "rawStopReason": "stop",
+      "timestamp": 1795428960447
+     }
+    ],
+    "willRetry": false
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 20,
+   "event": {
+    "type": "entry_appended",
+    "entry": {
+     "id": "3087e1be",
+     "parentId": "91a1a76d",
+     "timestamp": "2026-11-23T10:16:00.470Z",
+     "type": "usage",
+     "kind": "child:session name",
+     "provider": "mock",
+     "model": "mock-1",
+     "usage": {
+      "input": 10,
+      "output": 10,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 20,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     }
+    }
+   }
+  },
+  {
+   "session": "01a207e7-c862-7799-90a9-1d889424896d",
+   "seq": 21,
+   "event": {
+    "type": "agent_settled",
+    "aborted": false
+   }
+  }
+ ],
+ "catchUpSince": "8d6dea5e",
+ "replyThroughUser": {
+  "entries": [
+   {
+    "id": "bbe87c1a",
+    "parentId": "8d6dea5e",
+    "timestamp": "2026-11-23T10:16:00.419Z",
+    "type": "custom",
+    "customType": "oino.run-begun"
+   },
+   {
+    "id": "42847c64",
+    "parentId": "bbe87c1a",
+    "timestamp": "2026-11-23T10:16:00.423Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nThe in-app browser is available (CloakBrowser, profile \"default\"). Use the browser_* tools; the user sees the tabs you open and can take over. See skill:browser.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.browser/availability"
+    }
+   },
+   {
+    "id": "ea797de4",
+    "parentId": "42847c64",
+    "timestamp": "2026-11-23T10:16:00.425Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nFusion is disabled in this session.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.fusion/policy"
+    }
+   },
+   {
+    "id": "20fa29bb",
+    "parentId": "ea797de4",
+    "timestamp": "2026-11-23T10:16:00.429Z",
+    "type": "custom",
+    "customType": "long-horizon-decision",
+    "data": {
+     "mode": "none",
+     "source": "default"
+    }
+   },
+   {
+    "id": "1375806a",
+    "parentId": "20fa29bb",
+    "timestamp": "2026-11-23T10:16:00.429Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nMode: Plain \u2014 Straight-to-the-point request \u2014 no long-horizon machinery.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.long-horizon/mode"
+    }
+   },
+   {
+    "id": "9a7ba53d",
+    "parentId": "1375806a",
+    "timestamp": "2026-11-23T10:16:00.431Z",
+    "type": "custom",
+    "customType": "unipi-memory-session-card",
+    "data": {
+     "project": "01a207e7_c862_7799_90a9_1d889424896d",
+     "count": 0,
+     "issue": "MemPalace isn't installed \u2014 install uv (https://docs.astral.sh/uv/) for semantic search"
+    }
+   },
+   {
+    "id": "a055d566",
+    "parentId": "9a7ba53d",
+    "timestamp": "2026-11-23T10:16:00.434Z",
+    "type": "custom",
+    "customType": "unipi:skills-judged",
+    "data": {
+     "kept": [
+      "ask-user",
+      "browser",
+      "btw",
+      "compactor",
+      "cron",
+      "craft-skill",
+      "mcp",
+      "memory",
+      "configure-notify",
+      "notify",
+      "subagents",
+      "configure-updater",
+      "image",
+      "summarize",
+      "utility",
+      "web"
+     ],
+     "hidden": [],
+     "index": "",
+     "failOpen": true
+    }
+   },
+   {
+    "id": "bbc760ab",
+    "parentId": "a055d566",
+    "timestamp": "2026-11-23T10:16:00.434Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nRelevant skills for this request:\n- ask-user \u2014 Ask the user multiple-choice questions with the ask_user tool (1\u20134 questions in one dialog, an \"Other\" free-text choice always included). Use when a decision, preference or clarification needs the use (/home/user/.cache/oino-work/rig/dup",
+    "display": false,
+    "details": {
+     "key": "unipi.skill-registry/skills"
+    }
+   },
+   {
+    "id": "22f040e2",
+    "parentId": "bbc760ab",
+    "timestamp": "2026-11-23T10:16:00.436Z",
+    "type": "custom",
+    "customType": "unipi:skills-revealed",
+    "data": {
+     "names": [
+      "ask-user",
+      "browser",
+      "btw",
+      "compactor",
+      "cron",
+      "craft-skill",
+      "mcp",
+      "memory",
+      "configure-notify",
+      "notify",
+      "subagents",
+      "configure-updater",
+      "image",
+      "summarize",
+      "utility",
+      "web"
+     ]
+    }
+   },
+   {
+    "id": "7bbee677",
+    "parentId": "22f040e2",
+    "timestamp": "2026-11-23T10:16:00.436Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nYou can delegate self-contained subtasks to subagents with `run_subagent`. A subagent is an independent agent with its own context: it does not see this conversation, so put everything it needs in `task` \u2014 the goal, relevant paths, constraints, and exactly what to report back.\n\nPro",
+    "display": false,
+    "details": {
+     "key": "unipi.subagents/catalog"
+    }
+   },
+   {
+    "id": "5f579972",
+    "parentId": "7bbee677",
+    "timestamp": "2026-11-23T10:16:00.440Z",
+    "type": "message",
+    "message": {
+     "role": "system",
+     "content": "",
+     "toolsRemoved": [
+      {
+       "name": "agent_output"
+      },
+      {
+       "name": "agent_swarm_status"
+      },
+      {
+       "name": "ask_user"
+      },
+      {
+       "name": "create_goal"
+      },
+      {
+       "name": "get_goal"
+      },
+      {
+       "name": "kanboard"
+      },
+      {
+       "name": "loop_status"
+      },
+      {
+       "name": "ralph_done"
+      },
+      {
+       "name": "sidekick"
+      },
+      {
+       "name": "update_agent_graph"
+      },
+      {
+       "name": "update_goal"
+      },
+      {
+       "name": "view_agent_graph"
+      },
+      {
+       "name": "web_llm_summarize"
+      },
+      {
+       "name": "yield_agent_graph"
+      }
+     ],
+     "timestamp": 1795428960440
+    }
+   },
+   {
+    "id": "05f52ed8-4cba-4713-b049-9aace6a2f90e",
+    "parentId": "5f579972",
+    "timestamp": "2026-11-23T10:16:00.440Z",
+    "type": "message",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Please look at the attached screenshot and help me clean up the sign-up flow.\n\n- Rename the first step to \"Create your account\" and the last one to \"Confirm your email\".\n- Raise the limit of the notes field to 3,000 characters.\n- Add an info icon next to \"Quiet hours\" that opens its tooltip on press (not on hover).\n- Show a progress bar on step 2 and make the \"Open chat\" button easier to see.\n- After the last step suggest a \"Next: send a test message\" button.\n- Show the countdown to the next QR refresh while the code is on screen.\n[image 1] is the current layout.\n\nSorry for the long list, I also pasted the old copy below so you can compare it with the new wording.\nOld copy: Welcome back. Your workspace is ready. Pick a name for the new project, choose who can see it, then press Continue.\nNothing else changes in this pass."
+      },
+      {
+       "type": "image",
+       "mimeType": "image/jpeg",
+       "mediaRef": "68d275e7c88d52ad2dc978a39cabaf5980a47e8b063165a932620873a28f0232",
+       "bytes": 56271
+      }
+     ],
+     "timestamp": 1795428960439,
+     "truncated": true
+    }
+   }
+  ],
+  "leafId": "05f52ed8-4cba-4713-b049-9aace6a2f90e"
+ },
+ "replyFull": {
+  "entries": [
+   {
+    "id": "bbe87c1a",
+    "parentId": "8d6dea5e",
+    "timestamp": "2026-11-23T10:16:00.419Z",
+    "type": "custom",
+    "customType": "oino.run-begun"
+   },
+   {
+    "id": "42847c64",
+    "parentId": "bbe87c1a",
+    "timestamp": "2026-11-23T10:16:00.423Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nThe in-app browser is available (CloakBrowser, profile \"default\"). Use the browser_* tools; the user sees the tabs you open and can take over. See skill:browser.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.browser/availability"
+    }
+   },
+   {
+    "id": "ea797de4",
+    "parentId": "42847c64",
+    "timestamp": "2026-11-23T10:16:00.425Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nFusion is disabled in this session.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.fusion/policy"
+    }
+   },
+   {
+    "id": "20fa29bb",
+    "parentId": "ea797de4",
+    "timestamp": "2026-11-23T10:16:00.429Z",
+    "type": "custom",
+    "customType": "long-horizon-decision",
+    "data": {
+     "mode": "none",
+     "source": "default"
+    }
+   },
+   {
+    "id": "1375806a",
+    "parentId": "20fa29bb",
+    "timestamp": "2026-11-23T10:16:00.429Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nMode: Plain \u2014 Straight-to-the-point request \u2014 no long-horizon machinery.\n</system-reminder>",
+    "display": false,
+    "details": {
+     "key": "unipi.long-horizon/mode"
+    }
+   },
+   {
+    "id": "9a7ba53d",
+    "parentId": "1375806a",
+    "timestamp": "2026-11-23T10:16:00.431Z",
+    "type": "custom",
+    "customType": "unipi-memory-session-card",
+    "data": {
+     "project": "01a207e7_c862_7799_90a9_1d889424896d",
+     "count": 0,
+     "issue": "MemPalace isn't installed \u2014 install uv (https://docs.astral.sh/uv/) for semantic search"
+    }
+   },
+   {
+    "id": "a055d566",
+    "parentId": "9a7ba53d",
+    "timestamp": "2026-11-23T10:16:00.434Z",
+    "type": "custom",
+    "customType": "unipi:skills-judged",
+    "data": {
+     "kept": [
+      "ask-user",
+      "browser",
+      "btw",
+      "compactor",
+      "cron",
+      "craft-skill",
+      "mcp",
+      "memory",
+      "configure-notify",
+      "notify",
+      "subagents",
+      "configure-updater",
+      "image",
+      "summarize",
+      "utility",
+      "web"
+     ],
+     "hidden": [],
+     "index": "",
+     "failOpen": true
+    }
+   },
+   {
+    "id": "bbc760ab",
+    "parentId": "a055d566",
+    "timestamp": "2026-11-23T10:16:00.434Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nRelevant skills for this request:\n- ask-user \u2014 Ask the user multiple-choice questions with the ask_user tool (1\u20134 questions in one dialog, an \"Other\" free-text choice always included). Use when a decision, preference or clarification needs the use (/home/user/.cache/oino-work/rig/dup",
+    "display": false,
+    "details": {
+     "key": "unipi.skill-registry/skills"
+    }
+   },
+   {
+    "id": "22f040e2",
+    "parentId": "bbc760ab",
+    "timestamp": "2026-11-23T10:16:00.436Z",
+    "type": "custom",
+    "customType": "unipi:skills-revealed",
+    "data": {
+     "names": [
+      "ask-user",
+      "browser",
+      "btw",
+      "compactor",
+      "cron",
+      "craft-skill",
+      "mcp",
+      "memory",
+      "configure-notify",
+      "notify",
+      "subagents",
+      "configure-updater",
+      "image",
+      "summarize",
+      "utility",
+      "web"
+     ]
+    }
+   },
+   {
+    "id": "7bbee677",
+    "parentId": "22f040e2",
+    "timestamp": "2026-11-23T10:16:00.436Z",
+    "type": "custom_message",
+    "customType": "oino.system-reminder",
+    "content": "<system-reminder>\nYou can delegate self-contained subtasks to subagents with `run_subagent`. A subagent is an independent agent with its own context: it does not see this conversation, so put everything it needs in `task` \u2014 the goal, relevant paths, constraints, and exactly what to report back.\n\nPro",
+    "display": false,
+    "details": {
+     "key": "unipi.subagents/catalog"
+    }
+   },
+   {
+    "id": "5f579972",
+    "parentId": "7bbee677",
+    "timestamp": "2026-11-23T10:16:00.440Z",
+    "type": "message",
+    "message": {
+     "role": "system",
+     "content": "",
+     "toolsRemoved": [
+      {
+       "name": "agent_output"
+      },
+      {
+       "name": "agent_swarm_status"
+      },
+      {
+       "name": "ask_user"
+      },
+      {
+       "name": "create_goal"
+      },
+      {
+       "name": "get_goal"
+      },
+      {
+       "name": "kanboard"
+      },
+      {
+       "name": "loop_status"
+      },
+      {
+       "name": "ralph_done"
+      },
+      {
+       "name": "sidekick"
+      },
+      {
+       "name": "update_agent_graph"
+      },
+      {
+       "name": "update_goal"
+      },
+      {
+       "name": "view_agent_graph"
+      },
+      {
+       "name": "web_llm_summarize"
+      },
+      {
+       "name": "yield_agent_graph"
+      }
+     ],
+     "timestamp": 1795428960440
+    }
+   },
+   {
+    "id": "05f52ed8-4cba-4713-b049-9aace6a2f90e",
+    "parentId": "5f579972",
+    "timestamp": "2026-11-23T10:16:00.440Z",
+    "type": "message",
+    "message": {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "Please look at the attached screenshot and help me clean up the sign-up flow.\n\n- Rename the first step to \"Create your account\" and the last one to \"Confirm your email\".\n- Raise the limit of the notes field to 3,000 characters.\n- Add an info icon next to \"Quiet hours\" that opens its tooltip on press (not on hover).\n- Show a progress bar on step 2 and make the \"Open chat\" button easier to see.\n- After the last step suggest a \"Next: send a test message\" button.\n- Show the countdown to the next QR refresh while the code is on screen.\n[image 1] is the current layout.\n\nSorry for the long list, I also pasted the old copy below so you can compare it with the new wording.\nOld copy: Welcome back. Your workspace is ready. Pick a name for the new project, choose who can see it, then press Continue.\nNothing else changes in this pass."
+      },
+      {
+       "type": "image",
+       "mimeType": "image/jpeg",
+       "mediaRef": "68d275e7c88d52ad2dc978a39cabaf5980a47e8b063165a932620873a28f0232",
+       "bytes": 56271
+      }
+     ],
+     "timestamp": 1795428960439,
+     "truncated": true
+    }
+   },
+   {
+    "id": "ac3e2e44",
+    "parentId": "05f52ed8-4cba-4713-b049-9aace6a2f90e",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom_message",
+    "customType": "unipi-memory-recall-reminder",
+    "content": "## \ud83e\udde0 Memory System Active\n\nYou have 0 memories stored for project \"01a207e7_c862_7799_90a9_1d889424896d\".\n\n**AFTER completing the task**, if you learned something non-obvious,\ncall `memory_store` to save it for future sessions.\n\nGuardrails: read max 10 memory results per search. Update existing memo",
+    "display": true,
+    "details": {
+     "oinoProvenance": {
+      "source": "Memory",
+      "title": "Memory recall",
+      "synopsis": "Recalled at session start"
+     }
+    }
+   },
+   {
+    "id": "d4253ff6",
+    "parentId": "ac3e2e44",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "8d6dea5e",
+     "blocked": false
+    }
+   },
+   {
+    "id": "8ff93c92",
+    "parentId": "d4253ff6",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "42847c64",
+     "blocked": false
+    }
+   },
+   {
+    "id": "772f578d",
+    "parentId": "8ff93c92",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "ea797de4",
+     "blocked": false
+    }
+   },
+   {
+    "id": "cd1aa2d6",
+    "parentId": "772f578d",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "1375806a",
+     "blocked": false
+    }
+   },
+   {
+    "id": "315877a1",
+    "parentId": "cd1aa2d6",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "bbc760ab",
+     "blocked": false
+    }
+   },
+   {
+    "id": "e1fa4bb8",
+    "parentId": "315877a1",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "7bbee677",
+     "blocked": false
+    }
+   },
+   {
+    "id": "27dfdb18",
+    "parentId": "e1fa4bb8",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "05f52ed8-4cba-4713-b049-9aace6a2f90e",
+     "blocked": false
+    }
+   },
+   {
+    "id": "c66d47c9",
+    "parentId": "27dfdb18",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-policy",
+    "data": {
+     "entryId": "ac3e2e44",
+     "blocked": false
+    }
+   },
+   {
+    "id": "f3fbd072",
+    "parentId": "c66d47c9",
+    "timestamp": "2026-11-23T10:16:00.443Z",
+    "type": "custom",
+    "customType": "oino.image-setting",
+    "data": {
+     "blocked": false
+    }
+   },
+   {
+    "id": "ff83b769",
+    "parentId": "f3fbd072",
+    "timestamp": "2026-11-23T10:16:00.444Z",
+    "type": "custom",
+    "customType": "oino.sent-frontier",
+    "data": {
+     "entryId": "ac3e2e44"
+    }
+   },
+   {
+    "id": "91a1a76d",
+    "parentId": "ff83b769",
+    "timestamp": "2026-11-23T10:16:00.451Z",
+    "type": "message",
+    "message": {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Offline rig reply. Ready for desktop QA."
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "mock",
+     "model": "mock-1",
+     "responseId": "rig-offline",
+     "thinkingLevel": "off",
+     "usage": {
+      "input": 10,
+      "output": 10,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "reasoning": 0,
+      "totalTokens": 20,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "stop",
+     "rawStopReason": "stop",
+     "timestamp": 1795428960447
+    }
+   },
+   {
+    "id": "3087e1be",
+    "parentId": "91a1a76d",
+    "timestamp": "2026-11-23T10:16:00.470Z",
+    "type": "usage",
+    "kind": "child:session name",
+    "provider": "mock",
+    "model": "mock-1",
+    "usage": {
+     "input": 10,
+     "output": 10,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 20,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    }
+   },
+   {
+    "id": "f2e852a6",
+    "parentId": "3087e1be",
+    "timestamp": "2026-11-23T10:16:00.471Z",
+    "type": "custom",
+    "customType": "oino.run-ended"
+   }
+  ],
+  "leafId": "f2e852a6"
+ }
+}

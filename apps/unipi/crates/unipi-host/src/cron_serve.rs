@@ -269,6 +269,7 @@ impl CronHost {
             cost_usd: None,
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         };
@@ -302,6 +303,7 @@ fn run_status(s: RunStatus) -> CronRunStatus {
         RunStatus::Running => CronRunStatus::Running,
         RunStatus::Ok => CronRunStatus::Ok,
         RunStatus::Failed => CronRunStatus::Failed,
+        RunStatus::Stopped => CronRunStatus::Stopped,
         RunStatus::Timeout => CronRunStatus::Timeout,
         RunStatus::Skipped => CronRunStatus::Skipped,
         RunStatus::Queued => CronRunStatus::Queued,
@@ -511,7 +513,10 @@ where
     let empty = || Control::Ok { data: None };
     let now = chrono::Utc::now();
     let running = match cron.scheduler() {
-        Some(scheduler) => scheduler.running_job_ids().await,
+        Some(scheduler) => {
+            let _ = scheduler.reconcile().await;
+            scheduler.running_job_ids().await
+        }
         None => Vec::new(),
     };
     match req {
@@ -872,6 +877,7 @@ mod tests {
             cost_usd: None,
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         }

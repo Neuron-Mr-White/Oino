@@ -219,6 +219,7 @@ pub enum CronRunStatus {
     Running,
     Ok,
     Failed,
+    Stopped,
     Timeout,
     Skipped,
     Queued,

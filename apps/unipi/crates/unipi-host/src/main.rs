@@ -528,6 +528,19 @@ enum ForwardAction {
     Status,
 }
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        let args: Vec<_> = std::env::args_os().collect();
+        if args.get(1).is_some_and(|s| s == "cron-supervisor") {
+            anyhow::ensure!(args.len() == 5, "invalid cron supervisor arguments");
+            return unipi_cron::supervisor::entry(
+                std::path::Path::new(&args[2]),
+                &args[3].to_string_lossy(),
+                &args[4].to_string_lossy(),
+            )
+            .map_err(anyhow::Error::msg);
+        }
+    }
     let cli = Cli::parse();
     if let Command::Worker(args) = cli.command {
         return unipi_host::worker::run(args);
@@ -797,7 +810,7 @@ async fn host_main(cli: Cli) -> anyhow::Result<()> {
             }
             // H4 (host.md §7.3–7.5): the protocol handler reaches the hub and its per-session
             // event feeds through this one service (`events_open`, the session streams).
-            let _sessions =
+            let sessions =
                 unipi_host::sessions::SessionService::install(std::sync::Arc::clone(&hub));
             // H8 (host.md §9.8; ext-abi §6): the cron scheduler is unipi-cron's, embedded
             // here as the single owner (`scheduler.lock`): it ticks every second, watches
@@ -829,6 +842,7 @@ async fn host_main(cli: Cli) -> anyhow::Result<()> {
             let cron_scheduler = cron_owner
                 .as_ref()
                 .map(|owner| std::sync::Arc::clone(&owner.scheduler));
+            sessions.set_cron_scheduler(cron_scheduler.clone());
             let cron = match &cron_scheduler {
                 Some(scheduler) => unipi_host::cron_serve::CronHost::with_scheduler(
                     &paths_for_cleanup,

@@ -525,6 +525,7 @@ mod tests {
             cost_usd: None,
             missed: false,
             pid: None,
+            process_identity: None,
             notify_errors: Vec::new(),
             wake: None,
         }

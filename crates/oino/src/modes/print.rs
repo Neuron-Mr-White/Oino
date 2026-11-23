@@ -188,9 +188,15 @@ pub async fn run(runtime: Arc<AgentSessionRuntime>, output: PrintOutput, input: 
         result = prompts(&runtime, input, settled_rx) => Ok(result),
         () = shutdown_requested(&runtime) => Ok(Ok(())),
         signal = signals::next() => Err(signal),
+        Ok(()) = tokio::signal::ctrl_c() => Err(signals::Signal::Interrupt),
     };
     let code = match outcome {
-        Err(signal) => signal.exit_code(),
+        Err(signal) => {
+            // A scheduler/user interrupt must unwind tools and flush the session before
+            // disposal invalidates the runner. The scheduler bounds this grace period.
+            runtime.session().abort().await;
+            signal.exit_code()
+        }
         Ok(Err(message)) => {
             crate::eprintln_line(&message);
             1

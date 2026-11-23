@@ -51,7 +51,7 @@ export function isMovableCwd(cwd?: string | null): boolean {
 
 /** Card / session display title: the session name, else its project folder (or `fallback` when in No workspace). */
 export function sessionTitle(card?: SessionCard, state?: Pick<SessionState, 'name'>, fallback = 'New chat'): string {
-  const name = state?.name?.trim() || card?.name?.trim();
+  const name = state?.name?.trim() || card?.name?.trim() || card?.cron_job_name?.trim();
   if (name) return name;
   if (card?.cwd && !isHomeCwd(card.cwd)) return folderOf(card.cwd);
   return fallback;

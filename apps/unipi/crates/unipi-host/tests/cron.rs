@@ -381,3 +381,87 @@ async fn missed_run_catches_up_once_after_a_clock_jump() {
     );
     assert!(runs[0].missed);
 }
+
+/// Stop is a request to the scheduler, not a signal sent by the UI. A cooperative
+/// print-mode process flushes before exit; an uncooperative one has five seconds.
+#[tokio::test]
+async fn stop_gracefully_then_force_an_ignoring_process_and_its_children() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    for cooperative in [true, false] {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = CronPaths::new(tmp.path().join("agent"));
+        let script = format!(
+            r"#!/usr/bin/python3
+import os, signal, subprocess, time
+from pathlib import Path
+child = subprocess.Popen(['sleep', '300'], start_new_session=True)
+Path('child.pid').write_text(str(child.pid))
+def stop(*_):
+    Path('settled').write_text('aborted turn flushed')
+    raise SystemExit(130)
+signal.signal(signal.SIGINT, stop if {cooperative} else signal.SIG_IGN)
+Path('ready').write_text('ready')
+while True: time.sleep(.05)
+",
+            cooperative = if cooperative { "True" } else { "False" }
+        );
+        let (_bin, previous) = fake_oino(&script);
+        let scheduler = Scheduler::with_paths(paths.clone());
+        let j = job(
+            "stoppable",
+            "at:2000-01-01T00:00:00Z",
+            tmp.path().to_str().unwrap(),
+            120,
+        );
+        store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
+        let id = scheduler.run_now(&j).await.unwrap();
+        assert!(wait_for(|| tmp.path().join("ready").exists(), Duration::from_secs(5)).await);
+        let started = std::time::Instant::now();
+        // A chat stops exactly its run; the Cron screen stops by job id.
+        assert!(scheduler.stop(if cooperative { &id } else { &j.id }).await);
+        assert!(
+            wait_for(
+                || store::load_run(&paths, &j.id, &id)
+                    .unwrap()
+                    .is_some_and(|r| r.status.is_finished()),
+                Duration::from_secs(9)
+            )
+            .await
+        );
+        let elapsed = started.elapsed();
+        let record = store::load_run(&paths, &j.id, &id).unwrap().unwrap();
+        assert_eq!(record.status, RunStatus::Stopped);
+        assert_eq!(record.reason.as_deref(), Some("Stopped by you"));
+        assert!(record.ended_at.is_some());
+        assert_eq!(tmp.path().join("settled").exists(), cooperative);
+        assert!(
+            elapsed < Duration::from_secs(if cooperative { 3 } else { 8 }),
+            "{elapsed:?}"
+        );
+        if !cooperative {
+            assert!(elapsed >= Duration::from_secs(5));
+        }
+        let child: u32 = std::fs::read_to_string(tmp.path().join("child.pid"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        // A killed orphan can remain a zombie until init reaps it, but cannot run.
+        assert!(
+            wait_for(
+                || std::fs::read_to_string(format!("/proc/{child}/stat")).map_or(true, |s| s
+                    .rsplit_once(") ")
+                    .unwrap()
+                    .1
+                    .starts_with('Z')),
+                Duration::from_secs(2)
+            )
+            .await
+        );
+        assert!(!scheduler.stop("not-this-run").await);
+        println!(
+            "cron stop cooperative={cooperative}: {} ms; status=stopped; child={child} not running",
+            elapsed.as_millis()
+        );
+        restore(previous);
+    }
+}
